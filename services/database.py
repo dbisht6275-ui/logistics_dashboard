@@ -1,15 +1,13 @@
-import pyodbc
+import pymssql
 
 def get_connection():
-    return pyodbc.connect(
-        'DRIVER={ODBC Driver 18 for SQL Server};'
-        'SERVER=142.79.224.75,21443;'
-        'DATABASE=GreenTransSugamParivahan;'
-        'UID=data_analytics;'
-        'PWD=User@1234;'
-        'Encrypt=yes;'
-        'TrustServerCertificate=yes;'
-        'Connection Timeout=60;',
+    return pymssql.connect(
+        server="142.79.224.75",
+        port=21443,
+        user="data_analytics",
+        password="User@1234",
+        database="GreenTransSugamParivahan",
         timeout=60,
-        autocommit=True
+        login_timeout=60,
+        as_dict=False
     )
