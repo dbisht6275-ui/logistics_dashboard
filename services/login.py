@@ -17,8 +17,8 @@ def check_login(username, password):
         row = cursor.fetchone()
         conn.close()
 
-        if row and row.PASSWORD == password:
-            return True, row.EMPLOYEEID
+        if row and row[1] == password:
+            return True, row[2]
 
         return False, None
 
