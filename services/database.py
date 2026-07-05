@@ -1,13 +1,11 @@
+import streamlit as st
 import pymssql
 
 def get_connection():
     return pymssql.connect(
-        server="142.79.224.75",
-        port=21443,
-        user="data_analytics",
-        password="User@1234",
-        database="GreenTransSugamParivahan",
-        timeout=60,
-        login_timeout=60,
-        as_dict=False
+        server=st.secrets["DB_SERVER"],
+        port=int(st.secrets["DB_PORT"]),
+        user=st.secrets["DB_USER"],
+        password=st.secrets["DB_PASSWORD"],
+        database=st.secrets["DB_NAME"],
     )
