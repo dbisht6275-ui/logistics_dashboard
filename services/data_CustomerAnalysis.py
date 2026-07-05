@@ -1,13 +1,33 @@
-import time
 import streamlit as st
 import pandas as pd
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 from services.database import get_connection
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(5),
+    retry=retry_if_exception_type(Exception),
+    reraise=True,
+)
+def _run_query(query):
+    """
+    Runs the query on a fresh connection each attempt.
+    If the connection dies mid-query (network drop / server timeout),
+    this closes it and retries with a brand new connection up to 3 times.
+    """
+    conn = get_connection()
+    try:
+        return pd.read_sql(query, conn)
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 @st.cache_data(ttl=3600)
 def load_booking_data(start_date, end_date, view_type="origin"):
-
-    conn = get_connection()
 
     # -------- ORIGIN VIEW --------
     if view_type == "origin":
@@ -164,9 +184,7 @@ def load_booking_data(start_date, end_date, view_type="origin"):
             IIF(cn.ftl='y','FTL','LTL')
         """
 
-    df = pd.read_sql(query, conn)
-
-    return df
+    return _run_query(query)
 
 
 # -------- DATE RANGE FUNCTION --------
