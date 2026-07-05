@@ -1,0 +1,34 @@
+{
+  "admin": {
+    "menu": [
+      "🏠 Overview",
+      "📊 Comparison",
+      "📈 Branch Analysis",
+      "👥 Customer Analysis",
+      "🚛 Service Analysis",
+      "📄 Reports",
+      "🛠️ User Management"
+    ],
+    "reports": [
+      "📊 Zone Booking Turnover",
+      "📋 GR Costing Head Wise"
+    ]
+  },
+  "manager": {
+    "menu": [
+      "🏠 Overview",
+      "📊 Comparison",
+      "👥 Customer Analysis",
+      "📄 Reports"
+    ],
+    "reports": [
+      "📊 Zone Booking Turnover"
+    ]
+  },
+  "viewer": {
+    "menu": [
+      "🏠 Overview"
+    ],
+    "reports": []
+  }
+}
