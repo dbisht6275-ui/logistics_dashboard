@@ -5,6 +5,7 @@ from services.roles import get_allowed_menu, get_allowed_reports, clear_role_cac
 from pages.Home.overview_tab import show_overview
 from pages.Home.comparison_tab import show_comparison
 from pages.Home.Customer_Analysis import show_CustomerAnalysis
+from pages.Home.Service_Analysis import show_service_level
 from pages.IT.zone_booking_turnover import show_ZoneBookingTurnover
 
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
@@ -352,7 +353,7 @@ elif menu == "👥 Customer Analysis":
     show_CustomerAnalysis()
 
 elif menu == "🚛 Service Analysis":
-    st.info("Service Analysis page coming soon.")
+    show_service_level()
 
 elif menu == "🛠️ User Management":
     show_UserManagement()
