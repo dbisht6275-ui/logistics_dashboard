@@ -158,11 +158,14 @@ def show_service_level():
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
     # -----------------------------
-    # Filter row
+    # Filter row - same as Overview
     # -----------------------------
-    f1, f2, f3, f4, f5 = st.columns(5)
+    f1, f2, f3, f4, f5, f6, f7 = st.columns(7)
 
     with f1:
+        view_type = st.selectbox("View Type", ["Origin", "Destination"])
+
+    with f2:
         fy = st.selectbox(
             "Financial Year",
             [
@@ -184,7 +187,7 @@ def show_service_level():
     start_date, end_date = get_date_range(fy)
 
     with st.spinner("Loading service level data..."):
-        df = load_booking_data(start_date, end_date, "origin")
+        df = load_booking_data(start_date, end_date, view_type.lower())
 
     if df.empty:
         st.warning("No data found")
@@ -192,16 +195,31 @@ def show_service_level():
 
     df["Month"] = df["FIN_MONTH"].map(FIN_MONTH_MAP)
 
+    # Data-scope restriction for this employee
     data_scope = st.session_state.get("data_scope", {})
+
+    # -----------------------------
+    # Auto derive parent hierarchy
+    # -----------------------------
     locked_zone = data_scope.get("zone")
+    locked_circle = data_scope.get("circle")
     locked_branch = data_scope.get("branch")
 
+    # If branch right is given, derive its circle and zone
     if locked_branch:
         branch_row = df[df["branch"] == locked_branch]
         if not branch_row.empty:
+            if "circle" in branch_row.columns:
+                locked_circle = branch_row["circle"].iloc[0]
             locked_zone = branch_row["zone"].iloc[0]
 
-    with f2:
+    # If circle right is given, derive its zone
+    elif locked_circle and "circle" in df.columns:
+        circle_row = df[df["circle"] == locked_circle]
+        if not circle_row.empty:
+            locked_zone = circle_row["zone"].iloc[0]
+
+    with f3:
         if locked_zone:
             zone = locked_zone
             st.selectbox("Zone", [zone], disabled=True, help="Locked as per your assigned rights")
@@ -211,27 +229,44 @@ def show_service_level():
     if zone != "All":
         df = df[df["zone"] == zone]
 
-    with f3:
-        if locked_branch:
-            origin_branch = locked_branch
-            st.selectbox("Origin Branch", [origin_branch], disabled=True, help="Locked as per your assigned rights")
-        else:
-            origin_branch = st.selectbox("Origin Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()))
-
-    if origin_branch != "All":
-        df = df[df["branch"] == origin_branch]
-
     with f4:
-        dest_branch = st.selectbox("Destination Branch", ["All"] + sorted(df["destination"].dropna().unique().tolist()))
+        if "circle" not in df.columns:
+            circle = "All"
+            st.selectbox("Circle", ["All"], disabled=True, help="Circle column not available in data")
+        elif locked_circle:
+            circle = locked_circle
+            st.selectbox("Circle", [circle], disabled=True, help="Locked as per your assigned rights")
+        else:
+            circle = st.selectbox("Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()))
 
-    if dest_branch != "All":
-        df = df[df["destination"] == dest_branch]
+    if circle != "All" and "circle" in df.columns:
+        df = df[df["circle"] == circle]
 
     with f5:
+        if locked_branch:
+            branch = locked_branch
+            st.selectbox("Branch", [branch], disabled=True, help="Locked as per your assigned rights")
+        else:
+            branch = st.selectbox("Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()))
+
+    if branch != "All":
+        df = df[df["branch"] == branch]
+
+    with f6:
         month = st.selectbox("Month", ["All"] + sorted(df["Month"].dropna().unique().tolist()))
 
     if month != "All":
         df = df[df["Month"] == month]
+
+    with f7:
+        if "LOADTYPE" not in df.columns:
+            loadtype = "All"
+            st.selectbox("Load Type", ["All"], disabled=True, help="LOADTYPE column not available in data")
+        else:
+            loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()))
+
+    if loadtype != "All" and "LOADTYPE" in df.columns:
+        df = df[df["LOADTYPE"] == loadtype]
 
     if df.empty:
         st.warning("No data found for selected filters")
@@ -246,18 +281,21 @@ def show_service_level():
     try:
         prev_start, prev_end = get_date_range(prev_fy)
         with st.spinner("Loading last year data..."):
-            prev_df = load_booking_data(prev_start, prev_end, "origin")
+            prev_df = load_booking_data(prev_start, prev_end, view_type.lower())
 
         if not prev_df.empty:
             prev_df["Month"] = prev_df["FIN_MONTH"].map(FIN_MONTH_MAP)
+
             if zone != "All":
                 prev_df = prev_df[prev_df["zone"] == zone]
-            if origin_branch != "All":
-                prev_df = prev_df[prev_df["branch"] == origin_branch]
-            if dest_branch != "All":
-                prev_df = prev_df[prev_df["destination"] == dest_branch]
+            if circle != "All" and "circle" in prev_df.columns:
+                prev_df = prev_df[prev_df["circle"] == circle]
+            if branch != "All":
+                prev_df = prev_df[prev_df["branch"] == branch]
             if month != "All":
                 prev_df = prev_df[prev_df["Month"] == month]
+            if loadtype != "All" and "LOADTYPE" in prev_df.columns:
+                prev_df = prev_df[prev_df["LOADTYPE"] == loadtype]
     except Exception:
         prev_df = pd.DataFrame()
 
