@@ -49,8 +49,87 @@ def load_booking_data(start_date, end_date, view_type="origin"):
             ELSE ''
             END AS COUNTRY,
             cn.expecteddeliverydt,
-            gp.deliverydt
+            gp.deliverydt,
+            lastdsp.lastdespdt,
+                        -- Shipment Status
+            CASE
+                WHEN gp.deliverydt IS NOT NULL THEN 'Delivered'
 
+                WHEN lastdsp.lastdespdt IS NULL THEN 'Booked'
+
+                WHEN lastdsp.lastdespdt IS NOT NULL
+                     AND gp.deliverydt IS NULL
+                     AND CAST(GETDATE() AS DATE) <= cn.expecteddeliverydt
+                THEN 'In Transit'
+
+                WHEN lastdsp.lastdespdt IS NOT NULL
+                     AND gp.deliverydt IS NULL
+                     AND CAST(GETDATE() AS DATE) > cn.expecteddeliverydt
+                THEN 'Overdue'
+
+                ELSE 'Unknown'
+            END AS ShipmentStatus,
+
+            -- Service Level
+            CASE
+                WHEN gp.deliverydt IS NOT NULL
+                     AND gp.deliverydt < cn.expecteddeliverydt
+                THEN 'Before EDD'
+
+                WHEN gp.deliverydt IS NOT NULL
+                     AND gp.deliverydt = cn.expecteddeliverydt
+                THEN 'On EDD'
+
+                WHEN gp.deliverydt IS NOT NULL
+                     AND gp.deliverydt > cn.expecteddeliverydt
+                THEN 'After EDD'
+
+                WHEN gp.deliverydt IS NULL
+                     AND CAST(GETDATE() AS DATE) <= cn.expecteddeliverydt
+                THEN 'In Transit'
+
+                WHEN gp.deliverydt IS NULL
+                     AND CAST(GETDATE() AS DATE) > cn.expecteddeliverydt
+                THEN 'Overdue'
+
+                ELSE 'Unknown'
+            END AS SLAStatus,
+
+            -- Booking to Delivery Transit Days
+            DATEDIFF(DAY, cn.grdt, gp.deliverydt) AS TransitDays,
+
+            -- Last Dispatch to Delivery
+            DATEDIFF(DAY, lastdsp.lastdespdt, gp.deliverydt) AS DispatchToDeliveryDays,
+
+            -- Delay Days
+            CASE
+                WHEN gp.deliverydt > cn.expecteddeliverydt
+                THEN DATEDIFF(DAY, cn.expecteddeliverydt, gp.deliverydt)
+                ELSE 0
+            END AS DelayDays,
+
+            -- Route
+            v.stnname + ' -> ' + dest.stnname AS Route,
+
+            -- Flags
+            CASE
+                WHEN gp.deliverydt IS NOT NULL THEN 1
+                ELSE 0
+            END AS IsDelivered,
+
+            CASE
+                WHEN gp.deliverydt IS NOT NULL
+                     AND gp.deliverydt <= cn.expecteddeliverydt
+                THEN 1
+                ELSE 0
+            END AS IsWithinSLA,
+
+            CASE
+                WHEN gp.deliverydt IS NOT NULL
+                     AND gp.deliverydt > cn.expecteddeliverydt
+                THEN 1
+                ELSE 0
+            END AS IsLate
 
         FROM cnmt cn
         INNER JOIN viewstationmast v
@@ -59,6 +138,7 @@ def load_booking_data(start_date, end_date, view_type="origin"):
         inner join cngrcngemast cngr on cngr.code=cn.cngrcode
         inner join cngrcngemast cnge on cnge.code=cn.cngecode
         outer apply (select max(d.drdt) as deliverydt from viewallcompaniesgatepass d where d.grno=cn.grno and d.cancel<>'y') gp
+        outer apply (select max(ld.lhcdt) as lastdespdt from GTI_ViewAllCompaniesGRLHC ld where ld.grno=cn.grno) as lastdsp 
         WHERE cn.grdt BETWEEN '{start_date}' AND '{end_date}' and v.zonename<>'Head office'
           AND cn.grtype <> 'n'
         """
@@ -99,7 +179,87 @@ def load_booking_data(start_date, end_date, view_type="origin"):
 
             (cn.tamount - cn.servicetax) AS REVENUE,
             cn.expecteddeliverydt,
-            gp.deliverydt
+            gp.deliverydt,
+            lastdsp.lastdespdt,
+        -- Shipment Status
+            CASE
+                WHEN gp.deliverydt IS NOT NULL THEN 'Delivered'
+
+                WHEN lastdsp.lastdespdt IS NULL THEN 'Booked'
+
+                WHEN lastdsp.lastdespdt IS NOT NULL
+                     AND gp.deliverydt IS NULL
+                     AND CAST(GETDATE() AS DATE) <= cn.expecteddeliverydt
+                THEN 'In Transit'
+
+                WHEN lastdsp.lastdespdt IS NOT NULL
+                     AND gp.deliverydt IS NULL
+                     AND CAST(GETDATE() AS DATE) > cn.expecteddeliverydt
+                THEN 'Overdue'
+
+                ELSE 'Unknown'
+            END AS ShipmentStatus,
+
+            -- Service Level
+            CASE
+                WHEN gp.deliverydt IS NOT NULL
+                     AND gp.deliverydt < cn.expecteddeliverydt
+                THEN 'Before EDD'
+
+                WHEN gp.deliverydt IS NOT NULL
+                     AND gp.deliverydt = cn.expecteddeliverydt
+                THEN 'On EDD'
+
+                WHEN gp.deliverydt IS NOT NULL
+                     AND gp.deliverydt > cn.expecteddeliverydt
+                THEN 'After EDD'
+
+                WHEN gp.deliverydt IS NULL
+                     AND CAST(GETDATE() AS DATE) <= cn.expecteddeliverydt
+                THEN 'In Transit'
+
+                WHEN gp.deliverydt IS NULL
+                     AND CAST(GETDATE() AS DATE) > cn.expecteddeliverydt
+                THEN 'Overdue'
+
+                ELSE 'Unknown'
+            END AS SLAStatus,
+
+            -- Booking to Delivery Transit Days
+            DATEDIFF(DAY, cn.grdt, gp.deliverydt) AS TransitDays,
+
+            -- Last Dispatch to Delivery
+            DATEDIFF(DAY, lastdsp.lastdespdt, gp.deliverydt) AS DispatchToDeliveryDays,
+
+            -- Delay Days
+            CASE
+                WHEN gp.deliverydt > cn.expecteddeliverydt
+                THEN DATEDIFF(DAY, cn.expecteddeliverydt, gp.deliverydt)
+                ELSE 0
+            END AS DelayDays,
+
+            -- Route
+            v.stnname + ' -> ' + dest.stnname AS Route,
+
+            -- Flags
+            CASE
+                WHEN gp.deliverydt IS NOT NULL THEN 1
+                ELSE 0
+            END AS IsDelivered,
+
+            CASE
+                WHEN gp.deliverydt IS NOT NULL
+                     AND gp.deliverydt <= cn.expecteddeliverydt
+                THEN 1
+                ELSE 0
+            END AS IsWithinSLA,
+
+            CASE
+                WHEN gp.deliverydt IS NOT NULL
+                     AND gp.deliverydt > cn.expecteddeliverydt
+                THEN 1
+                ELSE 0
+            END AS IsLate
 
         FROM cnmt cn
 
@@ -113,6 +273,7 @@ def load_booking_data(start_date, end_date, view_type="origin"):
         LEFT JOIN viewstationmast z
             ON z.stncode = ISNULL(m.mergestncode, cn.destcode)
         outer apply (select max(d.drdt) as deliverydt from viewallcompaniesgatepass d where d.grno=cn.grno and d.cancel<>'y') gp
+        outer apply (select max(ld.lhcdt) as lastdespdt from GTI_ViewAllCompaniesGRLHC ld where ld.grno=cn.grno) as lastdsp 
         WHERE cn.grdt BETWEEN '{start_date}' AND '{end_date}'
           AND cn.grtype <> 'n'
         """
