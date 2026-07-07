@@ -1020,8 +1020,8 @@ def show_overview():
     st.markdown(f"""
     ###### 🏢 Branch Network Changes ({fy})
 
-    - **New Branches Opened:** {opened_branches}
-    - **Branches Closed:** {closed_branches}
+    - **New Branches/Agencies Opened:** {opened_branches}
+    - **Branches/Agencies Closed:** {closed_branches}
     - **Net Increase:** {net_increase:+}
     """)
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
