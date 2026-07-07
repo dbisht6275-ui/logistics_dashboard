@@ -594,7 +594,7 @@ def show_overview():
 
                         fig_yoy.add_annotation(
                             x=r["Period"],
-                            y=top + ymax * 0.08,
+                            y=top + ymax * 0.18,
                             text=r["Growth Label"],
                             showarrow=False,
                             font=dict(
@@ -607,7 +607,7 @@ def show_overview():
             fig_yoy.update_layout(
                 barmode="group",
                 height=220,
-                margin=dict(l=2, r=2, t=10, b=0),
+                margin=dict(l=2, r=2, t=35, b=0),
                 xaxis_title="",
                 yaxis_title="Revenue (Cr)",
                 plot_bgcolor="white",
@@ -617,7 +617,7 @@ def show_overview():
                     y=1.05,
                     x=0
                 ),
-                yaxis_range=[0, ymax * 1.25]
+                yaxis_range=[0, ymax * 1.50]
             )
 
             fig_yoy.update_xaxes(showgrid=False)
