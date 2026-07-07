@@ -261,8 +261,11 @@ def show_overview():
         """, unsafe_allow_html=True)
 
   
-    # Top filter row: view type, FY, zone, circle, branch, month and load type
-    filter_col1, filter_col2, filter_col3, filter_col4, filter_col5, filter_col6, filter_col7 = st.columns(7)
+    # Top filter row: view type, FY, zone, circle, branch, quarter, month and load type
+    (
+        filter_col1, filter_col2, filter_col3, filter_col4,
+        filter_col5, filter_col6, filter_col7, filter_col8
+    ) = st.columns(8)
 
     with filter_col1:
         view_type = st.selectbox("View Type", ["Origin", "Destination"])
@@ -311,6 +314,8 @@ def show_overview():
     }
 
     df["Month"] = df["FIN_MONTH"].map(month_map)
+    # NEW: Quarter column derived from FIN_MONTH, used for the Quarter filter below
+    df["Quarter"] = df["FIN_MONTH"].map(QUARTER_MAP)
 
     # Data-scope restriction for this employee (set at login, from config/data_scope.json)
     # e.g. {} = no restriction, {"zone": "Nepal Zone"}, {"circle": "NCR Circle"}, {"branch": "Noida"}
@@ -371,12 +376,24 @@ def show_overview():
         df = df[df["branch"] == branch]
 
     with filter_col6:
-        month = st.selectbox("Month", ["All"] + sorted(df["Month"].dropna().unique().tolist()))
+        # NEW: Quarter filter — options always shown in Q1→Q4 order (QUARTER_ORDER),
+        # restricted to quarters actually present in the currently filtered data.
+        available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().unique().tolist()]
+        quarter = st.selectbox("Quarter", ["All"] + available_quarters)
+
+    if quarter != "All":
+        df = df[df["Quarter"] == quarter]
+
+    with filter_col7:
+        # FIX: Month options now follow financial-year order (Apr..Mar) via MONTH_ORDER,
+        # instead of plain alphabetical sort() which broke the sequence.
+        available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().unique().tolist()]
+        month = st.selectbox("Month", ["All"] + available_months)
 
     if month != "All":
         df = df[df["Month"] == month]
 
-    with filter_col7:
+    with filter_col8:
         loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()))
 
     if loadtype != "All":
@@ -400,6 +417,9 @@ def show_overview():
 
         if not prev_df.empty:
             prev_df["Month"] = prev_df["FIN_MONTH"].map(month_map)
+            # NEW: Quarter column on previous-year data too, so the Quarter filter
+            # also applies correctly to the LY comparison numbers.
+            prev_df["Quarter"] = prev_df["FIN_MONTH"].map(QUARTER_MAP)
 
             if zone != "All":
                 prev_df = prev_df[prev_df["zone"] == zone]
@@ -407,6 +427,8 @@ def show_overview():
                 prev_df = prev_df[prev_df["circle"] == circle]
             if branch != "All":
                 prev_df = prev_df[prev_df["branch"] == branch]
+            if quarter != "All":
+                prev_df = prev_df[prev_df["Quarter"] == quarter]
             if month != "All":
                 prev_df = prev_df[prev_df["Month"] == month]
             if loadtype != "All":
