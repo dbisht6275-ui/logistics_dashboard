@@ -20,210 +20,193 @@ st.set_page_config(
 
 
 # =========================
-# Modern Sidebar Styling
+# Sidebar styling (professional / enterprise theme)
 # =========================
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+/* Sidebar base */
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #06172D 0%, #0A2240 55%, #07172D 100%);
-    border-right: 1px solid rgba(255,255,255,0.08);
-    font-family: 'Inter', sans-serif;
+    background: linear-gradient(180deg, #0B1B33 0%, #0F2340 100%);
+    font-family: 'Inter', -apple-system, sans-serif;
+    border-right: 1px solid rgba(255,255,255,0.06);
 }
-
-[data-testid="stSidebar"] > div:first-child {
-    padding: 18px 14px;
-}
-
 [data-testid="stSidebar"] * {
-    color: #EAF1FF;
+    color: #E9EEF6;
+}
+[data-testid="stSidebar"] > div:first-child {
+    padding-top: 1.2rem;
 }
 
-.sidebar-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-weight: 800;
-    font-size: 15px;
-    margin-bottom: 18px;
-}
-
-.sidebar-logo {
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
-    background: rgba(255,255,255,0.08);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.sidebar-collapse {
-    margin-left: auto;
-    width: 24px;
-    height: 24px;
-    background: rgba(255,255,255,0.08);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.profile-card {
-    background: rgba(255,255,255,0.07);
+/* Profile card */
+.sugam-profile-card {
+    background: rgba(255,255,255,0.05);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 12px;
-    padding: 13px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 12px;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.18);
 }
-
-.avatar {
-    width: 44px;
-    height: 44px;
-    border-radius: 11px;
-    background: linear-gradient(135deg, #FFB22E, #F59E0B);
+.sugam-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #F5A623, #E0821A);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 22px;
+    font-size: 18px;
     flex-shrink: 0;
 }
-
-.emp-id {
-    font-size: 13px;
-    font-weight: 700;
-    color: #F7FAFF;
+.sugam-profile-text {
+    line-height: 1.35;
 }
-
-.role-badge {
+.sugam-emp-id {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #F2F5FA;
+}
+.sugam-role-badge {
     display: inline-block;
-    margin-top: 5px;
-    background: rgba(245,158,11,0.18);
-    color: #FBBF24;
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.12em;
-    padding: 2px 8px;
+    margin-top: 4px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #F5A623;
+    background: rgba(245,166,35,0.13);
+    padding: 2px 9px;
     border-radius: 20px;
 }
 
-.section-label {
-    color: #7086A6 !important;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-    margin: 18px 0 8px 3px;
-}
-
+/* Logout / secondary buttons in sidebar */
 [data-testid="stSidebar"] .stButton button {
-    background: rgba(255,255,255,0.035);
-    border: 1px solid rgba(255,255,255,0.09);
-    border-radius: 9px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #D7E4F8;
-    min-height: 36px;
-    transition: all 0.2s ease;
-}
-
-[data-testid="stSidebar"] .stButton button:hover {
-    background: rgba(255,255,255,0.08);
-    border-color: rgba(139,92,246,0.5);
-    color: #FFFFFF;
-}
-
-[data-testid="stSidebar"] div[role="radiogroup"] {
-    gap: 4px;
-}
-
-[data-testid="stSidebar"] div[role="radiogroup"] label {
-    min-height: 38px;
-    padding: 9px 12px !important;
-    margin: 0 !important;
-    border-radius: 9px;
-    border: 1px solid transparent;
     background: transparent;
-    transition: all 0.2s ease;
+    border: 1px solid rgba(255,255,255,0.14);
+    color: #C7D2E3;
+    border-radius: 8px;
+    font-weight: 500;
+    font-size: 13.5px;
+    transition: all 0.15s ease;
+}
+[data-testid="stSidebar"] .stButton button:hover {
+    border-color: #E24C4C;
+    color: #FF7A7A;
+    background: rgba(226,76,76,0.08);
 }
 
+/* Brand lockup */
+.sugam-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 4px 0 16px 0;
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.sugam-brand-icon {
+    width: 32px;
+    height: 32px;
+    background: rgba(245,166,35,0.15);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+.sugam-brand-text {
+    font-size: 14.5px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    color: #F2F5FA;
+    line-height: 1.2;
+}
+.sugam-brand-sub {
+    font-size: 10px;
+    color: #7C8CA6;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    margin-top: 1px;
+}
+
+/* Section label (Navigation / Quick Actions etc.) */
+.sugam-section-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #5E6E88;
+    margin: 4px 0 8px 2px;
+}
+
+/* Navigation radio group -> styled nav list */
+[data-testid="stSidebar"] div[role="radiogroup"] {
+    gap: 2px;
+}
+[data-testid="stSidebar"] div[role="radiogroup"] label {
+    background: transparent;
+    border-radius: 8px;
+    padding: 9px 10px !important;
+    margin: 0 !important;
+    border-left: 3px solid transparent;
+    transition: background 0.15s ease;
+}
 [data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-    background: rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.05);
 }
-
 [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-    background: linear-gradient(90deg, #5B45D8, #4A35B9);
-    box-shadow: 0 8px 20px rgba(91,69,216,0.35);
+    background: rgba(245,166,35,0.13);
+    border-left: 3px solid #F5A623;
 }
-
 [data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
     display: none;
 }
-
 [data-testid="stSidebar"] div[role="radiogroup"] label p {
-    font-size: 13px;
-    font-weight: 600;
-    color: #DCE8FA;
+    font-size: 13.8px;
+    font-weight: 500;
+    color: #D3DCEA;
+    margin: 0;
 }
-
 [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {
     color: #FFFFFF;
-    font-weight: 700;
+    font-weight: 600;
 }
 
-[data-testid="stSidebar"] input[type="text"] {
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 10px;
-    color: #EAF1FF;
-    font-size: 12px;
-}
-
-[data-testid="stSidebar"] input[type="text"]::placeholder {
-    color: #91A4C0;
-}
-
+/* Expanders (report folders) */
 [data-testid="stSidebar"] [data-testid="stExpander"] {
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 10px;
+    border-radius: 8px;
 }
 
+/* Text input (report search) */
+[data-testid="stSidebar"] input[type="text"] {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    color: #E9EEF6;
+}
+
+/* Dividers */
 [data-testid="stSidebar"] hr {
     border-color: rgba(255,255,255,0.08) !important;
+    margin: 14px 0 !important;
 }
 
-.sidebar-footer {
-    margin-top: 20px;
-    font-size: 10px;
-    color: #627896 !important;
-    line-height: 1.6;
-}
-
-.sidebar-footer span {
-    color: #2DD4BF !important;
-}
-
-[data-testid="stSidebar"] .stToggle label p {
-    font-size: 12px;
-    font-weight: 600;
-}
-
-[data-testid="stSidebar"] .stSelectbox label {
-    display: none;
+/* Caption / small text */
+[data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] small {
+    color: #7C8CA6 !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
-# =========================
-# Full Menu Items
-# =========================
+# Full list of menu items that exist in the app (before role-based filtering).
+# Used for routing below, and read by the User Management admin page so its
+# checkboxes always match what's actually available here.
 FULL_MENU_ITEMS = [
     "🏠 Overview",
     "📊 Comparison",
@@ -238,27 +221,25 @@ FULL_MENU_ITEMS = [
 REPORTS = {
     "🖥️ IT Reports": {
         "📊 Zone Booking Turnover": show_ZoneBookingTurnover,
+
     },
     "💰 Accounts Reports": {
         "📋 GR Costing Head Wise": show_GrCostingHeadWise,
     }
 }
 
-
+# Expose to the User Management page so it never drifts out of sync
+# with the menu items / reports actually defined here.
 st.session_state["_all_menu_items"] = FULL_MENU_ITEMS
-st.session_state["_all_reports"] = [
-    name for reports in REPORTS.values() for name in reports.keys()
-]
+st.session_state["_all_reports"] = [name for reports in REPORTS.values() for name in reports.keys()]
 
 
-# =========================
-# Login Session
-# =========================
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
 if "selected_report" not in st.session_state:
     st.session_state["selected_report"] = None
+
 
 if not st.session_state["logged_in"]:
     login_page()
@@ -266,13 +247,14 @@ if not st.session_state["logged_in"]:
 
 
 # =========================
-# Role-based Access
+# Role-based access setup
 # =========================
 role = st.session_state.get("role", "viewer")
 
-allowed_menu = get_allowed_menu(role)
-allowed_reports = get_allowed_reports(role)
+allowed_menu = get_allowed_menu(role)          # e.g. ["🏠 Overview", "📊 Comparison", ...]
+allowed_reports = get_allowed_reports(role)    # e.g. {"📊 Zone Booking Turnover"}
 
+# Only keep report entries this role is allowed to see, in every department folder
 REPORTS_VISIBLE = {
     department: {
         report_name: report_fn
@@ -281,107 +263,62 @@ REPORTS_VISIBLE = {
     }
     for department, reports in REPORTS.items()
 }
-
-REPORTS_VISIBLE = {
-    dept: reports
-    for dept, reports in REPORTS_VISIBLE.items()
-    if reports
-}
+# Drop departments that end up empty for this role
+REPORTS_VISIBLE = {dept: reports for dept, reports in REPORTS_VISIBLE.items() if reports}
 
 
-# =========================
-# Sidebar
-# =========================
 with st.sidebar:
-
-    st.markdown("""
-        <div class="sidebar-title">
-            <div class="sidebar-logo">📊</div>
-            <span>Logistics BI</span>
-            <span class="sidebar-collapse">‹</span>
-        </div>
-    """, unsafe_allow_html=True)
-
+    # ---- Profile card ----
     st.markdown(f"""
-        <div class="profile-card">
-            <div class="avatar">👤</div>
-            <div>
-                <div class="emp-id">Employee ID: {st.session_state['employee_id']}</div>
-                <span class="role-badge">{role.upper()}</span>
+        <div class="sugam-profile-card">
+            <div class="sugam-avatar">👤</div>
+            <div class="sugam-profile-text">
+                <div class="sugam-emp-id">Employee ID: {st.session_state['employee_id']}</div>
+                <span class="sugam-role-badge">{role.title()}</span>
             </div>
         </div>
     """, unsafe_allow_html=True)
 
-    if st.button("↪ Logout", use_container_width=True):
+    if st.button("🚪 Logout", use_container_width=True):
         st.session_state.clear()
         st.rerun()
+
+    # ---- Brand lockup ----
+    st.markdown("""
+        <div class="sugam-brand">
+            <div class="sugam-brand-icon">🚚</div>
+            <div>
+                <div class="sugam-brand-text">Logistics BI</div>
+                <div class="sugam-brand-sub">Sugam Dashboard</div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
     if not allowed_menu:
         st.warning("No access has been assigned to your role yet. Contact the admin.")
         st.stop()
 
-    # Favorites
-    st.markdown('<div class="section-label">Favorites</div>', unsafe_allow_html=True)
-
-    if "👥 Customer Analysis" in allowed_menu:
-        if st.button("⭐ Customer Analysis", use_container_width=True):
-            st.session_state["menu_override"] = "👥 Customer Analysis"
-            st.rerun()
-
-    # Navigation
-    st.markdown('<div class="section-label">Navigation</div>', unsafe_allow_html=True)
-
-    search_menu = st.text_input(
-        "Search menu",
-        label_visibility="collapsed",
-        placeholder="🔍 Search menu..."
-    )
-
-    filtered_menu = [
-        item for item in allowed_menu
-        if search_menu.lower() in item.lower()
-    ] if search_menu else allowed_menu
-
-    if not filtered_menu:
-        st.info("No menu found.")
-        st.stop()
-
-    if "menu_override" in st.session_state:
-        default_menu = st.session_state.pop("menu_override")
-        index = filtered_menu.index(default_menu) if default_menu in filtered_menu else 0
-    else:
-        index = 0
-
+    st.markdown('<div class="sugam-section-label">Navigation</div>', unsafe_allow_html=True)
     menu = st.radio(
         "Navigation",
-        filtered_menu,
-        index=index,
+        allowed_menu,
         label_visibility="collapsed"
     )
 
-    # Reports Area
     if menu == "📄 Reports":
-        st.markdown('<div class="section-label">Report Search</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sugam-section-label">Search Report</div>', unsafe_allow_html=True)
 
-        search_text = st.text_input(
-            "Search by report name",
-            label_visibility="collapsed",
-            placeholder="🔍 Search report..."
-        )
+        search_text = st.text_input("Search by report name", label_visibility="collapsed", placeholder="🔍 Search by report name")
 
         if search_text:
             for department, reports in REPORTS_VISIBLE.items():
                 for report_name in reports.keys():
                     if search_text.lower() in report_name.lower():
-                        if st.button(
-                            report_name,
-                            key=f"search_{report_name}",
-                            use_container_width=True
-                        ):
+                        if st.button(report_name, key=f"search_{report_name}", use_container_width=True):
                             st.session_state["selected_report"] = report_name
                             st.rerun()
 
-        st.markdown('<div class="section-label">Report Folders</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sugam-section-label">Report Folders</div>', unsafe_allow_html=True)
 
         if not REPORTS_VISIBLE:
             st.info("No reports assigned to your role.")
@@ -389,55 +326,20 @@ with st.sidebar:
             for department, reports in REPORTS_VISIBLE.items():
                 with st.expander(department, expanded=False):
                     for report_name in reports.keys():
-                        if st.button(
-                            report_name,
-                            key=f"{department}_{report_name}",
-                            use_container_width=True
-                        ):
+                        if st.button(report_name, key=f"{department}_{report_name}", use_container_width=True):
                             st.session_state["selected_report"] = report_name
                             st.rerun()
 
     st.divider()
 
-    # Quick Actions
-    st.markdown('<div class="section-label">Quick Actions</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sugam-section-label">Quick Actions</div>', unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        if st.button("↻", help="Refresh Data", use_container_width=True):
-            st.cache_data.clear()
-            clear_role_cache()
-            st.success("Data refreshed!")
-
-    with col2:
-        st.button("⇩", help="Export", use_container_width=True)
-
-    with col3:
-        st.button("?", help="Help", use_container_width=True)
-
-    # Settings
-    st.markdown('<div class="section-label">Settings</div>', unsafe_allow_html=True)
-
-    st.toggle("🌙 Theme", value=True)
-
-    st.selectbox(
-        "Language",
-        ["English"],
-        label_visibility="collapsed"
-    )
-
-    st.markdown("""
-        <div class="sidebar-footer">
-            © 2024 Logistics BI<br>
-            <span>●</span> All systems operational
-        </div>
-    """, unsafe_allow_html=True)
+    if st.button("🔄 Refresh Data", use_container_width=True):
+        st.cache_data.clear()
+        clear_role_cache()
+        st.success("Data refreshed!")
 
 
-# =========================
-# Page Routing
-# =========================
 if menu == "🏠 Overview":
     show_overview()
 
@@ -464,6 +366,7 @@ elif menu == "📄 Reports":
         st.info("Please select a report from the sidebar.")
 
     elif selected not in allowed_reports:
+        # Defense-in-depth: covers the case where role changed after a report was already selected
         st.error("You don't have access to this report.")
         st.session_state["selected_report"] = None
 
