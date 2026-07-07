@@ -239,7 +239,7 @@ def load_booking_data(start_date, end_date, view_type="origin"):
             END AS DelayDays,
 
             -- Route
-            v.stnname + ' -> ' + dest.stnname AS Route,
+            orig.stnname + ' -> ' + v.stnname AS Route,
 
             -- Flags
             CASE
@@ -265,6 +265,8 @@ def load_booking_data(start_date, end_date, view_type="origin"):
 
         INNER JOIN stationmast v
             ON v.stncode = cn.destcode
+        INNER JOIN stationmast orig
+            ON orig.stncode = cn.orgcode
         inner join cngrcngemast cngr on cngr.code=cn.cngrcode
         inner join cngrcngemast cnge on cnge.code=cn.cngecode
         LEFT JOIN stationmast m
