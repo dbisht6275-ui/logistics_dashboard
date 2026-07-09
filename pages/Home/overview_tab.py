@@ -667,18 +667,23 @@ def show_overview():
                 )
             )
 
-            fig_yoy.add_trace(
-                go.Bar(
-                    x=yoy_df["Period"],
-                    y=yoy_df["Forecast Revenue Cr"],
-                    name="Forecast",
-                    marker_color="#f97316",
-                    text=yoy_df["Forecast Revenue Cr"],
-                    texttemplate="%{text:.2f}",
-                    textposition="outside",
-                    textfont=dict(size=9, color="#f97316")
+            # Forecast bar only for the current ongoing month.
+            # Filtering removes the 0.00 labels from past months.
+            forecast_df = yoy_df[yoy_df["Forecast Revenue Cr"].notna()].copy()
+
+            if not forecast_df.empty:
+                fig_yoy.add_trace(
+                    go.Bar(
+                        x=forecast_df["Period"],
+                        y=forecast_df["Forecast Revenue Cr"],
+                        name="Forecast",
+                        marker_color="#f97316",
+                        text=forecast_df["Forecast Revenue Cr"],
+                        texttemplate="%{text:.2f}",
+                        textposition="outside",
+                        textfont=dict(size=9, color="#f97316")
+                    )
                 )
-            )
 
             # Growth % annotated above each period's pair of bars
             yoy_max = pd.concat([
