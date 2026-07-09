@@ -27,6 +27,24 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+/* Shrink the default Streamlit top header bar (Share/star/edit/menu row)
+   so it no longer reserves a big empty band above the page content. */
+[data-testid="stHeader"] {
+    height: 2.2rem;
+    background: transparent;
+}
+[data-testid="stToolbar"] {
+    right: 1rem;
+}
+/* Remove the thin decoration/progress stripe Streamlit renders at the very top */
+[data-testid="stDecoration"] {
+    display: none;
+}
+/* Pull main content up close to the shrunk header instead of the large default gap */
+.main .block-container {
+    padding-top: 1.2rem !important;
+}
+
 /* Sidebar base */
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #0B1B33 0%, #0F2340 100%);
