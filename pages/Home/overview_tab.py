@@ -220,7 +220,7 @@ def add_revenue_forecast(yoy_df, trend_type, selected_quarter="All", selected_mo
     Logic:
     - Forecast is shown only in Monthly view.
     - Forecast is shown only for the current calendar month, e.g. July.
-    - Future months like Aug-Mar remain blank.
+    - Future months like Aug-Mar are removed from the chart.
     - Formula: current month actual revenue till today / days passed * total days in month.
     """
     from datetime import datetime
@@ -249,26 +249,31 @@ def add_revenue_forecast(yoy_df, trend_type, selected_quarter="All", selected_mo
     current_fin_month = ((today.month - 4) % 12) + 1
     current_month_name = MONTH_ORDER[current_fin_month - 1]
 
-    # Respect filters: if user selected a different month/quarter, do not show forecast
-    if selected_month != "All" and selected_month != current_month_name:
-        return result
-
     month_to_quarter = {MONTH_ORDER[i]: QUARTER_MAP[i + 1] for i in range(len(MONTH_ORDER))}
     current_quarter = month_to_quarter.get(current_month_name)
 
-    if selected_quarter != "All" and selected_quarter != current_quarter:
+    # Remove future months from Monthly chart when Month filter is All.
+    # Example in July: show Apr, May, Jun, Jul only. Hide Aug-Mar completely.
+    if selected_month == "All":
+        if selected_quarter == "All":
+            allowed_months = MONTH_ORDER[:current_fin_month]
+        elif selected_quarter == current_quarter:
+            allowed_months = [
+                m for m in MONTH_ORDER
+                if month_to_quarter.get(m) == selected_quarter
+                and MONTH_ORDER.index(m) <= MONTH_ORDER.index(current_month_name)
+            ]
+        else:
+            allowed_months = [m for m in MONTH_ORDER if month_to_quarter.get(m) == selected_quarter]
+
+        result = result[result["Period"].astype(str).isin(allowed_months)].copy()
+
+    # Respect filters: if user selected a different month/quarter, do not show forecast.
+    if selected_month != "All" and selected_month != current_month_name:
         return result
 
-    # Ensure all months are visible in Monthly view so the forecast appears in the correct month
-    if selected_month == "All":
-        if selected_quarter != "All":
-            periods = [m for m in MONTH_ORDER if month_to_quarter.get(m) == selected_quarter]
-        else:
-            periods = MONTH_ORDER
-
-        base = pd.DataFrame({"Period": periods, "Key": periods})
-        result = base.merge(result, on=["Period", "Key"], how="left")
-        result["Forecast Revenue Cr"] = None
+    if selected_quarter != "All" and selected_quarter != current_quarter:
+        return result
 
     # Find current month actual revenue till today
     current_rows = result["Period"].astype(str).eq(current_month_name)
@@ -625,7 +630,7 @@ def show_overview():
                 df, prev_df, trend_type, DATE_COL, start_date, prev_start, month_map
             )
 
-            # Add forecast values for future Monthly/Quarterly periods
+            # Add forecast only for the current ongoing month and remove future blank months
             yoy_df = add_revenue_forecast(
                 yoy_df,
                 trend_type,
