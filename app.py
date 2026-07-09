@@ -1,4 +1,5 @@
 import streamlit as st
+from datetime import datetime
 from services.login import login_page
 from services.roles import get_allowed_menu, get_allowed_reports, clear_role_cache
 
@@ -45,41 +46,88 @@ st.markdown("""
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 12px;
     padding: 12px 14px;
-    margin-bottom: 16px;
+    margin-bottom: 10px;
     display: flex;
     align-items: center;
     gap: 12px;
+    position: relative;
 }
 .sugam-avatar {
-    width: 38px;
-    height: 38px;
-    border-radius: 10px;
+    width: 42px;
+    height: 42px;
+    border-radius: 11px;
     background: linear-gradient(135deg, #F5A623, #E0821A);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #1a1200;
     flex-shrink: 0;
+    position: relative;
+    box-shadow: 0 2px 6px rgba(245,166,35,0.35);
+}
+.sugam-status-dot {
+    position: absolute;
+    bottom: -2px;
+    right: -2px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #22c55e;
+    border: 2px solid #0F2340;
 }
 .sugam-profile-text {
-    line-height: 1.35;
+    line-height: 1.3;
+    min-width: 0;
+    flex: 1;
+}
+.sugam-user-name {
+    font-size: 14px;
+    font-weight: 700;
+    color: #FFFFFF;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .sugam-emp-id {
-    font-size: 13.5px;
-    font-weight: 600;
-    color: #F2F5FA;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #8FA0BC;
+    margin-top: 1px;
 }
 .sugam-role-badge {
     display: inline-block;
-    margin-top: 4px;
-    font-size: 10.5px;
+    margin-top: 5px;
+    font-size: 10px;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #F5A623;
-    background: rgba(245,166,35,0.13);
     padding: 2px 9px;
     border-radius: 20px;
+}
+.sugam-role-admin {
+    color: #F5A623;
+    background: rgba(245,166,35,0.15);
+}
+.sugam-role-manager {
+    color: #38bdf8;
+    background: rgba(56,189,248,0.15);
+}
+.sugam-role-viewer {
+    color: #a3a3a3;
+    background: rgba(163,163,163,0.15);
+}
+
+/* Session meta row (last login / date) */
+.sugam-session-meta {
+    font-size: 10.5px;
+    color: #5E6E88;
+    padding: 0 2px 12px 2px;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 14px;
 }
 
 /* Logout / secondary buttons in sidebar */
@@ -200,6 +248,14 @@ st.markdown("""
 [data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] small {
     color: #7C8CA6 !important;
 }
+
+/* Sidebar footer (app version / branding) */
+.sugam-footer {
+    font-size: 10px;
+    color: #45536b;
+    text-align: center;
+    padding-top: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -267,15 +323,59 @@ REPORTS_VISIBLE = {
 REPORTS_VISIBLE = {dept: reports for dept, reports in REPORTS_VISIBLE.items() if reports}
 
 
+# =========================
+# Resolve logged-in user's display name
+# =========================
+# NOTE: login.py isn't available to check exactly which session_state key it
+# sets for the user's name. This tries the common ones in order, and falls
+# back to "Employee {id}" if none are present, so nothing breaks either way.
+# If your login.py stores it under a different key, add that key to this list.
+_username_keys = ["username", "full_name", "name", "user_name", "employee_name", "display_name"]
+display_name = next(
+    (st.session_state[k] for k in _username_keys if st.session_state.get(k)),
+    f"Employee {st.session_state.get('employee_id', '')}"
+)
+
+# Initials for the avatar badge (e.g. "Rahul Sharma" -> "RS", "Rahul" -> "R")
+_name_parts = [p for p in str(display_name).replace("Employee", "").strip().split() if p]
+if _name_parts:
+    initials = "".join(p[0].upper() for p in _name_parts[:2])
+else:
+    initials = "👤"
+
+# Role badge color class
+_role_class_map = {
+    "admin": "sugam-role-admin",
+    "manager": "sugam-role-manager",
+    "viewer": "sugam-role-viewer",
+}
+role_class = _role_class_map.get(role.lower(), "sugam-role-viewer")
+
+# Session meta (current date + login time, shown once per session)
+if "_login_time" not in st.session_state:
+    st.session_state["_login_time"] = datetime.now().strftime("%I:%M %p")
+
+today_str = datetime.now().strftime("%d %b %Y")
+
+
 with st.sidebar:
     # ---- Profile card ----
     st.markdown(f"""
         <div class="sugam-profile-card">
-            <div class="sugam-avatar">👤</div>
+            <div class="sugam-avatar">{initials}<span class="sugam-status-dot"></span></div>
             <div class="sugam-profile-text">
-                <div class="sugam-emp-id">Employee ID: {st.session_state['employee_id']}</div>
-                <span class="sugam-role-badge">{role.title()}</span>
+                <div class="sugam-user-name" title="{display_name}">{display_name}</div>
+                <div class="sugam-emp-id">Employee ID: {st.session_state.get('employee_id', '-')}</div>
+                <span class="sugam-role-badge {role_class}">{role.title()}</span>
             </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # ---- Session meta: today's date + login time ----
+    st.markdown(f"""
+        <div class="sugam-session-meta">
+            <span>📅 {today_str}</span>
+            <span>🕐 Logged in {st.session_state['_login_time']}</span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -338,6 +438,8 @@ with st.sidebar:
         st.cache_data.clear()
         clear_role_cache()
         st.success("Data refreshed!")
+
+    st.markdown('<div class="sugam-footer">Sugam Dashboard · v1.0</div>', unsafe_allow_html=True)
 
 
 if menu == "🏠 Overview":

@@ -25,9 +25,6 @@ def check_login(username, password):
     except Exception as e:
         st.error(f"DB Error: {e}")
         return False, None
-    except Exception as e:
-        st.error(f"DB Error: {e}")
-        return False, None
 
 
 def login_page():
@@ -122,6 +119,9 @@ def login_page():
                 st.session_state["employee_id"] = employee_id
                 st.session_state["role"] = role
                 st.session_state["data_scope"] = data_scope
+                # NEW: store the username so the sidebar (app.py) can show it
+                # instead of just the Employee ID.
+                st.session_state["username"] = username
                 st.rerun()
             else:
                 st.error("Invalid Login")
