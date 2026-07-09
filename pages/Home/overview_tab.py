@@ -470,22 +470,22 @@ def show_overview():
         create_card("FTL Revenue", format_cr(ftl), "#2563eb", "🚛", ftl_growth)
 
     with k3:
-        create_card("LTL Revenue", format_cr(ltl), "#f97316", "🚚", ltl_growth)
+        create_card("LTL Revenue", format_cr(ltl), "#2563eb", "🚚", ltl_growth)
 
     with k4:
-        create_card("Total GR", f"{total_gr:,}", "#7c3aed", "📦", gr_growth)
+        create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth)
 
     with k5:
-        create_card("Total Weight (MT)", f"{aweight:,.0f}", "#0f766e", "⚓", weight_growth)
+        create_card("Total Weight (MT)", f"{aweight:,.0f}", "#2563eb", "⚓", weight_growth)
 
     with k6:
-        create_card("Topay Revenue", format_cr(topay), "#7c3aed", "🧾", topay_growth)
+        create_card("Topay Revenue", format_cr(topay), "#2563eb", "🧾", topay_growth)
 
     with k7:
-        create_card("Paid Revenue", format_cr(paid), "#06b6d4", "🔗", paid_growth)
+        create_card("Paid Revenue", format_cr(paid), "#2563eb", "🔗", paid_growth)
 
     with k8:
-        create_card("T.B.B Revenue", format_cr(tbb), "#ef4444", "🚚", tbb_growth)
+        create_card("T.B.B Revenue", format_cr(tbb), "#2563eb", "🚚", tbb_growth)
 
     # Small separator before charts
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
