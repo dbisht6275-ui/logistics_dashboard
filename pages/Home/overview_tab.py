@@ -464,7 +464,7 @@ def show_overview():
     k1, k2, k3, k4, k5, k6, k7, k8 = st.columns(8)
 
     with k1:
-        create_card("Revenue", format_cr(revenue), "#16a34a", "💰", revenue_growth)
+        create_card("Revenue", format_cr(revenue), "#2563eb", "💰", revenue_growth)
 
     with k2:
         create_card("FTL Revenue", format_cr(ftl), "#2563eb", "🚛", ftl_growth)
