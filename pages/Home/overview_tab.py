@@ -213,6 +213,84 @@ def build_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, pre
     return trend_df
 
 
+def add_revenue_forecast(yoy_df, trend_type, selected_quarter="All", selected_month="All"):
+    """
+    Add forecast revenue only for the current ongoing financial month.
+
+    Logic:
+    - Forecast is shown only in Monthly view.
+    - Forecast is shown only for the current calendar month, e.g. July.
+    - Future months like Aug-Mar remain blank.
+    - Formula: current month actual revenue till today / days passed * total days in month.
+    """
+    from datetime import datetime
+    import calendar
+
+    result = yoy_df.copy()
+
+    if result.empty or "Revenue Cr" not in result.columns:
+        result["Forecast Revenue Cr"] = None
+        return result
+
+    result["Revenue Cr"] = pd.to_numeric(result["Revenue Cr"], errors="coerce")
+    if "Prev Revenue Cr" in result.columns:
+        result["Prev Revenue Cr"] = pd.to_numeric(result["Prev Revenue Cr"], errors="coerce")
+
+    # Default: no forecast bar anywhere
+    result["Forecast Revenue Cr"] = None
+
+    # Forecast only monthly chart. No forecast for Daily/Weekly/Quarterly.
+    if trend_type != "Monthly":
+        return result
+
+    today = datetime.today()
+
+    # Convert calendar month into your FY month number: Apr=1, May=2 ... Mar=12
+    current_fin_month = ((today.month - 4) % 12) + 1
+    current_month_name = MONTH_ORDER[current_fin_month - 1]
+
+    # Respect filters: if user selected a different month/quarter, do not show forecast
+    if selected_month != "All" and selected_month != current_month_name:
+        return result
+
+    month_to_quarter = {MONTH_ORDER[i]: QUARTER_MAP[i + 1] for i in range(len(MONTH_ORDER))}
+    current_quarter = month_to_quarter.get(current_month_name)
+
+    if selected_quarter != "All" and selected_quarter != current_quarter:
+        return result
+
+    # Ensure all months are visible in Monthly view so the forecast appears in the correct month
+    if selected_month == "All":
+        if selected_quarter != "All":
+            periods = [m for m in MONTH_ORDER if month_to_quarter.get(m) == selected_quarter]
+        else:
+            periods = MONTH_ORDER
+
+        base = pd.DataFrame({"Period": periods, "Key": periods})
+        result = base.merge(result, on=["Period", "Key"], how="left")
+        result["Forecast Revenue Cr"] = None
+
+    # Find current month actual revenue till today
+    current_rows = result["Period"].astype(str).eq(current_month_name)
+    if not current_rows.any():
+        return result
+
+    current_value = result.loc[current_rows, "Revenue Cr"].iloc[0]
+
+    if pd.isna(current_value) or current_value <= 0:
+        return result
+
+    days_elapsed = max(today.day, 1)
+    total_days = calendar.monthrange(today.year, today.month)[1]
+
+    forecast_value = round((current_value / days_elapsed) * total_days, 2)
+
+    # Forecast bar only for current ongoing month
+    result.loc[current_rows, "Forecast Revenue Cr"] = forecast_value
+
+    return result
+
+
 def create_card(title, value, color, icon, growth_value=0.0):
     """Compact KPI card used in the top KPI row. growth_value is auto-calculated % vs LY."""
     growth_color = "#166534" if growth_value >= 0 else "#dc2626"
@@ -547,7 +625,15 @@ def show_overview():
                 df, prev_df, trend_type, DATE_COL, start_date, prev_start, month_map
             )
 
-            # Revenue trend grouped bar chart — Current FY vs LY, with growth % labels
+            # Add forecast values for future Monthly/Quarterly periods
+            yoy_df = add_revenue_forecast(
+                yoy_df,
+                trend_type,
+                selected_quarter=quarter,
+                selected_month=month
+            )
+
+            # Revenue trend grouped bar chart — LY vs Current FY vs Forecast
             fig_yoy = go.Figure()
 
             fig_yoy.add_trace(
@@ -576,8 +662,25 @@ def show_overview():
                 )
             )
 
+            fig_yoy.add_trace(
+                go.Bar(
+                    x=yoy_df["Period"],
+                    y=yoy_df["Forecast Revenue Cr"],
+                    name="Forecast",
+                    marker_color="#f97316",
+                    text=yoy_df["Forecast Revenue Cr"],
+                    texttemplate="%{text:.2f}",
+                    textposition="outside",
+                    textfont=dict(size=9, color="#f97316")
+                )
+            )
+
             # Growth % annotated above each period's pair of bars
-            yoy_max = pd.concat([yoy_df["Revenue Cr"], yoy_df["Prev Revenue Cr"]]).max()
+            yoy_max = pd.concat([
+                yoy_df["Revenue Cr"],
+                yoy_df["Prev Revenue Cr"],
+                yoy_df["Forecast Revenue Cr"]
+            ]).max()
             yoy_max = yoy_max if pd.notna(yoy_max) and yoy_max > 0 else 1
 
             # Skip annotation clutter when there are too many bars (Daily/Weekly with long ranges)
@@ -585,11 +688,12 @@ def show_overview():
 
             if show_annotations:
                 for _, r in yoy_df.iterrows():
-                    if r["Growth Label"] and r["Growth Label"] != "N/A":
+                    if r["Growth Label"] and r["Growth Label"] not in ["N/A", "Forecast"]:
                         label_color = "#166534" if (r["Growth %"] or 0) >= 0 else "#dc2626"
                         bar_top = max(
                             r["Revenue Cr"] if pd.notna(r["Revenue Cr"]) else 0,
-                            r["Prev Revenue Cr"] if pd.notna(r["Prev Revenue Cr"]) else 0
+                            r["Prev Revenue Cr"] if pd.notna(r["Prev Revenue Cr"]) else 0,
+                            r["Forecast Revenue Cr"] if pd.notna(r["Forecast Revenue Cr"]) else 0
                         )
                         fig_yoy.add_annotation(
                             x=r["Period"],
