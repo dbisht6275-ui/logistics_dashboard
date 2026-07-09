@@ -110,49 +110,37 @@ def load_booking_data(start_date, end_date, view_type="origin"):
 
         query = f"""
         SELECT
-
             CASE
-                WHEN MONTH(cn.grdt) >= 4
-                    THEN YEAR(cn.grdt)
+                WHEN MONTH(cn.grdt) >= 4 THEN YEAR(cn.grdt)
                 ELSE YEAR(cn.grdt) - 1
             END AS YR,
+
             CASE
-                WHEN MONTH(cn.grdt) >= 4
-                    THEN MONTH(cn.grdt) - 3
+                WHEN MONTH(cn.grdt) >= 4 THEN MONTH(cn.grdt) - 3
                 ELSE MONTH(cn.grdt) + 9
             END AS FIN_MONTH,
+
             z.zonename AS Zone,
             z.hubname AS Circle,
             ISNULL(m.stnname, v.stnname) AS Branch,
             cn.cngecode AS ConsigneeCode,
             cnge.name AS Consignee,
-            IIF(cn.ftl='y','FTL','LTL') AS LoadType,
+            IIF(cn.ftl = 'y', 'FTL', 'LTL') AS LoadType,
+
             COUNT(*) AS ShipmentCount,
             SUM(cn.aweight) AS ActualWeight,
             SUM(cn.cweight) AS ChargeWeight,
             SUM(cn.tamount - cn.servicetax) AS Revenue,
-            AVG(
-                DATEDIFF(
-                    DAY,
-                    cn.expecteddeliverydt,
-                    gp.deliverydt
-                )
-            ) AS AvgDelayDays,
 
-            MAX(
-                DATEDIFF(
-                    DAY,
-                    cn.expecteddeliverydt,
-                    gp.deliverydt
-                )
-            ) AS MaxDelayDays
+            AVG(DATEDIFF(DAY, cn.expecteddeliverydt, gp.deliverydt)) AS AvgDelayDays,
+            MAX(DATEDIFF(DAY, cn.expecteddeliverydt, gp.deliverydt)) AS MaxDelayDays
 
         FROM cnmt cn
         INNER JOIN stationmast v ON v.stncode = cn.destcode
         INNER JOIN cngrcngemast cngr ON cngr.code = cn.cngrcode
         INNER JOIN cngrcngemast cnge ON cnge.code = cn.cngecode
-        LEFT JOIN stationmast m ON v.mergestncode = m.stncode
-        LEFT JOIN viewstationmast z ON z.stncode = ISNULL(m.mergestncode, cn.destcode)
+        LEFT JOIN stationmast m ON m.stncode = v.mergestncode
+        LEFT JOIN viewstationmast z ON z.stncode = ISNULL(m.stncode, v.stncode)
         LEFT JOIN
                 (
                     SELECT 
