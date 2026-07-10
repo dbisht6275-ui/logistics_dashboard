@@ -8,7 +8,7 @@ def load_booking_data(start_date, end_date, view_type="origin"):
 
     conn = get_connection()
 
-    query = "EXEC dbo.RevenueDataForPythonDashboard ?, ?, ?"
+    query = "EXEC dbo.RevenueDataForPythonDashboard %s, %s, %s"
 
     df = pd.read_sql(
         query,
