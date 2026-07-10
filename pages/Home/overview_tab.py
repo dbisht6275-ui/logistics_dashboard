@@ -28,7 +28,7 @@ st.markdown("""
 <style>
 /* Reduce Streamlit default spacing */
 .block-container {
-    padding-top: 0.3rem;
+    padding-top: 1rem;
     padding-bottom: 1rem;
 }
 
@@ -213,89 +213,6 @@ def build_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, pre
     return trend_df
 
 
-def add_revenue_forecast(yoy_df, trend_type, selected_quarter="All", selected_month="All"):
-    """
-    Add forecast revenue only for the current ongoing financial month.
-
-    Logic:
-    - Forecast is shown only in Monthly view.
-    - Forecast is shown only for the current calendar month, e.g. July.
-    - Future months like Aug-Mar are removed from the chart.
-    - Formula: current month actual revenue till today / days passed * total days in month.
-    """
-    from datetime import datetime
-    import calendar
-
-    result = yoy_df.copy()
-
-    if result.empty or "Revenue Cr" not in result.columns:
-        result["Forecast Revenue Cr"] = None
-        return result
-
-    result["Revenue Cr"] = pd.to_numeric(result["Revenue Cr"], errors="coerce")
-    if "Prev Revenue Cr" in result.columns:
-        result["Prev Revenue Cr"] = pd.to_numeric(result["Prev Revenue Cr"], errors="coerce")
-
-    # Default: no forecast bar anywhere
-    result["Forecast Revenue Cr"] = None
-
-    # Forecast only monthly chart. No forecast for Daily/Weekly/Quarterly.
-    if trend_type != "Monthly":
-        return result
-
-    today = datetime.today()
-
-    # Convert calendar month into your FY month number: Apr=1, May=2 ... Mar=12
-    current_fin_month = ((today.month - 4) % 12) + 1
-    current_month_name = MONTH_ORDER[current_fin_month - 1]
-
-    month_to_quarter = {MONTH_ORDER[i]: QUARTER_MAP[i + 1] for i in range(len(MONTH_ORDER))}
-    current_quarter = month_to_quarter.get(current_month_name)
-
-    # Remove future months from Monthly chart when Month filter is All.
-    # Example in July: show Apr, May, Jun, Jul only. Hide Aug-Mar completely.
-    if selected_month == "All":
-        if selected_quarter == "All":
-            allowed_months = MONTH_ORDER[:current_fin_month]
-        elif selected_quarter == current_quarter:
-            allowed_months = [
-                m for m in MONTH_ORDER
-                if month_to_quarter.get(m) == selected_quarter
-                and MONTH_ORDER.index(m) <= MONTH_ORDER.index(current_month_name)
-            ]
-        else:
-            allowed_months = [m for m in MONTH_ORDER if month_to_quarter.get(m) == selected_quarter]
-
-        result = result[result["Period"].astype(str).isin(allowed_months)].copy()
-
-    # Respect filters: if user selected a different month/quarter, do not show forecast.
-    if selected_month != "All" and selected_month != current_month_name:
-        return result
-
-    if selected_quarter != "All" and selected_quarter != current_quarter:
-        return result
-
-    # Find current month actual revenue till today
-    current_rows = result["Period"].astype(str).eq(current_month_name)
-    if not current_rows.any():
-        return result
-
-    current_value = result.loc[current_rows, "Revenue Cr"].iloc[0]
-
-    if pd.isna(current_value) or current_value <= 0:
-        return result
-
-    days_elapsed = max(today.day, 1)
-    total_days = calendar.monthrange(today.year, today.month)[1]
-
-    forecast_value = round((current_value / days_elapsed) * total_days, 2)
-
-    # Forecast bar only for current ongoing month
-    result.loc[current_rows, "Forecast Revenue Cr"] = forecast_value
-
-    return result
-
-
 def create_card(title, value, color, icon, growth_value=0.0):
     """Compact KPI card used in the top KPI row. growth_value is auto-calculated % vs LY."""
     growth_color = "#166534" if growth_value >= 0 else "#dc2626"
@@ -337,18 +254,15 @@ def show_overview():
 
     with header_left:
         st.markdown("""
-        <h3 style='margin:0;padding:0;'>Revenue Overview</h3>
+        <h3 style='margin:0;padding:0;'>Overview</h3>
         <p style='margin:0;color:#64748b;font-size:12px;'>
-         Performance Dashboard
+        Logistics Performance Dashboard
         </p>
         """, unsafe_allow_html=True)
 
-  
-    # Top filter row: view type, FY, zone, circle, branch, quarter, month and load type
-    (
-        filter_col1, filter_col2, filter_col3, filter_col4,
-        filter_col5, filter_col6, filter_col7, filter_col8
-    ) = st.columns(8)
+
+    # Top filter row: view type, FY, zone, circle, branch, month and load type
+    filter_col1, filter_col2, filter_col3, filter_col4, filter_col5, filter_col6, filter_col7 = st.columns(7)
 
     with filter_col1:
         view_type = st.selectbox("View Type", ["Origin", "Destination"])
@@ -397,86 +311,32 @@ def show_overview():
     }
 
     df["Month"] = df["FIN_MONTH"].map(month_map)
-    # NEW: Quarter column derived from FIN_MONTH, used for the Quarter filter below
-    df["Quarter"] = df["FIN_MONTH"].map(QUARTER_MAP)
-
-    # Data-scope restriction for this employee (set at login, from config/data_scope.json)
-    # e.g. {} = no restriction, {"zone": "Nepal Zone"}, {"circle": "NCR Circle"}, {"branch": "Noida"}
-    # Data-scope restriction for this employee
-    data_scope = st.session_state.get("data_scope", {})
-
-    # -----------------------------
-    # Auto derive parent hierarchy
-    # -----------------------------
-    locked_zone = data_scope.get("zone")
-    locked_circle = data_scope.get("circle")
-    locked_branch = data_scope.get("branch")
-
-    # If branch right is given, derive its circle and zone
-    if locked_branch:
-        branch_row = df[df["branch"] == locked_branch]
-        if not branch_row.empty:
-            locked_circle = branch_row["circle"].iloc[0]
-            locked_zone = branch_row["zone"].iloc[0]
-
-    # If circle right is given, derive its zone
-    elif locked_circle:
-        circle_row = df[df["circle"] == locked_circle]
-        if not circle_row.empty:
-            locked_zone = circle_row["zone"].iloc[0]
-
 
     with filter_col3:
-        if locked_zone:
-            zone = locked_zone
-            st.selectbox("Zone", [zone], disabled=True, help="Locked as per your assigned rights")
-        else:
-            zone = st.selectbox("Zone", ["All"] + sorted(df["zone"].dropna().unique().tolist()))
+        zone = st.selectbox("Zone", ["All"] + sorted(df["zone"].dropna().unique().tolist()))
 
     if zone != "All":
         df = df[df["zone"] == zone]
 
-
     with filter_col4:
-        if locked_circle:
-            circle = locked_circle
-            st.selectbox("Circle", [circle], disabled=True, help="Locked as per your assigned rights")
-        else:
-            circle = st.selectbox("Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()))
+        circle = st.selectbox("Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()))
 
     if circle != "All":
         df = df[df["circle"] == circle]
 
-
     with filter_col5:
-        if locked_branch:
-            branch = locked_branch
-            st.selectbox("Branch", [branch], disabled=True, help="Locked as per your assigned rights")
-        else:
-            branch = st.selectbox("Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()))
+        branch = st.selectbox("Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()))
 
     if branch != "All":
         df = df[df["branch"] == branch]
 
     with filter_col6:
-        # NEW: Quarter filter — options always shown in Q1→Q4 order (QUARTER_ORDER),
-        # restricted to quarters actually present in the currently filtered data.
-        available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().unique().tolist()]
-        quarter = st.selectbox("Quarter", ["All"] + available_quarters)
-
-    if quarter != "All":
-        df = df[df["Quarter"] == quarter]
-
-    with filter_col7:
-        # FIX: Month options now follow financial-year order (Apr..Mar) via MONTH_ORDER,
-        # instead of plain alphabetical sort() which broke the sequence.
-        available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().unique().tolist()]
-        month = st.selectbox("Month", ["All"] + available_months)
+        month = st.selectbox("Month", ["All"] + sorted(df["Month"].dropna().unique().tolist()))
 
     if month != "All":
         df = df[df["Month"] == month]
 
-    with filter_col8:
+    with filter_col7:
         loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()))
 
     if loadtype != "All":
@@ -500,9 +360,6 @@ def show_overview():
 
         if not prev_df.empty:
             prev_df["Month"] = prev_df["FIN_MONTH"].map(month_map)
-            # NEW: Quarter column on previous-year data too, so the Quarter filter
-            # also applies correctly to the LY comparison numbers.
-            prev_df["Quarter"] = prev_df["FIN_MONTH"].map(QUARTER_MAP)
 
             if zone != "All":
                 prev_df = prev_df[prev_df["zone"] == zone]
@@ -510,8 +367,6 @@ def show_overview():
                 prev_df = prev_df[prev_df["circle"] == circle]
             if branch != "All":
                 prev_df = prev_df[prev_df["branch"] == branch]
-            if quarter != "All":
-                prev_df = prev_df[prev_df["Quarter"] == quarter]
             if month != "All":
                 prev_df = prev_df[prev_df["Month"] == month]
             if loadtype != "All":
@@ -604,7 +459,7 @@ def show_overview():
 
     with row1:
         with st.container(border=True):
-            title_col, filter_col = st.columns([2,2])
+            title_col, filter_col = st.columns([2, 2])
 
             with title_col:
                 _trend_badge_color = "#166534" if revenue_growth >= 0 else "#dc2626"
@@ -617,7 +472,7 @@ def show_overview():
 
             with filter_col:
                 trend_type = st.segmented_control(
-                    "",
+                    "Trend Type",
                     ["Daily", "Weekly", "Monthly", "Quarterly"],
                     default="Monthly",
                     label_visibility="collapsed"
@@ -626,109 +481,83 @@ def show_overview():
             # Build trend data (Current FY vs LY) for the selected granularity
             DATE_COL = "grdt"   # change if your date column is different
 
-            yoy_df = build_yoy_trend(
+            trend_df = build_yoy_trend(
                 df, prev_df, trend_type, DATE_COL, start_date, prev_start, month_map
             )
 
-            # Add forecast only for the current ongoing month and remove future blank months
-            yoy_df = add_revenue_forecast(
-                yoy_df,
-                trend_type,
-                selected_quarter=quarter,
-                selected_month=month
-            )
+            # Revenue trend area-line chart
+            fig_revenue = go.Figure()
 
-            # Revenue trend grouped bar chart — LY vs Current FY vs Forecast
-            fig_yoy = go.Figure()
-
-            fig_yoy.add_trace(
-                go.Bar(
-                    x=yoy_df["Period"],
-                    y=yoy_df["Prev Revenue Cr"],
-                    name=f"LY ({prev_fy})",
-                    marker_color="#cbd5e1",
-                    text=yoy_df["Prev Revenue Cr"],
-                    texttemplate="%{text:.2f}",
-                    textposition="outside",
-                    textfont=dict(size=9, color="#64748b")
+            # Blue shaded area under line
+            fig_revenue.add_trace(
+                go.Scatter(
+                    x=trend_df["Period"],
+                    y=trend_df["Revenue Cr"],
+                    mode="lines",
+                    line=dict(width=0),
+                    fill="tozeroy",
+                    fillcolor="rgba(37,99,235,0.06)",
+                    hoverinfo="skip",
+                    showlegend=False
                 )
             )
 
-            fig_yoy.add_trace(
-                go.Bar(
-                    x=yoy_df["Period"],
-                    y=yoy_df["Revenue Cr"],
-                    name=f"Current ({fy})",
-                    marker_color="#2563eb",
-                    text=yoy_df["Revenue Cr"],
-                    texttemplate="%{text:.2f}",
-                    textposition="outside",
-                    textfont=dict(size=9, color="#2563eb")
-                )
-            )
-
-            # Forecast bar only for the current ongoing month.
-            # Filtering removes the 0.00 labels from past months.
-            forecast_df = yoy_df[yoy_df["Forecast Revenue Cr"].notna()].copy()
-
-            if not forecast_df.empty:
-                fig_yoy.add_trace(
-                    go.Bar(
-                        x=forecast_df["Period"],
-                        y=forecast_df["Forecast Revenue Cr"],
-                        name="Forecast",
-                        marker_color="#f97316",
-                        text=forecast_df["Forecast Revenue Cr"],
-                        texttemplate="%{text:.2f}",
-                        textposition="outside",
-                        textfont=dict(size=9, color="#f97316")
+            # LY comparison line (dashed, grey) — only shown where LY data is available
+            if trend_df["Prev Revenue Cr"].notna().any():
+                fig_revenue.add_trace(
+                    go.Scatter(
+                        x=trend_df["Period"],
+                        y=trend_df["Prev Revenue Cr"],
+                        mode="lines",
+                        line=dict(width=1.5, color="#94a3b8", dash="dash"),
+                        name="LY Revenue",
+                        hovertemplate="LY: ₹%{y:.2f} Cr<extra></extra>"
                     )
                 )
 
-            # Growth % annotated above each period's pair of bars
-            yoy_max = pd.concat([
-                yoy_df["Revenue Cr"],
-                yoy_df["Prev Revenue Cr"],
-                yoy_df["Forecast Revenue Cr"]
-            ]).max()
-            yoy_max = yoy_max if pd.notna(yoy_max) and yoy_max > 0 else 1
+            # Main revenue line — hover shows auto-calculated YoY growth %
+            fig_revenue.add_trace(
+                go.Scatter(
+                    x=trend_df["Period"],
+                    y=trend_df["Revenue Cr"],
+                    mode="lines+markers+text",
+                    text=trend_df["Revenue Cr"],
+                    textposition="top center",
+                    line=dict(width=2.5, color="#2563eb"),
+                    marker=dict(
+                        size=7,
+                        color="#2563eb",
+                        line=dict(color="white", width=2)
+                    ),
+                    name="Revenue",
+                    customdata=trend_df["Growth Label"],
+                    hovertemplate="₹%{y:.2f} Cr<br>vs LY: %{customdata}<extra></extra>",
+                    showlegend=False
+                )
+            )
 
-            # Skip annotation clutter when there are too many bars (Daily/Weekly with long ranges)
-            show_annotations = len(yoy_df) <= 40
-
-            if show_annotations:
-                for _, r in yoy_df.iterrows():
-                    if r["Growth Label"] and r["Growth Label"] not in ["N/A", "Forecast"]:
-                        label_color = "#166534" if (r["Growth %"] or 0) >= 0 else "#dc2626"
-                        bar_top = max(
-                            r["Revenue Cr"] if pd.notna(r["Revenue Cr"]) else 0,
-                            r["Prev Revenue Cr"] if pd.notna(r["Prev Revenue Cr"]) else 0,
-                            r["Forecast Revenue Cr"] if pd.notna(r["Forecast Revenue Cr"]) else 0
-                        )
-                        fig_yoy.add_annotation(
-                            x=r["Period"],
-                            y=bar_top + (yoy_max * 0.16),
-                            text=r["Growth Label"],
-                            showarrow=False,
-                            font=dict(size=10, color=label_color, family="Arial Black")
-                        )
-
-            fig_yoy.update_layout(
-                barmode="group",
-                height=250,
-                margin=dict(l=2, r=2, t=30, b=0),
+            fig_revenue.update_layout(
+                height=220,
+                margin=dict(l=2, r=2, t=2, b=0),
                 xaxis_title="",
                 yaxis_title="Revenue (Cr)",
                 plot_bgcolor="white",
                 paper_bgcolor="white",
-                legend=dict(orientation="h", yanchor="bottom", y=1.05, x=0, font=dict(size=9)),
-                yaxis_range=[0, yoy_max * 1.35]
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=9))
             )
 
-            fig_yoy.update_xaxes(showgrid=False, zeroline=False)
-            fig_yoy.update_yaxes(showgrid=False, zeroline=False)
+            fig_revenue.update_xaxes(
+                showgrid=False,
+                zeroline=False
+            )
 
-            st.plotly_chart(fig_yoy, use_container_width=True)
+            fig_revenue.update_yaxes(
+                showgrid=False,
+                gridcolor="#e5e7eb",
+                zeroline=False
+            )
+
+            st.plotly_chart(fig_revenue, width='stretch')
 
     with row2:
         with st.container(border=True):
@@ -756,12 +585,102 @@ def show_overview():
                         font=dict(size=11)
                     )
                 ],
-                height=250,
+                height=220,
                 margin=dict(l=0, r=0, t=5, b=0)
             )
 
-            st.plotly_chart(fig_load, use_container_width=True)
-    
+            st.plotly_chart(fig_load, width='stretch')
+
+
+    # =========================
+    # Clear YoY Revenue Trend — Current FY vs LY, grouped bars + growth % labels
+    # =========================
+    with st.container(border=True):
+        bar_title_col, bar_filter_col = st.columns([2, 2])
+
+        with bar_title_col:
+            st.markdown("###### Revenue Trend — Current FY vs LY")
+
+        with bar_filter_col:
+            bar_trend_type = st.segmented_control(
+                "Trend Type",
+                ["Daily", "Weekly", "Monthly", "Quarterly"],
+                default="Monthly",
+                label_visibility="collapsed",
+                key="bar_trend_type"
+            )
+
+        yoy_df = build_yoy_trend(
+            df, prev_df, bar_trend_type, "grdt", start_date, prev_start, month_map
+        )
+
+        fig_yoy = go.Figure()
+
+        fig_yoy.add_trace(
+            go.Bar(
+                x=yoy_df["Period"],
+                y=yoy_df["Prev Revenue Cr"],
+                name=f"LY ({prev_fy})",
+                marker_color="#cbd5e1",
+                text=yoy_df["Prev Revenue Cr"],
+                texttemplate="%{text:.2f}",
+                textposition="outside",
+                textfont=dict(size=9, color="#64748b")
+            )
+        )
+
+        fig_yoy.add_trace(
+            go.Bar(
+                x=yoy_df["Period"],
+                y=yoy_df["Revenue Cr"],
+                name=f"Current ({fy})",
+                marker_color="#2563eb",
+                text=yoy_df["Revenue Cr"],
+                texttemplate="%{text:.2f}",
+                textposition="outside",
+                textfont=dict(size=9, color="#2563eb")
+            )
+        )
+
+        # Growth % annotated above each period's pair of bars
+        yoy_max = pd.concat([yoy_df["Revenue Cr"], yoy_df["Prev Revenue Cr"]]).max()
+        yoy_max = yoy_max if pd.notna(yoy_max) and yoy_max > 0 else 1
+
+        # Skip annotation clutter when there are too many bars (Daily/Weekly with long ranges)
+        show_annotations = len(yoy_df) <= 40
+
+        if show_annotations:
+            for _, r in yoy_df.iterrows():
+                if r["Growth Label"] and r["Growth Label"] != "N/A":
+                    label_color = "#166534" if (r["Growth %"] or 0) >= 0 else "#dc2626"
+                    bar_top = max(
+                        r["Revenue Cr"] if pd.notna(r["Revenue Cr"]) else 0,
+                        r["Prev Revenue Cr"] if pd.notna(r["Prev Revenue Cr"]) else 0
+                    )
+                    fig_yoy.add_annotation(
+                        x=r["Period"],
+                        y=bar_top + (yoy_max * 0.16),
+                        text=r["Growth Label"],
+                        showarrow=False,
+                        font=dict(size=10, color=label_color, family="Arial Black")
+                    )
+
+        fig_yoy.update_layout(
+            barmode="group",
+            height=260,
+            margin=dict(l=2, r=2, t=30, b=0),
+            xaxis_title="",
+            yaxis_title="Revenue (Cr)",
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            legend=dict(orientation="h", yanchor="bottom", y=1.05, x=0, font=dict(size=10)),
+            yaxis_range=[0, yoy_max * 1.35]
+        )
+
+        fig_yoy.update_xaxes(showgrid=False, zeroline=False)
+        fig_yoy.update_yaxes(showgrid=False, zeroline=False)
+
+        st.plotly_chart(fig_yoy, width='stretch')
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -874,11 +793,11 @@ def show_overview():
                 showlegend=False
             )
 
-            st.plotly_chart(fig_zone, use_container_width=True)
+            st.plotly_chart(fig_zone, width='stretch')
 
     if view_type == "Origin":
         with zone_col2:
-           
+
                 matrix_display = matrix_df.reset_index()
                 matrix_display = matrix_display.reset_index(drop=True)
 
@@ -902,7 +821,7 @@ def show_overview():
 
                 st.dataframe(
                     styled_matrix,
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True,
                     height=240
                 )
@@ -927,13 +846,13 @@ def show_overview():
 
                 fig_weight.update_layout(
                     height=190,
-                    margin=dict(l=2, r=2, t=2, b=2)   
-                
-                )
-                fig_weight.update_xaxes(showgrid=False,zeroline=False)
-                fig_weight.update_yaxes(showgrid=False,zeroline=False)
+                    margin=dict(l=2, r=2, t=2, b=2)
 
-                st.plotly_chart(fig_weight, use_container_width=True)
+                )
+                fig_weight.update_xaxes(showgrid=False, zeroline=False)
+                fig_weight.update_yaxes(showgrid=False, zeroline=False)
+
+                st.plotly_chart(fig_weight, width='stretch')
     # Small separator before branch analysis
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -986,7 +905,6 @@ def show_overview():
                     "#22c55e"
                 )
 
-            
 
     with b2:
         with st.container(border=True):
@@ -1003,7 +921,6 @@ def show_overview():
                     "#ef4444"
                 )
 
-            
 
     with b3:
         with st.container(border=True):
@@ -1011,7 +928,7 @@ def show_overview():
 
             st.dataframe(
                 monthly[["Month", "Revenue Cr", "Growth"]],
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 height=190
             )
@@ -1059,7 +976,7 @@ def show_overview():
                     "activedate"
                 ]
             ],
-            use_container_width=True,
+            width='stretch',
             hide_index=True
         )
 
@@ -1077,9 +994,9 @@ def show_overview():
                     "closedate"
                 ]
             ],
-            use_container_width=True,
+            width='stretch',
             hide_index=True
-        )                
+        )
     # Export currently filtered dataset
     csv = df.to_csv(index=False).encode("utf-8")
 
