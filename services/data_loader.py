@@ -1,20 +1,30 @@
 import streamlit as st
 import pandas as pd
-from services.database import get_connection
-
+from sqlalchemy import text
+from services.database import get_engine
 
 @st.cache_data(ttl=1800)
 def load_booking_data(start_date, end_date, view_type="origin"):
 
-    conn = get_connection()
+    engine = get_engine()
 
-    query = "EXEC dbo.RevenueDataForPythonDashboard %s, %s, %s"
+    query = text("""
+        EXEC dbo.RevenueDataForPythonDashboard
+            @StartDate=:start_date,
+            @EndDate=:end_date,
+            @ViewType=:view_type
+    """)
 
-    df = pd.read_sql(
-        query,
-        conn,
-        params=[start_date, end_date, view_type.upper()]
-    )
+    with engine.connect() as conn:
+        df = pd.read_sql(
+            query,
+            conn,
+            params={
+                "start_date": start_date,
+                "end_date": end_date,
+                "view_type": view_type.upper()
+            }
+        )
 
     return df
 
