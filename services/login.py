@@ -1,21 +1,23 @@
 import streamlit as st
-from services.database import get_connection
+from sqlalchemy import text
+from services.database import get_engine
 from services.roles import get_role_for_employee, get_data_scope_for_employee
 
 
 def check_login(username, password):
     try:
-        conn = get_connection()
-        cursor = conn.cursor()
+        engine = get_engine()
 
-        cursor.execute("""
-            SELECT USERNAME, PASSWORD, EMPLOYEEID
-            FROM USERMAST
-            WHERE USERNAME=%s AND EXPIRED<>'y'
-        """, (username,))
-
-        row = cursor.fetchone()
-        conn.close()
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT USERNAME, PASSWORD, EMPLOYEEID
+                    FROM USERMAST
+                    WHERE USERNAME = :username AND EXPIRED <> 'y'
+                """),
+                {"username": username}
+            )
+            row = result.fetchone()
 
         if row and row[1] == password:
             return True, row[2]
