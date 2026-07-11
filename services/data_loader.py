@@ -1,11 +1,13 @@
 import streamlit as st
 import pandas as pd
+import time 
 from sqlalchemy import text
 from services.database import get_engine
 
 @st.cache_data(ttl=1800)
 def load_booking_data(start_date, end_date, view_type="origin"):
 
+    t0 = time.time()
     engine = get_engine()
 
     query = text("""
@@ -25,6 +27,8 @@ def load_booking_data(start_date, end_date, view_type="origin"):
                 "view_type": view_type.upper()
             }
         )
+    elapsed = time.time() - t0
+    st.write(f"⏱️ load_booking_data({start_date} to {end_date}) took {elapsed:.1f}s, rows: {len(df)}")
 
     return df
 
