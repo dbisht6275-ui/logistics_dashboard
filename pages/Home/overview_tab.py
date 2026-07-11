@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import calendar
 import plotly.graph_objects as go
 import plotly.express as px
 from services.data_loader import load_booking_data, get_date_range
@@ -71,6 +72,77 @@ def get_previous_fy(fy):
     return f"{start_year - 1}-{end_year - 1}"
 
 
+MONTH_ORDER = [
+    "Apr", "May", "Jun", "Jul",
+    "Aug", "Sep", "Oct", "Nov",
+    "Dec", "Jan", "Feb", "Mar"
+]
+
+QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
+
+QUARTER_MAP = {
+    1: "Q1", 2: "Q1", 3: "Q1",
+    4: "Q2", 5: "Q2", 6: "Q2",
+    7: "Q3", 8: "Q3", 9: "Q3",
+    10: "Q4", 11: "Q4", 12: "Q4",
+}
+
+# Maps FY month names (Apr..Mar) to their actual calendar month number
+FIN_MONTH_TO_CALENDAR = {
+    "Apr": 4, "May": 5, "Jun": 6, "Jul": 7,
+    "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11,
+    "Dec": 12, "Jan": 1, "Feb": 2, "Mar": 3,
+}
+
+# Which quarter each FY month name belongs to (Q1=Apr-Jun ... Q4=Jan-Mar)
+QUARTER_MONTHS = {
+    "Q1": ["Apr", "May", "Jun"],
+    "Q2": ["Jul", "Aug", "Sep"],
+    "Q3": ["Oct", "Nov", "Dec"],
+    "Q4": ["Jan", "Feb", "Mar"],
+}
+
+
+def get_quarter_date_range(fy, quarter):
+    """
+    Given FY like '2025-2026' and quarter like 'Q1'/'Q2'/'Q3'/'Q4',
+    returns (start_date, end_date) as 'YYYY-MM-DD' strings.
+    Q1-Q3 fall in the FY start_year (Apr-Dec), Q4 falls in the FY end_year (Jan-Mar).
+    """
+    start_year, end_year = map(int, fy.split("-"))
+
+    quarter_bounds = {
+        "Q1": (4, 6, start_year),
+        "Q2": (7, 9, start_year),
+        "Q3": (10, 12, start_year),
+        "Q4": (1, 3, end_year),
+    }
+
+    start_month, end_month, year = quarter_bounds[quarter]
+    last_day = calendar.monthrange(year, end_month)[1]
+
+    start_date = f"{year}-{start_month:02d}-01"
+    end_date = f"{year}-{end_month:02d}-{last_day}"
+
+    return start_date, end_date
+
+
+def get_month_date_range(fy, month_name):
+    """
+    Given FY like '2025-2026' and a FY month name like 'Apr'..'Mar',
+    returns (start_date, end_date) as 'YYYY-MM-DD' strings for that specific month.
+    """
+    start_year, end_year = map(int, fy.split("-"))
+    cal_month = FIN_MONTH_TO_CALENDAR[month_name]
+    year = start_year if cal_month >= 4 else end_year
+
+    last_day = calendar.monthrange(year, cal_month)[1]
+    start_date = f"{year}-{cal_month:02d}-01"
+    end_date = f"{year}-{cal_month:02d}-{last_day}"
+
+    return start_date, end_date
+
+
 def calculate_kpis(data):
     """Compute the same set of KPIs used on the dashboard for any dataframe."""
     if data is None or data.empty:
@@ -101,22 +173,6 @@ def pct_growth(current, previous):
 def growth_label(value):
     arrow = "▲" if value >= 0 else "▼"
     return f"{arrow} {abs(value):.1f}%"
-
-
-MONTH_ORDER = [
-    "Apr", "May", "Jun", "Jul",
-    "Aug", "Sep", "Oct", "Nov",
-    "Dec", "Jan", "Feb", "Mar"
-]
-
-QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
-
-QUARTER_MAP = {
-    1: "Q1", 2: "Q1", 3: "Q1",
-    4: "Q2", 5: "Q2", 6: "Q2",
-    7: "Q3", 8: "Q3", 9: "Q3",
-    10: "Q4", 11: "Q4", 12: "Q4",
-}
 
 
 def build_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, prev_fy_start, month_map):
@@ -224,7 +280,6 @@ def add_revenue_forecast(yoy_df, trend_type, selected_quarter="All", selected_mo
     - Formula: current month actual revenue till today / days passed * total days in month.
     """
     from datetime import datetime
-    import calendar
 
     result = yoy_df.copy()
 
@@ -343,17 +398,21 @@ def show_overview():
         </p>
         """, unsafe_allow_html=True)
 
-  
-    # Top filter row: view type, FY, zone, circle, branch, quarter, month and load type
-    (
-        filter_col1, filter_col2, filter_col3, filter_col4,
-        filter_col5, filter_col6, filter_col7, filter_col8
-    ) = st.columns(8)
+    # -----------------------------------------
+    # Row 1: View Type, Period Type, Financial Year
+    # -----------------------------------------
+    top_col1, top_col2, top_col3 = st.columns(3)
 
-    with filter_col1:
+    with top_col1:
         view_type = st.selectbox("View Type", ["Origin", "Destination"])
 
-    with filter_col2:
+    with top_col2:
+        period_type = st.selectbox(
+            "Period",
+            ["Full Year", "Quarter", "Month", "Custom Range"]
+        )
+
+    with top_col3:
         fy = st.selectbox(
             "Financial Year",
             [
@@ -372,9 +431,47 @@ def show_overview():
         st.info("Please select financial year")
         return
 
-    start_date, end_date = get_date_range(fy)
+    fy_start, fy_end = get_date_range(fy)
 
-    # Load booking and branch network data for selected FY
+    # These stay "All" unless the chosen Period narrows to a specific quarter/month
+    quarter = "All"
+    month = "All"
+
+    # -----------------------------------------
+    # Row 2 (conditional): period-specific picker
+    # -----------------------------------------
+    if period_type == "Full Year":
+        start_date, end_date = fy_start, fy_end
+
+    elif period_type == "Quarter":
+        q_col, _, _ = st.columns(3)
+        with q_col:
+            quarter = st.selectbox("Select Quarter", QUARTER_ORDER)
+        start_date, end_date = get_quarter_date_range(fy, quarter)
+
+    elif period_type == "Month":
+        m_col, _, _ = st.columns(3)
+        with m_col:
+            month = st.selectbox("Select Month", MONTH_ORDER)
+        start_date, end_date = get_month_date_range(fy, month)
+
+    else:  # Custom Range
+        c_col1, c_col2, _ = st.columns(3)
+        with c_col1:
+            custom_start = st.date_input(
+                "From Date",
+                value=pd.to_datetime(fy_start)
+            )
+        with c_col2:
+            custom_end = st.date_input(
+                "To Date",
+                value=pd.to_datetime(fy_end)
+            )
+        start_date = custom_start.strftime("%Y-%m-%d")
+        end_date = custom_end.strftime("%Y-%m-%d")
+
+    # Load booking and branch network data for the selected period only
+    # (only the needed date range is queried, not the whole FY every time)
     with st.spinner("Loading data..."):
         df = load_booking_data(start_date, end_date, view_type.lower())
     station_df = load_stationmast_data(start_date, end_date)
@@ -397,12 +494,10 @@ def show_overview():
     }
 
     df["Month"] = df["FIN_MONTH"].map(month_map)
-    # NEW: Quarter column derived from FIN_MONTH, used for the Quarter filter below
     df["Quarter"] = df["FIN_MONTH"].map(QUARTER_MAP)
 
     # Data-scope restriction for this employee (set at login, from config/data_scope.json)
     # e.g. {} = no restriction, {"zone": "Nepal Zone"}, {"circle": "NCR Circle"}, {"branch": "Noida"}
-    # Data-scope restriction for this employee
     data_scope = st.session_state.get("data_scope", {})
 
     # -----------------------------
@@ -425,6 +520,10 @@ def show_overview():
         if not circle_row.empty:
             locked_zone = circle_row["zone"].iloc[0]
 
+    # -----------------------------------------
+    # Row 3: Zone, Circle, Branch, Load Type
+    # -----------------------------------------
+    filter_col3, filter_col4, filter_col5, filter_col8 = st.columns(4)
 
     with filter_col3:
         if locked_zone:
@@ -436,7 +535,6 @@ def show_overview():
     if zone != "All":
         df = df[df["zone"] == zone]
 
-
     with filter_col4:
         if locked_circle:
             circle = locked_circle
@@ -447,7 +545,6 @@ def show_overview():
     if circle != "All":
         df = df[df["circle"] == circle]
 
-
     with filter_col5:
         if locked_branch:
             branch = locked_branch
@@ -457,24 +554,6 @@ def show_overview():
 
     if branch != "All":
         df = df[df["branch"] == branch]
-
-    with filter_col6:
-        # NEW: Quarter filter — options always shown in Q1→Q4 order (QUARTER_ORDER),
-        # restricted to quarters actually present in the currently filtered data.
-        available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().unique().tolist()]
-        quarter = st.selectbox("Quarter", ["All"] + available_quarters)
-
-    if quarter != "All":
-        df = df[df["Quarter"] == quarter]
-
-    with filter_col7:
-        # FIX: Month options now follow financial-year order (Apr..Mar) via MONTH_ORDER,
-        # instead of plain alphabetical sort() which broke the sequence.
-        available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().unique().tolist()]
-        month = st.selectbox("Month", ["All"] + available_months)
-
-    if month != "All":
-        df = df[df["Month"] == month]
 
     with filter_col8:
         loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()))
@@ -487,21 +566,28 @@ def show_overview():
         return
 
     # =========================
-    # Load previous FY data (same filters) for automatic LY growth %
+    # Load previous FY data (same period, same filters) for automatic LY growth %
     # =========================
     prev_fy = get_previous_fy(fy)
     prev_df = pd.DataFrame()
     prev_start, prev_end = None, None
 
     try:
-        prev_start, prev_end = get_date_range(prev_fy)
+        if period_type == "Full Year":
+            prev_start, prev_end = get_date_range(prev_fy)
+        elif period_type == "Quarter":
+            prev_start, prev_end = get_quarter_date_range(prev_fy, quarter)
+        elif period_type == "Month":
+            prev_start, prev_end = get_month_date_range(prev_fy, month)
+        else:  # Custom Range -> shift the same custom dates back by exactly one year
+            prev_start = (pd.to_datetime(start_date) - pd.DateOffset(years=1)).strftime("%Y-%m-%d")
+            prev_end = (pd.to_datetime(end_date) - pd.DateOffset(years=1)).strftime("%Y-%m-%d")
+
         with st.spinner("Loading last year data..."):
             prev_df = load_booking_data(prev_start, prev_end, view_type.lower())
 
         if not prev_df.empty:
             prev_df["Month"] = prev_df["FIN_MONTH"].map(month_map)
-            # NEW: Quarter column on previous-year data too, so the Quarter filter
-            # also applies correctly to the LY comparison numbers.
             prev_df["Quarter"] = prev_df["FIN_MONTH"].map(QUARTER_MAP)
 
             if zone != "All":
@@ -510,10 +596,6 @@ def show_overview():
                 prev_df = prev_df[prev_df["circle"] == circle]
             if branch != "All":
                 prev_df = prev_df[prev_df["branch"] == branch]
-            if quarter != "All":
-                prev_df = prev_df[prev_df["Quarter"] == quarter]
-            if month != "All":
-                prev_df = prev_df[prev_df["Month"] == month]
             if loadtype != "All":
                 prev_df = prev_df[prev_df["LOADTYPE"] == loadtype]
     except Exception:
@@ -582,15 +664,9 @@ def show_overview():
 
     monthly["Revenue Cr"] = (monthly["REVENUE"] / 10000000).round(2)
 
-    month_order = [
-        "Apr", "May", "Jun", "Jul",
-        "Aug", "Sep", "Oct", "Nov",
-        "Dec", "Jan", "Feb", "Mar"
-    ]
-
     monthly["Month"] = pd.Categorical(
         monthly["Month"],
-        categories=month_order,
+        categories=MONTH_ORDER,
         ordered=True
     )
 
@@ -604,7 +680,7 @@ def show_overview():
 
     with row1:
         with st.container(border=True):
-            title_col, filter_col = st.columns([2,2])
+            title_col, filter_col = st.columns([2, 2])
 
             with title_col:
                 _trend_badge_color = "#166534" if revenue_growth >= 0 else "#dc2626"
@@ -623,7 +699,7 @@ def show_overview():
                     label_visibility="collapsed"
                 )
 
-            # Build trend data (Current FY vs LY) for the selected granularity
+            # Build trend data (Current period vs LY) for the selected granularity
             DATE_COL = "grdt"   # change if your date column is different
 
             yoy_df = build_yoy_trend(
@@ -638,7 +714,7 @@ def show_overview():
                 selected_month=month
             )
 
-            # Revenue trend grouped bar chart — LY vs Current FY vs Forecast
+            # Revenue trend grouped bar chart — LY vs Current vs Forecast
             fig_yoy = go.Figure()
 
             fig_yoy.add_trace(
@@ -668,7 +744,6 @@ def show_overview():
             )
 
             # Forecast bar only for the current ongoing month.
-            # Filtering removes the 0.00 labels from past months.
             forecast_df = yoy_df[yoy_df["Forecast Revenue Cr"].notna()].copy()
 
             if not forecast_df.empty:
@@ -761,7 +836,6 @@ def show_overview():
             )
 
             st.plotly_chart(fig_load, use_container_width=True)
-    
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -776,12 +850,12 @@ def show_overview():
 
     monthly_weight["Month"] = pd.Categorical(
         monthly_weight["Month"],
-        categories=month_order,
+        categories=MONTH_ORDER,
         ordered=True
     )
 
     monthly_weight = monthly_weight.sort_values("Month")
-    # Zone revenue data
+
     # Zone-wise revenue data
     zone_df = (
         df.groupby("zone")["REVENUE"]
@@ -799,7 +873,6 @@ def show_overview():
         "NEPAL ZONE": "Nepal"
     })
 
-    zone_df = zone_df.sort_values("Revenue Cr", ascending=False)
     zone_df = zone_df.sort_values("Revenue Cr", ascending=False)
 
     # Zone colors
@@ -878,62 +951,62 @@ def show_overview():
 
     if view_type == "Origin":
         with zone_col2:
-           
-                matrix_display = matrix_df.reset_index()
-                matrix_display = matrix_display.reset_index(drop=True)
 
-                matrix_display["zone"] = matrix_display["zone"].replace({
-                    "NORTH ZONE": "North",
-                    "WEST ZONE": "West",
-                    "SOUTH ZONE": "South",
-                    "EAST ZONE": "East",
-                    "NORTH EAST ZONE": "NE",
-                    "NEPAL ZONE": "Nepal"
-                })
+            matrix_display = matrix_df.reset_index()
+            matrix_display = matrix_display.reset_index(drop=True)
 
-                numeric_cols = matrix_display.columns[1:]
+            matrix_display["zone"] = matrix_display["zone"].replace({
+                "NORTH ZONE": "North",
+                "WEST ZONE": "West",
+                "SOUTH ZONE": "South",
+                "EAST ZONE": "East",
+                "NORTH EAST ZONE": "NE",
+                "NEPAL ZONE": "Nepal"
+            })
 
-                # Matrix heatmap: zone versus country revenue
-                styled_matrix = (
-                    matrix_display.style
-                    .format("{:.2f}", subset=numeric_cols)
-                    .background_gradient(cmap="Blues", subset=numeric_cols)
-                )
+            numeric_cols = matrix_display.columns[1:]
 
-                st.dataframe(
-                    styled_matrix,
-                    use_container_width=True,
-                    hide_index=True,
-                    height=240
-                )
+            # Matrix heatmap: zone versus country revenue
+            styled_matrix = (
+                matrix_display.style
+                .format("{:.2f}", subset=numeric_cols)
+                .background_gradient(cmap="Blues", subset=numeric_cols)
+            )
+
+            st.dataframe(
+                styled_matrix,
+                use_container_width=True,
+                hide_index=True,
+                height=240
+            )
 
     with zone_col3:
-            with st.container(border=True):
-                st.markdown("###### Monthly Weight(MT) Trend")
+        with st.container(border=True):
+            st.markdown("###### Monthly Weight(MT) Trend")
 
-                # Monthly weight bar chart
-                fig_weight = go.Figure()
+            # Monthly weight bar chart
+            fig_weight = go.Figure()
 
-                fig_weight.add_trace(
-                    go.Bar(
-                        x=monthly_weight["Month"],
-                        y=monthly_weight["Weight MT"],
-                        text=monthly_weight["Weight MT"],
-                        texttemplate="%{text:.2f} MT",
-                        textposition="outside",
-                        marker_color="#0f766e"
-                    )
+            fig_weight.add_trace(
+                go.Bar(
+                    x=monthly_weight["Month"],
+                    y=monthly_weight["Weight MT"],
+                    text=monthly_weight["Weight MT"],
+                    texttemplate="%{text:.2f} MT",
+                    textposition="outside",
+                    marker_color="#0f766e"
                 )
+            )
 
-                fig_weight.update_layout(
-                    height=190,
-                    margin=dict(l=2, r=2, t=2, b=2)   
-                
-                )
-                fig_weight.update_xaxes(showgrid=False,zeroline=False)
-                fig_weight.update_yaxes(showgrid=False,zeroline=False)
+            fig_weight.update_layout(
+                height=190,
+                margin=dict(l=2, r=2, t=2, b=2)
+            )
+            fig_weight.update_xaxes(showgrid=False, zeroline=False)
+            fig_weight.update_yaxes(showgrid=False, zeroline=False)
 
-                st.plotly_chart(fig_weight, use_container_width=True)
+            st.plotly_chart(fig_weight, use_container_width=True)
+
     # Small separator before branch analysis
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
@@ -986,8 +1059,6 @@ def show_overview():
                     "#22c55e"
                 )
 
-            
-
     with b2:
         with st.container(border=True):
             st.markdown("###### Bottom 10 Branches by Revenue")
@@ -1002,8 +1073,6 @@ def show_overview():
                     max_bottom,
                     "#ef4444"
                 )
-
-            
 
     with b3:
         with st.container(border=True):
@@ -1036,6 +1105,7 @@ def show_overview():
                     st.markdown(f"📈 Revenue Growth: **{last_growth:.2f}%**")
 
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+
     st.markdown(f"""
     ###### 🏢 Branch Network Changes ({fy})
 
@@ -1079,7 +1149,8 @@ def show_overview():
             ],
             use_container_width=True,
             hide_index=True
-        )                
+        )
+
     # Export currently filtered dataset
     csv = df.to_csv(index=False).encode("utf-8")
 
