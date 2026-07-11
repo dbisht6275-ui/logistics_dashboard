@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from services.database import get_connection
+from services.database import get_engine
 from datetime import datetime
 from io import BytesIO
 from st_aggrid import AgGrid, GridOptionsBuilder
@@ -42,7 +42,7 @@ def get_zone_wise_booking_turnover(
         part2 = f"2. {date2_from.strftime('%d-%b-%y').upper()} TO {date2_to.strftime('%d-%b-%y').upper()}"
         part3 = f"3. {date3_from.strftime('%d-%b-%y').upper()} TO {date3_to.strftime('%d-%b-%y').upper()}"
 
-        conn = get_connection()
+        engine = get_engine()
 
         query = f"""
         SELECT S.PARTICULAR,
@@ -98,8 +98,7 @@ def get_zone_wise_booking_turnover(
         ORDER BY S.ZONENAME,S.PARTICULAR
         """
 
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = pd.read_sql(query, engine)
 
         return df.round(2)
 

@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from services.database import get_connection
+from services.database import get_engine
 from datetime import datetime
 from io import BytesIO
 from st_aggrid import AgGrid, GridOptionsBuilder
@@ -19,7 +19,7 @@ def get_GR_CostingHeadwise(date1_from, date1_to):
         from1_dt = datetime.strptime(date1_from, "%d-%m-%Y").strftime("%Y-%m-%d")
         to1_dt = datetime.strptime(date1_to, "%d-%m-%Y").strftime("%Y-%m-%d")
 
-        conn = get_connection()
+        engine = get_engine()
 
         query = f"""
         DECLARE @FromDate DATE = '{from1_dt}';
@@ -88,8 +88,7 @@ def get_GR_CostingHeadwise(date1_from, date1_to):
         EXEC SP_EXECUTESQL @SQL;
         """
 
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = pd.read_sql(query, engine)
 
         return df.round(2)
 
