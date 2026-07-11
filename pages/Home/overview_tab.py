@@ -750,7 +750,7 @@ def show_overview():
         .reset_index()
     )
 
-    monthly_weight["Weight MT"] = (monthly_weight["aweight"] / 1000).round(0)
+    monthly_weight["Weight MT"] = (monthly_weight["aweight"] / 1000).round(1)
 
     monthly_weight["Month"] = pd.Categorical(
         monthly_weight["Month"],
