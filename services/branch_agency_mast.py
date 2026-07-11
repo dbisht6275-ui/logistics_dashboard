@@ -1,12 +1,13 @@
 import streamlit as st
 import pandas as pd
-from services.database import get_connection
+from sqlalchemy import text
+from services.database import get_engine
 
 
 @st.cache_data(ttl=300)
 def load_stationmast_data(start_date, end_date):
 
-    conn = get_connection()
+    engine = get_engine()
 
     query = f"""
         SELECT 
