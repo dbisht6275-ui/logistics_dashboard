@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from services.data_loader import load_booking_data, get_date_range
+from services.data_loader import load_booking_data_pair, get_date_range
 
 
 def format_cr(v):
@@ -18,65 +18,31 @@ def growth_label(growth):
     arrow = "▲" if growth >= 0 else "▼"
     return f"{arrow} {abs(growth):.2f}%"
 
-def apply_login_data_scope(df):
-    """Apply the logged-in employee's data rights directly to a dataframe."""
-    if df is None or df.empty:
-        return df
-
-    data_scope = st.session_state.get("data_scope", {}) or {}
-
-    locked_zone = data_scope.get("zone")
-    locked_circle = data_scope.get("circle")
-    locked_branch = data_scope.get("branch")
-
-    # Derive parent hierarchy from the available data, exactly like Overview.
-    if locked_branch:
-        branch_row = df[df["branch"] == locked_branch]
-        if not branch_row.empty:
-            locked_circle = branch_row["circle"].iloc[0]
-            locked_zone = branch_row["zone"].iloc[0]
-    elif locked_circle:
-        circle_row = df[df["circle"] == locked_circle]
-        if not circle_row.empty:
-            locked_zone = circle_row["zone"].iloc[0]
-
-    # Hard-filter the dataframe so restricted data is never used in KPIs/charts.
-    if locked_zone:
-        df = df[df["zone"] == locked_zone]
-    if locked_circle:
-        df = df[df["circle"] == locked_circle]
-    if locked_branch:
-        df = df[df["branch"] == locked_branch]
-
-    return df
-
-
 def apply_location_filters(df, key_prefix=""):
-    """Show Overview-style cascading filters, with login rights locked."""
-    if df is None or df.empty:
-        return df
 
-    data_scope = st.session_state.get("data_scope", {}) or {}
+    data_scope = st.session_state.get("data_scope", {})
 
+    # Get assigned rights
     locked_zone = data_scope.get("zone")
     locked_circle = data_scope.get("circle")
     locked_branch = data_scope.get("branch")
 
-    # Branch right -> derive Circle and Zone.
+    # Branch right -> derive Circle & Zone
     if locked_branch:
-        branch_row = df[df["branch"] == locked_branch]
-        if not branch_row.empty:
-            locked_circle = branch_row["circle"].iloc[0]
-            locked_zone = branch_row["zone"].iloc[0]
+        row = df[df["branch"] == locked_branch]
+        if not row.empty:
+            locked_circle = row["circle"].iloc[0]
+            locked_zone = row["zone"].iloc[0]
 
-    # Circle right -> derive Zone.
+    # Circle right -> derive Zone
     elif locked_circle:
-        circle_row = df[df["circle"] == locked_circle]
-        if not circle_row.empty:
-            locked_zone = circle_row["zone"].iloc[0]
+        row = df[df["circle"] == locked_circle]
+        if not row.empty:
+            locked_zone = row["zone"].iloc[0]
 
     c1, c2, c3 = st.columns(3)
 
+    # ---------------- Zone ----------------
     with c1:
         if locked_zone:
             zone = locked_zone
@@ -84,7 +50,6 @@ def apply_location_filters(df, key_prefix=""):
                 "Zone",
                 [zone],
                 disabled=True,
-                help="Locked as per your assigned rights",
                 key=f"{key_prefix}_zone"
             )
         else:
@@ -97,6 +62,7 @@ def apply_location_filters(df, key_prefix=""):
     if zone != "All":
         df = df[df["zone"] == zone]
 
+    # ---------------- Circle ----------------
     with c2:
         if locked_circle:
             circle = locked_circle
@@ -104,7 +70,6 @@ def apply_location_filters(df, key_prefix=""):
                 "Circle",
                 [circle],
                 disabled=True,
-                help="Locked as per your assigned rights",
                 key=f"{key_prefix}_circle"
             )
         else:
@@ -117,6 +82,7 @@ def apply_location_filters(df, key_prefix=""):
     if circle != "All":
         df = df[df["circle"] == circle]
 
+    # ---------------- Branch ----------------
     with c3:
         if locked_branch:
             branch = locked_branch
@@ -124,7 +90,6 @@ def apply_location_filters(df, key_prefix=""):
                 "Branch",
                 [branch],
                 disabled=True,
-                help="Locked as per your assigned rights",
                 key=f"{key_prefix}_branch"
             )
         else:
@@ -220,23 +185,23 @@ def show_comparison():
         start1, end1 = get_date_range(fy1)
         start2, end2 = get_date_range(fy2)
 
+        # Load both selected financial years together in parallel.
+        # This uses the same paired-fetch logic as the Overview page.
         with st.spinner("Loading YoY comparison data..."):
-            df1 = load_booking_data(start1, end1, view_type.lower())
-            df2 = load_booking_data(start2, end2, view_type.lower())
+            df1, df2 = load_booking_data_pair(
+                start1,
+                end1,
+                start2,
+                end2,
+                view_type.lower()
+            )
 
-            # Enforce login-based data scope on both years before combining them.
             df1["FY"] = fy1
             df2["FY"] = fy2
 
             df = pd.concat([df1, df2], ignore_index=True)
-            df = apply_login_data_scope(df)
         st.markdown("##### Location Filters")
         df = apply_location_filters(df, f"month_yoy_{view_type.lower()}")
-
-        if df.empty:
-            st.warning("No data found for your assigned rights and selected filters.")
-            return
-
         val1 = df[df["FY"] == fy1]["REVENUE"].sum()
         val2 = df[df["FY"] == fy2]["REVENUE"].sum()
 
@@ -436,23 +401,24 @@ def show_comparison():
         start1, end1 = get_date_range(fy1)
         start2, end2 = get_date_range(fy2)
 
+        # Load both selected financial years together in parallel.
+        # This uses the same paired-fetch logic as the Overview page.
         with st.spinner("Loading quarter comparison data..."):
-            df1 = load_booking_data(start1, end1, view_type.lower())
-            df2 = load_booking_data(start2, end2, view_type.lower())
+            df1, df2 = load_booking_data_pair(
+                start1,
+                end1,
+                start2,
+                end2,
+                view_type.lower()
+            )
 
-            # Enforce login-based data scope on both years before combining them.
             df1["FY"] = fy1
             df2["FY"] = fy2
 
             df = pd.concat([df1, df2], ignore_index=True)
-            df = apply_login_data_scope(df)
             
         st.markdown("##### Location Filters")
-        df = apply_location_filters(df, f"quarter_yoy_{view_type.lower()}")
-
-        if df.empty:
-            st.warning("No data found for your assigned rights and selected filters.")
-            return
+        df = apply_location_filters(df, f"quater_yoy_{view_type.lower()}")
 
         def get_quarter(fin_month):
             if fin_month in [1, 2, 3]:
