@@ -72,77 +72,6 @@ def get_previous_fy(fy):
     return f"{start_year - 1}-{end_year - 1}"
 
 
-MONTH_ORDER = [
-    "Apr", "May", "Jun", "Jul",
-    "Aug", "Sep", "Oct", "Nov",
-    "Dec", "Jan", "Feb", "Mar"
-]
-
-QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
-
-QUARTER_MAP = {
-    1: "Q1", 2: "Q1", 3: "Q1",
-    4: "Q2", 5: "Q2", 6: "Q2",
-    7: "Q3", 8: "Q3", 9: "Q3",
-    10: "Q4", 11: "Q4", 12: "Q4",
-}
-
-# Maps FY month names (Apr..Mar) to their actual calendar month number
-FIN_MONTH_TO_CALENDAR = {
-    "Apr": 4, "May": 5, "Jun": 6, "Jul": 7,
-    "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11,
-    "Dec": 12, "Jan": 1, "Feb": 2, "Mar": 3,
-}
-
-# Which quarter each FY month name belongs to (Q1=Apr-Jun ... Q4=Jan-Mar)
-QUARTER_MONTHS = {
-    "Q1": ["Apr", "May", "Jun"],
-    "Q2": ["Jul", "Aug", "Sep"],
-    "Q3": ["Oct", "Nov", "Dec"],
-    "Q4": ["Jan", "Feb", "Mar"],
-}
-
-
-def get_quarter_date_range(fy, quarter):
-    """
-    Given FY like '2025-2026' and quarter like 'Q1'/'Q2'/'Q3'/'Q4',
-    returns (start_date, end_date) as 'YYYY-MM-DD' strings.
-    Q1-Q3 fall in the FY start_year (Apr-Dec), Q4 falls in the FY end_year (Jan-Mar).
-    """
-    start_year, end_year = map(int, fy.split("-"))
-
-    quarter_bounds = {
-        "Q1": (4, 6, start_year),
-        "Q2": (7, 9, start_year),
-        "Q3": (10, 12, start_year),
-        "Q4": (1, 3, end_year),
-    }
-
-    start_month, end_month, year = quarter_bounds[quarter]
-    last_day = calendar.monthrange(year, end_month)[1]
-
-    start_date = f"{year}-{start_month:02d}-01"
-    end_date = f"{year}-{end_month:02d}-{last_day}"
-
-    return start_date, end_date
-
-
-def get_month_date_range(fy, month_name):
-    """
-    Given FY like '2025-2026' and a FY month name like 'Apr'..'Mar',
-    returns (start_date, end_date) as 'YYYY-MM-DD' strings for that specific month.
-    """
-    start_year, end_year = map(int, fy.split("-"))
-    cal_month = FIN_MONTH_TO_CALENDAR[month_name]
-    year = start_year if cal_month >= 4 else end_year
-
-    last_day = calendar.monthrange(year, cal_month)[1]
-    start_date = f"{year}-{cal_month:02d}-01"
-    end_date = f"{year}-{cal_month:02d}-{last_day}"
-
-    return start_date, end_date
-
-
 def calculate_kpis(data):
     """Compute the same set of KPIs used on the dashboard for any dataframe."""
     if data is None or data.empty:
@@ -173,6 +102,22 @@ def pct_growth(current, previous):
 def growth_label(value):
     arrow = "▲" if value >= 0 else "▼"
     return f"{arrow} {abs(value):.1f}%"
+
+
+MONTH_ORDER = [
+    "Apr", "May", "Jun", "Jul",
+    "Aug", "Sep", "Oct", "Nov",
+    "Dec", "Jan", "Feb", "Mar"
+]
+
+QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
+
+QUARTER_MAP = {
+    1: "Q1", 2: "Q1", 3: "Q1",
+    4: "Q2", 5: "Q2", 6: "Q2",
+    7: "Q3", 8: "Q3", 9: "Q3",
+    10: "Q4", 11: "Q4", 12: "Q4",
+}
 
 
 def build_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, prev_fy_start, month_map):
@@ -398,21 +343,16 @@ def show_overview():
         </p>
         """, unsafe_allow_html=True)
 
-    # -----------------------------------------
-    # Row 1: View Type, Period Type, Financial Year
-    # -----------------------------------------
-    top_col1, top_col2, top_col3 = st.columns(3)
+    # Top filter row: view type, FY, zone, circle, branch, quarter, month and load type
+    (
+        filter_col1, filter_col2, filter_col3, filter_col4,
+        filter_col5, filter_col6, filter_col7, filter_col8
+    ) = st.columns(8)
 
-    with top_col1:
+    with filter_col1:
         view_type = st.selectbox("View Type", ["Origin", "Destination"])
 
-    with top_col2:
-        period_type = st.selectbox(
-            "Period",
-            ["Full Year", "Quarter", "Month", "Custom Range"]
-        )
-
-    with top_col3:
+    with filter_col2:
         fy = st.selectbox(
             "Financial Year",
             [
@@ -431,63 +371,12 @@ def show_overview():
         st.info("Please select financial year")
         return
 
-    fy_start, fy_end = get_date_range(fy)
+    start_date, end_date = get_date_range(fy)
 
-    # These stay "All" unless the chosen Period narrows to a specific quarter/month
-    quarter = "All"
-    month = "All"
-
-    # -----------------------------------------
-    # Row 2 (conditional): period-specific picker
-    # -----------------------------------------
-    if period_type == "Full Year":
-        start_date, end_date = fy_start, fy_end
-
-    elif period_type == "Quarter":
-        q_col, _, _ = st.columns(3)
-        with q_col:
-            quarter = st.selectbox("Select Quarter", QUARTER_ORDER)
-        start_date, end_date = get_quarter_date_range(fy, quarter)
-
-    elif period_type == "Month":
-        m_col, _, _ = st.columns(3)
-        with m_col:
-            month = st.selectbox("Select Month", MONTH_ORDER)
-        start_date, end_date = get_month_date_range(fy, month)
-
-    else:  # Custom Range
-        c_col1, c_col2, _ = st.columns(3)
-        with c_col1:
-            custom_start = st.date_input(
-                "From Date",
-                value=pd.to_datetime(fy_start)
-            )
-        with c_col2:
-            custom_end = st.date_input(
-                "To Date",
-                value=pd.to_datetime(fy_end)
-            )
-        start_date = custom_start.strftime("%Y-%m-%d")
-        end_date = custom_end.strftime("%Y-%m-%d")
-
-    # -----------------------------------------
-    # Work out the matching Last-Year period BEFORE loading,
-    # so current + LY data can be fetched together in parallel.
-    # -----------------------------------------
     prev_fy = get_previous_fy(fy)
-    prev_start, prev_end = None, None
+    prev_start, prev_end = get_date_range(prev_fy)
 
-    if period_type == "Full Year":
-        prev_start, prev_end = get_date_range(prev_fy)
-    elif period_type == "Quarter":
-        prev_start, prev_end = get_quarter_date_range(prev_fy, quarter)
-    elif period_type == "Month":
-        prev_start, prev_end = get_month_date_range(prev_fy, month)
-    else:  # Custom Range -> shift the same custom dates back by exactly one year
-        prev_start = (pd.to_datetime(start_date) - pd.DateOffset(years=1)).strftime("%Y-%m-%d")
-        prev_end = (pd.to_datetime(end_date) - pd.DateOffset(years=1)).strftime("%Y-%m-%d")
-
-    # Load current-period AND last-year data TOGETHER, in parallel,
+    # Load current-FY AND last-year data TOGETHER, in parallel,
     # instead of one after another. This roughly halves the wait time
     # compared to two sequential stored-procedure calls.
     with st.spinner("Loading data..."):
@@ -517,6 +406,10 @@ def show_overview():
     df["Month"] = df["FIN_MONTH"].map(month_map)
     df["Quarter"] = df["FIN_MONTH"].map(QUARTER_MAP)
 
+    if not prev_df.empty:
+        prev_df["Month"] = prev_df["FIN_MONTH"].map(month_map)
+        prev_df["Quarter"] = prev_df["FIN_MONTH"].map(QUARTER_MAP)
+
     # Data-scope restriction for this employee (set at login, from config/data_scope.json)
     # e.g. {} = no restriction, {"zone": "Nepal Zone"}, {"circle": "NCR Circle"}, {"branch": "Noida"}
     data_scope = st.session_state.get("data_scope", {})
@@ -540,11 +433,6 @@ def show_overview():
         circle_row = df[df["circle"] == locked_circle]
         if not circle_row.empty:
             locked_zone = circle_row["zone"].iloc[0]
-
-    # -----------------------------------------
-    # Row 3: Zone, Circle, Branch, Load Type
-    # -----------------------------------------
-    filter_col3, filter_col4, filter_col5, filter_col8 = st.columns(4)
 
     with filter_col3:
         if locked_zone:
@@ -576,6 +464,20 @@ def show_overview():
     if branch != "All":
         df = df[df["branch"] == branch]
 
+    with filter_col6:
+        available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().unique().tolist()]
+        quarter = st.selectbox("Quarter", ["All"] + available_quarters)
+
+    if quarter != "All":
+        df = df[df["Quarter"] == quarter]
+
+    with filter_col7:
+        available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().unique().tolist()]
+        month = st.selectbox("Month", ["All"] + available_months)
+
+    if month != "All":
+        df = df[df["Month"] == month]
+
     with filter_col8:
         loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()))
 
@@ -587,19 +489,19 @@ def show_overview():
         return
 
     # =========================
-    # Apply the same zone/circle/branch/loadtype filters to the LY data
-    # (already fetched above in parallel with the current-period data)
+    # Apply the same zone/circle/branch/quarter/month/loadtype filters to the LY data
     # =========================
     if not prev_df.empty:
-        prev_df["Month"] = prev_df["FIN_MONTH"].map(month_map)
-        prev_df["Quarter"] = prev_df["FIN_MONTH"].map(QUARTER_MAP)
-
         if zone != "All":
             prev_df = prev_df[prev_df["zone"] == zone]
         if circle != "All":
             prev_df = prev_df[prev_df["circle"] == circle]
         if branch != "All":
             prev_df = prev_df[prev_df["branch"] == branch]
+        if quarter != "All":
+            prev_df = prev_df[prev_df["Quarter"] == quarter]
+        if month != "All":
+            prev_df = prev_df[prev_df["Month"] == month]
         if loadtype != "All":
             prev_df = prev_df[prev_df["LOADTYPE"] == loadtype]
 
@@ -701,7 +603,7 @@ def show_overview():
                     label_visibility="collapsed"
                 )
 
-            # Build trend data (Current period vs LY) for the selected granularity
+            # Build trend data (Current FY vs LY) for the selected granularity
             DATE_COL = "grdt"   # change if your date column is different
 
             yoy_df = build_yoy_trend(
@@ -716,7 +618,7 @@ def show_overview():
                 selected_month=month
             )
 
-            # Revenue trend grouped bar chart — LY vs Current vs Forecast
+            # Revenue trend grouped bar chart — LY vs Current FY vs Forecast
             fig_yoy = go.Figure()
 
             fig_yoy.add_trace(
