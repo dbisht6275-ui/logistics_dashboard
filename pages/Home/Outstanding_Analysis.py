@@ -1,12 +1,11 @@
 """
 pages/Home/Outstanding_Analysis.py
 ====================================
-"Outstanding Analysis" page — zone / branch / customer wise receivables
-and ageing analysis, sourced from the Alloutstanding_BI stored procedure.
+Outstanding Analysis page using the same Financial Year, hierarchy filters,
+and role-based data-scope logic used on the Overview page.
 
-Data layer : services/data_outstanding.py
-
-Called from main.py as:  show_OutstandingAnalysis()
+Data source: services/data_Outstanding.py -> get_outstanding_data()
+Called from main.py as: show_OutstandingAnalysis()
 """
 
 import io
@@ -17,10 +16,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from services.data_Outstanding import (
-    get_outstanding_data,
-    DEFAULT_PARAMS,
-)
+from services.data_Outstanding import get_outstanding_data, DEFAULT_PARAMS
+
 
 ACCENT = {
     "blue": "#2563eb",
@@ -31,28 +28,76 @@ ACCENT = {
     "teal": "#0d9488",
 }
 
+MONTH_ORDER = [
+    "Apr", "May", "Jun", "Jul", "Aug", "Sep",
+    "Oct", "Nov", "Dec", "Jan", "Feb", "Mar",
+]
+
+QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
+
+CALENDAR_TO_FY_MONTH = {
+    4: 1, 5: 2, 6: 3, 7: 4, 8: 5, 9: 6,
+    10: 7, 11: 8, 12: 9, 1: 10, 2: 11, 3: 12,
+}
+
+FY_MONTH_TO_NAME = {
+    1: "Apr", 2: "May", 3: "Jun", 4: "Jul",
+    5: "Aug", 6: "Sep", 7: "Oct", 8: "Nov",
+    9: "Dec", 10: "Jan", 11: "Feb", 12: "Mar",
+}
+
+FY_MONTH_TO_QUARTER = {
+    1: "Q1", 2: "Q1", 3: "Q1",
+    4: "Q2", 5: "Q2", 6: "Q2",
+    7: "Q3", 8: "Q3", 9: "Q3",
+    10: "Q4", 11: "Q4", 12: "Q4",
+}
+
 
 def _inject_css():
     st.markdown(
         """
         <style>
+            .block-container {
+                padding-top: 0.3rem;
+                padding-bottom: 1rem;
+            }
             .oa-kpi-card {
                 background: linear-gradient(135deg, #ffffff 0%, #f3f6fb 100%);
-                border-radius: 14px;
-                padding: 18px 20px;
+                border-radius: 12px;
+                padding: 12px 14px;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-                border-left: 6px solid var(--accent, #2563eb);
-                text-align: left;
+                border-left: 5px solid var(--accent, #2563eb);
+                min-height: 100px;
             }
             .oa-kpi-label {
-                font-size: 13px; color: #6b7280; font-weight: 600;
-                text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px;
+                font-size: 11px;
+                color: #6b7280;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: .03em;
+                margin-bottom: 4px;
             }
-            .oa-kpi-value { font-size: 26px; font-weight: 700; color: #111827; }
-            .oa-kpi-sub { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+            .oa-kpi-value {
+                font-size: 21px;
+                font-weight: 800;
+                color: #111827;
+            }
+            .oa-kpi-sub {
+                font-size: 11px;
+                color: #9ca3af;
+                margin-top: 3px;
+            }
             .oa-section-title {
-                font-size: 20px; font-weight: 700; color: #111827;
-                margin: 18px 0 6px 0; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px;
+                font-size: 18px;
+                font-weight: 700;
+                color: #111827;
+                margin: 15px 0 6px 0;
+                border-bottom: 2px solid #e5e7eb;
+                padding-bottom: 5px;
+            }
+            [data-testid="stDataFrame"] table {
+                font-size: 11px;
             }
         </style>
         """,
@@ -73,161 +118,363 @@ def _kpi_card(label, value, sub="", color="blue"):
     )
 
 
-def _inr(x):
+def _inr(value):
     try:
-        x = float(x)
+        value = float(value)
     except (TypeError, ValueError):
         return "₹0"
-    neg = x < 0
-    x = abs(x)
-    return f"{'-' if neg else ''}₹{x:,.0f}"
+
+    sign = "-" if value < 0 else ""
+    return f"{sign}₹{abs(value):,.0f}"
+
+
+def _get_date_range(fin_year):
+    start_year, end_year = map(int, fin_year.split("-"))
+    return f"{start_year}-04-01", f"{end_year}-03-31"
+
+
+def _find_column(df, candidates):
+    """Return the first matching dataframe column, case-insensitively."""
+    lookup = {str(column).strip().lower(): column for column in df.columns}
+    for candidate in candidates:
+        match = lookup.get(candidate.lower())
+        if match is not None:
+            return match
+    return None
+
+
+def _normalise_text(series):
+    return series.fillna("").astype(str).str.strip()
+
+
+def _filter_equals(df, column, selected_value):
+    if column and selected_value != "All":
+        return df[_normalise_text(df[column]) == str(selected_value).strip()]
+    return df
+
+
+def _derive_period_columns(df, invoice_date_col):
+    result = df.copy()
+
+    if invoice_date_col is None:
+        result["Month"] = None
+        result["Quarter"] = None
+        return result
+
+    result[invoice_date_col] = pd.to_datetime(
+        result[invoice_date_col], errors="coerce"
+    )
+    result["_fy_month"] = result[invoice_date_col].dt.month.map(CALENDAR_TO_FY_MONTH)
+    result["Month"] = result["_fy_month"].map(FY_MONTH_TO_NAME)
+    result["Quarter"] = result["_fy_month"].map(FY_MONTH_TO_QUARTER)
+    return result
+
+
+def _load_outstanding_data(start_date, end_date, force_refresh=False):
+    if force_refresh:
+        get_outstanding_data.clear()
+
+    return get_outstanding_data(
+        branch=DEFAULT_PARAMS.get("branch", "00000"),
+        grtype=DEFAULT_PARAMS.get("grtype", "C"),
+        from_dt=start_date,
+        to_dt=end_date,
+        as_on_dt=end_date,
+        custcode=DEFAULT_PARAMS.get("custcode", "0000"),
+        invoiceno=DEFAULT_PARAMS.get("invoiceno", ""),
+        user=DEFAULT_PARAMS.get("user", "SYST"),
+    )
 
 
 def show_OutstandingAnalysis():
     _inject_css()
 
-    st.markdown(
-        "<h2 style='margin-bottom:0;'>📈 Outstanding Analysis</h2>"
-        "<p style='color:#6b7280;margin-top:0;'>Zone / Branch / Customer wise receivables &amp; ageing (Alloutstanding_BI)</p>",
-        unsafe_allow_html=True,
-    )
+    header_left, header_right = st.columns([8, 1])
 
-    # ----------------------------------------------------------------
-    # STORED PROCEDURE PARAMETERS
-    # Database connection is handled centrally by services.database.get_engine()
-    # through services.data_outstanding.get_outstanding_data().
-    # ----------------------------------------------------------------
-    with st.expander(
-        "⚙️ Report Parameters",
-        expanded="oa_df" not in st.session_state,
-    ):
-        p1, p2, p3, p4 = st.columns(4)
-        p_branch = p1.text_input(
-            "Branch code",
-            value=DEFAULT_PARAMS["branch"],
-            key="oa_branch",
-        )
-        p_type = p2.text_input(
-            "Type (grtype)",
-            value=DEFAULT_PARAMS["grtype"],
-            key="oa_grtype",
-        )
-        p_fromdt = p3.date_input(
-            "From date",
-            value=DEFAULT_PARAMS["from_dt"],
-            key="oa_fromdt",
-        )
-        p_todt = p4.date_input(
-            "To date",
-            value=DEFAULT_PARAMS["to_dt"],
-            key="oa_todt",
+    with header_left:
+        st.markdown(
+            """
+            <h3 style='margin:0;padding:0;'>📈 Outstanding Analysis</h3>
+            <p style='margin:0;color:#64748b;font-size:12px;'>
+                Zone / Circle / Branch / Customer wise receivables and ageing
+            </p>
+            """,
+            unsafe_allow_html=True,
         )
 
-        p5, p6, p7, p8 = st.columns(4)
-        p_asondt = p5.date_input(
-            "As on date",
-            value=DEFAULT_PARAMS["as_on_dt"],
-            key="oa_asondt",
-        )
-        p_custcode = p6.text_input(
-            "Customer code",
-            value=DEFAULT_PARAMS["custcode"],
-            key="oa_custcode",
-        )
-        p_invoiceno = p7.text_input(
-            "Invoice no (blank = all)",
-            value=DEFAULT_PARAMS["invoiceno"],
-            key="oa_invoiceno",
-        )
-        p_user = p8.text_input(
-            "User",
-            value=DEFAULT_PARAMS["user"],
-            key="oa_user",
-        )
-
-        run_col, refresh_col, _ = st.columns([1, 1, 4])
-        run_report = run_col.button(
-            "▶ Run Report",
-            type="primary",
-            key="oa_run_btn",
-            use_container_width=True,
-        )
-        refresh_report = refresh_col.button(
-            "🔄 Refresh Data",
+    with header_right:
+        refresh_clicked = st.button(
+            "🔄 Refresh",
             key="oa_refresh_btn",
             use_container_width=True,
         )
 
-        if run_report or refresh_report:
-            try:
-                if refresh_report:
-                    get_outstanding_data.clear()
+    # ------------------------------------------------------------------
+    # SAME TOP FILTER STYLE AS OVERVIEW
+    # ------------------------------------------------------------------
+    (
+        filter_col1,
+        filter_col2,
+        filter_col3,
+        filter_col4,
+        filter_col5,
+        filter_col6,
+        filter_col7,
+        filter_col8,
+    ) = st.columns(8)
 
-                st.session_state["oa_df"] = get_outstanding_data(
-                    branch=p_branch.strip(),
-                    grtype=p_type.strip(),
-                    from_dt=p_fromdt,
-                    to_dt=p_todt,
-                    as_on_dt=p_asondt,
-                    custcode=p_custcode.strip(),
-                    invoiceno=p_invoiceno.strip(),
-                    user=p_user.strip(),
-                )
-
-                st.session_state["oa_last_refreshed"] = datetime.now()
-                st.success(
-                    f"Loaded {len(st.session_state['oa_df']):,} records."
-                )
-            except Exception as exc:
-                st.error(f"Unable to load outstanding data: {exc}")
-
-    df = st.session_state.get("oa_df")
-
-    if df is None or df.empty:
-        st.info(
-            "Set the report parameters above and click **Run Report** "
-            "to load data from SQL Server."
+    with filter_col1:
+        fy = st.selectbox(
+            "Financial Year",
+            [
+                "Select FY",
+                "2026-2027",
+                "2025-2026",
+                "2024-2025",
+                "2023-2024",
+                "2022-2023",
+                "2021-2022",
+                "2020-2021",
+            ],
+            key="oa_financial_year",
         )
+
+    if fy == "Select FY":
+        st.info("Please select financial year")
         return
 
-    # ----------------------------------------------------------------
-    # FILTERS
-    # ----------------------------------------------------------------
-    f1, f2, f3, f4, f5 = st.columns(5)
-    zones = sorted(df["zonename"].dropna().unique()) if "zonename" in df.columns else []
-    branches = sorted(df["branchname"].dropna().unique()) if "branchname" in df.columns else []
-    customers = sorted(df["custname"].dropna().unique()) if "custname" in df.columns else []
-    doctypes = sorted(df["documenttype"].dropna().unique()) if "documenttype" in df.columns else []
+    start_date, end_date = _get_date_range(fy)
 
-    sel_zone = f1.multiselect("Zone", zones, placeholder="All zones", key="oa_f_zone")
-    sel_branch = f2.multiselect("Branch", branches, placeholder="All branches", key="oa_f_branch")
-    sel_customer = f3.multiselect("Customer", customers, placeholder="All customers", key="oa_f_cust")
-    sel_doctype = f4.multiselect("Document Type", doctypes, placeholder="All doc types", key="oa_f_doctype")
-    sel_bucket = f5.multiselect("Age Bucket", ["0-30", "31-60", "61-90", "Above 90"], placeholder="All buckets", key="oa_f_bucket")
+    try:
+        with st.spinner("Loading outstanding data..."):
+            df = _load_outstanding_data(
+                start_date,
+                end_date,
+                force_refresh=refresh_clicked,
+            )
+    except Exception as exc:
+        st.error(f"Unable to load outstanding data: {exc}")
+        return
 
-    fdf = df.copy()
-    if sel_zone:
-        fdf = fdf[fdf["zonename"].isin(sel_zone)]
-    if sel_branch:
-        fdf = fdf[fdf["branchname"].isin(sel_branch)]
-    if sel_customer:
-        fdf = fdf[fdf["custname"].isin(sel_customer)]
-    if sel_doctype:
-        fdf = fdf[fdf["documenttype"].isin(sel_doctype)]
-    if sel_bucket:
-        fdf = fdf[fdf["age_bucket"].isin(sel_bucket)]
+    if df is None or df.empty:
+        st.warning("No outstanding data found for the selected financial year")
+        return
 
-    # ----------------------------------------------------------------
+    st.session_state["oa_last_refreshed"] = datetime.now()
+
+    # Resolve hierarchy columns flexibly because SP column names may differ.
+    zone_col = _find_column(df, ["zonename", "zone"])
+    circle_col = _find_column(df, ["circlename", "circle"])
+    branch_col = _find_column(df, ["branchname", "branch"])
+    customer_col = _find_column(df, ["custname", "customername", "customer"])
+    doctype_col = _find_column(df, ["documenttype", "doctype"])
+    invoice_date_col = _find_column(df, ["invoicedt", "invoice_date", "invoicedate"])
+
+    df = _derive_period_columns(df, invoice_date_col)
+
+    # ------------------------------------------------------------------
+    # ROLE / DATA-SCOPE LOGIC COPIED FROM OVERVIEW
+    # ------------------------------------------------------------------
+    data_scope = st.session_state.get("data_scope", {}) or {}
+
+    locked_zone = data_scope.get("zone")
+    locked_circle = data_scope.get("circle")
+    locked_branch = data_scope.get("branch")
+
+    # Derive parent hierarchy from branch rights.
+    if locked_branch and branch_col:
+        branch_rows = df[_normalise_text(df[branch_col]) == str(locked_branch).strip()]
+        if not branch_rows.empty:
+            if circle_col:
+                locked_circle = branch_rows[circle_col].iloc[0]
+            if zone_col:
+                locked_zone = branch_rows[zone_col].iloc[0]
+
+    # Derive zone from circle rights.
+    elif locked_circle and circle_col:
+        circle_rows = df[_normalise_text(df[circle_col]) == str(locked_circle).strip()]
+        if not circle_rows.empty and zone_col:
+            locked_zone = circle_rows[zone_col].iloc[0]
+
+    # Apply locked scope immediately so users cannot access data outside rights.
+    scoped_df = df.copy()
+    if locked_zone and zone_col:
+        scoped_df = _filter_equals(scoped_df, zone_col, locked_zone)
+    if locked_circle and circle_col:
+        scoped_df = _filter_equals(scoped_df, circle_col, locked_circle)
+    if locked_branch and branch_col:
+        scoped_df = _filter_equals(scoped_df, branch_col, locked_branch)
+
+    if scoped_df.empty:
+        st.warning("No data is available for your assigned data scope")
+        return
+
+    # Zone filter
+    with filter_col2:
+        if locked_zone:
+            zone = str(locked_zone)
+            st.selectbox(
+                "Zone",
+                [zone],
+                disabled=True,
+                help="Locked as per your assigned rights",
+                key="oa_zone_locked",
+            )
+        elif zone_col:
+            zone_options = sorted(_normalise_text(scoped_df[zone_col]).replace("", pd.NA).dropna().unique().tolist())
+            zone = st.selectbox("Zone", ["All"] + zone_options, key="oa_zone")
+        else:
+            zone = "All"
+            st.selectbox("Zone", ["All"], disabled=True, key="oa_zone_missing")
+
+    filtered_df = _filter_equals(scoped_df, zone_col, zone)
+
+    # Circle filter
+    with filter_col3:
+        if locked_circle:
+            circle = str(locked_circle)
+            st.selectbox(
+                "Circle",
+                [circle],
+                disabled=True,
+                help="Locked as per your assigned rights",
+                key="oa_circle_locked",
+            )
+        elif circle_col:
+            circle_options = sorted(_normalise_text(filtered_df[circle_col]).replace("", pd.NA).dropna().unique().tolist())
+            circle = st.selectbox("Circle", ["All"] + circle_options, key="oa_circle")
+        else:
+            circle = "All"
+            st.selectbox("Circle", ["All"], disabled=True, key="oa_circle_missing")
+
+    filtered_df = _filter_equals(filtered_df, circle_col, circle)
+
+    # Branch filter
+    with filter_col4:
+        if locked_branch:
+            branch = str(locked_branch)
+            st.selectbox(
+                "Branch",
+                [branch],
+                disabled=True,
+                help="Locked as per your assigned rights",
+                key="oa_branch_locked",
+            )
+        elif branch_col:
+            branch_options = sorted(_normalise_text(filtered_df[branch_col]).replace("", pd.NA).dropna().unique().tolist())
+            branch = st.selectbox("Branch", ["All"] + branch_options, key="oa_branch")
+        else:
+            branch = "All"
+            st.selectbox("Branch", ["All"], disabled=True, key="oa_branch_missing")
+
+    filtered_df = _filter_equals(filtered_df, branch_col, branch)
+
+    # Quarter filter
+    with filter_col5:
+        available_quarters = [
+            q for q in QUARTER_ORDER
+            if q in filtered_df["Quarter"].dropna().unique().tolist()
+        ]
+        quarter = st.selectbox(
+            "Quarter",
+            ["All"] + available_quarters,
+            key="oa_quarter",
+        )
+
+    if quarter != "All":
+        filtered_df = filtered_df[filtered_df["Quarter"] == quarter]
+
+    # Month filter
+    with filter_col6:
+        available_months = [
+            m for m in MONTH_ORDER
+            if m in filtered_df["Month"].dropna().unique().tolist()
+        ]
+        month = st.selectbox(
+            "Month",
+            ["All"] + available_months,
+            key="oa_month",
+        )
+
+    if month != "All":
+        filtered_df = filtered_df[filtered_df["Month"] == month]
+
+    # Customer filter
+    with filter_col7:
+        if customer_col:
+            customer_options = sorted(_normalise_text(filtered_df[customer_col]).replace("", pd.NA).dropna().unique().tolist())
+            customer = st.selectbox(
+                "Customer",
+                ["All"] + customer_options,
+                key="oa_customer",
+            )
+        else:
+            customer = "All"
+            st.selectbox("Customer", ["All"], disabled=True, key="oa_customer_missing")
+
+    filtered_df = _filter_equals(filtered_df, customer_col, customer)
+
+    # Age bucket filter
+    with filter_col8:
+        available_buckets = [
+            bucket for bucket in ["0-30", "31-60", "61-90", "Above 90"]
+            if "age_bucket" in filtered_df.columns
+            and bucket in filtered_df["age_bucket"].dropna().unique().tolist()
+        ]
+        age_bucket = st.selectbox(
+            "Age Bucket",
+            ["All"] + available_buckets,
+            key="oa_age_bucket",
+        )
+
+    if age_bucket != "All" and "age_bucket" in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df["age_bucket"] == age_bucket]
+
+    if filtered_df.empty:
+        st.warning("No data found for selected filters")
+        return
+
+    # Additional document type filter retained below the Overview-style row.
+    if doctype_col:
+        doc_options = sorted(_normalise_text(filtered_df[doctype_col]).replace("", pd.NA).dropna().unique().tolist())
+        document_type = st.selectbox(
+            "Document Type",
+            ["All"] + doc_options,
+            key="oa_document_type",
+        )
+        filtered_df = _filter_equals(filtered_df, doctype_col, document_type)
+
+    if filtered_df.empty:
+        st.warning("No data found for selected document type")
+        return
+
+    fdf = filtered_df.copy()
+
+    # ------------------------------------------------------------------
     # KPI ROW
-    # ----------------------------------------------------------------
-    total_bill = fdf["billamount"].sum() if "billamount" in fdf else 0
-    total_recd = fdf["recdamount"].sum() if "recdamount" in fdf else 0
-    total_balance = fdf["balance"].sum() if "balance" in fdf else 0
-    total_onacc = fdf["onaccrecd"].sum() if "onaccrecd" in fdf else 0
-    total_net = fdf["netbalance"].sum() if "netbalance" in fdf else 0
-    overdue_90 = fdf.loc[fdf["age_bucket"] == "Above 90", "netbalance"].sum() if "netbalance" in fdf else 0
-    invoice_count = fdf["invoiceno"].nunique() if "invoiceno" in fdf else len(fdf)
-    customer_count = fdf["custname"].nunique() if "custname" in fdf else 0
+    # ------------------------------------------------------------------
+    total_bill = fdf["billamount"].sum() if "billamount" in fdf.columns else 0
+    total_recd = fdf["recdamount"].sum() if "recdamount" in fdf.columns else 0
+    total_balance = fdf["balance"].sum() if "balance" in fdf.columns else 0
+    total_onacc = fdf["onaccrecd"].sum() if "onaccrecd" in fdf.columns else 0
+    total_net = fdf["netbalance"].sum() if "netbalance" in fdf.columns else 0
+
+    overdue_90 = 0
+    if "age_bucket" in fdf.columns and "netbalance" in fdf.columns:
+        overdue_90 = fdf.loc[
+            fdf["age_bucket"] == "Above 90", "netbalance"
+        ].sum()
+
+    invoice_count = (
+        fdf["invoiceno"].nunique()
+        if "invoiceno" in fdf.columns
+        else len(fdf)
+    )
+    customer_count = (
+        fdf[customer_col].nunique()
+        if customer_col and customer_col in fdf.columns
+        else 0
+    )
 
     k1, k2, k3, k4, k5, k6 = st.columns(6)
     with k1:
@@ -243,128 +490,291 @@ def show_OutstandingAnalysis():
     with k6:
         _kpi_card("Overdue > 90 Days", _inr(overdue_90), "high risk", "red")
 
-    st.write("")
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # ----------------------------------------------------------------
-    # CHARTS ROW 1 - Ageing + Zone
-    # ----------------------------------------------------------------
-    st.markdown("<div class='oa-section-title'>Ageing & Zone-wise Outstanding</div>", unsafe_allow_html=True)
+    # ------------------------------------------------------------------
+    # CHARTS ROW 1
+    # ------------------------------------------------------------------
+    st.markdown(
+        "<div class='oa-section-title'>Ageing & Zone-wise Outstanding</div>",
+        unsafe_allow_html=True,
+    )
     c1, c2 = st.columns([1, 1.3])
 
     with c1:
-        bucket_order = ["0-30", "31-60", "61-90", "Above 90"]
-        age_df = fdf.groupby("age_bucket")["netbalance"].sum().reindex(bucket_order).fillna(0).reset_index()
-        fig_age = px.pie(
-            age_df, names="age_bucket", values="netbalance", hole=0.55, color="age_bucket",
-            color_discrete_map={"0-30": "#16a34a", "31-60": "#d97706", "61-90": "#ea580c", "Above 90": "#dc2626"},
-            title="Net Outstanding by Age Bucket",
-        )
-        fig_age.update_traces(textinfo="percent+label")
-        fig_age.update_layout(height=380, showlegend=False, margin=dict(t=50, b=10, l=10, r=10))
-        st.plotly_chart(fig_age, use_container_width=True)
+        if "age_bucket" in fdf.columns and "netbalance" in fdf.columns:
+            bucket_order = ["0-30", "31-60", "61-90", "Above 90"]
+            age_df = (
+                fdf.groupby("age_bucket")["netbalance"]
+                .sum()
+                .reindex(bucket_order)
+                .fillna(0)
+                .reset_index()
+            )
+            fig_age = px.pie(
+                age_df,
+                names="age_bucket",
+                values="netbalance",
+                hole=0.55,
+                color="age_bucket",
+                color_discrete_map={
+                    "0-30": "#16a34a",
+                    "31-60": "#d97706",
+                    "61-90": "#ea580c",
+                    "Above 90": "#dc2626",
+                },
+                title="Net Outstanding by Age Bucket",
+            )
+            fig_age.update_traces(textinfo="percent+label")
+            fig_age.update_layout(
+                height=340,
+                showlegend=False,
+                margin=dict(t=50, b=10, l=10, r=10),
+            )
+            st.plotly_chart(fig_age, use_container_width=True)
+        else:
+            st.info("Age bucket data is not available")
 
     with c2:
-        if "zonename" in fdf.columns:
-            zone_df = fdf.groupby("zonename")["netbalance"].sum().sort_values(ascending=True).reset_index()
-            fig_zone = px.bar(
-                zone_df, x="netbalance", y="zonename", orientation="h", text="netbalance",
-                title="Net Outstanding by Zone", color="netbalance", color_continuous_scale="Blues",
+        if zone_col and "netbalance" in fdf.columns:
+            zone_df = (
+                fdf.groupby(zone_col)["netbalance"]
+                .sum()
+                .sort_values(ascending=True)
+                .reset_index()
             )
-            fig_zone.update_traces(texttemplate="₹%{text:,.0f}", textposition="outside")
-            fig_zone.update_layout(height=380, coloraxis_showscale=False, margin=dict(t=50, b=10, l=10, r=10),
-                                    xaxis_title="Net Outstanding (₹)", yaxis_title="")
+            fig_zone = px.bar(
+                zone_df,
+                x="netbalance",
+                y=zone_col,
+                orientation="h",
+                text="netbalance",
+                title="Net Outstanding by Zone",
+                color="netbalance",
+                color_continuous_scale="Blues",
+            )
+            fig_zone.update_traces(
+                texttemplate="₹%{text:,.0f}",
+                textposition="outside",
+            )
+            fig_zone.update_layout(
+                height=340,
+                coloraxis_showscale=False,
+                margin=dict(t=50, b=10, l=10, r=30),
+                xaxis_title="Net Outstanding (₹)",
+                yaxis_title="",
+            )
             st.plotly_chart(fig_zone, use_container_width=True)
+        else:
+            st.info("Zone data is not available")
 
-    # ----------------------------------------------------------------
-    # CHARTS ROW 2 - Top customers + Branch table
-    # ----------------------------------------------------------------
-    st.markdown("<div class='oa-section-title'>Top Customers & Branch Performance</div>", unsafe_allow_html=True)
+    # ------------------------------------------------------------------
+    # CHARTS ROW 2
+    # ------------------------------------------------------------------
+    st.markdown(
+        "<div class='oa-section-title'>Top Customers & Branch Performance</div>",
+        unsafe_allow_html=True,
+    )
     c3, c4 = st.columns([1.2, 1])
 
     with c3:
-        top_cust = (
-            fdf.groupby("custname")["netbalance"].sum().sort_values(ascending=False).head(15).sort_values().reset_index()
-        )
-        fig_cust = px.bar(
-            top_cust, x="netbalance", y="custname", orientation="h",
-            title="Top 15 Customers by Net Outstanding", color="netbalance", color_continuous_scale="Reds",
-        )
-        fig_cust.update_layout(height=440, coloraxis_showscale=False, margin=dict(t=50, b=10, l=10, r=10),
-                                xaxis_title="Net Outstanding (₹)", yaxis_title="")
-        st.plotly_chart(fig_cust, use_container_width=True)
-
-    with c4:
-        if "branchname" in fdf.columns:
-            branch_summary = (
-                fdf.groupby("branchname")
-                .agg(
-                    Billed=("billamount", "sum"),
-                    Received=("recdamount", "sum"),
-                    Net_Outstanding=("netbalance", "sum"),
-                    Invoices=("invoiceno", "nunique"),
-                )
-                .sort_values("Net_Outstanding", ascending=False)
+        if customer_col and "netbalance" in fdf.columns:
+            top_cust = (
+                fdf.groupby(customer_col)["netbalance"]
+                .sum()
+                .sort_values(ascending=False)
+                .head(15)
+                .sort_values()
                 .reset_index()
             )
-            st.dataframe(
-                branch_summary.style.format(
-                    {"Billed": "₹{:,.0f}", "Received": "₹{:,.0f}", "Net_Outstanding": "₹{:,.0f}", "Invoices": "{:,.0f}"}
-                ),
-                height=440, use_container_width=True,
+            fig_cust = px.bar(
+                top_cust,
+                x="netbalance",
+                y=customer_col,
+                orientation="h",
+                title="Top 15 Customers by Net Outstanding",
+                color="netbalance",
+                color_continuous_scale="Reds",
             )
+            fig_cust.update_layout(
+                height=420,
+                coloraxis_showscale=False,
+                margin=dict(t=50, b=10, l=10, r=20),
+                xaxis_title="Net Outstanding (₹)",
+                yaxis_title="",
+            )
+            st.plotly_chart(fig_cust, use_container_width=True)
+        else:
+            st.info("Customer data is not available")
 
-    # ----------------------------------------------------------------
-    # TREND CHART
-    # ----------------------------------------------------------------
-    if "invoicedt" in fdf.columns:
-        st.markdown("<div class='oa-section-title'>Monthly Billing vs Collection Trend</div>", unsafe_allow_html=True)
+    with c4:
+        if branch_col:
+            aggregation = {}
+            if "billamount" in fdf.columns:
+                aggregation["Billed"] = ("billamount", "sum")
+            if "recdamount" in fdf.columns:
+                aggregation["Received"] = ("recdamount", "sum")
+            if "netbalance" in fdf.columns:
+                aggregation["Net_Outstanding"] = ("netbalance", "sum")
+            if "invoiceno" in fdf.columns:
+                aggregation["Invoices"] = ("invoiceno", "nunique")
+
+            if aggregation:
+                branch_summary = (
+                    fdf.groupby(branch_col)
+                    .agg(**aggregation)
+                    .reset_index()
+                )
+                if "Net_Outstanding" in branch_summary.columns:
+                    branch_summary = branch_summary.sort_values(
+                        "Net_Outstanding", ascending=False
+                    )
+
+                money_columns = [
+                    column for column in ["Billed", "Received", "Net_Outstanding"]
+                    if column in branch_summary.columns
+                ]
+                format_map = {column: "₹{:,.0f}" for column in money_columns}
+                if "Invoices" in branch_summary.columns:
+                    format_map["Invoices"] = "{:,.0f}"
+
+                st.dataframe(
+                    branch_summary.style.format(format_map),
+                    height=420,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+            else:
+                st.info("Branch summary fields are not available")
+        else:
+            st.info("Branch data is not available")
+
+    # ------------------------------------------------------------------
+    # MONTHLY TREND
+    # ------------------------------------------------------------------
+    if invoice_date_col and "billamount" in fdf.columns:
+        st.markdown(
+            "<div class='oa-section-title'>Monthly Billing vs Collection Trend</div>",
+            unsafe_allow_html=True,
+        )
+
         trend_df = fdf.copy()
-        trend_df["month"] = trend_df["invoicedt"].dt.to_period("M").dt.to_timestamp()
-        trend = trend_df.groupby("month").agg(Billed=("billamount", "sum"), Received=("recdamount", "sum")).reset_index()
+        trend_df[invoice_date_col] = pd.to_datetime(
+            trend_df[invoice_date_col], errors="coerce"
+        )
+        trend_df["month_start"] = (
+            trend_df[invoice_date_col].dt.to_period("M").dt.to_timestamp()
+        )
+
+        agg_map = {"Billed": ("billamount", "sum")}
+        if "recdamount" in trend_df.columns:
+            agg_map["Received"] = ("recdamount", "sum")
+
+        trend = trend_df.groupby("month_start").agg(**agg_map).reset_index()
 
         fig_trend = go.Figure()
-        fig_trend.add_trace(go.Bar(x=trend["month"], y=trend["Billed"], name="Billed", marker_color="#2563eb"))
-        fig_trend.add_trace(go.Scatter(x=trend["month"], y=trend["Received"], name="Received", mode="lines+markers", line=dict(color="#16a34a", width=3)))
-        fig_trend.update_layout(height=380, barmode="group", margin=dict(t=30, b=10, l=10, r=10),
-                                 yaxis_title="Amount (₹)", legend=dict(orientation="h", yanchor="bottom", y=1.02))
+        fig_trend.add_trace(
+            go.Bar(
+                x=trend["month_start"],
+                y=trend["Billed"],
+                name="Billed",
+                marker_color="#2563eb",
+            )
+        )
+
+        if "Received" in trend.columns:
+            fig_trend.add_trace(
+                go.Scatter(
+                    x=trend["month_start"],
+                    y=trend["Received"],
+                    name="Received",
+                    mode="lines+markers",
+                    line=dict(color="#16a34a", width=3),
+                )
+            )
+
+        fig_trend.update_layout(
+            height=350,
+            barmode="group",
+            margin=dict(t=30, b=10, l=10, r=10),
+            yaxis_title="Amount (₹)",
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+            ),
+        )
         st.plotly_chart(fig_trend, use_container_width=True)
 
-    # ----------------------------------------------------------------
+    # ------------------------------------------------------------------
     # DETAIL TABLE + EXPORT
-    # ----------------------------------------------------------------
-    st.markdown("<div class='oa-section-title'>Detailed Records</div>", unsafe_allow_html=True)
+    # ------------------------------------------------------------------
+    st.markdown(
+        "<div class='oa-section-title'>Detailed Records</div>",
+        unsafe_allow_html=True,
+    )
 
-    show_cols = [
-        c for c in [
-            "zonename", "branchname", "custname", "grtype", "documenttype", "invoiceno",
-            "invoicedt", "duedt", "billamount", "recdamount", "balance", "onaccrecd",
-            "netbalance", "outstandingdays", "age_bucket",
-        ] if c in fdf.columns
+    preferred_columns = [
+        zone_col,
+        circle_col,
+        branch_col,
+        customer_col,
+        "grtype",
+        doctype_col,
+        "invoiceno",
+        invoice_date_col,
+        "duedt",
+        "billamount",
+        "recdamount",
+        "balance",
+        "onaccrecd",
+        "netbalance",
+        "outstandingdays",
+        "age_bucket",
     ]
 
-    search = st.text_input("🔍 Search (customer, invoice no, branch...)", "", key="oa_search")
-    detail_df = fdf[show_cols]
+    show_cols = []
+    for column in preferred_columns:
+        if column and column in fdf.columns and column not in show_cols:
+            show_cols.append(column)
+
+    search = st.text_input(
+        "🔍 Search customer, invoice number, branch...",
+        "",
+        key="oa_search",
+    )
+
+    detail_df = fdf[show_cols].copy() if show_cols else fdf.copy()
+
     if search:
-        mask = detail_df.apply(lambda r: r.astype(str).str.contains(search, case=False, na=False).any(), axis=1)
-        detail_df = detail_df[mask]
+        search_mask = detail_df.apply(
+            lambda row: row.astype(str)
+            .str.contains(search, case=False, na=False)
+            .any(),
+            axis=1,
+        )
+        detail_df = detail_df[search_mask]
 
-    st.dataframe(detail_df, use_container_width=True, height=420)
+    st.dataframe(
+        detail_df,
+        use_container_width=True,
+        height=420,
+        hide_index=True,
+    )
 
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+    export_buffer = io.BytesIO()
+    with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
         detail_df.to_excel(writer, index=False, sheet_name="Outstanding")
+
     st.download_button(
         "⬇️ Download filtered data (Excel)",
-        data=buf.getvalue(),
+        data=export_buffer.getvalue(),
         file_name=f"outstanding_filtered_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key="oa_download",
     )
 
-    last_refreshed = st.session_state.get("oa_last_refreshed")
-    if last_refreshed is None:
-        last_refreshed = datetime.now()
-
+    last_refreshed = st.session_state.get("oa_last_refreshed", datetime.now())
     st.caption(
         f"Last refreshed: {last_refreshed.strftime('%d-%b-%Y %H:%M')} "
         f"| Total records: {len(fdf):,}"
