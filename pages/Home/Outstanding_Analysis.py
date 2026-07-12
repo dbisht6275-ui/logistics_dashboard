@@ -1,0 +1,326 @@
+"""
+pages/Home/Outstanding_Analysis.py
+====================================
+"Outstanding Analysis" page — zone / branch / customer wise receivables
+and ageing analysis, sourced from the Alloutstanding_BI stored procedure.
+
+Data layer : services/data_outstanding.py
+Fallback   : manual Excel upload (same column structure as the SP output)
+
+Called from main.py as:  show_OutstandingAnalysis()
+"""
+
+import io
+from datetime import datetime
+
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import streamlit as st
+
+from services.data_outstanding import (
+    get_engine,
+    get_outstanding_data,
+    load_from_excel,
+    DEFAULT_PARAMS,
+)
+
+ACCENT = {
+    "blue": "#2563eb",
+    "green": "#16a34a",
+    "red": "#dc2626",
+    "amber": "#d97706",
+    "purple": "#7c3aed",
+    "teal": "#0d9488",
+}
+
+
+def _inject_css():
+    st.markdown(
+        """
+        <style>
+            .oa-kpi-card {
+                background: linear-gradient(135deg, #ffffff 0%, #f3f6fb 100%);
+                border-radius: 14px;
+                padding: 18px 20px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+                border-left: 6px solid var(--accent, #2563eb);
+                text-align: left;
+            }
+            .oa-kpi-label {
+                font-size: 13px; color: #6b7280; font-weight: 600;
+                text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px;
+            }
+            .oa-kpi-value { font-size: 26px; font-weight: 700; color: #111827; }
+            .oa-kpi-sub { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+            .oa-section-title {
+                font-size: 20px; font-weight: 700; color: #111827;
+                margin: 18px 0 6px 0; border-bottom: 2px solid #e5e7eb; padding-bottom: 6px;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _kpi_card(label, value, sub="", color="blue"):
+    st.markdown(
+        f"""
+        <div class="oa-kpi-card" style="--accent:{ACCENT.get(color, '#2563eb')}">
+            <div class="oa-kpi-label">{label}</div>
+            <div class="oa-kpi-value">{value}</div>
+            <div class="oa-kpi-sub">{sub}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _inr(x):
+    try:
+        x = float(x)
+    except (TypeError, ValueError):
+        return "₹0"
+    neg = x < 0
+    x = abs(x)
+    return f"{'-' if neg else ''}₹{x:,.0f}"
+
+
+def show_OutstandingAnalysis():
+    _inject_css()
+
+    st.markdown(
+        "<h2 style='margin-bottom:0;'>📈 Outstanding Analysis</h2>"
+        "<p style='color:#6b7280;margin-top:0;'>Zone / Branch / Customer wise receivables &amp; ageing (Alloutstanding_BI)</p>",
+        unsafe_allow_html=True,
+    )
+
+    # ----------------------------------------------------------------
+    # DATA SOURCE + SP PARAMETERS (kept in-page, not in the nav sidebar)
+    # ----------------------------------------------------------------
+    with st.expander("⚙️ Report Parameters & Data Source", expanded="oa_df" not in st.session_state):
+        src_col, _ = st.columns([1, 3])
+        source_mode = src_col.radio(
+            "Data source", ["SQL Server (Stored Procedure)", "Upload Excel"],
+            key="oa_source_mode", horizontal=True,
+        )
+
+        if source_mode == "SQL Server (Stored Procedure)":
+            c1, c2, c3, c4 = st.columns(4)
+            server = c1.text_input("Server", key="oa_server")
+            database = c2.text_input("Database", key="oa_database")
+            username = c3.text_input("Username", key="oa_username")
+            password = c4.text_input("Password", type="password", key="oa_password")
+
+            p1, p2, p3, p4 = st.columns(4)
+            p_branch = p1.text_input("Branch code", value=DEFAULT_PARAMS["branch"], key="oa_branch")
+            p_type = p2.text_input("Type (grtype)", value=DEFAULT_PARAMS["grtype"], key="oa_grtype")
+            p_fromdt = p3.date_input("From date", value=DEFAULT_PARAMS["from_dt"], key="oa_fromdt")
+            p_todt = p4.date_input("To date", value=DEFAULT_PARAMS["to_dt"], key="oa_todt")
+
+            p5, p6, p7, p8 = st.columns(4)
+            p_asondt = p5.date_input("As on date", value=DEFAULT_PARAMS["as_on_dt"], key="oa_asondt")
+            p_custcode = p6.text_input("Customer code", value=DEFAULT_PARAMS["custcode"], key="oa_custcode")
+            p_invoiceno = p7.text_input("Invoice no (blank = all)", value=DEFAULT_PARAMS["invoiceno"], key="oa_invoiceno")
+            p_user = p8.text_input("User", value=DEFAULT_PARAMS["user"], key="oa_user")
+
+            if st.button("▶ Run Report", type="primary", key="oa_run_btn"):
+                if not server or not database or not username:
+                    st.error("Please fill in the connection details.")
+                else:
+                    try:
+                        engine = get_engine(server, database, username, password)
+                        st.session_state["oa_df"] = get_outstanding_data(
+                            engine,
+                            p_branch, p_type,
+                            p_fromdt.strftime("%Y-%m-%d"),
+                            p_todt.strftime("%Y-%m-%d"),
+                            p_asondt.strftime("%Y-%m-%d"),
+                            p_custcode, p_invoiceno, p_user,
+                        )
+                        st.success(f"Loaded {len(st.session_state['oa_df']):,} records.")
+                    except Exception as e:
+                        st.error(f"Connection / query failed: {e}")
+        else:
+            uploaded = st.file_uploader("Upload Excel (Alloutstanding_BI output)", type=["xlsx", "xls"], key="oa_uploader")
+            if uploaded is not None:
+                st.session_state["oa_df"] = load_from_excel(uploaded)
+
+    df = st.session_state.get("oa_df")
+
+    if df is None or df.empty:
+        st.info("👆 Set the report parameters above and click **Run Report**, or upload the Excel export.")
+        return
+
+    # ----------------------------------------------------------------
+    # FILTERS
+    # ----------------------------------------------------------------
+    f1, f2, f3, f4, f5 = st.columns(5)
+    zones = sorted(df["zonename"].dropna().unique()) if "zonename" in df.columns else []
+    branches = sorted(df["branchname"].dropna().unique()) if "branchname" in df.columns else []
+    customers = sorted(df["custname"].dropna().unique()) if "custname" in df.columns else []
+    doctypes = sorted(df["documenttype"].dropna().unique()) if "documenttype" in df.columns else []
+
+    sel_zone = f1.multiselect("Zone", zones, placeholder="All zones", key="oa_f_zone")
+    sel_branch = f2.multiselect("Branch", branches, placeholder="All branches", key="oa_f_branch")
+    sel_customer = f3.multiselect("Customer", customers, placeholder="All customers", key="oa_f_cust")
+    sel_doctype = f4.multiselect("Document Type", doctypes, placeholder="All doc types", key="oa_f_doctype")
+    sel_bucket = f5.multiselect("Age Bucket", ["0-30", "31-60", "61-90", "Above 90"], placeholder="All buckets", key="oa_f_bucket")
+
+    fdf = df.copy()
+    if sel_zone:
+        fdf = fdf[fdf["zonename"].isin(sel_zone)]
+    if sel_branch:
+        fdf = fdf[fdf["branchname"].isin(sel_branch)]
+    if sel_customer:
+        fdf = fdf[fdf["custname"].isin(sel_customer)]
+    if sel_doctype:
+        fdf = fdf[fdf["documenttype"].isin(sel_doctype)]
+    if sel_bucket:
+        fdf = fdf[fdf["age_bucket"].isin(sel_bucket)]
+
+    # ----------------------------------------------------------------
+    # KPI ROW
+    # ----------------------------------------------------------------
+    total_bill = fdf["billamount"].sum() if "billamount" in fdf else 0
+    total_recd = fdf["recdamount"].sum() if "recdamount" in fdf else 0
+    total_balance = fdf["balance"].sum() if "balance" in fdf else 0
+    total_onacc = fdf["onaccrecd"].sum() if "onaccrecd" in fdf else 0
+    total_net = fdf["netbalance"].sum() if "netbalance" in fdf else 0
+    overdue_90 = fdf.loc[fdf["age_bucket"] == "Above 90", "netbalance"].sum() if "netbalance" in fdf else 0
+    invoice_count = fdf["invoiceno"].nunique() if "invoiceno" in fdf else len(fdf)
+    customer_count = fdf["custname"].nunique() if "custname" in fdf else 0
+
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
+    with k1:
+        _kpi_card("Total Billed", _inr(total_bill), f"{invoice_count:,} invoices", "blue")
+    with k2:
+        _kpi_card("Total Received", _inr(total_recd), "incl. on-account", "green")
+    with k3:
+        _kpi_card("Balance", _inr(total_balance), "before on-account adj.", "teal")
+    with k4:
+        _kpi_card("On-Account Recd", _inr(total_onacc), "", "purple")
+    with k5:
+        _kpi_card("Net Outstanding", _inr(total_net), f"{customer_count:,} customers", "amber")
+    with k6:
+        _kpi_card("Overdue > 90 Days", _inr(overdue_90), "high risk", "red")
+
+    st.write("")
+
+    # ----------------------------------------------------------------
+    # CHARTS ROW 1 - Ageing + Zone
+    # ----------------------------------------------------------------
+    st.markdown("<div class='oa-section-title'>Ageing & Zone-wise Outstanding</div>", unsafe_allow_html=True)
+    c1, c2 = st.columns([1, 1.3])
+
+    with c1:
+        bucket_order = ["0-30", "31-60", "61-90", "Above 90"]
+        age_df = fdf.groupby("age_bucket")["netbalance"].sum().reindex(bucket_order).fillna(0).reset_index()
+        fig_age = px.pie(
+            age_df, names="age_bucket", values="netbalance", hole=0.55, color="age_bucket",
+            color_discrete_map={"0-30": "#16a34a", "31-60": "#d97706", "61-90": "#ea580c", "Above 90": "#dc2626"},
+            title="Net Outstanding by Age Bucket",
+        )
+        fig_age.update_traces(textinfo="percent+label")
+        fig_age.update_layout(height=380, showlegend=False, margin=dict(t=50, b=10, l=10, r=10))
+        st.plotly_chart(fig_age, use_container_width=True)
+
+    with c2:
+        if "zonename" in fdf.columns:
+            zone_df = fdf.groupby("zonename")["netbalance"].sum().sort_values(ascending=True).reset_index()
+            fig_zone = px.bar(
+                zone_df, x="netbalance", y="zonename", orientation="h", text="netbalance",
+                title="Net Outstanding by Zone", color="netbalance", color_continuous_scale="Blues",
+            )
+            fig_zone.update_traces(texttemplate="₹%{text:,.0f}", textposition="outside")
+            fig_zone.update_layout(height=380, coloraxis_showscale=False, margin=dict(t=50, b=10, l=10, r=10),
+                                    xaxis_title="Net Outstanding (₹)", yaxis_title="")
+            st.plotly_chart(fig_zone, use_container_width=True)
+
+    # ----------------------------------------------------------------
+    # CHARTS ROW 2 - Top customers + Branch table
+    # ----------------------------------------------------------------
+    st.markdown("<div class='oa-section-title'>Top Customers & Branch Performance</div>", unsafe_allow_html=True)
+    c3, c4 = st.columns([1.2, 1])
+
+    with c3:
+        top_cust = (
+            fdf.groupby("custname")["netbalance"].sum().sort_values(ascending=False).head(15).sort_values().reset_index()
+        )
+        fig_cust = px.bar(
+            top_cust, x="netbalance", y="custname", orientation="h",
+            title="Top 15 Customers by Net Outstanding", color="netbalance", color_continuous_scale="Reds",
+        )
+        fig_cust.update_layout(height=440, coloraxis_showscale=False, margin=dict(t=50, b=10, l=10, r=10),
+                                xaxis_title="Net Outstanding (₹)", yaxis_title="")
+        st.plotly_chart(fig_cust, use_container_width=True)
+
+    with c4:
+        if "branchname" in fdf.columns:
+            branch_summary = (
+                fdf.groupby("branchname")
+                .agg(
+                    Billed=("billamount", "sum"),
+                    Received=("recdamount", "sum"),
+                    Net_Outstanding=("netbalance", "sum"),
+                    Invoices=("invoiceno", "nunique"),
+                )
+                .sort_values("Net_Outstanding", ascending=False)
+                .reset_index()
+            )
+            st.dataframe(
+                branch_summary.style.format(
+                    {"Billed": "₹{:,.0f}", "Received": "₹{:,.0f}", "Net_Outstanding": "₹{:,.0f}", "Invoices": "{:,.0f}"}
+                ),
+                height=440, use_container_width=True,
+            )
+
+    # ----------------------------------------------------------------
+    # TREND CHART
+    # ----------------------------------------------------------------
+    if "invoicedt" in fdf.columns:
+        st.markdown("<div class='oa-section-title'>Monthly Billing vs Collection Trend</div>", unsafe_allow_html=True)
+        trend_df = fdf.copy()
+        trend_df["month"] = trend_df["invoicedt"].dt.to_period("M").dt.to_timestamp()
+        trend = trend_df.groupby("month").agg(Billed=("billamount", "sum"), Received=("recdamount", "sum")).reset_index()
+
+        fig_trend = go.Figure()
+        fig_trend.add_trace(go.Bar(x=trend["month"], y=trend["Billed"], name="Billed", marker_color="#2563eb"))
+        fig_trend.add_trace(go.Scatter(x=trend["month"], y=trend["Received"], name="Received", mode="lines+markers", line=dict(color="#16a34a", width=3)))
+        fig_trend.update_layout(height=380, barmode="group", margin=dict(t=30, b=10, l=10, r=10),
+                                 yaxis_title="Amount (₹)", legend=dict(orientation="h", yanchor="bottom", y=1.02))
+        st.plotly_chart(fig_trend, use_container_width=True)
+
+    # ----------------------------------------------------------------
+    # DETAIL TABLE + EXPORT
+    # ----------------------------------------------------------------
+    st.markdown("<div class='oa-section-title'>Detailed Records</div>", unsafe_allow_html=True)
+
+    show_cols = [
+        c for c in [
+            "zonename", "branchname", "custname", "grtype", "documenttype", "invoiceno",
+            "invoicedt", "duedt", "billamount", "recdamount", "balance", "onaccrecd",
+            "netbalance", "outstandingdays", "age_bucket",
+        ] if c in fdf.columns
+    ]
+
+    search = st.text_input("🔍 Search (customer, invoice no, branch...)", "", key="oa_search")
+    detail_df = fdf[show_cols]
+    if search:
+        mask = detail_df.apply(lambda r: r.astype(str).str.contains(search, case=False, na=False).any(), axis=1)
+        detail_df = detail_df[mask]
+
+    st.dataframe(detail_df, use_container_width=True, height=420)
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        detail_df.to_excel(writer, index=False, sheet_name="Outstanding")
+    st.download_button(
+        "⬇️ Download filtered data (Excel)",
+        data=buf.getvalue(),
+        file_name=f"outstanding_filtered_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="oa_download",
+    )
+
+    st.caption(f"Last refreshed: {datetime.now().strftime('%d-%b-%Y %H:%M')} | Total records: {len(fdf):,}")

@@ -7,6 +7,7 @@ from pages.Home.overview_tab import show_overview
 from pages.Home.comparison_tab import show_comparison
 from pages.Home.Customer_Analysis import show_CustomerAnalysis
 from pages.Home.Service_Analysis import show_service_level
+from pages.Home.Outstanding_Analysis import show_OutstandingAnalysis
 from pages.IT.zone_booking_turnover import show_ZoneBookingTurnover
 
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
@@ -284,7 +285,7 @@ st.markdown("""
 FULL_MENU_ITEMS = [
     "🏠 Overview",
     "📊 Comparison",
-    "📈 Branch Analysis",
+    "📈 Outstanding Analysis",
     "👥 Customer Analysis",
     "🚛 Service Analysis",
     "📄 Reports",
@@ -465,8 +466,8 @@ if menu == "🏠 Overview":
 elif menu == "📊 Comparison":
     show_comparison()
 
-elif menu == "📈 Branch Analysis":
-    st.info("Branch Analysis page coming soon.")
+elif menu == "📈 Outstanding Analysis":
+    show_OutstandingAnalysis()
 
 elif menu == "👥 Customer Analysis":
     show_CustomerAnalysis()
