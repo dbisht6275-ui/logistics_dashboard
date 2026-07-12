@@ -130,7 +130,7 @@ def get_date_range(fin_year):
 DEFAULT_PARAMS = {
     "branch": "00000",
     "grtype": "C",
-    "from_dt": date(2025, 4, 1),
+    "from_dt": date(1980, 1, 1),
     "to_dt": date(2026, 3, 31),
     "as_on_dt": date(2026, 3, 31),
     "custcode": "0000",
