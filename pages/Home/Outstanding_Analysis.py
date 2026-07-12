@@ -318,11 +318,78 @@ def _validate_dates(from_date, to_date, as_on_date):
     return None
 
 
+def _safe_selectbox(
+    label,
+    options,
+    key,
+    *,
+    disabled=False,
+    help_text=None,
+):
+    """
+    Render a selectbox safely when its options change between reruns.
+
+    Streamlit keeps widget values in session_state. If a previously selected
+    value is no longer present in the new option list, reset it before creating
+    the widget. This prevents errors when Zone/Circle/Branch filters cascade.
+    """
+    clean_options = list(options)
+
+    if not clean_options:
+        clean_options = ["Not available"]
+        disabled = True
+
+    current_value = st.session_state.get(key)
+
+    if current_value not in clean_options:
+        st.session_state[key] = clean_options[0]
+
+    return st.selectbox(
+        label,
+        clean_options,
+        key=key,
+        disabled=disabled,
+        help=help_text,
+    )
+
+
+def _clear_old_outstanding_widget_state():
+    """
+    Remove keys used by older versions of this page.
+
+    Earlier code used 'oa_branch' for the stored-procedure branch text input.
+    The current page uses a Branch filter, so stale values such as '00000'
+    can conflict with the new selectbox after deployment.
+    """
+    old_keys = [
+        "oa_branch",
+        "oa_grtype",
+        "oa_fromdt",
+        "oa_todt",
+        "oa_asondt",
+        "oa_custcode",
+        "oa_invoiceno",
+        "oa_user",
+        "oa_f_zone",
+        "oa_f_branch",
+        "oa_f_cust",
+        "oa_f_doctype",
+        "oa_f_bucket",
+    ]
+
+    if not st.session_state.get("oa_widget_state_migrated_v2"):
+        for old_key in old_keys:
+            st.session_state.pop(old_key, None)
+
+        st.session_state["oa_widget_state_migrated_v2"] = True
+
+
 # ---------------------------------------------------------------------------
 # PAGE
 # ---------------------------------------------------------------------------
 
 def show_OutstandingAnalysis():
+    _clear_old_outstanding_widget_state()
     _inject_css()
 
     st.markdown(
@@ -495,26 +562,26 @@ def show_OutstandingAnalysis():
         if zone_col:
             if locked_zone:
                 selected_zone = locked_zone
-                st.selectbox(
+                _safe_selectbox(
                     "Zone",
                     [selected_zone],
+                    "oa_filter_zone_locked_v2",
                     disabled=True,
-                    help="Locked as per your assigned rights",
-                    key="oa_zone_locked",
+                    help_text="Locked as per your assigned rights",
                 )
             else:
-                selected_zone = st.selectbox(
+                selected_zone = _safe_selectbox(
                     "Zone",
                     ["All"] + _sorted_values(scoped_df, zone_col),
-                    key="oa_zone",
+                    "oa_filter_zone_v2",
                 )
         else:
             selected_zone = "All"
-            st.selectbox(
+            _safe_selectbox(
                 "Zone",
                 ["Not available"],
+                "oa_filter_zone_missing_v2",
                 disabled=True,
-                key="oa_zone_missing",
             )
 
     working_df = scoped_df.copy()
@@ -528,26 +595,26 @@ def show_OutstandingAnalysis():
         if circle_col:
             if locked_circle:
                 selected_circle = locked_circle
-                st.selectbox(
+                _safe_selectbox(
                     "Circle",
                     [selected_circle],
+                    "oa_filter_circle_locked_v2",
                     disabled=True,
-                    help="Locked as per your assigned rights",
-                    key="oa_circle_locked",
+                    help_text="Locked as per your assigned rights",
                 )
             else:
-                selected_circle = st.selectbox(
+                selected_circle = _safe_selectbox(
                     "Circle",
                     ["All"] + _sorted_values(working_df, circle_col),
-                    key="oa_circle",
+                    "oa_filter_circle_v2",
                 )
         else:
             selected_circle = "All"
-            st.selectbox(
+            _safe_selectbox(
                 "Circle",
                 ["Not available"],
+                "oa_filter_circle_missing_v2",
                 disabled=True,
-                key="oa_circle_missing",
             )
 
     if selected_circle != "All" and circle_col:
@@ -559,26 +626,26 @@ def show_OutstandingAnalysis():
         if branch_col:
             if locked_branch:
                 selected_branch = locked_branch
-                st.selectbox(
+                _safe_selectbox(
                     "Branch",
                     [selected_branch],
+                    "oa_filter_branch_locked_v2",
                     disabled=True,
-                    help="Locked as per your assigned rights",
-                    key="oa_branch_locked",
+                    help_text="Locked as per your assigned rights",
                 )
             else:
-                selected_branch = st.selectbox(
+                selected_branch = _safe_selectbox(
                     "Branch",
                     ["All"] + _sorted_values(working_df, branch_col),
-                    key="oa_branch",
+                    "oa_filter_branch_v2",
                 )
         else:
             selected_branch = "All"
-            st.selectbox(
+            _safe_selectbox(
                 "Branch",
                 ["Not available"],
+                "oa_filter_branch_missing_v2",
                 disabled=True,
-                key="oa_branch_missing",
             )
 
     if selected_branch != "All" and branch_col:
@@ -588,18 +655,18 @@ def show_OutstandingAnalysis():
 
     with filter_columns[3]:
         if customer_col:
-            selected_customer = st.selectbox(
+            selected_customer = _safe_selectbox(
                 "Customer",
                 ["All"] + _sorted_values(working_df, customer_col),
-                key="oa_customer",
+                "oa_filter_customer_v2",
             )
         else:
             selected_customer = "All"
-            st.selectbox(
+            _safe_selectbox(
                 "Customer",
                 ["Not available"],
+                "oa_filter_customer_missing_v2",
                 disabled=True,
-                key="oa_customer_missing",
             )
 
     if selected_customer != "All" and customer_col:
@@ -609,18 +676,18 @@ def show_OutstandingAnalysis():
 
     with filter_columns[4]:
         if document_col:
-            selected_document = st.selectbox(
+            selected_document = _safe_selectbox(
                 "Document Type",
                 ["All"] + _sorted_values(working_df, document_col),
-                key="oa_document_type",
+                "oa_filter_document_v2",
             )
         else:
             selected_document = "All"
-            st.selectbox(
+            _safe_selectbox(
                 "Document Type",
                 ["Not available"],
+                "oa_filter_document_missing_v2",
                 disabled=True,
-                key="oa_document_missing",
             )
 
     if selected_document != "All" and document_col:
@@ -636,18 +703,18 @@ def show_OutstandingAnalysis():
                 if bucket in working_df[age_bucket_col].dropna().astype(str).unique()
             ]
 
-            selected_bucket = st.selectbox(
+            selected_bucket = _safe_selectbox(
                 "Age Bucket",
                 ["All"] + available_buckets,
-                key="oa_age_bucket",
+                "oa_filter_age_bucket_v2",
             )
         else:
             selected_bucket = "All"
-            st.selectbox(
+            _safe_selectbox(
                 "Age Bucket",
                 ["Not available"],
+                "oa_filter_age_bucket_missing_v2",
                 disabled=True,
-                key="oa_age_bucket_missing",
             )
 
     if selected_bucket != "All" and age_bucket_col:
