@@ -30,9 +30,9 @@ Role-based data scope is read from:
 
 Supported scope examples:
     {}
-    {"zone": "NEPAL ZONE"}
-    {"circle": "NCR CIRCLE"}
-    {"branch": "NOIDA"}
+    {"zone": "NORTH EAST ZONE"}
+    {"circle": "ASSAM - NE"}
+    {"branch": "AGARTALA"}
 """
 
 import io
@@ -406,9 +406,9 @@ def show_OutstandingAnalysis():
     # THREE STORED-PROCEDURE DATE PARAMETERS
     # -----------------------------------------------------------------------
 
-    default_from_date = date(2025, 4, 1)
-    default_to_date = date(2026, 3, 31)
-    default_as_on_date = date(2026, 3, 31)
+    default_from_date = date(1980, 1, 1)
+    default_to_date = date(2026, 6, 30)
+    default_as_on_date = date(2026, 6, 30)
 
     date_col1, date_col2, date_col3, run_col = st.columns(
         [1.25, 1.25, 1.25, 0.9]
@@ -500,18 +500,13 @@ def show_OutstandingAnalysis():
     # DETECT AVAILABLE HIERARCHY COLUMNS
     # -----------------------------------------------------------------------
 
-    zone_col = _find_column(
-        df,
-        ["zonename", "zone_name", "zone"],
-    )
-    circle_col = _find_column(
-        df,
-        ["circlename", "circle_name", "circle"],
-    )
-    branch_col = _find_column(
-        df,
-        ["branchname", "branch_name", "branch"],
-    )
+    # Exact hierarchy columns now returned by Alloutstanding_BI:
+    #   s.zonename AS zone
+    #   s.hubname  AS circle
+    #   o.branchname
+    zone_col = "zone" if "zone" in df.columns else None
+    circle_col = "circle" if "circle" in df.columns else None
+    branch_col = "branchname" if "branchname" in df.columns else None
     customer_col = _find_column(
         df,
         ["custname", "customername", "customer_name", "customer"],
@@ -524,6 +519,23 @@ def show_OutstandingAnalysis():
         df,
         ["age_bucket", "agebucket"],
     )
+
+    missing_hierarchy = [
+        name
+        for name, column in {
+            "zone": zone_col,
+            "circle": circle_col,
+            "branchname": branch_col,
+        }.items()
+        if column is None
+    ]
+
+    if missing_hierarchy:
+        st.error(
+            "Outstanding stored procedure is missing required hierarchy columns: "
+            + ", ".join(missing_hierarchy)
+        )
+        return
 
     # -----------------------------------------------------------------------
     # ROLE-BASED DATA SCOPE
@@ -912,6 +924,122 @@ def show_OutstandingAnalysis():
             st.plotly_chart(fig_zone, use_container_width=True)
         else:
             st.info("Zone data is not available.")
+
+    # -----------------------------------------------------------------------
+    # DOCUMENT TYPE-WISE OUTSTANDING
+    # -----------------------------------------------------------------------
+
+    st.markdown(
+        "<div class='oa-section-title'>Document Type-wise Outstanding</div>",
+        unsafe_allow_html=True,
+    )
+
+    if document_col and "netbalance" in fdf.columns:
+        document_summary = (
+            fdf.groupby(document_col, dropna=False)
+            .agg(
+                Net_Outstanding=("netbalance", "sum"),
+                Documents=(
+                    "invoiceno",
+                    "nunique",
+                ) if "invoiceno" in fdf.columns else (
+                    "netbalance",
+                    "size",
+                ),
+            )
+            .reset_index()
+        )
+
+        if "billamount" in fdf.columns:
+            billed_summary = (
+                fdf.groupby(document_col, dropna=False)["billamount"]
+                .sum()
+                .reset_index(name="Billed")
+            )
+            document_summary = document_summary.merge(
+                billed_summary,
+                on=document_col,
+                how="left",
+            )
+        else:
+            document_summary["Billed"] = 0
+
+        document_summary[document_col] = (
+            document_summary[document_col]
+            .fillna("Unknown")
+            .astype(str)
+            .str.strip()
+            .replace("", "Unknown")
+        )
+
+        document_summary = document_summary.sort_values(
+            "Net_Outstanding",
+            ascending=True,
+        )
+
+        doc_chart_col, doc_table_col = st.columns([1.35, 0.85])
+
+        with doc_chart_col:
+            fig_document = px.bar(
+                document_summary,
+                x="Net_Outstanding",
+                y=document_col,
+                orientation="h",
+                text="Net_Outstanding",
+                color="Net_Outstanding",
+                color_continuous_scale="Oranges",
+                title="Net Outstanding by Document Type",
+            )
+
+            fig_document.update_traces(
+                texttemplate="₹%{text:,.0f}",
+                textposition="outside",
+            )
+
+            max_document_value = (
+                document_summary["Net_Outstanding"].max()
+                if not document_summary.empty
+                else 0
+            )
+
+            fig_document.update_layout(
+                height=max(360, 42 * len(document_summary)),
+                coloraxis_showscale=False,
+                margin=dict(t=50, b=10, l=10, r=45),
+                xaxis_title="Net Outstanding (₹)",
+                yaxis_title="",
+                xaxis_range=(
+                    [0, max_document_value * 1.18]
+                    if max_document_value > 0
+                    else None
+                ),
+            )
+
+            st.plotly_chart(
+                fig_document,
+                use_container_width=True,
+            )
+
+        with doc_table_col:
+            document_table = document_summary.sort_values(
+                "Net_Outstanding",
+                ascending=False,
+            ).copy()
+
+            st.dataframe(
+                document_table.style.format(
+                    {
+                        "Net_Outstanding": "₹{:,.0f}",
+                        "Billed": "₹{:,.0f}",
+                        "Documents": "{:,.0f}",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+                height=max(360, 42 * len(document_table)),
+            )
+    else:
+        st.info("Document Type or Net Outstanding data is not available.")
 
     # -----------------------------------------------------------------------
     # CUSTOMER AND BRANCH ANALYSIS

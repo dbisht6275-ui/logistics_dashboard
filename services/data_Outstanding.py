@@ -1,16 +1,8 @@
-"""
-services/data_outstanding.py
-Data layer for Outstanding Analysis using the same shared engine as Overview.
-"""
-
 from datetime import date
-
 import pandas as pd
 import streamlit as st
 from sqlalchemy import text
-
 from services.database import get_engine
-
 
 @st.cache_data(ttl=1800, show_spinner="Fetching outstanding data...")
 def get_outstanding_data(
