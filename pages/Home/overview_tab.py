@@ -10,52 +10,62 @@ from services.branch_agency_mast import load_stationmast_data
 # Compact dashboard styling
 # =========================
 
-st.markdown("""
-<style>
+def _inject_overview_css():
+    """
+    Apply the same top-alignment logic used on the Outstanding page.
 
-/* Reduce dataframe row height */
-[data-testid="stDataFrame"] table {
-    font-size: 11px;
-}
+    Keeping CSS inside a function prevents Streamlit from rendering separate
+    top-level markdown blocks before the page heading.
+    """
+    st.markdown(
+        """
+        <style>
+            /* Start page content close to the top, same as Outstanding */
+            .block-container {
+                padding-top: 0.5rem;
+                padding-bottom: 1rem;
+            }
 
-[data-testid="stDataFrame"] tbody tr {
-    height: 24px !important;
-}
+            /* Remove unnecessary top spacing from the first page elements */
+            .block-container > div:first-child {
+                margin-top: 0 !important;
+                padding-top: 0 !important;
+            }
 
-</style>
-""", unsafe_allow_html=True)
+            /* Reduce dataframe row height */
+            [data-testid="stDataFrame"] table {
+                font-size: 11px;
+            }
 
-st.markdown("""
-<style>
-/* Reduce Streamlit default spacing */
-.block-container {
-    padding-top: 0.3rem;
-    padding-bottom: 1rem;
-}
+            [data-testid="stDataFrame"] tbody tr {
+                height: 24px !important;
+            }
 
-/* Compact markdown headings inside cards */
-h5, h6 {
-    margin-top: 0rem !important;
-    margin-bottom: 0.35rem !important;
-}
+            /* Compact markdown headings inside cards */
+            h5, h6 {
+                margin-top: 0rem !important;
+                margin-bottom: 0.35rem !important;
+            }
 
-/* Compact segmented control */
-div[data-testid="stSegmentedControl"] {
-    display: flex;
-    justify-content: flex-end;
-}
+            /* Compact segmented control */
+            div[data-testid="stSegmentedControl"] {
+                display: flex;
+                justify-content: flex-end;
+            }
 
-div[data-testid="stSegmentedControl"] label {
-    padding: 4px 10px !important;
-    font-size: 12px !important;
-}
+            div[data-testid="stSegmentedControl"] label {
+                padding: 4px 10px !important;
+                font-size: 12px !important;
+            }
 
-/* Reduce dataframe/table vertical spacing */
-div[data-testid="stDataFrame"] {
-    font-size: 12px;
-}
-</style>
-""", unsafe_allow_html=True)
+            /* Reduce dataframe/table vertical spacing */
+            div[data-testid="stDataFrame"] {
+                font-size: 12px;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def format_cr(v):
@@ -333,14 +343,18 @@ def mini_rank_card(rank, name, value, max_value, color):
 def show_overview():
     """Compact overview dashboard page."""
 
-    header_left, header_right = st.columns([8, 1])
+    _inject_overview_css()
 
-    with header_left:
-        st.markdown("""
-        <h3 style='margin:0;padding:0;'>Revenue Overview</h3>
-        <p style='margin:0;color:#64748b;font-size:12px;'>
+    # Direct heading placement, matching the Outstanding page.
+    st.markdown(
+        """
+        <h3 style="margin:0;padding:0;">Revenue Overview</h3>
+        <p style="color:#64748b;font-size:12px;margin:0 0 8px 0;">
+            Revenue, shipment and branch performance overview
         </p>
-        """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
     # Top filter row: view type, FY, zone, circle, branch, quarter, month and load type
     (
