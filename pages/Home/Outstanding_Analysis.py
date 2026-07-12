@@ -859,29 +859,128 @@ def show_OutstandingAnalysis():
                 .reset_index()
             )
 
-            fig_age = px.pie(
-                age_df,
-                names=age_bucket_col,
-                values="netbalance",
-                hole=0.55,
-                color=age_bucket_col,
-                color_discrete_map={
-                    "0-30": "#16a34a",
-                    "31-60": "#d97706",
-                    "61-90": "#ea580c",
-                    "Above 90": "#dc2626",
-                },
-                title="Net Outstanding by Age Bucket",
-            )
+            total_age_outstanding = age_df["netbalance"].sum()
 
-            fig_age.update_traces(textinfo="percent+label")
-            fig_age.update_layout(
-                height=380,
-                showlegend=False,
-                margin=dict(t=50, b=10, l=10, r=10),
-            )
+            age_colors = {
+                "0-30": "#16a34a",
+                "31-60": "#d97706",
+                "61-90": "#ea580c",
+                "Above 90": "#dc2626",
+            }
 
-            st.plotly_chart(fig_age, use_container_width=True)
+            age_chart_col, age_value_col = st.columns([1.35, 0.65])
+
+            with age_chart_col:
+                fig_age = px.pie(
+                    age_df,
+                    names=age_bucket_col,
+                    values="netbalance",
+                    hole=0.55,
+                    color=age_bucket_col,
+                    color_discrete_map=age_colors,
+                    title="Net Outstanding by Age Bucket",
+                )
+
+                fig_age.update_traces(
+                    textinfo="percent+label",
+                    hovertemplate=(
+                        "<b>%{label}</b><br>"
+                        "Outstanding: ₹%{value:,.0f}<br>"
+                        "Share: %{percent}<extra></extra>"
+                    ),
+                )
+
+                fig_age.update_layout(
+                    height=380,
+                    showlegend=False,
+                    margin=dict(t=50, b=10, l=10, r=10),
+                )
+
+                st.plotly_chart(fig_age, use_container_width=True)
+
+            with age_value_col:
+                st.markdown(
+                    "<div style='height:42px'></div>",
+                    unsafe_allow_html=True,
+                )
+
+                for _, row in age_df.iterrows():
+                    bucket = str(row[age_bucket_col])
+                    value = float(row["netbalance"])
+                    percentage = (
+                        (value / total_age_outstanding) * 100
+                        if total_age_outstanding
+                        else 0
+                    )
+
+                    st.markdown(
+                        f"""
+                        <div style="
+                            display:flex;
+                            align-items:flex-start;
+                            gap:8px;
+                            margin-bottom:14px;
+                        ">
+                            <div style="
+                                width:11px;
+                                height:11px;
+                                border-radius:50%;
+                                background:{age_colors.get(bucket, '#64748b')};
+                                margin-top:5px;
+                                flex-shrink:0;
+                            "></div>
+                            <div>
+                                <div style="
+                                    font-size:12px;
+                                    font-weight:700;
+                                    color:#334155;
+                                ">
+                                    {bucket}
+                                </div>
+                                <div style="
+                                    font-size:14px;
+                                    font-weight:800;
+                                    color:#0f172a;
+                                ">
+                                    {_inr(value)}
+                                </div>
+                                <div style="
+                                    font-size:11px;
+                                    color:#64748b;
+                                ">
+                                    {percentage:.1f}%
+                                </div>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                st.markdown(
+                    f"""
+                    <div style="
+                        border-top:1px solid #e5e7eb;
+                        padding-top:10px;
+                        margin-top:4px;
+                    ">
+                        <div style="
+                            font-size:11px;
+                            color:#64748b;
+                            font-weight:600;
+                        ">
+                            Total
+                        </div>
+                        <div style="
+                            font-size:15px;
+                            color:#0f172a;
+                            font-weight:800;
+                        ">
+                            {_inr(total_age_outstanding)}
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
         else:
             st.info("Age-bucket data is not available.")
 
