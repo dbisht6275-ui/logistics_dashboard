@@ -5,7 +5,7 @@ pages/Home/Outstanding_Analysis.py
 and ageing analysis, sourced from the Alloutstanding_BI stored procedure.
 
 Data layer : services/data_outstanding.py
-Fallback   : manual Excel upload (same column structure as the SP output)
+Database connection: loaded automatically from Streamlit secrets.
 
 Called from main.py as:  show_OutstandingAnalysis()
 """
@@ -21,7 +21,6 @@ import streamlit as st
 from services.data_Outstanding import (
     get_engine,
     get_outstanding_data,
-    load_from_excel,
     DEFAULT_PARAMS,
 )
 
@@ -96,60 +95,71 @@ def show_OutstandingAnalysis():
     )
 
     # ----------------------------------------------------------------
-    # DATA SOURCE + SP PARAMETERS (kept in-page, not in the nav sidebar)
+    # AUTOMATIC DATABASE LOAD
     # ----------------------------------------------------------------
-    with st.expander("⚙️ Report Parameters & Data Source", expanded="oa_df" not in st.session_state):
-        src_col, _ = st.columns([1, 3])
-        source_mode = src_col.radio(
-            "Data source", ["SQL Server (Stored Procedure)", "Upload Excel"],
-            key="oa_source_mode", horizontal=True,
+    # Database credentials are read from .streamlit/secrets.toml or
+    # Streamlit Cloud > App settings > Secrets. Nothing is entered manually.
+    #
+    # Expected secrets format:
+    # [database]
+    # server = "your-server"
+    # database = "your-database"
+    # username = "your-username"
+    # password = "your-password"
+
+    def load_report_data():
+        try:
+            db = st.secrets["database"]
+            engine = get_engine(
+                db["server"],
+                db["database"],
+                db["username"],
+                db["password"],
+            )
+
+            return get_outstanding_data(
+                engine,
+                DEFAULT_PARAMS["branch"],
+                DEFAULT_PARAMS["grtype"],
+                DEFAULT_PARAMS["from_dt"].strftime("%Y-%m-%d"),
+                DEFAULT_PARAMS["to_dt"].strftime("%Y-%m-%d"),
+                DEFAULT_PARAMS["as_on_dt"].strftime("%Y-%m-%d"),
+                DEFAULT_PARAMS["custcode"],
+                DEFAULT_PARAMS["invoiceno"],
+                DEFAULT_PARAMS["user"],
+            )
+        except KeyError as exc:
+            st.error(f"Missing database secret: {exc}")
+            return pd.DataFrame()
+        except Exception as exc:
+            st.error(f"Unable to load outstanding data: {exc}")
+            return pd.DataFrame()
+
+    refresh_col, status_col = st.columns([1, 5])
+    with refresh_col:
+        refresh_clicked = st.button(
+            "🔄 Refresh Data",
+            key="oa_refresh_btn",
+            use_container_width=True,
         )
 
-        if source_mode == "SQL Server (Stored Procedure)":
-            c1, c2, c3, c4 = st.columns(4)
-            server = c1.text_input("Server", key="oa_server")
-            database = c2.text_input("Database", key="oa_database")
-            username = c3.text_input("Username", key="oa_username")
-            password = c4.text_input("Password", type="password", key="oa_password")
+    if refresh_clicked or "oa_df" not in st.session_state:
+        with st.spinner("Loading outstanding data..."):
+            st.session_state["oa_df"] = load_report_data()
+            st.session_state["oa_last_refresh"] = datetime.now()
 
-            p1, p2, p3, p4 = st.columns(4)
-            p_branch = p1.text_input("Branch code", value=DEFAULT_PARAMS["branch"], key="oa_branch")
-            p_type = p2.text_input("Type (grtype)", value=DEFAULT_PARAMS["grtype"], key="oa_grtype")
-            p_fromdt = p3.date_input("From date", value=DEFAULT_PARAMS["from_dt"], key="oa_fromdt")
-            p_todt = p4.date_input("To date", value=DEFAULT_PARAMS["to_dt"], key="oa_todt")
+    df = st.session_state.get("oa_df", pd.DataFrame())
 
-            p5, p6, p7, p8 = st.columns(4)
-            p_asondt = p5.date_input("As on date", value=DEFAULT_PARAMS["as_on_dt"], key="oa_asondt")
-            p_custcode = p6.text_input("Customer code", value=DEFAULT_PARAMS["custcode"], key="oa_custcode")
-            p_invoiceno = p7.text_input("Invoice no (blank = all)", value=DEFAULT_PARAMS["invoiceno"], key="oa_invoiceno")
-            p_user = p8.text_input("User", value=DEFAULT_PARAMS["user"], key="oa_user")
+    with status_col:
+        last_refresh = st.session_state.get("oa_last_refresh")
+        if last_refresh and not df.empty:
+            st.caption(
+                f"Database connected · {len(df):,} records · "
+                f"Last refreshed: {last_refresh.strftime('%d-%b-%Y %H:%M')}"
+            )
 
-            if st.button("▶ Run Report", type="primary", key="oa_run_btn"):
-                if not server or not database or not username:
-                    st.error("Please fill in the connection details.")
-                else:
-                    try:
-                        engine = get_engine(server, database, username, password)
-                        st.session_state["oa_df"] = get_outstanding_data(
-                            engine,
-                            p_branch, p_type,
-                            p_fromdt.strftime("%Y-%m-%d"),
-                            p_todt.strftime("%Y-%m-%d"),
-                            p_asondt.strftime("%Y-%m-%d"),
-                            p_custcode, p_invoiceno, p_user,
-                        )
-                        st.success(f"Loaded {len(st.session_state['oa_df']):,} records.")
-                    except Exception as e:
-                        st.error(f"Connection / query failed: {e}")
-        else:
-            uploaded = st.file_uploader("Upload Excel (Alloutstanding_BI output)", type=["xlsx", "xls"], key="oa_uploader")
-            if uploaded is not None:
-                st.session_state["oa_df"] = load_from_excel(uploaded)
-
-    df = st.session_state.get("oa_df")
-
-    if df is None or df.empty:
-        st.info("👆 Set the report parameters above and click **Run Report**, or upload the Excel export.")
+    if df.empty:
+        st.warning("No outstanding data was returned from the database.")
         return
 
     # ----------------------------------------------------------------
