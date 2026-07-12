@@ -1,15 +1,3 @@
-"""
-pages/Home/Outstanding_Analysis.py
-====================================
-"Outstanding Analysis" page — zone / branch / customer wise receivables
-and ageing analysis, sourced from the Alloutstanding_BI stored procedure.
-
-Data layer : services/data_outstanding.py
-Database connection: loaded automatically from Streamlit secrets.
-
-Called from main.py as:  show_OutstandingAnalysis()
-"""
-
 import io
 from datetime import datetime
 
@@ -95,12 +83,19 @@ def show_OutstandingAnalysis():
     )
 
     # ----------------------------------------------------------------
-    # REPORT PARAMETERS + AUTOMATIC DATABASE CONNECTION
+    # AUTOMATIC DATABASE LOAD
     # ----------------------------------------------------------------
-    # Credentials remain hidden in Streamlit Secrets. Users can still
-    # select report dates and stored-procedure parameters from the page.
+    # Database credentials are read from .streamlit/secrets.toml or
+    # Streamlit Cloud > App settings > Secrets. Nothing is entered manually.
+    #
+    # Expected secrets format:
+    # [database]
+    # server = "your-server"
+    # database = "your-database"
+    # username = "your-username"
+    # password = "your-password"
 
-    def load_report_data(branch, grtype, from_dt, to_dt, as_on_dt, custcode, invoiceno, user):
+    def load_report_data():
         try:
             db = st.secrets["database"]
             engine = get_engine(
@@ -112,14 +107,14 @@ def show_OutstandingAnalysis():
 
             return get_outstanding_data(
                 engine,
-                branch,
-                grtype,
-                from_dt.strftime("%Y-%m-%d"),
-                to_dt.strftime("%Y-%m-%d"),
-                as_on_dt.strftime("%Y-%m-%d"),
-                custcode,
-                invoiceno,
-                user,
+                DEFAULT_PARAMS["branch"],
+                DEFAULT_PARAMS["grtype"],
+                DEFAULT_PARAMS["from_dt"].strftime("%Y-%m-%d"),
+                DEFAULT_PARAMS["to_dt"].strftime("%Y-%m-%d"),
+                DEFAULT_PARAMS["as_on_dt"].strftime("%Y-%m-%d"),
+                DEFAULT_PARAMS["custcode"],
+                DEFAULT_PARAMS["invoiceno"],
+                DEFAULT_PARAMS["user"],
             )
         except KeyError as exc:
             st.error(f"Missing database secret: {exc}")
@@ -127,60 +122,6 @@ def show_OutstandingAnalysis():
         except Exception as exc:
             st.error(f"Unable to load outstanding data: {exc}")
             return pd.DataFrame()
-
-    with st.expander(
-        "⚙️ Report Parameters",
-        expanded="oa_df" not in st.session_state,
-    ):
-        p1, p2, p3, p4 = st.columns(4)
-        p_branch = p1.text_input(
-            "Branch code",
-            value=DEFAULT_PARAMS["branch"],
-            key="oa_branch",
-        )
-        p_type = p2.text_input(
-            "Type (grtype)",
-            value=DEFAULT_PARAMS["grtype"],
-            key="oa_grtype",
-        )
-        p_fromdt = p3.date_input(
-            "From date",
-            value=DEFAULT_PARAMS["from_dt"],
-            key="oa_fromdt",
-        )
-        p_todt = p4.date_input(
-            "To date",
-            value=DEFAULT_PARAMS["to_dt"],
-            key="oa_todt",
-        )
-
-        p5, p6, p7, p8 = st.columns(4)
-        p_asondt = p5.date_input(
-            "As on date",
-            value=DEFAULT_PARAMS["as_on_dt"],
-            key="oa_asondt",
-        )
-        p_custcode = p6.text_input(
-            "Customer code",
-            value=DEFAULT_PARAMS["custcode"],
-            key="oa_custcode",
-        )
-        p_invoiceno = p7.text_input(
-            "Invoice no (blank = all)",
-            value=DEFAULT_PARAMS["invoiceno"],
-            key="oa_invoiceno",
-        )
-        p_user = p8.text_input(
-            "User",
-            value=DEFAULT_PARAMS["user"],
-            key="oa_user",
-        )
-
-        run_report = st.button(
-            "▶ Run Report",
-            type="primary",
-            key="oa_run_btn",
-        )
 
     refresh_col, status_col = st.columns([1, 5])
     with refresh_col:
@@ -190,18 +131,9 @@ def show_OutstandingAnalysis():
             use_container_width=True,
         )
 
-    if run_report or refresh_clicked or "oa_df" not in st.session_state:
+    if refresh_clicked or "oa_df" not in st.session_state:
         with st.spinner("Loading outstanding data..."):
-            st.session_state["oa_df"] = load_report_data(
-                p_branch,
-                p_type,
-                p_fromdt,
-                p_todt,
-                p_asondt,
-                p_custcode,
-                p_invoiceno,
-                p_user,
-            )
+            st.session_state["oa_df"] = load_report_data()
             st.session_state["oa_last_refresh"] = datetime.now()
 
     df = st.session_state.get("oa_df", pd.DataFrame())
@@ -215,7 +147,7 @@ def show_OutstandingAnalysis():
             )
 
     if df.empty:
-        st.warning("No outstanding data was returned for the selected parameters.")
+        st.warning("No outstanding data was returned from the database.")
         return
 
     # ----------------------------------------------------------------

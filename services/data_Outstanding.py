@@ -1,130 +1,249 @@
 """
 services/data_outstanding.py
-=============================
-Data layer for the "Outstanding Analysis" page.
-Connects to SQL Server and calls the `Alloutstanding_BI` stored procedure.
+============================
 
-Import from the page file:
+Data layer for the Outstanding Analysis page.
 
-    from services.data_outstanding import get_engine, get_outstanding_data, clean_data, DEFAULT_PARAMS
+Uses the common database connection from:
 
+    services/database.py
+
+The page can import:
+
+    from services.data_outstanding import (
+        get_outstanding_data,
+        clean_data,
+        DEFAULT_PARAMS,
+        get_date_range,
+    )
 """
 
 from datetime import date
 
 import pandas as pd
 import streamlit as st
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import URL
+from sqlalchemy import text
 
-# --------------------------------------------------------------------------
-# ENGINE
-# --------------------------------------------------------------------------
-@st.cache_resource(show_spinner=False)
-def get_engine(server: str, database: str, username: str, password: str,
-                driver: str = "ODBC Driver 17 for SQL Server"):
-    """
-    Build a SQLAlchemy engine using URL.create so that special characters
-    in the username/password (@, #, %, etc.) don't break the connection
-    string.
-    """
-    conn_url = URL.create(
-        "mssql+pyodbc",
-        username=username,
-        password=password,
-        host=server,
-        database=database,
-        query={"driver": driver, "TrustServerCertificate": "yes"},
-    )
-    return create_engine(conn_url, pool_pre_ping=True, fast_executemany=True)
+from services.database import get_engine
 
 
 # --------------------------------------------------------------------------
-# SP CALL: Alloutstanding_BI
+# OUTSTANDING DATA
 # --------------------------------------------------------------------------
-@st.cache_data(show_spinner="Fetching data from Alloutstanding_BI ...", ttl=600)
-def get_outstanding_data(_engine, branch, grtype, from_dt, to_dt, as_on_dt,
-                          custcode, invoiceno, user):
-    """
-    Calls:
-        EXEC Alloutstanding_BI @Branch, @Type, @FromDate, @ToDate,
-                                @AsOnDate, @CustCode, @InvoiceNo, @User
 
-    Example (matches what you ran manually):
-        EXEC Alloutstanding_BI '00000','C','2025-04-01','2026-03-31',
-                                '2026-03-31','0000','','SYST'
-
-    NOTE: rename p1..p8 below to the real @parameter names declared in the
-    stored procedure if they differ from this placeholder order.
+@st.cache_data(
+    ttl=1800,
+    show_spinner="Fetching outstanding data..."
+)
+def get_outstanding_data(
+    branch,
+    grtype,
+    from_dt,
+    to_dt,
+    as_on_dt,
+    custcode,
+    invoiceno,
+    user,
+):
     """
-    query = text(
-        """
-        EXEC Alloutstanding_BI
-            :p1, :p2, :p3, :p4, :p5, :p6, :p7, :p8
-        """
-    )
+    Fetch outstanding data from the Alloutstanding_BI stored procedure.
+
+    Example:
+
+        EXEC dbo.Alloutstanding_BI
+            '00000',
+            'C',
+            '2025-04-01',
+            '2026-03-31',
+            '2026-03-31',
+            '0000',
+            '',
+            'SYST'
+    """
+
+    engine = get_engine()
+
+    query = text("""
+        EXEC dbo.Alloutstanding_BI
+            @Branch=:branch,
+            @Type=:grtype,
+            @FromDate=:from_dt,
+            @ToDate=:to_dt,
+            @AsOnDate=:as_on_dt,
+            @CustCode=:custcode,
+            @InvoiceNo=:invoiceno,
+            @User=:user
+    """)
+
     params = {
-        "p1": branch,
-        "p2": grtype,
-        "p3": from_dt,
-        "p4": to_dt,
-        "p5": as_on_dt,
-        "p6": custcode,
-        "p7": invoiceno,
-        "p8": user,
+        "branch": branch,
+        "grtype": grtype,
+        "from_dt": _format_date(from_dt),
+        "to_dt": _format_date(to_dt),
+        "as_on_dt": _format_date(as_on_dt),
+        "custcode": custcode,
+        "invoiceno": invoiceno,
+        "user": user,
     }
-    with _engine.connect() as conn:
-        df = pd.read_sql(query, conn, params=params)
+
+    with engine.connect() as conn:
+        df = pd.read_sql(
+            query,
+            conn,
+            params=params,
+        )
+
     return clean_data(df)
 
 
 # --------------------------------------------------------------------------
-# CLEANING / DERIVED COLUMNS
+# DATE HELPERS
 # --------------------------------------------------------------------------
+
+def _format_date(value):
+    """
+    Convert date, datetime or string values into YYYY-MM-DD format.
+    """
+
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        return value
+
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d")
+
+    return str(value)
+
+
+def get_date_range(fin_year):
+    """
+    Convert a financial year such as 2025-2026 into:
+
+        2025-04-01
+        2026-03-31
+    """
+
+    start_year = int(fin_year.split("-")[0])
+    end_year = int(fin_year.split("-")[1])
+
+    return (
+        f"{start_year}-04-01",
+        f"{end_year}-03-31",
+    )
+
+
+# --------------------------------------------------------------------------
+# CLEANING AND DERIVED COLUMNS
+# --------------------------------------------------------------------------
+
 def age_bucket(days):
+    """
+    Convert outstanding days into ageing buckets.
+    """
+
+    try:
+        days = float(days)
+    except (TypeError, ValueError):
+        days = 0
+
     if days <= 30:
         return "0-30"
-    elif days <= 60:
+
+    if days <= 60:
         return "31-60"
-    elif days <= 90:
+
+    if days <= 90:
         return "61-90"
-    else:
-        return "Above 90"
+
+    return "Above 90"
 
 
 def clean_data(df_raw: pd.DataFrame) -> pd.DataFrame:
     """
-    Normalizes column names, fixes dtypes, and adds an `age_bucket` column
-    derived from `outstandingdays`.
+    Normalize column names, fix data types and add age_bucket.
     """
+
+    if df_raw is None or df_raw.empty:
+        return pd.DataFrame()
+
     df = df_raw.copy()
-    df.columns = [c.strip().lower() for c in df.columns]
 
-    date_cols = [c for c in ["asondt", "invoicedt", "submissiondt", "duedt"] if c in df.columns]
-    for c in date_cols:
-        df[c] = pd.to_datetime(df[c], errors="coerce")
-
-    num_cols = [
-        c for c in ["billamount", "recdamount", "balance", "onaccrecd", "netbalance", "outstandingdays"]
-        if c in df.columns
+    # Normalize column names
+    df.columns = [
+        str(column).strip().lower()
+        for column in df.columns
     ]
-    for c in num_cols:
-        df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
+    # Clean text columns
+    text_columns = [
+        "zonename",
+        "branchname",
+        "custname",
+        "custcode",
+        "grtype",
+        "documenttype",
+        "invoiceno",
+    ]
+
+    for column in text_columns:
+        if column in df.columns:
+            df[column] = (
+                df[column]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+            )
+
+    # Convert date columns
+    date_columns = [
+        "asondt",
+        "invoicedt",
+        "submissiondt",
+        "duedt",
+    ]
+
+    for column in date_columns:
+        if column in df.columns:
+            df[column] = pd.to_datetime(
+                df[column],
+                errors="coerce",
+            )
+
+    # Convert numeric columns
+    numeric_columns = [
+        "billamount",
+        "recdamount",
+        "balance",
+        "onaccrecd",
+        "netbalance",
+        "outstandingdays",
+    ]
+
+    for column in numeric_columns:
+        if column in df.columns:
+            df[column] = pd.to_numeric(
+                df[column],
+                errors="coerce",
+            ).fillna(0)
+
+    # Create ageing bucket
     if "outstandingdays" in df.columns:
-        df["age_bucket"] = df["outstandingdays"].apply(age_bucket)
+        df["age_bucket"] = (
+            df["outstandingdays"]
+            .apply(age_bucket)
+        )
+    else:
+        df["age_bucket"] = "0-30"
 
     return df
 
 
-def load_from_excel(uploaded_file) -> pd.DataFrame:
-    """Load the same report structure from a manually exported Excel file."""
-    return clean_data(pd.read_excel(uploaded_file))
-
-
 # --------------------------------------------------------------------------
-# DEFAULT SP PARAMETERS (used to pre-fill the page's parameter form)
+# DEFAULT REPORT PARAMETERS
 # --------------------------------------------------------------------------
+
 DEFAULT_PARAMS = {
     "branch": "00000",
     "grtype": "C",
