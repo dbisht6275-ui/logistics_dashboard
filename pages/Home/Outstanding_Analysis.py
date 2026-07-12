@@ -1,16 +1,5 @@
-"""
-pages/Home/Outstanding_Analysis.py
-====================================
-Outstanding Analysis page using the same Financial Year, hierarchy filters,
-and role-based data-scope logic used on the Overview page.
-
-Data source: services/data_Outstanding.py -> get_outstanding_data()
-Called from main.py as: show_OutstandingAnalysis()
-"""
-
 import io
 from datetime import datetime
-
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
