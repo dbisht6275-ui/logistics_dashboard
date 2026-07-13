@@ -33,10 +33,28 @@ Supported scope examples:
     {"zone": "NORTH EAST ZONE"}
     {"circle": "ASSAM - NE"}
     {"branch": "AGARTALA"}
+
+------------------------------------------------------------------------------
+CHANGES IN THIS VERSION
+------------------------------------------------------------------------------
+1. "Show only pending records" checkbox (default ON). When ON, any row whose
+   Net Outstanding is already zero (i.e. fully paid) is dropped from the
+   dataframe BEFORE any KPI, chart or table is built. This is what fixes the
+   "Total Billed / Total Received show everything from start to end" issue:
+   previously all invoices in the date range were being summed even if they
+   were already fully settled.
+
+2. KPI cards now show a colored growth arrow (▲ green / ▼ red) that compares
+   the current period totals against the immediately preceding period of the
+   same length (fetched from the same stored procedure). This needed a
+   second, lightweight call to get_outstanding_data() for the "previous
+   period" window, cached in session_state so it isn't re-fetched on every
+   filter change -- only when Run Report is pressed.
+------------------------------------------------------------------------------
 """
 
 import io
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 import plotly.express as px
@@ -101,10 +119,34 @@ def _inject_css():
                 margin-bottom: 4px;
             }
 
+            .oa-kpi-value-row {
+                display: flex;
+                align-items: baseline;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+
             .oa-kpi-value {
                 font-size: 23px;
                 font-weight: 800;
                 color: #111827;
+            }
+
+            .oa-kpi-growth {
+                font-size: 12px;
+                font-weight: 800;
+                padding: 1px 7px;
+                border-radius: 999px;
+            }
+
+            .oa-kpi-growth-up {
+                color: #16a34a;
+                background: #dcfce7;
+            }
+
+            .oa-kpi-growth-down {
+                color: #dc2626;
+                background: #fee2e2;
             }
 
             .oa-kpi-sub {
@@ -131,12 +173,35 @@ def _inject_css():
     )
 
 
-def _kpi_card(label, value, sub="", color="blue"):
+def _kpi_card(label, value, sub="", color="blue", growth_pct=None):
+    """
+    Render one KPI card.
+
+    growth_pct:
+        None  -> no growth badge shown (previous-period data unavailable).
+        float -> percentage change vs the previous period; renders a
+                 green "up" or red "down" pill with an arrow.
+    """
+    growth_html = ""
+
+    if growth_pct is not None and pd.notna(growth_pct):
+        is_up = growth_pct >= 0
+        arrow = "▲" if is_up else "▼"
+        css_class = "oa-kpi-growth-up" if is_up else "oa-kpi-growth-down"
+
+        growth_html = (
+            f'<span class="oa-kpi-growth {css_class}">'
+            f"{arrow} {abs(growth_pct):.1f}%</span>"
+        )
+
     st.markdown(
         f"""
         <div class="oa-kpi-card" style="--accent:{ACCENT.get(color, '#2563eb')}">
             <div class="oa-kpi-label">{label}</div>
-            <div class="oa-kpi-value">{value}</div>
+            <div class="oa-kpi-value-row">
+                <div class="oa-kpi-value">{value}</div>
+                {growth_html}
+            </div>
             <div class="oa-kpi-sub">{sub}</div>
         </div>
         """,
@@ -158,6 +223,23 @@ def _inr(value):
     value = abs(value)
 
     return f"{'-' if negative else ''}₹{value:,.0f}"
+
+
+def _pct_growth(current, previous):
+    """
+    Percentage change of current vs previous.
+    Returns None when previous is missing/zero (growth is not meaningful).
+    """
+    if previous is None or pd.isna(previous) or float(previous) == 0:
+        return None
+
+    try:
+        current = float(current)
+        previous = float(previous)
+    except (TypeError, ValueError):
+        return None
+
+    return ((current - previous) / abs(previous)) * 100
 
 
 def _find_column(df, candidates):
@@ -211,6 +293,24 @@ def _match_scope_value(series, scope_value):
         .str.casefold()
         .eq(target)
     )
+
+
+def _filter_only_outstanding(df, enabled):
+    """
+    Keep only rows where the invoice is still pending (Net Outstanding != 0).
+
+    This is the core fix: previously every invoice in the date range was
+    included even if it was already fully paid, which inflated Total Billed
+    and Total Received with settled records. When enabled, fully-settled
+    rows (netbalance == 0) are dropped everywhere downstream -- KPIs,
+    charts, and the detail table.
+    """
+    if not enabled or "netbalance" not in df.columns:
+        return df
+
+    numeric_net = pd.to_numeric(df["netbalance"], errors="coerce").fillna(0)
+
+    return df[numeric_net != 0]
 
 
 def _derive_role_scope(df, zone_col, circle_col, branch_col):
@@ -472,6 +572,29 @@ def show_OutstandingAnalysis():
             )
             st.session_state["oa_last_refreshed"] = datetime.now()
 
+            # ---- Fetch the immediately preceding period of the same
+            # ---- length, purely so the KPI cards can show growth vs
+            # ---- last period. Failure here should never break the page.
+            try:
+                period_days = (to_date - from_date).days + 1
+                prev_to_date = from_date - timedelta(days=1)
+                prev_from_date = prev_to_date - timedelta(days=period_days - 1)
+                prev_as_on_date = prev_to_date
+
+                prev_df = get_outstanding_data(
+                    branch=SP_BRANCH,
+                    grtype=SP_GRTYPE,
+                    from_dt=prev_from_date,
+                    to_dt=prev_to_date,
+                    as_on_dt=prev_as_on_date,
+                    custcode=SP_CUSTCODE,
+                    invoiceno=SP_INVOICENO,
+                    user=SP_USER,
+                )
+                st.session_state["oa_prev_df"] = prev_df
+            except Exception:
+                st.session_state["oa_prev_df"] = pd.DataFrame()
+
         except Exception as exc:
             st.error(f"Unable to load outstanding data: {exc}")
             return
@@ -495,6 +618,30 @@ def show_OutstandingAnalysis():
             "The date filters have changed. Click **Run Report** to load data "
             "for the newly selected dates."
         )
+
+    # -----------------------------------------------------------------------
+    # SHOW ONLY PENDING (OUTSTANDING) RECORDS
+    # -----------------------------------------------------------------------
+    # This is the fix for Total Billed / Total Received showing everything
+    # from start to end -- fully paid invoices (netbalance == 0) are excluded
+    # from here onward when this toggle is ON.
+
+    only_outstanding = st.checkbox(
+        "Show only pending records (payment not fully received)",
+        value=True,
+        key="oa_only_outstanding",
+        help=(
+            "When ON, invoices that are already fully settled "
+            "(Net Outstanding = ₹0) are removed from every KPI, chart "
+            "and table on this page."
+        ),
+    )
+
+    df = _filter_only_outstanding(df, only_outstanding)
+
+    if df.empty:
+        st.warning("No pending (outstanding) records found for the selected dates.")
+        return
 
     # -----------------------------------------------------------------------
     # DETECT AVAILABLE HIERARCHY COLUMNS
@@ -563,6 +710,43 @@ def show_OutstandingAnalysis():
             "No data is available for your assigned Zone, Circle or Branch rights."
         )
         return
+
+    # -----------------------------------------------------------------------
+    # PREVIOUS-PERIOD TOTALS (FOR KPI GROWTH ARROWS)
+    # -----------------------------------------------------------------------
+    # Scoped the same way as the current period (role rights + only-outstanding
+    # toggle) so the comparison is apples-to-apples. Ad-hoc dashboard filters
+    # (Customer/Document Type/Age Bucket/Zone-Circle-Branch dropdowns) are
+    # intentionally NOT applied to the previous period -- growth badges reflect
+    # the overall period-over-period movement for your assigned scope.
+
+    prev_totals = {
+        "billamount": None,
+        "recdamount": None,
+        "balance": None,
+        "netbalance": None,
+    }
+
+    prev_df_raw = st.session_state.get("oa_prev_df")
+
+    if prev_df_raw is not None and not prev_df_raw.empty:
+        prev_df = prev_df_raw.copy()
+        prev_df = _filter_only_outstanding(prev_df, only_outstanding)
+        prev_df = _apply_locked_scope(
+            prev_df,
+            zone_col,
+            circle_col,
+            branch_col,
+            locked_zone,
+            locked_circle,
+            locked_branch,
+        )
+
+        for column in prev_totals:
+            if column in prev_df.columns:
+                prev_totals[column] = pd.to_numeric(
+                    prev_df[column], errors="coerce"
+                ).fillna(0).sum()
 
     # -----------------------------------------------------------------------
     # DASHBOARD FILTERS
@@ -788,6 +972,12 @@ def show_OutstandingAnalysis():
         else 0
     )
 
+    # Growth vs the immediately preceding period of the same length.
+    growth_billed = _pct_growth(total_bill, prev_totals["billamount"])
+    growth_received = _pct_growth(total_received, prev_totals["recdamount"])
+    growth_balance = _pct_growth(total_balance, prev_totals["balance"])
+    growth_net = _pct_growth(total_net, prev_totals["netbalance"])
+
     k1, k2, k3, k4, k5, k6 = st.columns(6)
 
     with k1:
@@ -796,6 +986,7 @@ def show_OutstandingAnalysis():
             _inr(total_bill),
             f"{invoice_count:,} invoices",
             "blue",
+            growth_pct=growth_billed,
         )
 
     with k2:
@@ -804,6 +995,7 @@ def show_OutstandingAnalysis():
             _inr(total_received),
             "Receipts against invoices",
             "green",
+            growth_pct=growth_received,
         )
 
     with k3:
@@ -812,6 +1004,7 @@ def show_OutstandingAnalysis():
             _inr(total_balance),
             "Before on-account adjustment",
             "teal",
+            growth_pct=growth_balance,
         )
 
     with k4:
@@ -828,6 +1021,7 @@ def show_OutstandingAnalysis():
             _inr(total_net),
             f"{customer_count:,} customers",
             "amber",
+            growth_pct=growth_net,
         )
 
     with k6:
@@ -836,6 +1030,12 @@ def show_OutstandingAnalysis():
             _inr(overdue_90),
             "High-risk receivables",
             "red",
+        )
+
+    if any(v is None for v in prev_totals.values()):
+        st.caption(
+            "Growth arrows compare the current selection against the "
+            "immediately preceding period of the same length."
         )
 
     # -----------------------------------------------------------------------
