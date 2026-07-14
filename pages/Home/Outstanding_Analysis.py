@@ -497,7 +497,7 @@ def show_OutstandingAnalysis():
             "Run Report",
             type="primary",
             key="oa_run_report",
-            use_container_width=True,
+            width='stretch',
         )
 
     date_error = _validate_dates(from_date, to_date, as_on_date)
@@ -824,14 +824,6 @@ def show_OutstandingAnalysis():
     # KPI ROW
     # -----------------------------------------------------------------------
 
-    total_bill = (
-        pd.to_numeric(fdf["billamount"], errors="coerce").fillna(0).sum()
-        if "billamount" in fdf.columns else 0
-    )
-    total_received = (
-        pd.to_numeric(fdf["recdamount"], errors="coerce").fillna(0).sum()
-        if "recdamount" in fdf.columns else 0
-    )
     total_balance = (
         pd.to_numeric(fdf["balance"], errors="coerce").fillna(0).sum()
         if "balance" in fdf.columns else 0
@@ -868,21 +860,29 @@ def show_OutstandingAnalysis():
         else 0
     )
 
+    # NOTE: "Total Billed" and "Total Received" KPI cards were removed on
+    # request -- they were causing confusion (e.g. when "Show only pending
+    # records" is ON, these two summed only the pending rows' billed/received
+    # amounts, not the true full-period billed/received totals, which looked
+    # inconsistent to users). They are replaced with two count-based cards
+    # (Total Invoices, Total Customers) that are unambiguous regardless of
+    # the pending-records toggle.
+
     k1, k2, k3, k4, k5, k6 = st.columns(6)
 
     with k1:
         _kpi_card(
-            "Total Billed",
-            _inr_cr(total_bill),
-            f"{invoice_count:,} invoices",
+            "Total Invoices",
+            f"{invoice_count:,}",
+            "Distinct invoices in selection",
             "blue",
         )
 
     with k2:
         _kpi_card(
-            "Total Received",
-            _inr_cr(total_received),
-            "Receipts against invoices",
+            "Total Customers",
+            f"{customer_count:,}",
+            "Distinct customers in selection",
             "green",
         )
 
@@ -906,7 +906,7 @@ def show_OutstandingAnalysis():
         _kpi_card(
             "Net Outstanding",
             _inr_cr(total_net),
-            f"{customer_count:,} customers",
+            "After on-account adjustment",
             "amber",
         )
 
@@ -977,7 +977,7 @@ def show_OutstandingAnalysis():
                     margin=dict(t=50, b=10, l=10, r=10),
                 )
 
-                st.plotly_chart(fig_age, use_container_width=True)
+                st.plotly_chart(fig_age, width='stretch')
 
             with age_value_col:
                 st.markdown(
@@ -1102,7 +1102,7 @@ def show_OutstandingAnalysis():
                 xaxis_range=[0, max_zone * 1.18] if max_zone > 0 else None,
             )
 
-            st.plotly_chart(fig_zone, use_container_width=True)
+            st.plotly_chart(fig_zone, width='stretch')
         else:
             st.info("Zone data is not available.")
 
@@ -1202,7 +1202,7 @@ def show_OutstandingAnalysis():
 
             st.plotly_chart(
                 fig_document,
-                use_container_width=True,
+                width='stretch',
             )
 
         with doc_table_col:
@@ -1220,16 +1220,21 @@ def show_OutstandingAnalysis():
             )
 
             st.dataframe(
-                document_table.style.format(
-                    {
-                        "Net_Outstanding": "₹{:,.2f} Cr",
-                        "Billed": "₹{:,.2f} Cr",
-                        "Documents": "{:,.0f}",
-                    }
-                ),
-                use_container_width=True,
+                document_table,
+                width='stretch',
                 hide_index=True,
                 height=max(360, 42 * len(document_table)),
+                column_config={
+                    "Net_Outstanding": st.column_config.NumberColumn(
+                        "Net Outstanding (₹ Cr)", format="₹%.2f Cr",
+                    ),
+                    "Billed": st.column_config.NumberColumn(
+                        "Billed (₹ Cr)", format="₹%.2f Cr",
+                    ),
+                    "Documents": st.column_config.NumberColumn(
+                        "Documents", format="%d",
+                    ),
+                },
             )
     else:
         st.info("Document Type or Net Outstanding data is not available.")
@@ -1282,7 +1287,7 @@ def show_OutstandingAnalysis():
                 yaxis_title="",
             )
 
-            st.plotly_chart(fig_customer, use_container_width=True)
+            st.plotly_chart(fig_customer, width='stretch')
         else:
             st.info("Customer data is not available.")
 
@@ -1315,23 +1320,30 @@ def show_OutstandingAnalysis():
                         ascending=False,
                     )
 
-                format_map = {}
+                branch_column_config = {}
 
                 for column in ["Billed", "Received", "Net_Outstanding"]:
                     if column in branch_summary.columns:
                         branch_summary[column] = (
                             branch_summary[column] / 1_00_00_000
                         )
-                        format_map[column] = "₹{:,.2f} Cr"
+                        branch_column_config[column] = st.column_config.NumberColumn(
+                            column.replace("_", " ") + " (₹ Cr)",
+                            format="₹%.2f Cr",
+                        )
 
                 if "Invoices" in branch_summary.columns:
-                    format_map["Invoices"] = "{:,.0f}"
+                    branch_column_config["Invoices"] = st.column_config.NumberColumn(
+                        "Invoices",
+                        format="%d",
+                    )
 
                 st.dataframe(
-                    branch_summary.style.format(format_map),
+                    branch_summary,
                     height=440,
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True,
+                    column_config=branch_column_config,
                 )
             else:
                 st.info("Branch amount columns are not available.")
@@ -1415,7 +1427,7 @@ def show_OutstandingAnalysis():
                 ),
             )
 
-            st.plotly_chart(fig_trend, use_container_width=True)
+            st.plotly_chart(fig_trend, width='stretch')
 
     # -----------------------------------------------------------------------
     # DETAIL TABLE AND EXPORT
@@ -1487,15 +1499,28 @@ def show_OutstandingAnalysis():
 
         detail_df = detail_df[search_mask]
 
-    detail_style = detail_df.style.format(
-        {column: "₹{:,.2f} Cr" for column in rename_map.values()}
-    )
+    # NOTE: Using pandas Styler (.style.format(...)) on this table used to
+    # crash the page on larger date ranges with:
+    #   StreamlitAPIException: The dataframe has `N` cells, but the maximum
+    #   number of cells allowed to be rendered by Pandas Styler is configured
+    #   to `262144`.
+    # Styler has a hard render-cell cap that a full detail export can easily
+    # exceed. column_config formatting achieves the same "₹ Cr" display
+    # without going through Styler at all, so there is no cell limit here.
+    column_config = {
+        column: st.column_config.NumberColumn(
+            column.replace("_cr", "").replace("_", " ").title() + " (₹ Cr)",
+            format="₹%.2f Cr",
+        )
+        for column in rename_map.values()
+    }
 
     st.dataframe(
-        detail_style,
-        use_container_width=True,
+        detail_df,
+        width='stretch',
         height=420,
         hide_index=True,
+        column_config=column_config,
     )
 
     excel_buffer = io.BytesIO()
