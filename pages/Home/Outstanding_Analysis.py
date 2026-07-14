@@ -44,12 +44,12 @@ CHANGES IN THIS VERSION
    previously all invoices in the date range were being summed even if they
    were already fully settled.
 
-2. KPI cards now show a colored growth arrow (▲ green / ▼ red) that compares
-   the current period totals against the immediately preceding period of the
-   same length (fetched from the same stored procedure). This needed a
-   second, lightweight call to get_outstanding_data() for the "previous
-   period" window, cached in session_state so it isn't re-fetched on every
-   filter change -- only when Run Report is pressed.
+2. All monetary values are displayed in ₹ Crore (2 decimal places) across
+   KPI cards, charts and tables.
+
+3. Previous-period (PY) growth-arrow comparison has been removed. KPI cards
+   now show plain values only, with no ▲/▼ badge and no second stored
+   procedure call for the preceding period.
 ------------------------------------------------------------------------------
 """
 
@@ -132,23 +132,6 @@ def _inject_css():
                 color: #111827;
             }
 
-            .oa-kpi-growth {
-                font-size: 12px;
-                font-weight: 800;
-                padding: 1px 7px;
-                border-radius: 999px;
-            }
-
-            .oa-kpi-growth-up {
-                color: #16a34a;
-                background: #dcfce7;
-            }
-
-            .oa-kpi-growth-down {
-                color: #dc2626;
-                background: #fee2e2;
-            }
-
             .oa-kpi-sub {
                 font-size: 11px;
                 color: #9ca3af;
@@ -173,34 +156,16 @@ def _inject_css():
     )
 
 
-def _kpi_card(label, value, sub="", color="blue", growth_pct=None):
+def _kpi_card(label, value, sub="", color="blue"):
     """
-    Render one KPI card.
-
-    growth_pct:
-        None  -> no growth badge shown (previous-period data unavailable).
-        float -> percentage change vs the previous period; renders a
-                 green "up" or red "down" pill with an arrow.
+    Render one KPI card (plain value, no growth badge).
     """
-    growth_html = ""
-
-    if growth_pct is not None and pd.notna(growth_pct):
-        is_up = growth_pct >= 0
-        arrow = "▲" if is_up else "▼"
-        css_class = "oa-kpi-growth-up" if is_up else "oa-kpi-growth-down"
-
-        growth_html = (
-            f'<span class="oa-kpi-growth {css_class}">'
-            f"{arrow} {abs(growth_pct):.1f}%</span>"
-        )
-
     st.markdown(
         f"""
         <div class="oa-kpi-card" style="--accent:{ACCENT.get(color, '#2563eb')}">
             <div class="oa-kpi-label">{label}</div>
             <div class="oa-kpi-value-row">
                 <div class="oa-kpi-value">{value}</div>
-                {growth_html}
             </div>
             <div class="oa-kpi-sub">{sub}</div>
         </div>
@@ -213,33 +178,23 @@ def _kpi_card(label, value, sub="", color="blue", growth_pct=None):
 # HELPERS
 # ---------------------------------------------------------------------------
 
-def _inr(value):
+def _inr_cr(value):
+    """
+    Format a rupee value in ₹ Crore, 2 decimal places.
+
+    1 Crore = 1,00,00,000 (10,000,000)
+    """
     try:
         value = float(value)
     except (TypeError, ValueError):
-        return "₹0"
+        return "₹0.00 Cr"
 
     negative = value < 0
     value = abs(value)
 
-    return f"{'-' if negative else ''}₹{value:,.0f}"
+    crore_value = value / 1_00_00_000
 
-
-def _pct_growth(current, previous):
-    """
-    Percentage change of current vs previous.
-    Returns None when previous is missing/zero (growth is not meaningful).
-    """
-    if previous is None or pd.isna(previous) or float(previous) == 0:
-        return None
-
-    try:
-        current = float(current)
-        previous = float(previous)
-    except (TypeError, ValueError):
-        return None
-
-    return ((current - previous) / abs(previous)) * 100
+    return f"{'-' if negative else ''}₹{crore_value:,.2f} Cr"
 
 
 def _find_column(df, candidates):
@@ -497,6 +452,7 @@ def show_OutstandingAnalysis():
         <h3 style="margin:0;padding:0;">Outstanding Analysis</h3>
         <p style="color:#64748b;font-size:12px;margin:0 0 8px 0;">
             Zone / Circle / Branch / Customer-wise receivables and ageing
+            (values shown in ₹ Crore)
         </p>
         """,
         unsafe_allow_html=True,
@@ -571,29 +527,6 @@ def show_OutstandingAnalysis():
                 as_on_date,
             )
             st.session_state["oa_last_refreshed"] = datetime.now()
-
-            # ---- Fetch the immediately preceding period of the same
-            # ---- length, purely so the KPI cards can show growth vs
-            # ---- last period. Failure here should never break the page.
-            try:
-                period_days = (to_date - from_date).days + 1
-                prev_to_date = from_date - timedelta(days=1)
-                prev_from_date = prev_to_date - timedelta(days=period_days - 1)
-                prev_as_on_date = prev_to_date
-
-                prev_df = get_outstanding_data(
-                    branch=SP_BRANCH,
-                    grtype=SP_GRTYPE,
-                    from_dt=prev_from_date,
-                    to_dt=prev_to_date,
-                    as_on_dt=prev_as_on_date,
-                    custcode=SP_CUSTCODE,
-                    invoiceno=SP_INVOICENO,
-                    user=SP_USER,
-                )
-                st.session_state["oa_prev_df"] = prev_df
-            except Exception:
-                st.session_state["oa_prev_df"] = pd.DataFrame()
 
         except Exception as exc:
             st.error(f"Unable to load outstanding data: {exc}")
@@ -710,43 +643,6 @@ def show_OutstandingAnalysis():
             "No data is available for your assigned Zone, Circle or Branch rights."
         )
         return
-
-    # -----------------------------------------------------------------------
-    # PREVIOUS-PERIOD TOTALS (FOR KPI GROWTH ARROWS)
-    # -----------------------------------------------------------------------
-    # Scoped the same way as the current period (role rights + only-outstanding
-    # toggle) so the comparison is apples-to-apples. Ad-hoc dashboard filters
-    # (Customer/Document Type/Age Bucket/Zone-Circle-Branch dropdowns) are
-    # intentionally NOT applied to the previous period -- growth badges reflect
-    # the overall period-over-period movement for your assigned scope.
-
-    prev_totals = {
-        "billamount": None,
-        "recdamount": None,
-        "balance": None,
-        "netbalance": None,
-    }
-
-    prev_df_raw = st.session_state.get("oa_prev_df")
-
-    if prev_df_raw is not None and not prev_df_raw.empty:
-        prev_df = prev_df_raw.copy()
-        prev_df = _filter_only_outstanding(prev_df, only_outstanding)
-        prev_df = _apply_locked_scope(
-            prev_df,
-            zone_col,
-            circle_col,
-            branch_col,
-            locked_zone,
-            locked_circle,
-            locked_branch,
-        )
-
-        for column in prev_totals:
-            if column in prev_df.columns:
-                prev_totals[column] = pd.to_numeric(
-                    prev_df[column], errors="coerce"
-                ).fillna(0).sum()
 
     # -----------------------------------------------------------------------
     # DASHBOARD FILTERS
@@ -972,45 +868,36 @@ def show_OutstandingAnalysis():
         else 0
     )
 
-    # Growth vs the immediately preceding period of the same length.
-    growth_billed = _pct_growth(total_bill, prev_totals["billamount"])
-    growth_received = _pct_growth(total_received, prev_totals["recdamount"])
-    growth_balance = _pct_growth(total_balance, prev_totals["balance"])
-    growth_net = _pct_growth(total_net, prev_totals["netbalance"])
-
     k1, k2, k3, k4, k5, k6 = st.columns(6)
 
     with k1:
         _kpi_card(
             "Total Billed",
-            _inr(total_bill),
+            _inr_cr(total_bill),
             f"{invoice_count:,} invoices",
             "blue",
-            growth_pct=growth_billed,
         )
 
     with k2:
         _kpi_card(
             "Total Received",
-            _inr(total_received),
+            _inr_cr(total_received),
             "Receipts against invoices",
             "green",
-            growth_pct=growth_received,
         )
 
     with k3:
         _kpi_card(
             "Balance",
-            _inr(total_balance),
+            _inr_cr(total_balance),
             "Before on-account adjustment",
             "teal",
-            growth_pct=growth_balance,
         )
 
     with k4:
         _kpi_card(
             "On-Account Recd",
-            _inr(total_on_account),
+            _inr_cr(total_on_account),
             "Unadjusted receipts",
             "purple",
         )
@@ -1018,24 +905,17 @@ def show_OutstandingAnalysis():
     with k5:
         _kpi_card(
             "Net Outstanding",
-            _inr(total_net),
+            _inr_cr(total_net),
             f"{customer_count:,} customers",
             "amber",
-            growth_pct=growth_net,
         )
 
     with k6:
         _kpi_card(
             "Overdue > 90 Days",
-            _inr(overdue_90),
+            _inr_cr(overdue_90),
             "High-risk receivables",
             "red",
-        )
-
-    if any(v is None for v in prev_totals.values()):
-        st.caption(
-            "Growth arrows compare the current selection against the "
-            "immediately preceding period of the same length."
         )
 
     # -----------------------------------------------------------------------
@@ -1085,9 +965,10 @@ def show_OutstandingAnalysis():
                     textinfo="percent+label",
                     hovertemplate=(
                         "<b>%{label}</b><br>"
-                        "Outstanding: ₹%{value:,.0f}<br>"
+                        "Outstanding: ₹%{customdata[0]:,.2f} Cr<br>"
                         "Share: %{percent}<extra></extra>"
                     ),
+                    customdata=(age_df[["netbalance"]] / 1_00_00_000).values,
                 )
 
                 fig_age.update_layout(
@@ -1142,7 +1023,7 @@ def show_OutstandingAnalysis():
                                     font-weight:800;
                                     color:#0f172a;
                                 ">
-                                    {_inr(value)}
+                                    {_inr_cr(value)}
                                 </div>
                                 <div style="
                                     font-size:11px;
@@ -1175,7 +1056,7 @@ def show_OutstandingAnalysis():
                             color:#0f172a;
                             font-weight:800;
                         ">
-                            {_inr(total_age_outstanding)}
+                            {_inr_cr(total_age_outstanding)}
                         </div>
                     </div>
                     """,
@@ -1192,30 +1073,31 @@ def show_OutstandingAnalysis():
                 .sort_values(ascending=True)
                 .reset_index()
             )
+            zone_df["netbalance_cr"] = zone_df["netbalance"] / 1_00_00_000
 
             fig_zone = px.bar(
                 zone_df,
-                x="netbalance",
+                x="netbalance_cr",
                 y=zone_col,
                 orientation="h",
-                text="netbalance",
-                title="Net Outstanding by Zone",
-                color="netbalance",
+                text="netbalance_cr",
+                title="Net Outstanding by Zone (₹ Cr)",
+                color="netbalance_cr",
                 color_continuous_scale="Blues",
             )
 
             fig_zone.update_traces(
-                texttemplate="₹%{text:,.0f}",
+                texttemplate="₹%{text:,.2f} Cr",
                 textposition="outside",
             )
 
-            max_zone = zone_df["netbalance"].max() if not zone_df.empty else 0
+            max_zone = zone_df["netbalance_cr"].max() if not zone_df.empty else 0
 
             fig_zone.update_layout(
                 height=380,
                 coloraxis_showscale=False,
                 margin=dict(t=50, b=10, l=10, r=30),
-                xaxis_title="Net Outstanding (₹)",
+                xaxis_title="Net Outstanding (₹ Cr)",
                 yaxis_title="",
                 xaxis_range=[0, max_zone * 1.18] if max_zone > 0 else None,
             )
@@ -1276,27 +1158,31 @@ def show_OutstandingAnalysis():
             ascending=True,
         )
 
+        document_summary["Net_Outstanding_Cr"] = (
+            document_summary["Net_Outstanding"] / 1_00_00_000
+        )
+
         doc_chart_col, doc_table_col = st.columns([1.35, 0.85])
 
         with doc_chart_col:
             fig_document = px.bar(
                 document_summary,
-                x="Net_Outstanding",
+                x="Net_Outstanding_Cr",
                 y=document_col,
                 orientation="h",
-                text="Net_Outstanding",
-                color="Net_Outstanding",
+                text="Net_Outstanding_Cr",
+                color="Net_Outstanding_Cr",
                 color_continuous_scale="Oranges",
-                title="Net Outstanding by Document Type",
+                title="Net Outstanding by Document Type (₹ Cr)",
             )
 
             fig_document.update_traces(
-                texttemplate="₹%{text:,.0f}",
+                texttemplate="₹%{text:,.2f} Cr",
                 textposition="outside",
             )
 
             max_document_value = (
-                document_summary["Net_Outstanding"].max()
+                document_summary["Net_Outstanding_Cr"].max()
                 if not document_summary.empty
                 else 0
             )
@@ -1305,7 +1191,7 @@ def show_OutstandingAnalysis():
                 height=max(360, 42 * len(document_summary)),
                 coloraxis_showscale=False,
                 margin=dict(t=50, b=10, l=10, r=45),
-                xaxis_title="Net Outstanding (₹)",
+                xaxis_title="Net Outstanding (₹ Cr)",
                 yaxis_title="",
                 xaxis_range=(
                     [0, max_document_value * 1.18]
@@ -1325,11 +1211,19 @@ def show_OutstandingAnalysis():
                 ascending=False,
             ).copy()
 
+            document_table["Net_Outstanding"] = (
+                document_table["Net_Outstanding"] / 1_00_00_000
+            )
+            document_table["Billed"] = document_table["Billed"] / 1_00_00_000
+            document_table = document_table.drop(
+                columns=["Net_Outstanding_Cr"]
+            )
+
             st.dataframe(
                 document_table.style.format(
                     {
-                        "Net_Outstanding": "₹{:,.0f}",
-                        "Billed": "₹{:,.0f}",
+                        "Net_Outstanding": "₹{:,.2f} Cr",
+                        "Billed": "₹{:,.2f} Cr",
                         "Documents": "{:,.0f}",
                     }
                 ),
@@ -1361,22 +1255,30 @@ def show_OutstandingAnalysis():
                 .sort_values()
                 .reset_index()
             )
+            top_customers["netbalance_cr"] = (
+                top_customers["netbalance"] / 1_00_00_000
+            )
 
             fig_customer = px.bar(
                 top_customers,
-                x="netbalance",
+                x="netbalance_cr",
                 y=customer_col,
                 orientation="h",
-                title="Top 15 Customers by Net Outstanding",
-                color="netbalance",
+                title="Top 15 Customers by Net Outstanding (₹ Cr)",
+                color="netbalance_cr",
                 color_continuous_scale="Reds",
+            )
+
+            fig_customer.update_traces(
+                texttemplate="₹%{x:,.2f} Cr",
+                textposition="outside",
             )
 
             fig_customer.update_layout(
                 height=440,
                 coloraxis_showscale=False,
                 margin=dict(t=50, b=10, l=10, r=20),
-                xaxis_title="Net Outstanding (₹)",
+                xaxis_title="Net Outstanding (₹ Cr)",
                 yaxis_title="",
             )
 
@@ -1417,7 +1319,10 @@ def show_OutstandingAnalysis():
 
                 for column in ["Billed", "Received", "Net_Outstanding"]:
                     if column in branch_summary.columns:
-                        format_map[column] = "₹{:,.0f}"
+                        branch_summary[column] = (
+                            branch_summary[column] / 1_00_00_000
+                        )
+                        format_map[column] = "₹{:,.2f} Cr"
 
                 if "Invoices" in branch_summary.columns:
                     format_map["Invoices"] = "{:,.0f}"
@@ -1471,6 +1376,10 @@ def show_OutstandingAnalysis():
                 .reset_index()
             )
 
+            for column in ["Billed", "Received"]:
+                if column in trend.columns:
+                    trend[column] = trend[column] / 1_00_00_000
+
             fig_trend = go.Figure()
 
             if "Billed" in trend.columns:
@@ -1498,7 +1407,7 @@ def show_OutstandingAnalysis():
                 height=380,
                 barmode="group",
                 margin=dict(t=30, b=10, l=10, r=10),
-                yaxis_title="Amount (₹)",
+                yaxis_title="Amount (₹ Cr)",
                 legend=dict(
                     orientation="h",
                     yanchor="bottom",
@@ -1544,6 +1453,24 @@ def show_OutstandingAnalysis():
 
     detail_df = fdf[show_columns].copy() if show_columns else fdf.copy()
 
+    # Convert monetary columns in the detail table to ₹ Crore as well.
+    money_columns = [
+        column
+        for column in ["billamount", "recdamount", "balance", "onaccrecd", "netbalance"]
+        if column in detail_df.columns
+    ]
+
+    for column in money_columns:
+        detail_df[column] = (
+            pd.to_numeric(detail_df[column], errors="coerce").fillna(0) / 1_00_00_000
+        )
+
+    rename_map = {
+        column: f"{column}_cr"
+        for column in money_columns
+    }
+    detail_df = detail_df.rename(columns=rename_map)
+
     search_text = st.text_input(
         "Search customer, invoice number, branch or other details",
         "",
@@ -1560,8 +1487,12 @@ def show_OutstandingAnalysis():
 
         detail_df = detail_df[search_mask]
 
+    detail_style = detail_df.style.format(
+        {column: "₹{:,.2f} Cr" for column in rename_map.values()}
+    )
+
     st.dataframe(
-        detail_df,
+        detail_style,
         use_container_width=True,
         height=420,
         hide_index=True,
@@ -1577,7 +1508,7 @@ def show_OutstandingAnalysis():
         )
 
     st.download_button(
-        "Download filtered data (Excel)",
+        "Download filtered data (Excel, ₹ Cr)",
         data=excel_buffer.getvalue(),
         file_name=(
             "outstanding_filtered_"
