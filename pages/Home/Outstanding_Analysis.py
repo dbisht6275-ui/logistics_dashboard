@@ -407,89 +407,6 @@ def _load_as_on_trend(from_date, to_date, as_on_date, days=7):
     return pd.DataFrame(trend_rows)
 
 
-def _period_snapshot_dates(from_date, as_on_date, trend_type):
-    """Return practical snapshot dates for a selectable outstanding trend.
-
-    Daily: last 14 calendar days
-    Monthly: last 12 month-end snapshots
-    Quarterly: last 8 quarter-end snapshots
-    Yearly: last 5 year-end snapshots
-
-    The current incomplete period always uses the selected As On Date.
-    Dates are restricted so they never fall before From Date or after As On Date.
-    """
-    from_ts = pd.Timestamp(from_date).normalize()
-    as_on_ts = pd.Timestamp(as_on_date).normalize()
-
-    if trend_type == "Daily":
-        dates = pd.date_range(
-            max(from_ts, as_on_ts - pd.Timedelta(days=13)),
-            as_on_ts,
-            freq="D",
-        )
-
-    elif trend_type == "Monthly":
-        start = (as_on_ts - pd.DateOffset(months=11)).replace(day=1)
-        dates = pd.date_range(start, as_on_ts, freq="ME")
-        dates = dates.union(pd.DatetimeIndex([as_on_ts]))
-
-    elif trend_type == "Quarterly":
-        quarter_start = as_on_ts.to_period("Q").start_time
-        start = quarter_start - pd.DateOffset(months=21)
-        dates = pd.date_range(start, as_on_ts, freq="QE-DEC")
-        dates = dates.union(pd.DatetimeIndex([as_on_ts]))
-
-    else:  # Yearly
-        start = pd.Timestamp(year=as_on_ts.year - 4, month=1, day=1)
-        dates = pd.date_range(start, as_on_ts, freq="YE-DEC")
-        dates = dates.union(pd.DatetimeIndex([as_on_ts]))
-
-    dates = dates[(dates >= from_ts) & (dates <= as_on_ts)]
-    dates = pd.DatetimeIndex(sorted(set(dates.normalize())))
-    return [d.date() for d in dates]
-
-
-def _load_periodic_outstanding_trend(from_date, to_date, as_on_date, trend_type):
-    """Load outstanding snapshots for Daily/Monthly/Quarterly/Yearly views."""
-    trend_rows = []
-    snapshot_dates = _period_snapshot_dates(from_date, as_on_date, trend_type)
-
-    for snapshot_date in snapshot_dates:
-        snapshot_df = get_outstanding_data(
-            branch=SP_BRANCH,
-            grtype=SP_GRTYPE,
-            from_dt=from_date,
-            to_dt=to_date,
-            as_on_dt=snapshot_date,
-            custcode=SP_CUSTCODE,
-            invoiceno=SP_INVOICENO,
-            user=SP_USER,
-        )
-
-        if snapshot_df is None or snapshot_df.empty:
-            snapshot_total = 0.0
-        elif "netbalance" in snapshot_df.columns:
-            snapshot_total = pd.to_numeric(
-                snapshot_df["netbalance"], errors="coerce"
-            ).fillna(0).sum()
-        elif "balance" in snapshot_df.columns:
-            snapshot_total = pd.to_numeric(
-                snapshot_df["balance"], errors="coerce"
-            ).fillna(0).sum()
-        else:
-            snapshot_total = 0.0
-
-        trend_rows.append(
-            {
-                "as_on_date": pd.Timestamp(snapshot_date),
-                "net_outstanding": float(snapshot_total),
-                "net_outstanding_cr": float(snapshot_total) / 1_00_00_000,
-            }
-        )
-
-    return pd.DataFrame(trend_rows)
-
-
 def _safe_selectbox(
     label,
     options,
@@ -591,6 +508,7 @@ def show_OutstandingAnalysis():
         from_date = st.date_input(
             "From Date",
             value=st.session_state.get("oa_from_date", default_from_date),
+            format="DD/MM/YYYY",
             key="oa_from_date",
         )
 
@@ -598,6 +516,7 @@ def show_OutstandingAnalysis():
         to_date = st.date_input(
             "To Date",
             value=st.session_state.get("oa_to_date", default_to_date),
+            format="DD/MM/YYYY",
             key="oa_to_date",
         )
 
@@ -605,6 +524,7 @@ def show_OutstandingAnalysis():
         as_on_date = st.date_input(
             "As On Date",
             value=st.session_state.get("oa_as_on_date", default_as_on_date),
+            format="DD/MM/YYYY",
             key="oa_as_on_date",
         )
 
@@ -651,10 +571,6 @@ def show_OutstandingAnalysis():
                 as_on_date=as_on_date,
                 days=7,
             )
-
-            # Clear previously cached multi-period trends because the report
-            # dates have changed. Each view is loaded only when requested.
-            st.session_state["oa_period_trend_cache"] = {}
 
             st.session_state["oa_last_refreshed"] = datetime.now()
 
@@ -1282,150 +1198,6 @@ def show_OutstandingAnalysis():
         fig_as_on.update_yaxes(showgrid=True, gridcolor="#e5e7eb", zeroline=False)
 
         st.plotly_chart(fig_as_on, width="stretch")
-
-    # -----------------------------------------------------------------------
-    # SELECTABLE PERIOD-WISE OUTSTANDING TREND
-    # -----------------------------------------------------------------------
-
-    st.markdown(
-        "<div class='oa-section-title'>Period-wise Outstanding Trend</div>",
-        unsafe_allow_html=True,
-    )
-
-    period_title_col, period_control_col, period_button_col = st.columns(
-        [1.55, 1.25, 0.45]
-    )
-
-    with period_title_col:
-        st.caption(
-            "Compare actual Net Outstanding snapshots by the selected period."
-        )
-
-    with period_control_col:
-        period_trend_type = st.segmented_control(
-            "Outstanding trend period",
-            ["Daily", "Monthly", "Quarterly", "Yearly"],
-            default="Monthly",
-            key="oa_period_trend_type",
-            label_visibility="collapsed",
-        )
-
-    with period_button_col:
-        load_period_trend = st.button(
-            "Load Trend",
-            key="oa_load_period_trend",
-            width="stretch",
-        )
-
-    period_cache = st.session_state.setdefault("oa_period_trend_cache", {})
-    period_cache_key = (
-        str(from_date),
-        str(to_date),
-        str(as_on_date),
-        period_trend_type,
-    )
-
-    if load_period_trend:
-        try:
-            with st.spinner(f"Loading {period_trend_type.lower()} snapshots..."):
-                period_cache[period_cache_key] = _load_periodic_outstanding_trend(
-                    from_date=from_date,
-                    to_date=to_date,
-                    as_on_date=as_on_date,
-                    trend_type=period_trend_type,
-                )
-                st.session_state["oa_period_trend_cache"] = period_cache
-        except Exception as exc:
-            st.error(f"Unable to load period-wise outstanding trend: {exc}")
-
-    period_trend_df = period_cache.get(period_cache_key, pd.DataFrame()).copy()
-
-    if period_trend_df.empty:
-        st.info(
-            f"Select **{period_trend_type}** and click **Load Trend** to create "
-            "the snapshot chart."
-        )
-    else:
-        period_trend_df["as_on_date"] = pd.to_datetime(
-            period_trend_df["as_on_date"], errors="coerce"
-        )
-        period_trend_df = period_trend_df.dropna(
-            subset=["as_on_date"]
-        ).sort_values("as_on_date")
-
-        if period_trend_type == "Daily":
-            period_trend_df["Period"] = period_trend_df["as_on_date"].dt.strftime(
-                "%d-%b"
-            )
-        elif period_trend_type == "Monthly":
-            period_trend_df["Period"] = period_trend_df["as_on_date"].dt.strftime(
-                "%b-%Y"
-            )
-        elif period_trend_type == "Quarterly":
-            period_trend_df["Period"] = (
-                "Q"
-                + period_trend_df["as_on_date"].dt.quarter.astype(str)
-                + " "
-                + period_trend_df["as_on_date"].dt.year.astype(str)
-            )
-        else:
-            period_trend_df["Period"] = period_trend_df["as_on_date"].dt.strftime(
-                "%Y"
-            )
-
-        fig_period = go.Figure()
-        fig_period.add_trace(
-            go.Scatter(
-                x=period_trend_df["Period"],
-                y=period_trend_df["net_outstanding_cr"],
-                mode="lines+markers+text",
-                name="Net Outstanding",
-                line=dict(color="#7c3aed", width=3),
-                marker=dict(size=8, color="#7c3aed"),
-                text=period_trend_df["net_outstanding_cr"],
-                texttemplate="₹%{text:,.2f} Cr",
-                textposition="top center",
-                hovertemplate=(
-                    "<b>%{x}</b><br>"
-                    "Net Outstanding: ₹%{y:,.2f} Cr<extra></extra>"
-                ),
-            )
-        )
-
-        period_max = period_trend_df["net_outstanding_cr"].max()
-        period_min = period_trend_df["net_outstanding_cr"].min()
-        period_padding = max(
-            (period_max - period_min) * 0.35,
-            period_max * 0.08,
-            0.10,
-        )
-
-        fig_period.update_layout(
-            height=380,
-            margin=dict(t=45, b=10, l=10, r=10),
-            plot_bgcolor="white",
-            paper_bgcolor="white",
-            xaxis_title=period_trend_type,
-            yaxis_title="Net Outstanding (₹ Cr)",
-            showlegend=False,
-            yaxis_range=[
-                max(0, period_min - period_padding),
-                period_max + period_padding,
-            ],
-        )
-        fig_period.update_xaxes(showgrid=False)
-        fig_period.update_yaxes(
-            showgrid=True,
-            gridcolor="#e5e7eb",
-            zeroline=False,
-        )
-
-        st.plotly_chart(fig_period, width="stretch")
-        st.caption(
-            "Daily shows 14 snapshots, Monthly 12 months, Quarterly 8 quarters, "
-            "and Yearly 5 years. The current incomplete period uses the selected "
-            "As On Date."
-        )
 
     # -----------------------------------------------------------------------
     # DOCUMENT TYPE-WISE OUTSTANDING
