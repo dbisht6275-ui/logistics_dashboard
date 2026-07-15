@@ -756,7 +756,9 @@ def show_overview():
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # Monthly weight trend data
+    # =========================
+    # Monthly weight trend data (Current FY vs LY, same style as Revenue Trend)
+    # =========================
     monthly_weight = (
         df.groupby("Month")["aweight"]
         .sum()
@@ -772,6 +774,27 @@ def show_overview():
     )
 
     monthly_weight = monthly_weight.sort_values("Month")
+
+    if not prev_df.empty:
+        prev_monthly_weight = (
+            prev_df.groupby("Month")["aweight"]
+            .sum()
+            .reset_index()
+        )
+        prev_monthly_weight["Prev Weight MT"] = (prev_monthly_weight["aweight"] / 1000).round(0)
+        prev_monthly_weight = prev_monthly_weight[["Month", "Prev Weight MT"]]
+    else:
+        prev_monthly_weight = pd.DataFrame(columns=["Month", "Prev Weight MT"])
+
+    monthly_weight = monthly_weight.merge(prev_monthly_weight, on="Month", how="left")
+
+    monthly_weight["Growth %"] = monthly_weight.apply(
+        lambda r: pct_growth(r["Weight MT"], r["Prev Weight MT"]) if pd.notna(r["Prev Weight MT"]) else None,
+        axis=1
+    )
+    monthly_weight["Growth Label"] = monthly_weight["Growth %"].apply(
+        lambda x: growth_label(x) if pd.notna(x) else "N/A"
+    )
 
     # Zone-wise revenue data
     zone_df = (
@@ -899,25 +922,77 @@ def show_overview():
 
     with zone_col3:
         with st.container(border=True):
-            st.markdown("###### Monthly Weight(MT) Trend")
+            weight_growth_total = pct_growth(
+                monthly_weight["Weight MT"].sum(),
+                monthly_weight["Prev Weight MT"].sum()
+            )
+            _w_badge_color = "#166534" if weight_growth_total >= 0 else "#dc2626"
 
-            # Monthly weight bar chart
+            st.markdown(
+                f"###### Monthly Weight(MT) Trend "
+                f"<span style='font-size:11px;font-weight:700;color:{_w_badge_color};'>"
+                f"({growth_label(weight_growth_total)} vs LY)</span>",
+                unsafe_allow_html=True
+            )
+
+            # Monthly weight grouped bar chart — LY vs Current FY
             fig_weight = go.Figure()
 
             fig_weight.add_trace(
                 go.Bar(
                     x=monthly_weight["Month"],
-                    y=monthly_weight["Weight MT"],
-                    text=monthly_weight["Weight MT"],
-                
+                    y=monthly_weight["Prev Weight MT"],
+                    name=f"LY ({prev_fy})",
+                    marker_color="#cbd5e1",
+                    text=monthly_weight["Prev Weight MT"],
+                    texttemplate="%{text:.0f}",
                     textposition="outside",
-                    marker_color="#0f766e"
+                    textfont=dict(size=9, color="#64748b")
                 )
             )
 
+            fig_weight.add_trace(
+                go.Bar(
+                    x=monthly_weight["Month"],
+                    y=monthly_weight["Weight MT"],
+                    name=f"Current ({fy})",
+                    marker_color="#0f766e",
+                    text=monthly_weight["Weight MT"],
+                    texttemplate="%{text:.0f}",
+                    textposition="outside",
+                    textfont=dict(size=9, color="#0f766e")
+                )
+            )
+
+            weight_max = pd.concat([
+                monthly_weight["Weight MT"],
+                monthly_weight["Prev Weight MT"]
+            ]).max()
+            weight_max = weight_max if pd.notna(weight_max) and weight_max > 0 else 1
+
+            for _, r in monthly_weight.iterrows():
+                if r["Growth Label"] and r["Growth Label"] != "N/A":
+                    label_color = "#166534" if (r["Growth %"] or 0) >= 0 else "#dc2626"
+                    bar_top = max(
+                        r["Weight MT"] if pd.notna(r["Weight MT"]) else 0,
+                        r["Prev Weight MT"] if pd.notna(r["Prev Weight MT"]) else 0
+                    )
+                    fig_weight.add_annotation(
+                        x=r["Month"],
+                        y=bar_top + (weight_max * 0.16),
+                        text=r["Growth Label"],
+                        showarrow=False,
+                        font=dict(size=10, color=label_color, family="Arial Black")
+                    )
+
             fig_weight.update_layout(
+                barmode="group",
                 height=190,
-                margin=dict(l=2, r=2, t=2, b=2)
+                margin=dict(l=2, r=2, t=2, b=2),
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                legend=dict(orientation="h", yanchor="bottom", y=1.05, x=0, font=dict(size=8)),
+                yaxis_range=[0, weight_max * 1.35]
             )
             fig_weight.update_xaxes(showgrid=False, zeroline=False)
             fig_weight.update_yaxes(showgrid=False, zeroline=False)
