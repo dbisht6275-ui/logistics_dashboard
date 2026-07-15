@@ -359,6 +359,54 @@ def _validate_dates(from_date, to_date, as_on_date):
     return None
 
 
+def _load_as_on_trend(from_date, to_date, as_on_date, days=7):
+    """Load recent outstanding snapshots by varying only the As On Date.
+
+    The stored procedure returns one snapshot for one As On Date, so a real
+    trend requires one procedure call per snapshot date. The selected From/To
+    dates remain unchanged.
+    """
+    trend_rows = []
+
+    first_snapshot = max(from_date, as_on_date - timedelta(days=days - 1))
+    snapshot_dates = pd.date_range(first_snapshot, as_on_date, freq="D").date
+
+    for snapshot_date in snapshot_dates:
+        snapshot_df = get_outstanding_data(
+            branch=SP_BRANCH,
+            grtype=SP_GRTYPE,
+            from_dt=from_date,
+            to_dt=to_date,
+            as_on_dt=snapshot_date,
+            custcode=SP_CUSTCODE,
+            invoiceno=SP_INVOICENO,
+            user=SP_USER,
+        )
+
+        if snapshot_df is None or snapshot_df.empty:
+            snapshot_total = 0.0
+        elif "netbalance" in snapshot_df.columns:
+            snapshot_total = pd.to_numeric(
+                snapshot_df["netbalance"], errors="coerce"
+            ).fillna(0).sum()
+        elif "balance" in snapshot_df.columns:
+            snapshot_total = pd.to_numeric(
+                snapshot_df["balance"], errors="coerce"
+            ).fillna(0).sum()
+        else:
+            snapshot_total = 0.0
+
+        trend_rows.append(
+            {
+                "as_on_date": pd.Timestamp(snapshot_date),
+                "net_outstanding": float(snapshot_total),
+                "net_outstanding_cr": float(snapshot_total) / 1_00_00_000,
+            }
+        )
+
+    return pd.DataFrame(trend_rows)
+
+
 def _safe_selectbox(
     label,
     options,
@@ -512,6 +560,15 @@ def show_OutstandingAnalysis():
                 to_date,
                 as_on_date,
             )
+            # Load recent snapshots for the As On Date trend.
+            # This performs one stored-procedure call per day.
+            st.session_state["oa_as_on_trend"] = _load_as_on_trend(
+                from_date=from_date,
+                to_date=to_date,
+                as_on_date=as_on_date,
+                days=7,
+            )
+
             st.session_state["oa_last_refreshed"] = datetime.now()
 
         except Exception as exc:
@@ -935,6 +992,19 @@ def show_OutstandingAnalysis():
                     height=380,
                     showlegend=False,
                     margin=dict(t=50, b=10, l=10, r=10),
+                    annotations=[
+                        dict(
+                            text=(
+                                f"<b>{_inr_cr(total_age_outstanding)}</b>"
+                                "<br><span style='font-size:11px'>Net Outstanding</span>"
+                            ),
+                            x=0.5,
+                            y=0.5,
+                            showarrow=False,
+                            align="center",
+                            font=dict(size=15, color="#0f172a"),
+                        )
+                    ],
                 )
 
                 st.plotly_chart(fig_age, width='stretch')
@@ -1065,6 +1135,66 @@ def show_OutstandingAnalysis():
             st.plotly_chart(fig_zone, width='stretch')
         else:
             st.info("Zone data is not available.")
+
+    # -----------------------------------------------------------------------
+    # OUTSTANDING TREND BY AS ON DATE
+    # -----------------------------------------------------------------------
+
+    as_on_trend = st.session_state.get("oa_as_on_trend", pd.DataFrame()).copy()
+
+    if not as_on_trend.empty:
+        st.markdown(
+            "<div class='oa-section-title'>Outstanding Trend by As On Date</div>",
+            unsafe_allow_html=True,
+        )
+
+        as_on_trend["as_on_date"] = pd.to_datetime(
+            as_on_trend["as_on_date"], errors="coerce"
+        )
+        as_on_trend = as_on_trend.dropna(subset=["as_on_date"]).sort_values(
+            "as_on_date"
+        )
+
+        fig_as_on = go.Figure()
+        fig_as_on.add_trace(
+            go.Scatter(
+                x=as_on_trend["as_on_date"],
+                y=as_on_trend["net_outstanding_cr"],
+                mode="lines+markers+text",
+                name="Net Outstanding",
+                line=dict(color="#2563eb", width=3),
+                marker=dict(size=8, color="#2563eb"),
+                text=as_on_trend["net_outstanding_cr"],
+                texttemplate="₹%{text:,.2f} Cr",
+                textposition="top center",
+                hovertemplate=(
+                    "<b>%{x|%d-%b-%Y}</b><br>"
+                    "Net Outstanding: ₹%{y:,.2f} Cr<extra></extra>"
+                ),
+            )
+        )
+
+        trend_max = as_on_trend["net_outstanding_cr"].max()
+        trend_min = as_on_trend["net_outstanding_cr"].min()
+        trend_padding = max((trend_max - trend_min) * 0.35, trend_max * 0.08, 0.10)
+
+        fig_as_on.update_layout(
+            height=360,
+            margin=dict(t=45, b=10, l=10, r=10),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            xaxis_title="As On Date",
+            yaxis_title="Net Outstanding (₹ Cr)",
+            showlegend=False,
+            yaxis_range=[
+                max(0, trend_min - trend_padding),
+                trend_max + trend_padding,
+            ],
+        )
+        fig_as_on.update_xaxes(showgrid=False, tickformat="%d-%b")
+        fig_as_on.update_yaxes(showgrid=True, gridcolor="#e5e7eb", zeroline=False)
+
+        st.plotly_chart(fig_as_on, width="stretch")
 
     # -----------------------------------------------------------------------
     # DOCUMENT TYPE-WISE OUTSTANDING
