@@ -283,7 +283,7 @@ st.markdown("""
 # Used for routing below, and read by the User Management admin page so its
 # checkboxes always match what's actually available here.
 FULL_MENU_ITEMS = [
-    "🏠 Overview",
+    "🏠 Revenue Overview",
     "📊 Comparison",
     "📈 Outstanding Analysis",
     "👥 Customer Analysis",
