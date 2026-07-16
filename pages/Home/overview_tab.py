@@ -724,83 +724,94 @@ def show_overview():
                 selected_month=month
             )
 
-            # Management line chart — Actual vs Last Year vs Forecast
+            # Revenue trend grouped bar chart — LY vs Current FY vs Forecast
             fig_yoy = go.Figure()
 
             fig_yoy.add_trace(
-                go.Scatter(
+                go.Bar(
                     x=yoy_df["Period"],
-                    y=yoy_df["Revenue Cr"],
-                    mode="lines+markers",
-                    name=f"Actual ({fy})",
-                    line=dict(color="#155eef", width=3),
-                    marker=dict(size=7, color="#155eef"),
-                    hovertemplate="<b>%{x}</b><br>Actual: ₹%{y:.2f} Cr<extra></extra>",
+                    y=yoy_df["Prev Revenue Cr"],
+                    name=f"LY ({prev_fy})",
+                    marker_color="#cbd5e1",
+                    text=yoy_df["Prev Revenue Cr"],
+                    texttemplate="%{text:.2f}",
+                    textposition="outside",
+                    textfont=dict(size=9, color="#64748b")
                 )
             )
 
             fig_yoy.add_trace(
-                go.Scatter(
+                go.Bar(
                     x=yoy_df["Period"],
-                    y=yoy_df["Prev Revenue Cr"],
-                    mode="lines+markers",
-                    name=f"Last Year ({prev_fy})",
-                    line=dict(color="#64748b", width=2, dash="dash"),
-                    marker=dict(size=6, color="#64748b"),
-                    hovertemplate="<b>%{x}</b><br>Last Year: ₹%{y:.2f} Cr<extra></extra>",
+                    y=yoy_df["Revenue Cr"],
+                    name=f"Current ({fy})",
+                    marker_color="#2563eb",
+                    text=yoy_df["Revenue Cr"],
+                    texttemplate="%{text:.2f}",
+                    textposition="outside",
+                    textfont=dict(size=9, color="#2563eb")
                 )
             )
 
-            # Forecast is currently calculated only for the ongoing month.
+            # Forecast bar only for the current ongoing month.
             forecast_df = yoy_df[yoy_df["Forecast Revenue Cr"].notna()].copy()
+
             if not forecast_df.empty:
                 fig_yoy.add_trace(
-                    go.Scatter(
+                    go.Bar(
                         x=forecast_df["Period"],
                         y=forecast_df["Forecast Revenue Cr"],
-                        mode="markers+text",
                         name="Forecast",
-                        marker=dict(size=11, color="#ef4444", symbol="diamond"),
+                        marker_color="#f97316",
                         text=forecast_df["Forecast Revenue Cr"],
-                        texttemplate="₹%{text:.2f} Cr",
-                        textposition="top center",
-                        textfont=dict(size=10, color="#dc2626"),
-                        hovertemplate="<b>%{x}</b><br>Forecast: ₹%{y:.2f} Cr<extra></extra>",
+                        texttemplate="%{text:.2f}",
+                        textposition="outside",
+                        textfont=dict(size=9, color="#f97316")
                     )
                 )
 
+            # Growth % annotated above each period's pair of bars
             yoy_max = pd.concat([
                 yoy_df["Revenue Cr"],
                 yoy_df["Prev Revenue Cr"],
-                yoy_df["Forecast Revenue Cr"],
+                yoy_df["Forecast Revenue Cr"]
             ]).max()
             yoy_max = yoy_max if pd.notna(yoy_max) and yoy_max > 0 else 1
 
+            # Skip annotation clutter when there are too many bars (Daily/Weekly with long ranges)
+            show_annotations = len(yoy_df) <= 40
+
+            if show_annotations:
+                for _, r in yoy_df.iterrows():
+                    if r["Growth Label"] and r["Growth Label"] not in ["N/A", "Forecast"]:
+                        label_color = "#166534" if (r["Growth %"] or 0) >= 0 else "#dc2626"
+                        bar_top = max(
+                            r["Revenue Cr"] if pd.notna(r["Revenue Cr"]) else 0,
+                            r["Prev Revenue Cr"] if pd.notna(r["Prev Revenue Cr"]) else 0,
+                            r["Forecast Revenue Cr"] if pd.notna(r["Forecast Revenue Cr"]) else 0
+                        )
+                        fig_yoy.add_annotation(
+                            x=r["Period"],
+                            y=bar_top + (yoy_max * 0.16),
+                            text=r["Growth Label"],
+                            showarrow=False,
+                            font=dict(size=10, color=label_color, family="Arial Black")
+                        )
+
             fig_yoy.update_layout(
-                height=270,
-                margin=dict(l=5, r=10, t=35, b=5),
+                barmode="group",
+                height=250,
+                margin=dict(l=2, r=2, t=30, b=0),
                 xaxis_title="",
                 yaxis_title="Revenue (Cr)",
                 plot_bgcolor="white",
                 paper_bgcolor="white",
-                hovermode="x unified",
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.05,
-                    x=0,
-                    font=dict(size=9),
-                ),
-                yaxis_range=[0, yoy_max * 1.25],
+                legend=dict(orientation="h", yanchor="bottom", y=1.05, x=0, font=dict(size=9)),
+                yaxis_range=[0, yoy_max * 1.35]
             )
+
             fig_yoy.update_xaxes(showgrid=False, zeroline=False)
-            fig_yoy.update_yaxes(
-                showgrid=True,
-                gridcolor="#eef2f7",
-                zeroline=False,
-                tickprefix="₹",
-                ticksuffix=" Cr",
-            )
+            fig_yoy.update_yaxes(showgrid=False, zeroline=False)
 
             st.plotly_chart(fig_yoy, use_container_width=True)
 
