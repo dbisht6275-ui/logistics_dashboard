@@ -1194,46 +1194,37 @@ def show_overview():
 
     with management_col2:
         with st.container(border=True):
-            st.markdown("###### Zone Monthly Growth Heatmap (% vs LY)")
+            st.markdown("###### Revenue Waterfall | Last Year to Current Year (Cr)")
 
-            current_zone_month = (
-                df.groupby(["zone", "Month"], dropna=False)["REVENUE"]
+            # Compare zone-level revenue between the selected FY and last year.
+            current_zone_waterfall = (
+                df.groupby("zone", dropna=False)["REVENUE"]
                 .sum()
                 .reset_index(name="Current Revenue")
             )
 
             if prev_df is not None and not prev_df.empty:
-                previous_zone_month = (
-                    prev_df.groupby(["zone", "Month"], dropna=False)["REVENUE"]
+                previous_zone_waterfall = (
+                    prev_df.groupby("zone", dropna=False)["REVENUE"]
                     .sum()
                     .reset_index(name="Previous Revenue")
                 )
-                heatmap_source = current_zone_month.merge(
-                    previous_zone_month,
-                    on=["zone", "Month"],
+                waterfall_source = current_zone_waterfall.merge(
+                    previous_zone_waterfall,
+                    on="zone",
                     how="outer",
                 )
             else:
-                heatmap_source = current_zone_month.copy()
-                heatmap_source["Previous Revenue"] = 0
+                waterfall_source = current_zone_waterfall.copy()
+                waterfall_source["Previous Revenue"] = 0
 
-            heatmap_source[["Current Revenue", "Previous Revenue"]] = heatmap_source[
+            waterfall_source[["Current Revenue", "Previous Revenue"]] = waterfall_source[
                 ["Current Revenue", "Previous Revenue"]
             ].fillna(0)
-            heatmap_source["Growth %"] = heatmap_source.apply(
-                lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"])
-                if row["Previous Revenue"] != 0 else None,
-                axis=1,
+            waterfall_source["Variance"] = (
+                waterfall_source["Current Revenue"]
+                - waterfall_source["Previous Revenue"]
             )
-
-            heatmap_matrix = heatmap_source.pivot(
-                index="zone",
-                columns="Month",
-                values="Growth %",
-            )
-            ordered_heatmap_months = [m for m in MONTH_ORDER if m in heatmap_matrix.columns]
-            heatmap_matrix = heatmap_matrix.reindex(columns=ordered_heatmap_months)
-            heatmap_matrix = heatmap_matrix.sort_index()
 
             zone_short_map = {
                 "NORTH ZONE": "North",
@@ -1243,45 +1234,113 @@ def show_overview():
                 "NORTH EAST ZONE": "North East",
                 "NEPAL ZONE": "Nepal",
             }
-            heatmap_matrix.index = [zone_short_map.get(z, z) for z in heatmap_matrix.index]
+            waterfall_source["Zone Label"] = (
+                waterfall_source["zone"]
+                .fillna("Unknown")
+                .astype(str)
+                .map(lambda value: zone_short_map.get(value, value.replace(" ZONE", "").title()))
+            )
 
-            heatmap_values = heatmap_matrix.values
-            heatmap_text = [
-                ["-" if pd.isna(value) else f"{value:.0f}%" for value in row]
-                for row in heatmap_values
-            ]
+            # Keep the chart management-friendly: strongest gains first, then declines.
+            waterfall_source = waterfall_source.sort_values(
+                ["Variance", "Current Revenue"],
+                ascending=[False, False],
+            ).reset_index(drop=True)
 
-            fig_heatmap = go.Figure(
-                data=go.Heatmap(
-                    z=heatmap_values,
-                    x=heatmap_matrix.columns.tolist(),
-                    y=heatmap_matrix.index.tolist(),
-                    colorscale=[
-                        [0.0, "#ef4444"],
-                        [0.45, "#fde68a"],
-                        [0.5, "#fff7ed"],
-                        [0.55, "#d9f99d"],
-                        [1.0, "#22c55e"],
-                    ],
-                    zmid=0,
-                    text=heatmap_text,
-                    texttemplate="%{text}",
-                    textfont=dict(size=10),
-                    colorbar=dict(title="Growth %", ticksuffix="%", thickness=12),
+            previous_total_cr = waterfall_source["Previous Revenue"].sum() / 10000000
+            current_total_cr = waterfall_source["Current Revenue"].sum() / 10000000
+            waterfall_source["Variance Cr"] = waterfall_source["Variance"] / 10000000
+
+            waterfall_x = (
+                ["Last Year Revenue"]
+                + waterfall_source["Zone Label"].tolist()
+                + ["Current Year Revenue"]
+            )
+            waterfall_y = (
+                [previous_total_cr]
+                + waterfall_source["Variance Cr"].tolist()
+                + [current_total_cr]
+            )
+            waterfall_measure = (
+                ["absolute"]
+                + ["relative"] * len(waterfall_source)
+                + ["total"]
+            )
+            waterfall_text = (
+                [f"{previous_total_cr:.2f}"]
+                + [f"{value:+.2f}" for value in waterfall_source["Variance Cr"]]
+                + [f"{current_total_cr:.2f}"]
+            )
+
+            fig_waterfall = go.Figure(
+                go.Waterfall(
+                    orientation="v",
+                    measure=waterfall_measure,
+                    x=waterfall_x,
+                    y=waterfall_y,
+                    text=waterfall_text,
+                    textposition="outside",
+                    textfont=dict(size=10, color="#0f172a"),
+                    connector={"line": {"color": "#94a3b8", "width": 1}},
+                    increasing={"marker": {"color": "#22c55e"}},
+                    decreasing={"marker": {"color": "#ef4444"}},
+                    totals={"marker": {"color": "#0f2747"}},
                     hovertemplate=(
-                        "<b>%{y}</b><br>Month: %{x}<br>Growth vs LY: %{z:.1f}%<extra></extra>"
+                        "<b>%{x}</b><br>Revenue movement: ₹%{y:.2f} Cr<extra></extra>"
                     ),
                 )
             )
-            fig_heatmap.update_layout(
+
+            overall_waterfall_growth = pct_growth(
+                current_total_cr,
+                previous_total_cr,
+            )
+            waterfall_growth_color = (
+                "#166534" if overall_waterfall_growth >= 0 else "#dc2626"
+            )
+            waterfall_growth_arrow = "▲" if overall_waterfall_growth >= 0 else "▼"
+
+            fig_waterfall.add_annotation(
+                x=0.5,
+                y=1.11,
+                xref="paper",
+                yref="paper",
+                text=(
+                    f"<b>{waterfall_growth_arrow} "
+                    f"{abs(overall_waterfall_growth):.1f}% Overall Growth</b>"
+                ),
+                showarrow=False,
+                font=dict(size=12, color=waterfall_growth_color),
+            )
+
+            chart_max = max(
+                previous_total_cr,
+                current_total_cr,
+                1,
+            )
+            fig_waterfall.update_layout(
                 height=320,
-                margin=dict(l=5, r=5, t=25, b=20),
+                margin=dict(l=5, r=5, t=45, b=45),
                 plot_bgcolor="white",
                 paper_bgcolor="white",
-                xaxis=dict(side="top", title="", showgrid=False),
-                yaxis=dict(title="", autorange="reversed", showgrid=False),
+                showlegend=False,
+                yaxis_title="Revenue (Cr)",
+                yaxis_range=[0, chart_max * 1.35],
+                waterfallgap=0.35,
             )
-            st.plotly_chart(fig_heatmap, use_container_width=True)
+            fig_waterfall.update_xaxes(
+                title="",
+                showgrid=False,
+                tickangle=-20,
+                tickfont=dict(size=10),
+            )
+            fig_waterfall.update_yaxes(
+                showgrid=True,
+                gridcolor="#e2e8f0",
+                zeroline=False,
+            )
+
+            st.plotly_chart(fig_waterfall, use_container_width=True)
 
     # Small separator before branch analysis
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -1363,22 +1422,110 @@ def show_overview():
 
     with b4:
         with st.container(border=True):
-            st.markdown("##### 💡 Key Insights")
+            st.markdown("##### 💡 Management Insights")
 
             best_branch = top10_df.iloc[0]["branch"] if not top10_df.empty else "-"
+            best_branch_revenue = (
+                top10_df.iloc[0]["Revenue Cr"] if not top10_df.empty else 0
+            )
             best_zone = zone_df.iloc[0]["zone"] if not zone_df.empty else "-"
+            best_zone_revenue = (
+                zone_df.iloc[0]["Revenue Cr"] if not zone_df.empty else 0
+            )
 
-            st.markdown(f"✅ Highest Revenue Branch: **{best_branch}**")
-            st.markdown(f"✅ Top Performing Zone: **{best_zone}**")
-            st.markdown(f"🚛 Largest Revenue Source: **FTL ({ftl_pct:.1f}%)**")
+            dominant_load = "FTL" if ftl >= ltl else "LTL"
+            dominant_load_pct = max(ftl_pct, ltl_pct)
 
-            if len(monthly["Growth %"].dropna()) > 0:
-                last_growth = monthly["Growth %"].dropna().iloc[-1]
+            overall_yoy_growth = pct_growth(revenue, prev_kpis["revenue"])
+            overall_growth_color = "#166534" if overall_yoy_growth >= 0 else "#dc2626"
+            overall_growth_bg = "#ecfdf5" if overall_yoy_growth >= 0 else "#fef2f2"
+            overall_growth_icon = "📈" if overall_yoy_growth >= 0 else "⚠️"
+            overall_growth_text = (
+                f"Revenue is up {abs(overall_yoy_growth):.1f}% vs LY"
+                if overall_yoy_growth >= 0
+                else f"Revenue is down {abs(overall_yoy_growth):.1f}% vs LY"
+            )
 
-                if last_growth < 0:
-                    st.markdown(f"⚠️ Revenue at Risk: **Dropped {abs(last_growth):.2f}%**")
-                else:
-                    st.markdown(f"📈 Revenue Growth: **{last_growth:.2f}%**")
+            # Identify the zone with the largest absolute YoY movement.
+            current_zone_insight = (
+                df.groupby("zone", dropna=False)["REVENUE"]
+                .sum()
+                .reset_index(name="Current Revenue")
+            )
+            if prev_df is not None and not prev_df.empty:
+                previous_zone_insight = (
+                    prev_df.groupby("zone", dropna=False)["REVENUE"]
+                    .sum()
+                    .reset_index(name="Previous Revenue")
+                )
+                zone_movement = current_zone_insight.merge(
+                    previous_zone_insight,
+                    on="zone",
+                    how="outer",
+                ).fillna(0)
+                zone_movement["Movement"] = (
+                    zone_movement["Current Revenue"]
+                    - zone_movement["Previous Revenue"]
+                )
+            else:
+                zone_movement = current_zone_insight.copy()
+                zone_movement["Movement"] = zone_movement["Current Revenue"]
+
+            if not zone_movement.empty:
+                movement_row = zone_movement.loc[
+                    zone_movement["Movement"].abs().idxmax()
+                ]
+                movement_zone = str(movement_row["zone"])
+                movement_cr = movement_row["Movement"] / 10000000
+                movement_positive = movement_cr >= 0
+                movement_icon = "🚀" if movement_positive else "🔻"
+                movement_color = "#166534" if movement_positive else "#dc2626"
+                movement_bg = "#ecfdf5" if movement_positive else "#fef2f2"
+                movement_text = (
+                    f"{movement_zone}: +₹{abs(movement_cr):.2f} Cr contribution"
+                    if movement_positive
+                    else f"{movement_zone}: -₹{abs(movement_cr):.2f} Cr impact"
+                )
+            else:
+                movement_icon = "ℹ️"
+                movement_color = "#475569"
+                movement_bg = "#f8fafc"
+                movement_text = "Zone movement data is unavailable"
+
+            insight_rows = [
+                ("🏆", "Highest Revenue Branch", f"{best_branch} · ₹{best_branch_revenue:.2f} Cr", "#1d4ed8", "#eff6ff"),
+                ("🌍", "Top Performing Zone", f"{best_zone} · ₹{best_zone_revenue:.2f} Cr", "#0f766e", "#f0fdfa"),
+                ("🚛", "Largest Revenue Source", f"{dominant_load} · {dominant_load_pct:.1f}% of revenue", "#7c3aed", "#f5f3ff"),
+                (overall_growth_icon, "Overall YoY Performance", overall_growth_text, overall_growth_color, overall_growth_bg),
+                (movement_icon, "Largest Zone Movement", movement_text, movement_color, movement_bg),
+            ]
+
+            for icon, label, value, color, background in insight_rows:
+                st.markdown(
+                    f"""
+                    <div style="
+                        display:flex;
+                        align-items:center;
+                        gap:8px;
+                        padding:7px 8px;
+                        margin-bottom:6px;
+                        border-radius:8px;
+                        background:{background};
+                        border-left:3px solid {color};
+                    ">
+                        <div style="font-size:16px;line-height:1;">{icon}</div>
+                        <div style="min-width:0;">
+                            <div style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">
+                                {label}
+                            </div>
+                            <div style="font-size:11px;color:{color};font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                {value}
+                            </div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
