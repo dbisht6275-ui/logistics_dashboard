@@ -404,13 +404,13 @@ def create_card(title, value, color, icon, growth_value=0.0):
     growth_color = "#166534" if growth_value >= 0 else "#dc2626"
     growth_text = growth_label(growth_value)
 
-    html = f"""<div style="background:#ffffff;padding:8px;border-radius:10px;border:1px solid #e5e7eb;box-shadow:0 3px 10px rgba(0,0,0,0.08);min-height:70px;">
+    html = f"""<div style="background:#ffffff;padding:8px;border-radius:10px;border:1px solid #e5e7eb;border-left:4px solid {color};box-shadow:0 3px 10px rgba(0,0,0,0.08);min-height:70px;">
 <div style="display:flex;justify-content:space-between;align-items:center;">
-<div style="color:{color};font-size:10px;font-weight:800;">{title}</div>
-<div style="font-size:16px;">{icon}</div>
+<div style="color:{color};font-size:11px;font-weight:800;">{title}</div>
+<div style="font-size:18px;">{icon}</div>
 </div>
-<div style="font-size:15px;font-weight:900;color:#0f172a;margin-top:1px;">{value}</div>
-<div style="font-size:10px;color:{growth_color};font-weight:700;margin-top:1px;">{growth_text} vs LY</div>
+<div style="font-size:17px;font-weight:900;color:#0f172a;margin-top:1px;">{value}</div>
+<div style="font-size:11px;color:{growth_color};font-weight:700;margin-top:1px;">{growth_text} vs LY</div>
 
 </div>"""
     st.markdown(html, unsafe_allow_html=True)
