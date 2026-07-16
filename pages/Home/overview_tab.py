@@ -1094,95 +1094,103 @@ def show_overview():
                 )
 
     # =====================================================
-    # Management visuals: Branch Pareto and Zone-Month YoY heatmap
+    # Management visuals: Revenue Mix Treemap and Zone-Month YoY heatmap
     # =====================================================
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     management_col1, management_col2 = st.columns([1.05, 1.35])
 
     with management_col1:
         with st.container(border=True):
-            st.markdown("###### Revenue Contribution Pareto")
+            st.markdown("###### Revenue Mix Treemap (Zone > Circle > Branch)")
 
-            pareto_df = (
-                df.groupby("branch", dropna=False)["REVENUE"]
+            # Current revenue at the lowest hierarchy level.
+            treemap_current = (
+                df.groupby(["zone", "circle", "branch"], dropna=False)["REVENUE"]
                 .sum()
-                .reset_index()
-                .sort_values("REVENUE", ascending=False)
+                .reset_index(name="Current Revenue")
             )
-            pareto_df["branch"] = pareto_df["branch"].fillna("Unknown")
 
-            top_n = 10
-            pareto_top = pareto_df.head(top_n).copy()
-            others_revenue = pareto_df.iloc[top_n:]["REVENUE"].sum()
+            # Compare the same hierarchy with last year so colour can represent growth.
+            if prev_df is not None and not prev_df.empty:
+                treemap_previous = (
+                    prev_df.groupby(["zone", "circle", "branch"], dropna=False)["REVENUE"]
+                    .sum()
+                    .reset_index(name="Previous Revenue")
+                )
+                treemap_df = treemap_current.merge(
+                    treemap_previous,
+                    on=["zone", "circle", "branch"],
+                    how="left",
+                )
+            else:
+                treemap_df = treemap_current.copy()
+                treemap_df["Previous Revenue"] = 0
 
-            if others_revenue > 0:
-                pareto_top = pd.concat(
-                    [
-                        pareto_top,
-                        pd.DataFrame({"branch": ["Others"], "REVENUE": [others_revenue]}),
+            treemap_df["Previous Revenue"] = treemap_df["Previous Revenue"].fillna(0)
+            treemap_df["zone"] = treemap_df["zone"].fillna("Unknown Zone").astype(str)
+            treemap_df["circle"] = treemap_df["circle"].fillna("Unknown Circle").astype(str)
+            treemap_df["branch"] = treemap_df["branch"].fillna("Unknown Branch").astype(str)
+
+            treemap_df["Revenue Cr"] = treemap_df["Current Revenue"] / 10000000
+            treemap_df["Growth %"] = treemap_df.apply(
+                lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"])
+                if row["Previous Revenue"] != 0 else 0,
+                axis=1,
+            )
+
+            # Remove zero-value records because Plotly cannot size them meaningfully.
+            treemap_df = treemap_df[treemap_df["Current Revenue"] > 0].copy()
+
+            if treemap_df.empty:
+                st.info("No revenue data available for the treemap.")
+            else:
+                fig_treemap = px.treemap(
+                    treemap_df,
+                    path=[px.Constant("All Revenue"), "zone", "circle", "branch"],
+                    values="Current Revenue",
+                    color="Growth %",
+                    color_continuous_scale=[
+                        [0.00, "#dc2626"],
+                        [0.35, "#f59e0b"],
+                        [0.50, "#f8fafc"],
+                        [0.65, "#84cc16"],
+                        [1.00, "#15803d"],
                     ],
-                    ignore_index=True,
+                    color_continuous_midpoint=0,
+                    custom_data=["Revenue Cr", "Growth %"],
                 )
 
-            pareto_top["Revenue Cr"] = pareto_top["REVENUE"] / 10000000
-            total_pareto_revenue = pareto_top["REVENUE"].sum()
-            pareto_top["Cumulative %"] = (
-                pareto_top["REVENUE"].cumsum() / total_pareto_revenue * 100
-                if total_pareto_revenue else 0
-            )
+                fig_treemap.update_traces(
+                    texttemplate=(
+                        "<b>%{label}</b><br>₹%{customdata[0]:.2f} Cr"
+                        "<br>%{customdata[1]:+.1f}% vs LY"
+                    ),
+                    hovertemplate=(
+                        "<b>%{label}</b><br>Revenue: ₹%{customdata[0]:.2f} Cr"
+                        "<br>Growth vs LY: %{customdata[1]:+.1f}%<extra></extra>"
+                    ),
+                    marker=dict(line=dict(color="white", width=1.5)),
+                    root_color="#eef2ff",
+                )
 
-            fig_pareto = go.Figure()
-            fig_pareto.add_trace(
-                go.Bar(
-                    x=pareto_top["branch"],
-                    y=pareto_top["Revenue Cr"],
-                    name="Revenue",
-                    marker_color="#163b73",
-                    text=pareto_top["Revenue Cr"],
-                    texttemplate="%{text:.2f}",
-                    textposition="outside",
-                    hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:.2f} Cr<extra></extra>",
+                fig_treemap.update_layout(
+                    height=320,
+                    margin=dict(l=3, r=3, t=8, b=3),
+                    paper_bgcolor="white",
+                    coloraxis_colorbar=dict(
+                        title="Growth %",
+                        ticksuffix="%",
+                        orientation="h",
+                        x=0.5,
+                        xanchor="center",
+                        y=-0.12,
+                        yanchor="top",
+                        len=0.75,
+                        thickness=10,
+                    ),
                 )
-            )
-            fig_pareto.add_trace(
-                go.Scatter(
-                    x=pareto_top["branch"],
-                    y=pareto_top["Cumulative %"],
-                    name="Cumulative %",
-                    mode="lines+markers",
-                    line=dict(color="#ef4444", width=2),
-                    marker=dict(size=6, color="#ef4444"),
-                    yaxis="y2",
-                    hovertemplate="<b>%{x}</b><br>Cumulative: %{y:.1f}%<extra></extra>",
-                )
-            )
-            fig_pareto.add_hline(
-                y=80,
-                line_dash="dot",
-                line_color="#2563eb",
-                annotation_text="80% contribution",
-                annotation_position="top left",
-                yref="y2",
-            )
-            fig_pareto.update_layout(
-                height=320,
-                margin=dict(l=5, r=10, t=30, b=70),
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                hovermode="x unified",
-                legend=dict(orientation="h", y=1.08, x=0, font=dict(size=9)),
-                xaxis=dict(tickangle=-40, title=""),
-                yaxis=dict(title="Revenue (Cr)", showgrid=True, gridcolor="#eef2f7"),
-                yaxis2=dict(
-                    title="Cumulative %",
-                    overlaying="y",
-                    side="right",
-                    range=[0, 105],
-                    ticksuffix="%",
-                    showgrid=False,
-                ),
-            )
-            st.plotly_chart(fig_pareto, use_container_width=True)
+
+                st.plotly_chart(fig_treemap, use_container_width=True)
 
     with management_col2:
         with st.container(border=True):
