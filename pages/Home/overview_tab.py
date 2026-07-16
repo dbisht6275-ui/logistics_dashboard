@@ -712,93 +712,102 @@ def show_overview():
         create_card("T.B.B Revenue", format_cr(tbb), "#2563eb", "🚚", tbb_growth)
 
     # =====================================================
-    # Target vs Actual row
+    # Actual vs Target (shown only when user clicks the button)
     # =====================================================
-    # These are temporary session-based targets. Once target data becomes
-    # available in your database, replace the number_input values with those
-    # target fields and keep the display cards unchanged.
-    with st.expander("🎯 Set Target Values (temporary)", expanded=False):
-        st.caption(
-            "Enter targets for the selected filters. Values remain available "
-            "during the current Streamlit session. Revenue targets are in Cr."
-        )
-        target_input_cols = st.columns(5)
+    target_toggle_key = "show_actual_vs_target"
+    if target_toggle_key not in st.session_state:
+        st.session_state[target_toggle_key] = False
 
-        with target_input_cols[0]:
-            revenue_target_cr = st.number_input(
-                "Revenue Target (Cr)",
-                min_value=0.0,
-                value=st.session_state.get(f"target_revenue_{fy}", 0.0),
-                step=0.10,
-                key=f"target_revenue_{fy}",
-            )
-        with target_input_cols[1]:
-            ftl_target_cr = st.number_input(
-                "FTL Target (Cr)",
-                min_value=0.0,
-                value=st.session_state.get(f"target_ftl_{fy}", 0.0),
-                step=0.10,
-                key=f"target_ftl_{fy}",
-            )
-        with target_input_cols[2]:
-            ltl_target_cr = st.number_input(
-                "LTL Target (Cr)",
-                min_value=0.0,
-                value=st.session_state.get(f"target_ltl_{fy}", 0.0),
-                step=0.10,
-                key=f"target_ltl_{fy}",
-            )
-        with target_input_cols[3]:
-            gr_target = st.number_input(
-                "GR Target",
-                min_value=0,
-                value=int(st.session_state.get(f"target_gr_{fy}", 0)),
-                step=100,
-                key=f"target_gr_{fy}",
-            )
-        with target_input_cols[4]:
-            weight_target_mt = st.number_input(
-                "Weight Target (MT)",
-                min_value=0.0,
-                value=float(st.session_state.get(f"target_weight_{fy}", 0.0)),
-                step=100.0,
-                key=f"target_weight_{fy}",
-            )
-
-    st.markdown(
-        "<div style='display:flex;align-items:center;gap:8px;margin:9px 0 6px 0;'>"
-        "<div style='font-size:13px;font-weight:900;color:#0f172a;'>Target vs Actual</div>"
-        "<div style='font-size:10px;color:#64748b;'>Based on current dashboard filters</div>"
-        "</div>",
-        unsafe_allow_html=True,
+    target_button_label = (
+        "✕ Hide Actual vs Target"
+        if st.session_state[target_toggle_key]
+        else "🎯 Actual vs Target"
     )
 
-    target_cols = st.columns(5)
-    with target_cols[0]:
-        create_target_card(
-            "Revenue", revenue / 10000000, revenue_target_cr,
-            unit=" Cr", decimals=2, icon="💰",
-        )
-    with target_cols[1]:
-        create_target_card(
-            "FTL Revenue", ftl / 10000000, ftl_target_cr,
-            unit=" Cr", decimals=2, icon="🚛",
-        )
-    with target_cols[2]:
-        create_target_card(
-            "LTL Revenue", ltl / 10000000, ltl_target_cr,
-            unit=" Cr", decimals=2, icon="🚚",
-        )
-    with target_cols[3]:
-        create_target_card(
-            "Total GR", total_gr, gr_target,
-            unit="", decimals=0, icon="📦",
-        )
-    with target_cols[4]:
-        create_target_card(
-            "Weight", aweight, weight_target_mt,
-            unit=" MT", decimals=0, icon="⚓",
-        )
+    if st.button(target_button_label, key="actual_vs_target_button", use_container_width=False):
+        st.session_state[target_toggle_key] = not st.session_state[target_toggle_key]
+        st.rerun()
+
+    if st.session_state[target_toggle_key]:
+        with st.container(border=True):
+            st.markdown(
+                "<div style='font-size:13px;font-weight:900;color:#0f172a;'>Actual vs Target</div>"
+                "<div style='font-size:10px;color:#64748b;margin-bottom:8px;'>"
+                "Enter temporary targets for the currently selected dashboard filters."
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
+            with st.expander("Enter Target Values", expanded=True):
+                target_input_cols = st.columns(5)
+
+                with target_input_cols[0]:
+                    revenue_target_cr = st.number_input(
+                        "Revenue Target (Cr)",
+                        min_value=0.0,
+                        value=st.session_state.get(f"target_revenue_{fy}", 0.0),
+                        step=0.10,
+                        key=f"target_revenue_{fy}",
+                    )
+                with target_input_cols[1]:
+                    ftl_target_cr = st.number_input(
+                        "FTL Target (Cr)",
+                        min_value=0.0,
+                        value=st.session_state.get(f"target_ftl_{fy}", 0.0),
+                        step=0.10,
+                        key=f"target_ftl_{fy}",
+                    )
+                with target_input_cols[2]:
+                    ltl_target_cr = st.number_input(
+                        "LTL Target (Cr)",
+                        min_value=0.0,
+                        value=st.session_state.get(f"target_ltl_{fy}", 0.0),
+                        step=0.10,
+                        key=f"target_ltl_{fy}",
+                    )
+                with target_input_cols[3]:
+                    gr_target = st.number_input(
+                        "GR Target",
+                        min_value=0,
+                        value=int(st.session_state.get(f"target_gr_{fy}", 0)),
+                        step=100,
+                        key=f"target_gr_{fy}",
+                    )
+                with target_input_cols[4]:
+                    weight_target_mt = st.number_input(
+                        "Weight Target (MT)",
+                        min_value=0.0,
+                        value=float(st.session_state.get(f"target_weight_{fy}", 0.0)),
+                        step=100.0,
+                        key=f"target_weight_{fy}",
+                    )
+
+            target_cols = st.columns(5)
+            with target_cols[0]:
+                create_target_card(
+                    "Revenue", revenue / 10000000, revenue_target_cr,
+                    unit=" Cr", decimals=2, icon="💰",
+                )
+            with target_cols[1]:
+                create_target_card(
+                    "FTL Revenue", ftl / 10000000, ftl_target_cr,
+                    unit=" Cr", decimals=2, icon="🚛",
+                )
+            with target_cols[2]:
+                create_target_card(
+                    "LTL Revenue", ltl / 10000000, ltl_target_cr,
+                    unit=" Cr", decimals=2, icon="🚚",
+                )
+            with target_cols[3]:
+                create_target_card(
+                    "Total GR", total_gr, gr_target,
+                    unit="", decimals=0, icon="📦",
+                )
+            with target_cols[4]:
+                create_target_card(
+                    "Weight", aweight, weight_target_mt,
+                    unit=" MT", decimals=0, icon="⚓",
+                )
 
     # Small separator before charts
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -1232,253 +1241,158 @@ def show_overview():
                 )
 
     # =====================================================
-    # Management visuals: Revenue Mix Treemap and Zone-Month YoY heatmap
+    # Management visual: Revenue Waterfall
     # =====================================================
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-    management_col1, management_col2 = st.columns([1.05, 1.35])
+    with st.container(border=True):
+        st.markdown("###### Revenue Waterfall | Last Year to Current Year (Cr)")
 
-    with management_col1:
-        with st.container(border=True):
-            st.markdown("###### Revenue Mix Treemap (Zone > Circle > Branch)")
+        # Compare zone-level revenue between the selected FY and last year.
+        current_zone_waterfall = (
+            df.groupby("zone", dropna=False)["REVENUE"]
+            .sum()
+            .reset_index(name="Current Revenue")
+        )
 
-            # Current revenue at the lowest hierarchy level.
-            treemap_current = (
-                df.groupby(["zone", "circle", "branch"], dropna=False)["REVENUE"]
+        if prev_df is not None and not prev_df.empty:
+            previous_zone_waterfall = (
+                prev_df.groupby("zone", dropna=False)["REVENUE"]
                 .sum()
-                .reset_index(name="Current Revenue")
+                .reset_index(name="Previous Revenue")
             )
-
-            # Compare the same hierarchy with last year so colour can represent growth.
-            if prev_df is not None and not prev_df.empty:
-                treemap_previous = (
-                    prev_df.groupby(["zone", "circle", "branch"], dropna=False)["REVENUE"]
-                    .sum()
-                    .reset_index(name="Previous Revenue")
-                )
-                treemap_df = treemap_current.merge(
-                    treemap_previous,
-                    on=["zone", "circle", "branch"],
-                    how="left",
-                )
-            else:
-                treemap_df = treemap_current.copy()
-                treemap_df["Previous Revenue"] = 0
-
-            treemap_df["Previous Revenue"] = treemap_df["Previous Revenue"].fillna(0)
-            treemap_df["zone"] = treemap_df["zone"].fillna("Unknown Zone").astype(str)
-            treemap_df["circle"] = treemap_df["circle"].fillna("Unknown Circle").astype(str)
-            treemap_df["branch"] = treemap_df["branch"].fillna("Unknown Branch").astype(str)
-
-            treemap_df["Revenue Cr"] = treemap_df["Current Revenue"] / 10000000
-            treemap_df["Growth %"] = treemap_df.apply(
-                lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"])
-                if row["Previous Revenue"] != 0 else 0,
-                axis=1,
+            waterfall_source = current_zone_waterfall.merge(
+                previous_zone_waterfall,
+                on="zone",
+                how="outer",
             )
+        else:
+            waterfall_source = current_zone_waterfall.copy()
+            waterfall_source["Previous Revenue"] = 0
 
-            # Remove zero-value records because Plotly cannot size them meaningfully.
-            treemap_df = treemap_df[treemap_df["Current Revenue"] > 0].copy()
+        waterfall_source[["Current Revenue", "Previous Revenue"]] = waterfall_source[
+            ["Current Revenue", "Previous Revenue"]
+        ].fillna(0)
+        waterfall_source["Variance"] = (
+            waterfall_source["Current Revenue"]
+            - waterfall_source["Previous Revenue"]
+        )
 
-            if treemap_df.empty:
-                st.info("No revenue data available for the treemap.")
-            else:
-                fig_treemap = px.treemap(
-                    treemap_df,
-                    path=[px.Constant("All Revenue"), "zone", "circle", "branch"],
-                    values="Current Revenue",
-                    color="Growth %",
-                    color_continuous_scale=[
-                        [0.00, "#dc2626"],
-                        [0.35, "#f59e0b"],
-                        [0.50, "#f8fafc"],
-                        [0.65, "#84cc16"],
-                        [1.00, "#15803d"],
-                    ],
-                    color_continuous_midpoint=0,
-                    custom_data=["Revenue Cr", "Growth %"],
-                )
+        zone_short_map = {
+            "NORTH ZONE": "North",
+            "WEST ZONE": "West",
+            "SOUTH ZONE": "South",
+            "EAST ZONE": "East",
+            "NORTH EAST ZONE": "North East",
+            "NEPAL ZONE": "Nepal",
+        }
+        waterfall_source["Zone Label"] = (
+            waterfall_source["zone"]
+            .fillna("Unknown")
+            .astype(str)
+            .map(lambda value: zone_short_map.get(value, value.replace(" ZONE", "").title()))
+        )
 
-                fig_treemap.update_traces(
-                    texttemplate=(
-                        "<b>%{label}</b><br>₹%{customdata[0]:.2f} Cr"
-                        "<br>%{customdata[1]:+.1f}% vs LY"
-                    ),
-                    hovertemplate=(
-                        "<b>%{label}</b><br>Revenue: ₹%{customdata[0]:.2f} Cr"
-                        "<br>Growth vs LY: %{customdata[1]:+.1f}%<extra></extra>"
-                    ),
-                    marker=dict(line=dict(color="white", width=1.5)),
-                    root_color="#eef2ff",
-                )
+        # Keep the chart management-friendly: strongest gains first, then declines.
+        waterfall_source = waterfall_source.sort_values(
+            ["Variance", "Current Revenue"],
+            ascending=[False, False],
+        ).reset_index(drop=True)
 
-                fig_treemap.update_layout(
-                    height=320,
-                    margin=dict(l=3, r=3, t=8, b=3),
-                    paper_bgcolor="white",
-                    coloraxis_colorbar=dict(
-                        title="Growth %",
-                        ticksuffix="%",
-                        orientation="h",
-                        x=0.5,
-                        xanchor="center",
-                        y=-0.12,
-                        yanchor="top",
-                        len=0.75,
-                        thickness=10,
-                    ),
-                )
+        previous_total_cr = waterfall_source["Previous Revenue"].sum() / 10000000
+        current_total_cr = waterfall_source["Current Revenue"].sum() / 10000000
+        waterfall_source["Variance Cr"] = waterfall_source["Variance"] / 10000000
 
-                st.plotly_chart(fig_treemap, use_container_width=True)
+        waterfall_x = (
+            ["Last Year Revenue"]
+            + waterfall_source["Zone Label"].tolist()
+            + ["Current Year Revenue"]
+        )
+        waterfall_y = (
+            [previous_total_cr]
+            + waterfall_source["Variance Cr"].tolist()
+            + [current_total_cr]
+        )
+        waterfall_measure = (
+            ["absolute"]
+            + ["relative"] * len(waterfall_source)
+            + ["total"]
+        )
+        waterfall_text = (
+            [f"{previous_total_cr:.2f}"]
+            + [f"{value:+.2f}" for value in waterfall_source["Variance Cr"]]
+            + [f"{current_total_cr:.2f}"]
+        )
 
-    with management_col2:
-        with st.container(border=True):
-            st.markdown("###### Revenue Waterfall | Last Year to Current Year (Cr)")
-
-            # Compare zone-level revenue between the selected FY and last year.
-            current_zone_waterfall = (
-                df.groupby("zone", dropna=False)["REVENUE"]
-                .sum()
-                .reset_index(name="Current Revenue")
-            )
-
-            if prev_df is not None and not prev_df.empty:
-                previous_zone_waterfall = (
-                    prev_df.groupby("zone", dropna=False)["REVENUE"]
-                    .sum()
-                    .reset_index(name="Previous Revenue")
-                )
-                waterfall_source = current_zone_waterfall.merge(
-                    previous_zone_waterfall,
-                    on="zone",
-                    how="outer",
-                )
-            else:
-                waterfall_source = current_zone_waterfall.copy()
-                waterfall_source["Previous Revenue"] = 0
-
-            waterfall_source[["Current Revenue", "Previous Revenue"]] = waterfall_source[
-                ["Current Revenue", "Previous Revenue"]
-            ].fillna(0)
-            waterfall_source["Variance"] = (
-                waterfall_source["Current Revenue"]
-                - waterfall_source["Previous Revenue"]
-            )
-
-            zone_short_map = {
-                "NORTH ZONE": "North",
-                "WEST ZONE": "West",
-                "SOUTH ZONE": "South",
-                "EAST ZONE": "East",
-                "NORTH EAST ZONE": "North East",
-                "NEPAL ZONE": "Nepal",
-            }
-            waterfall_source["Zone Label"] = (
-                waterfall_source["zone"]
-                .fillna("Unknown")
-                .astype(str)
-                .map(lambda value: zone_short_map.get(value, value.replace(" ZONE", "").title()))
-            )
-
-            # Keep the chart management-friendly: strongest gains first, then declines.
-            waterfall_source = waterfall_source.sort_values(
-                ["Variance", "Current Revenue"],
-                ascending=[False, False],
-            ).reset_index(drop=True)
-
-            previous_total_cr = waterfall_source["Previous Revenue"].sum() / 10000000
-            current_total_cr = waterfall_source["Current Revenue"].sum() / 10000000
-            waterfall_source["Variance Cr"] = waterfall_source["Variance"] / 10000000
-
-            waterfall_x = (
-                ["Last Year Revenue"]
-                + waterfall_source["Zone Label"].tolist()
-                + ["Current Year Revenue"]
-            )
-            waterfall_y = (
-                [previous_total_cr]
-                + waterfall_source["Variance Cr"].tolist()
-                + [current_total_cr]
-            )
-            waterfall_measure = (
-                ["absolute"]
-                + ["relative"] * len(waterfall_source)
-                + ["total"]
-            )
-            waterfall_text = (
-                [f"{previous_total_cr:.2f}"]
-                + [f"{value:+.2f}" for value in waterfall_source["Variance Cr"]]
-                + [f"{current_total_cr:.2f}"]
-            )
-
-            fig_waterfall = go.Figure(
-                go.Waterfall(
-                    orientation="v",
-                    measure=waterfall_measure,
-                    x=waterfall_x,
-                    y=waterfall_y,
-                    text=waterfall_text,
-                    textposition="outside",
-                    textfont=dict(size=10, color="#0f172a"),
-                    connector={"line": {"color": "#94a3b8", "width": 1}},
-                    increasing={"marker": {"color": "#22c55e"}},
-                    decreasing={"marker": {"color": "#ef4444"}},
-                    totals={"marker": {"color": "#0f2747"}},
-                    hovertemplate=(
-                        "<b>%{x}</b><br>Revenue movement: ₹%{y:.2f} Cr<extra></extra>"
-                    ),
-                )
-            )
-
-            overall_waterfall_growth = pct_growth(
-                current_total_cr,
-                previous_total_cr,
-            )
-            waterfall_growth_color = (
-                "#166534" if overall_waterfall_growth >= 0 else "#dc2626"
-            )
-            waterfall_growth_arrow = "▲" if overall_waterfall_growth >= 0 else "▼"
-
-            fig_waterfall.add_annotation(
-                x=0.5,
-                y=1.11,
-                xref="paper",
-                yref="paper",
-                text=(
-                    f"<b>{waterfall_growth_arrow} "
-                    f"{abs(overall_waterfall_growth):.1f}% Overall Growth</b>"
+        fig_waterfall = go.Figure(
+            go.Waterfall(
+                orientation="v",
+                measure=waterfall_measure,
+                x=waterfall_x,
+                y=waterfall_y,
+                text=waterfall_text,
+                textposition="outside",
+                textfont=dict(size=10, color="#0f172a"),
+                connector={"line": {"color": "#94a3b8", "width": 1}},
+                increasing={"marker": {"color": "#22c55e"}},
+                decreasing={"marker": {"color": "#ef4444"}},
+                totals={"marker": {"color": "#0f2747"}},
+                hovertemplate=(
+                    "<b>%{x}</b><br>Revenue movement: ₹%{y:.2f} Cr<extra></extra>"
                 ),
-                showarrow=False,
-                font=dict(size=12, color=waterfall_growth_color),
             )
+        )
 
-            chart_max = max(
-                previous_total_cr,
-                current_total_cr,
-                1,
-            )
-            fig_waterfall.update_layout(
-                height=320,
-                margin=dict(l=5, r=5, t=45, b=45),
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                showlegend=False,
-                yaxis_title="Revenue (Cr)",
-                yaxis_range=[0, chart_max * 1.35],
-                waterfallgap=0.35,
-            )
-            fig_waterfall.update_xaxes(
-                title="",
-                showgrid=False,
-                tickangle=-20,
-                tickfont=dict(size=10),
-            )
-            fig_waterfall.update_yaxes(
-                showgrid=True,
-                gridcolor="#e2e8f0",
-                zeroline=False,
-            )
+        overall_waterfall_growth = pct_growth(
+            current_total_cr,
+            previous_total_cr,
+        )
+        waterfall_growth_color = (
+            "#166534" if overall_waterfall_growth >= 0 else "#dc2626"
+        )
+        waterfall_growth_arrow = "▲" if overall_waterfall_growth >= 0 else "▼"
 
-            st.plotly_chart(fig_waterfall, use_container_width=True)
+        fig_waterfall.add_annotation(
+            x=0.5,
+            y=1.11,
+            xref="paper",
+            yref="paper",
+            text=(
+                f"<b>{waterfall_growth_arrow} "
+                f"{abs(overall_waterfall_growth):.1f}% Overall Growth</b>"
+            ),
+            showarrow=False,
+            font=dict(size=12, color=waterfall_growth_color),
+        )
+
+        chart_max = max(
+            previous_total_cr,
+            current_total_cr,
+            1,
+        )
+        fig_waterfall.update_layout(
+            height=320,
+            margin=dict(l=5, r=5, t=45, b=45),
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            showlegend=False,
+            yaxis_title="Revenue (Cr)",
+            yaxis_range=[0, chart_max * 1.35],
+            waterfallgap=0.35,
+        )
+        fig_waterfall.update_xaxes(
+            title="",
+            showgrid=False,
+            tickangle=-20,
+            tickfont=dict(size=10),
+        )
+        fig_waterfall.update_yaxes(
+            showgrid=True,
+            gridcolor="#e2e8f0",
+            zeroline=False,
+        )
+
+        st.plotly_chart(fig_waterfall, use_container_width=True)
+
 
     # Small separator before branch analysis
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -1560,7 +1474,7 @@ def show_overview():
 
     with b4:
         with st.container(border=True):
-            st.markdown("##### 💡 Management Insights")
+            st.markdown("##### Management Insights")
 
             best_branch = top10_df.iloc[0]["branch"] if not top10_df.empty else "-"
             best_branch_revenue = (
@@ -1631,13 +1545,18 @@ def show_overview():
                 movement_text = "Zone movement data is unavailable"
 
             insight_rows = [
-                ("🏆", "Highest Revenue Branch", f"{best_branch} · ₹{best_branch_revenue:.2f} Cr", "#1d4ed8", "#eff6ff"),
-                ("🌍", "Top Performing Zone", f"{best_zone} · ₹{best_zone_revenue:.2f} Cr", "#0f766e", "#f0fdfa"),
-                ("🚛", "Largest Revenue Source", f"{dominant_load} · {dominant_load_pct:.1f}% of revenue", "#7c3aed", "#f5f3ff"),
-                (overall_growth_icon, "Overall YoY Performance", overall_growth_text, overall_growth_color, overall_growth_bg),
+                ("🏆", "Highest Revenue Branch", f"{best_branch} (₹{best_branch_revenue:.2f} Cr)", "#1d4ed8", "#eff6ff"),
+                ("🌍", "Top Performing Zone", f"{best_zone} (₹{best_zone_revenue:.2f} Cr)", "#0f766e", "#f0fdfa"),
+                ("🚛", "Largest Revenue Source", f"{dominant_load} ({dominant_load_pct:.1f}%)", "#7c3aed", "#f5f3ff"),
+                (
+                    "📈" if overall_yoy_growth >= 0 else "📉",
+                    "Revenue Growth",
+                    f"{overall_yoy_growth:+.1f}% YoY",
+                    overall_growth_color,
+                    overall_growth_bg,
+                ),
                 (movement_icon, "Largest Zone Movement", movement_text, movement_color, movement_bg),
             ]
-
             for icon, label, value, color, background in insight_rows:
                 st.markdown(
                     f"""
