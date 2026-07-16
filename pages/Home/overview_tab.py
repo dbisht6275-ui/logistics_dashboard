@@ -1,3 +1,4 @@
+import io
 import streamlit as st
 import pandas as pd
 import calendar
@@ -738,51 +739,182 @@ def show_overview():
                 unsafe_allow_html=True,
             )
 
-            with st.expander("Enter Target Values", expanded=True):
-                target_input_cols = st.columns(5)
+            target_source = st.radio(
+                "Target Source",
+                ["Manual Entry", "Upload Excel"],
+                horizontal=True,
+                key=f"target_source_{fy}",
+                help="Choose manual entry or upload a target file for the selected hierarchy.",
+            )
 
-                with target_input_cols[0]:
-                    revenue_target_cr = st.number_input(
-                        "Revenue Target (Cr)",
-                        min_value=0.0,
-                        value=st.session_state.get(f"target_revenue_{fy}", 0.0),
-                        step=0.10,
-                        key=f"target_revenue_{fy}",
+            revenue_target_cr = 0.0
+            ftl_target_cr = 0.0
+            ltl_target_cr = 0.0
+            gr_target = 0
+            weight_target_mt = 0.0
+
+            if target_source == "Manual Entry":
+                with st.expander("Enter Target Values", expanded=True):
+                    target_input_cols = st.columns(5)
+
+                    with target_input_cols[0]:
+                        revenue_target_cr = st.number_input(
+                            "Revenue Target (Cr)",
+                            min_value=0.0,
+                            value=st.session_state.get(f"target_revenue_{fy}", 0.0),
+                            step=0.10,
+                            key=f"target_revenue_{fy}",
+                        )
+                    with target_input_cols[1]:
+                        ftl_target_cr = st.number_input(
+                            "FTL Target (Cr)",
+                            min_value=0.0,
+                            value=st.session_state.get(f"target_ftl_{fy}", 0.0),
+                            step=0.10,
+                            key=f"target_ftl_{fy}",
+                        )
+                    with target_input_cols[2]:
+                        ltl_target_cr = st.number_input(
+                            "LTL Target (Cr)",
+                            min_value=0.0,
+                            value=st.session_state.get(f"target_ltl_{fy}", 0.0),
+                            step=0.10,
+                            key=f"target_ltl_{fy}",
+                        )
+                    with target_input_cols[3]:
+                        gr_target = st.number_input(
+                            "GR Target",
+                            min_value=0,
+                            value=int(st.session_state.get(f"target_gr_{fy}", 0)),
+                            step=100,
+                            key=f"target_gr_{fy}",
+                        )
+                    with target_input_cols[4]:
+                        weight_target_mt = st.number_input(
+                            "Weight Target (MT)",
+                            min_value=0.0,
+                            value=float(st.session_state.get(f"target_weight_{fy}", 0.0)),
+                            step=100.0,
+                            key=f"target_weight_{fy}",
+                        )
+            else:
+                st.markdown(
+                    "<div style='font-size:10px;color:#64748b;margin:2px 0 7px 0;'>"
+                    "Excel columns required: <b>zone, circle, branch, month, ltl, ftl, total</b>. "
+                    "Revenue values must be entered in crores. Use <b>All</b> where a target applies to the complete hierarchy."
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
+
+                template_df = pd.DataFrame(
+                    [
+                        {
+                            "zone": "NORTH ZONE",
+                            "circle": "NCR CIRCLE",
+                            "branch": "NOIDA",
+                            "month": "Apr",
+                            "ltl": 2.50,
+                            "ftl": 4.50,
+                            "total": 7.00,
+                        },
+                        {
+                            "zone": "All",
+                            "circle": "All",
+                            "branch": "All",
+                            "month": "May",
+                            "ltl": 20.00,
+                            "ftl": 35.00,
+                            "total": 55.00,
+                        },
+                    ]
+                )
+                template_buffer = io.BytesIO()
+                with pd.ExcelWriter(template_buffer, engine="openpyxl") as writer:
+                    template_df.to_excel(writer, index=False, sheet_name="Targets")
+                template_buffer.seek(0)
+
+                upload_col, template_col = st.columns([2.5, 1])
+                with upload_col:
+                    target_file = st.file_uploader(
+                        "Upload Target Excel",
+                        type=["xlsx", "xls"],
+                        key=f"target_excel_{fy}",
                     )
-                with target_input_cols[1]:
-                    ftl_target_cr = st.number_input(
-                        "FTL Target (Cr)",
-                        min_value=0.0,
-                        value=st.session_state.get(f"target_ftl_{fy}", 0.0),
-                        step=0.10,
-                        key=f"target_ftl_{fy}",
-                    )
-                with target_input_cols[2]:
-                    ltl_target_cr = st.number_input(
-                        "LTL Target (Cr)",
-                        min_value=0.0,
-                        value=st.session_state.get(f"target_ltl_{fy}", 0.0),
-                        step=0.10,
-                        key=f"target_ltl_{fy}",
-                    )
-                with target_input_cols[3]:
-                    gr_target = st.number_input(
-                        "GR Target",
-                        min_value=0,
-                        value=int(st.session_state.get(f"target_gr_{fy}", 0)),
-                        step=100,
-                        key=f"target_gr_{fy}",
-                    )
-                with target_input_cols[4]:
-                    weight_target_mt = st.number_input(
-                        "Weight Target (MT)",
-                        min_value=0.0,
-                        value=float(st.session_state.get(f"target_weight_{fy}", 0.0)),
-                        step=100.0,
-                        key=f"target_weight_{fy}",
+                with template_col:
+                    st.download_button(
+                        "Download Template",
+                        data=template_buffer.getvalue(),
+                        file_name="target_upload_template.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
                     )
 
-            target_cols = st.columns(5)
+                if target_file is not None:
+                    try:
+                        target_df = pd.read_excel(target_file)
+                        target_df.columns = [str(col).strip().lower() for col in target_df.columns]
+                        required_cols = ["zone", "circle", "branch", "month", "ltl", "ftl", "total"]
+                        missing_cols = [col for col in required_cols if col not in target_df.columns]
+
+                        if missing_cols:
+                            st.error("Missing required columns: " + ", ".join(missing_cols))
+                        else:
+                            for col in ["zone", "circle", "branch", "month"]:
+                                target_df[col] = target_df[col].fillna("All").astype(str).str.strip()
+                            for col in ["ltl", "ftl", "total"]:
+                                target_df[col] = pd.to_numeric(target_df[col], errors="coerce").fillna(0)
+
+                            selected_values = {
+                                "zone": zone,
+                                "circle": circle,
+                                "branch": branch,
+                                "month": month,
+                            }
+                            matched_targets = target_df.copy()
+                            for col, selected_value in selected_values.items():
+                                if matched_targets.empty:
+                                    break
+
+                                normalized_values = matched_targets[col].str.casefold()
+                                if selected_value != "All":
+                                    normalized_selected = str(selected_value).strip().casefold()
+                                    exact_rows = normalized_values.eq(normalized_selected)
+                                    fallback_rows = normalized_values.eq("all")
+
+                                    # Prefer the exact hierarchy target. Use an All row only
+                                    # when no exact target exists at the selected level.
+                                    if exact_rows.any():
+                                        matched_targets = matched_targets[exact_rows]
+                                    else:
+                                        matched_targets = matched_targets[fallback_rows]
+                                else:
+                                    detailed_rows = ~normalized_values.eq("all")
+
+                                    # For an All dashboard selection, aggregate detailed
+                                    # rows when available. Otherwise use the All summary row.
+                                    if detailed_rows.any():
+                                        matched_targets = matched_targets[detailed_rows]
+                                    else:
+                                        matched_targets = matched_targets[~detailed_rows]
+
+                            revenue_target_cr = float(matched_targets["total"].sum())
+                            ftl_target_cr = float(matched_targets["ftl"].sum())
+                            ltl_target_cr = float(matched_targets["ltl"].sum())
+
+                            st.success(
+                                f"Target loaded: Total ₹{revenue_target_cr:.2f} Cr | "
+                                f"FTL ₹{ftl_target_cr:.2f} Cr | LTL ₹{ltl_target_cr:.2f} Cr"
+                            )
+                            with st.expander("View Matched Target Rows", expanded=False):
+                                st.dataframe(
+                                    matched_targets[required_cols],
+                                    use_container_width=True,
+                                    hide_index=True,
+                                )
+                    except Exception as exc:
+                        st.error(f"Unable to read target Excel file: {exc}")
+
+            target_cols = st.columns(5 if target_source == "Manual Entry" else 3)
             with target_cols[0]:
                 create_target_card(
                     "Revenue", revenue / 10000000, revenue_target_cr,
@@ -798,16 +930,17 @@ def show_overview():
                     "LTL Revenue", ltl / 10000000, ltl_target_cr,
                     unit=" Cr", decimals=2, icon="🚚",
                 )
-            with target_cols[3]:
-                create_target_card(
-                    "Total GR", total_gr, gr_target,
-                    unit="", decimals=0, icon="📦",
-                )
-            with target_cols[4]:
-                create_target_card(
-                    "Weight", aweight, weight_target_mt,
-                    unit=" MT", decimals=0, icon="⚓",
-                )
+            if target_source == "Manual Entry":
+                with target_cols[3]:
+                    create_target_card(
+                        "Total GR", total_gr, gr_target,
+                        unit="", decimals=0, icon="📦",
+                    )
+                with target_cols[4]:
+                    create_target_card(
+                        "Weight", aweight, weight_target_mt,
+                        unit=" MT", decimals=0, icon="⚓",
+                    )
 
     # Small separator before charts
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -1241,6 +1374,165 @@ def show_overview():
                 )
 
     # =====================================================
+    # Management Key Insights
+    # =====================================================
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # Zone YoY movement used for management commentary.
+    current_zone_insights = (
+        df.groupby("zone", dropna=False)["REVENUE"]
+        .sum()
+        .reset_index(name="Current Revenue")
+    )
+    if prev_df is not None and not prev_df.empty:
+        previous_zone_insights = (
+            prev_df.groupby("zone", dropna=False)["REVENUE"]
+            .sum()
+            .reset_index(name="Previous Revenue")
+        )
+        zone_insights = current_zone_insights.merge(
+            previous_zone_insights, on="zone", how="outer"
+        ).fillna(0)
+    else:
+        zone_insights = current_zone_insights.copy()
+        zone_insights["Previous Revenue"] = 0
+
+    zone_insights["Variance"] = (
+        zone_insights["Current Revenue"] - zone_insights["Previous Revenue"]
+    )
+    zone_insights["Growth %"] = zone_insights.apply(
+        lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"]),
+        axis=1,
+    )
+
+    positive_zones = zone_insights[zone_insights["Variance"] > 0].sort_values(
+        "Variance", ascending=False
+    )
+    declining_zones = zone_insights[zone_insights["Variance"] < 0].sort_values(
+        "Variance"
+    )
+
+    zone_name_map = {
+        "NORTH ZONE": "North",
+        "WEST ZONE": "West",
+        "SOUTH ZONE": "South",
+        "EAST ZONE": "East",
+        "NORTH EAST ZONE": "North East",
+        "NEPAL ZONE": "Nepal",
+    }
+    top_driver_names = [
+        zone_name_map.get(str(value), str(value).replace(" ZONE", "").title())
+        for value in positive_zones["zone"].head(2).tolist()
+    ]
+    if len(top_driver_names) >= 2:
+        driver_text = f"{top_driver_names[0]} and {top_driver_names[1]} zones"
+    elif len(top_driver_names) == 1:
+        driver_text = f"the {top_driver_names[0]} zone"
+    else:
+        driver_text = "the selected business segments"
+
+    overall_insight_growth = pct_growth(revenue, prev_kpis["revenue"])
+    revenue_direction = "up" if overall_insight_growth >= 0 else "down"
+
+    ftl_insight_growth = pct_growth(ftl, prev_kpis["ftl"])
+    ltl_insight_growth = pct_growth(ltl, prev_kpis["ltl"])
+    if ftl_insight_growth >= ltl_insight_growth:
+        load_growth_text = (
+            f"FTL revenue growth ({ftl_insight_growth:.1f}%) is higher than "
+            f"LTL revenue growth ({ltl_insight_growth:.1f}%)."
+        )
+    else:
+        load_growth_text = (
+            f"LTL revenue growth ({ltl_insight_growth:.1f}%) is higher than "
+            f"FTL revenue growth ({ftl_insight_growth:.1f}%)."
+        )
+
+    # Number of branches required to reach 80% of filtered revenue.
+    branch_contribution = (
+        df.groupby("branch", dropna=False)["REVENUE"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+    contribution_total = branch_contribution.sum()
+    if contribution_total > 0:
+        cumulative_share = branch_contribution.cumsum() / contribution_total
+        branches_for_80 = int((cumulative_share < 0.80).sum() + 1)
+    else:
+        branches_for_80 = 0
+
+    if len(declining_zones) == 1:
+        decline_zone_name = zone_name_map.get(
+            str(declining_zones.iloc[0]["zone"]),
+            str(declining_zones.iloc[0]["zone"]).replace(" ZONE", "").title(),
+        )
+        zone_decline_text = f"{decline_zone_name} Zone is the only zone showing decline for the selected period."
+    elif len(declining_zones) > 1:
+        decline_names = [
+            zone_name_map.get(str(value), str(value).replace(" ZONE", "").title())
+            for value in declining_zones["zone"].head(3).tolist()
+        ]
+        zone_decline_text = (
+            f"{len(declining_zones)} zones are showing decline, led by "
+            f"{', '.join(decline_names)}."
+        )
+    else:
+        zone_decline_text = "No zone is showing a decline for the selected period."
+
+    # Branches declining more than 20% vs LY.
+    current_branch_insights = (
+        df.groupby("branch", dropna=False)["REVENUE"]
+        .sum()
+        .reset_index(name="Current Revenue")
+    )
+    if prev_df is not None and not prev_df.empty:
+        previous_branch_insights = (
+            prev_df.groupby("branch", dropna=False)["REVENUE"]
+            .sum()
+            .reset_index(name="Previous Revenue")
+        )
+        branch_yoy_insights = current_branch_insights.merge(
+            previous_branch_insights, on="branch", how="outer"
+        ).fillna(0)
+        branch_yoy_insights["Growth %"] = branch_yoy_insights.apply(
+            lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"]),
+            axis=1,
+        )
+        branch_decline_count = int(
+            (branch_yoy_insights["Growth %"] < -20).sum()
+        )
+    else:
+        branch_decline_count = 0
+
+    key_insight_messages = [
+        (
+            f"Revenue is {revenue_direction} by {abs(overall_insight_growth):.1f}% vs LY, "
+            f"driven by strong performance in {driver_text}."
+        ),
+        load_growth_text,
+        f"Top {branches_for_80} branches contribute to 80% of total revenue.",
+        zone_decline_text,
+        f"{branch_decline_count} branches have declined more than 20% vs LY.",
+    ]
+
+    with st.container(border=True):
+        st.markdown(
+            "<div style='font-size:13px;font-weight:900;color:#0f2747;margin-bottom:7px;'>KEY INSIGHTS</div>",
+            unsafe_allow_html=True,
+        )
+        for message in key_insight_messages:
+            st.markdown(
+                f"""
+                <div style="display:flex;align-items:flex-start;gap:9px;margin:7px 0;">
+                    <div style="width:18px;height:18px;border-radius:50%;background:#22c55e;color:white;
+                                display:flex;align-items:center;justify-content:center;font-size:11px;
+                                font-weight:900;flex:0 0 18px;box-shadow:0 1px 3px rgba(34,197,94,.25);">✓</div>
+                    <div style="font-size:11px;line-height:1.45;color:#1e293b;font-weight:650;">{message}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+    # =====================================================
     # Management visual: Revenue Waterfall
     # =====================================================
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -1429,7 +1721,7 @@ def show_overview():
 
     monthly["Growth"] = monthly["Growth %"].apply(growth_indicator)
 
-    b1, b2, b3, b4 = st.columns([1, 1, 0.95, 1])
+    b1, b2, b3 = st.columns([1, 1, 0.95])
 
     with b1:
         with st.container(border=True):
@@ -1472,119 +1764,6 @@ def show_overview():
                 height=190
             )
 
-    with b4:
-        with st.container(border=True):
-            st.markdown("##### Management Insights")
-
-            best_branch = top10_df.iloc[0]["branch"] if not top10_df.empty else "-"
-            best_branch_revenue = (
-                top10_df.iloc[0]["Revenue Cr"] if not top10_df.empty else 0
-            )
-            best_zone = zone_df.iloc[0]["zone"] if not zone_df.empty else "-"
-            best_zone_revenue = (
-                zone_df.iloc[0]["Revenue Cr"] if not zone_df.empty else 0
-            )
-
-            dominant_load = "FTL" if ftl >= ltl else "LTL"
-            dominant_load_pct = max(ftl_pct, ltl_pct)
-
-            overall_yoy_growth = pct_growth(revenue, prev_kpis["revenue"])
-            overall_growth_color = "#166534" if overall_yoy_growth >= 0 else "#dc2626"
-            overall_growth_bg = "#ecfdf5" if overall_yoy_growth >= 0 else "#fef2f2"
-            overall_growth_icon = "📈" if overall_yoy_growth >= 0 else "⚠️"
-            overall_growth_text = (
-                f"Revenue is up {abs(overall_yoy_growth):.1f}% vs LY"
-                if overall_yoy_growth >= 0
-                else f"Revenue is down {abs(overall_yoy_growth):.1f}% vs LY"
-            )
-
-            # Identify the zone with the largest absolute YoY movement.
-            current_zone_insight = (
-                df.groupby("zone", dropna=False)["REVENUE"]
-                .sum()
-                .reset_index(name="Current Revenue")
-            )
-            if prev_df is not None and not prev_df.empty:
-                previous_zone_insight = (
-                    prev_df.groupby("zone", dropna=False)["REVENUE"]
-                    .sum()
-                    .reset_index(name="Previous Revenue")
-                )
-                zone_movement = current_zone_insight.merge(
-                    previous_zone_insight,
-                    on="zone",
-                    how="outer",
-                ).fillna(0)
-                zone_movement["Movement"] = (
-                    zone_movement["Current Revenue"]
-                    - zone_movement["Previous Revenue"]
-                )
-            else:
-                zone_movement = current_zone_insight.copy()
-                zone_movement["Movement"] = zone_movement["Current Revenue"]
-
-            if not zone_movement.empty:
-                movement_row = zone_movement.loc[
-                    zone_movement["Movement"].abs().idxmax()
-                ]
-                movement_zone = str(movement_row["zone"])
-                movement_cr = movement_row["Movement"] / 10000000
-                movement_positive = movement_cr >= 0
-                movement_icon = "🚀" if movement_positive else "🔻"
-                movement_color = "#166534" if movement_positive else "#dc2626"
-                movement_bg = "#ecfdf5" if movement_positive else "#fef2f2"
-                movement_text = (
-                    f"{movement_zone}: +₹{abs(movement_cr):.2f} Cr contribution"
-                    if movement_positive
-                    else f"{movement_zone}: -₹{abs(movement_cr):.2f} Cr impact"
-                )
-            else:
-                movement_icon = "ℹ️"
-                movement_color = "#475569"
-                movement_bg = "#f8fafc"
-                movement_text = "Zone movement data is unavailable"
-
-            insight_rows = [
-                ("🏆", "Highest Revenue Branch", f"{best_branch} (₹{best_branch_revenue:.2f} Cr)", "#1d4ed8", "#eff6ff"),
-                ("🌍", "Top Performing Zone", f"{best_zone} (₹{best_zone_revenue:.2f} Cr)", "#0f766e", "#f0fdfa"),
-                ("🚛", "Largest Revenue Source", f"{dominant_load} ({dominant_load_pct:.1f}%)", "#7c3aed", "#f5f3ff"),
-                (
-                    "📈" if overall_yoy_growth >= 0 else "📉",
-                    "Revenue Growth",
-                    f"{overall_yoy_growth:+.1f}% YoY",
-                    overall_growth_color,
-                    overall_growth_bg,
-                ),
-                (movement_icon, "Largest Zone Movement", movement_text, movement_color, movement_bg),
-            ]
-            for icon, label, value, color, background in insight_rows:
-                st.markdown(
-                    f"""
-                    <div style="
-                        display:flex;
-                        align-items:center;
-                        gap:8px;
-                        padding:7px 8px;
-                        margin-bottom:6px;
-                        border-radius:8px;
-                        background:{background};
-                        border-left:3px solid {color};
-                    ">
-                        <div style="font-size:16px;line-height:1;">{icon}</div>
-                        <div style="min-width:0;">
-                            <div style="font-size:9px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.04em;">
-                                {label}
-                            </div>
-                            <div style="font-size:11px;color:{color};font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                                {value}
-                            </div>
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
     st.markdown(f"""
     ###### 🏢 Branch/Agency Network Changes ({fy})
