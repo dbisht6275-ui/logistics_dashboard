@@ -724,94 +724,83 @@ def show_overview():
                 selected_month=month
             )
 
-            # Revenue trend grouped bar chart — LY vs Current FY vs Forecast
+            # Management line chart — Actual vs Last Year vs Forecast
             fig_yoy = go.Figure()
 
             fig_yoy.add_trace(
-                go.Bar(
+                go.Scatter(
                     x=yoy_df["Period"],
-                    y=yoy_df["Prev Revenue Cr"],
-                    name=f"LY ({prev_fy})",
-                    marker_color="#cbd5e1",
-                    text=yoy_df["Prev Revenue Cr"],
-                    texttemplate="%{text:.2f}",
-                    textposition="outside",
-                    textfont=dict(size=9, color="#64748b")
+                    y=yoy_df["Revenue Cr"],
+                    mode="lines+markers",
+                    name=f"Actual ({fy})",
+                    line=dict(color="#155eef", width=3),
+                    marker=dict(size=7, color="#155eef"),
+                    hovertemplate="<b>%{x}</b><br>Actual: ₹%{y:.2f} Cr<extra></extra>",
                 )
             )
 
             fig_yoy.add_trace(
-                go.Bar(
+                go.Scatter(
                     x=yoy_df["Period"],
-                    y=yoy_df["Revenue Cr"],
-                    name=f"Current ({fy})",
-                    marker_color="#2563eb",
-                    text=yoy_df["Revenue Cr"],
-                    texttemplate="%{text:.2f}",
-                    textposition="outside",
-                    textfont=dict(size=9, color="#2563eb")
+                    y=yoy_df["Prev Revenue Cr"],
+                    mode="lines+markers",
+                    name=f"Last Year ({prev_fy})",
+                    line=dict(color="#64748b", width=2, dash="dash"),
+                    marker=dict(size=6, color="#64748b"),
+                    hovertemplate="<b>%{x}</b><br>Last Year: ₹%{y:.2f} Cr<extra></extra>",
                 )
             )
 
-            # Forecast bar only for the current ongoing month.
+            # Forecast is currently calculated only for the ongoing month.
             forecast_df = yoy_df[yoy_df["Forecast Revenue Cr"].notna()].copy()
-
             if not forecast_df.empty:
                 fig_yoy.add_trace(
-                    go.Bar(
+                    go.Scatter(
                         x=forecast_df["Period"],
                         y=forecast_df["Forecast Revenue Cr"],
+                        mode="markers+text",
                         name="Forecast",
-                        marker_color="#f97316",
+                        marker=dict(size=11, color="#ef4444", symbol="diamond"),
                         text=forecast_df["Forecast Revenue Cr"],
-                        texttemplate="%{text:.2f}",
-                        textposition="outside",
-                        textfont=dict(size=9, color="#f97316")
+                        texttemplate="₹%{text:.2f} Cr",
+                        textposition="top center",
+                        textfont=dict(size=10, color="#dc2626"),
+                        hovertemplate="<b>%{x}</b><br>Forecast: ₹%{y:.2f} Cr<extra></extra>",
                     )
                 )
 
-            # Growth % annotated above each period's pair of bars
             yoy_max = pd.concat([
                 yoy_df["Revenue Cr"],
                 yoy_df["Prev Revenue Cr"],
-                yoy_df["Forecast Revenue Cr"]
+                yoy_df["Forecast Revenue Cr"],
             ]).max()
             yoy_max = yoy_max if pd.notna(yoy_max) and yoy_max > 0 else 1
 
-            # Skip annotation clutter when there are too many bars (Daily/Weekly with long ranges)
-            show_annotations = len(yoy_df) <= 40
-
-            if show_annotations:
-                for _, r in yoy_df.iterrows():
-                    if r["Growth Label"] and r["Growth Label"] not in ["N/A", "Forecast"]:
-                        label_color = "#166534" if (r["Growth %"] or 0) >= 0 else "#dc2626"
-                        bar_top = max(
-                            r["Revenue Cr"] if pd.notna(r["Revenue Cr"]) else 0,
-                            r["Prev Revenue Cr"] if pd.notna(r["Prev Revenue Cr"]) else 0,
-                            r["Forecast Revenue Cr"] if pd.notna(r["Forecast Revenue Cr"]) else 0
-                        )
-                        fig_yoy.add_annotation(
-                            x=r["Period"],
-                            y=bar_top + (yoy_max * 0.16),
-                            text=r["Growth Label"],
-                            showarrow=False,
-                            font=dict(size=10, color=label_color, family="Arial Black")
-                        )
-
             fig_yoy.update_layout(
-                barmode="group",
-                height=250,
-                margin=dict(l=2, r=2, t=30, b=0),
+                height=270,
+                margin=dict(l=5, r=10, t=35, b=5),
                 xaxis_title="",
                 yaxis_title="Revenue (Cr)",
                 plot_bgcolor="white",
                 paper_bgcolor="white",
-                legend=dict(orientation="h", yanchor="bottom", y=1.05, x=0, font=dict(size=9)),
-                yaxis_range=[0, yoy_max * 1.35]
+                hovermode="x unified",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.05,
+                    x=0,
+                    font=dict(size=9),
+                ),
+                yaxis_range=[0, yoy_max * 1.25],
             )
-
             fig_yoy.update_xaxes(showgrid=False, zeroline=False)
-            fig_yoy.update_yaxes(showgrid=False, zeroline=False)
+            fig_yoy.update_yaxes(
+                showgrid=True,
+                gridcolor="#eef2f7",
+                zeroline=False,
+                tickprefix="₹",
+                ticksuffix=" Cr",
+            )
 
             st.plotly_chart(fig_yoy, use_container_width=True)
 
@@ -1092,6 +1081,188 @@ def show_overview():
                     hide_index=True,
                     height=240
                 )
+
+    # =====================================================
+    # Management visuals: Branch Pareto and Zone-Month YoY heatmap
+    # =====================================================
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    management_col1, management_col2 = st.columns([1.05, 1.35])
+
+    with management_col1:
+        with st.container(border=True):
+            st.markdown("###### Revenue Contribution Pareto")
+
+            pareto_df = (
+                df.groupby("branch", dropna=False)["REVENUE"]
+                .sum()
+                .reset_index()
+                .sort_values("REVENUE", ascending=False)
+            )
+            pareto_df["branch"] = pareto_df["branch"].fillna("Unknown")
+
+            top_n = 10
+            pareto_top = pareto_df.head(top_n).copy()
+            others_revenue = pareto_df.iloc[top_n:]["REVENUE"].sum()
+
+            if others_revenue > 0:
+                pareto_top = pd.concat(
+                    [
+                        pareto_top,
+                        pd.DataFrame({"branch": ["Others"], "REVENUE": [others_revenue]}),
+                    ],
+                    ignore_index=True,
+                )
+
+            pareto_top["Revenue Cr"] = pareto_top["REVENUE"] / 10000000
+            total_pareto_revenue = pareto_top["REVENUE"].sum()
+            pareto_top["Cumulative %"] = (
+                pareto_top["REVENUE"].cumsum() / total_pareto_revenue * 100
+                if total_pareto_revenue else 0
+            )
+
+            fig_pareto = go.Figure()
+            fig_pareto.add_trace(
+                go.Bar(
+                    x=pareto_top["branch"],
+                    y=pareto_top["Revenue Cr"],
+                    name="Revenue",
+                    marker_color="#163b73",
+                    text=pareto_top["Revenue Cr"],
+                    texttemplate="%{text:.2f}",
+                    textposition="outside",
+                    hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:.2f} Cr<extra></extra>",
+                )
+            )
+            fig_pareto.add_trace(
+                go.Scatter(
+                    x=pareto_top["branch"],
+                    y=pareto_top["Cumulative %"],
+                    name="Cumulative %",
+                    mode="lines+markers",
+                    line=dict(color="#ef4444", width=2),
+                    marker=dict(size=6, color="#ef4444"),
+                    yaxis="y2",
+                    hovertemplate="<b>%{x}</b><br>Cumulative: %{y:.1f}%<extra></extra>",
+                )
+            )
+            fig_pareto.add_hline(
+                y=80,
+                line_dash="dot",
+                line_color="#2563eb",
+                annotation_text="80% contribution",
+                annotation_position="top left",
+                yref="y2",
+            )
+            fig_pareto.update_layout(
+                height=320,
+                margin=dict(l=5, r=10, t=30, b=70),
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                hovermode="x unified",
+                legend=dict(orientation="h", y=1.08, x=0, font=dict(size=9)),
+                xaxis=dict(tickangle=-40, title=""),
+                yaxis=dict(title="Revenue (Cr)", showgrid=True, gridcolor="#eef2f7"),
+                yaxis2=dict(
+                    title="Cumulative %",
+                    overlaying="y",
+                    side="right",
+                    range=[0, 105],
+                    ticksuffix="%",
+                    showgrid=False,
+                ),
+            )
+            st.plotly_chart(fig_pareto, use_container_width=True)
+
+    with management_col2:
+        with st.container(border=True):
+            st.markdown("###### Zone Monthly Growth Heatmap (% vs LY)")
+
+            current_zone_month = (
+                df.groupby(["zone", "Month"], dropna=False)["REVENUE"]
+                .sum()
+                .reset_index(name="Current Revenue")
+            )
+
+            if prev_df is not None and not prev_df.empty:
+                previous_zone_month = (
+                    prev_df.groupby(["zone", "Month"], dropna=False)["REVENUE"]
+                    .sum()
+                    .reset_index(name="Previous Revenue")
+                )
+                heatmap_source = current_zone_month.merge(
+                    previous_zone_month,
+                    on=["zone", "Month"],
+                    how="outer",
+                )
+            else:
+                heatmap_source = current_zone_month.copy()
+                heatmap_source["Previous Revenue"] = 0
+
+            heatmap_source[["Current Revenue", "Previous Revenue"]] = heatmap_source[
+                ["Current Revenue", "Previous Revenue"]
+            ].fillna(0)
+            heatmap_source["Growth %"] = heatmap_source.apply(
+                lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"])
+                if row["Previous Revenue"] != 0 else None,
+                axis=1,
+            )
+
+            heatmap_matrix = heatmap_source.pivot(
+                index="zone",
+                columns="Month",
+                values="Growth %",
+            )
+            ordered_heatmap_months = [m for m in MONTH_ORDER if m in heatmap_matrix.columns]
+            heatmap_matrix = heatmap_matrix.reindex(columns=ordered_heatmap_months)
+            heatmap_matrix = heatmap_matrix.sort_index()
+
+            zone_short_map = {
+                "NORTH ZONE": "North",
+                "WEST ZONE": "West",
+                "SOUTH ZONE": "South",
+                "EAST ZONE": "East",
+                "NORTH EAST ZONE": "North East",
+                "NEPAL ZONE": "Nepal",
+            }
+            heatmap_matrix.index = [zone_short_map.get(z, z) for z in heatmap_matrix.index]
+
+            heatmap_values = heatmap_matrix.values
+            heatmap_text = [
+                ["-" if pd.isna(value) else f"{value:.0f}%" for value in row]
+                for row in heatmap_values
+            ]
+
+            fig_heatmap = go.Figure(
+                data=go.Heatmap(
+                    z=heatmap_values,
+                    x=heatmap_matrix.columns.tolist(),
+                    y=heatmap_matrix.index.tolist(),
+                    colorscale=[
+                        [0.0, "#ef4444"],
+                        [0.45, "#fde68a"],
+                        [0.5, "#fff7ed"],
+                        [0.55, "#d9f99d"],
+                        [1.0, "#22c55e"],
+                    ],
+                    zmid=0,
+                    text=heatmap_text,
+                    texttemplate="%{text}",
+                    textfont=dict(size=10),
+                    colorbar=dict(title="Growth %", ticksuffix="%", thickness=12),
+                    hovertemplate=(
+                        "<b>%{y}</b><br>Month: %{x}<br>Growth vs LY: %{z:.1f}%<extra></extra>"
+                    ),
+                )
+            )
+            fig_heatmap.update_layout(
+                height=320,
+                margin=dict(l=5, r=5, t=25, b=20),
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                xaxis=dict(side="top", title="", showgrid=False),
+                yaxis=dict(title="", autorange="reversed", showgrid=False),
+            )
+            st.plotly_chart(fig_heatmap, use_container_width=True)
 
     # Small separator before branch analysis
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
