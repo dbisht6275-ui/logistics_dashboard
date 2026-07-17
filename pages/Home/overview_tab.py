@@ -63,58 +63,6 @@ def _inject_overview_css():
             div[data-testid="stDataFrame"] {
                 font-size: 12px;
             }
-
-            /* Compact Streamlit vertical spacing between every visual block */
-            [data-testid="stVerticalBlock"] {
-                gap: 0.35rem !important;
-            }
-
-            [data-testid="stHorizontalBlock"] {
-                gap: 0.45rem !important;
-            }
-
-            /* Reduce space above and below bordered containers */
-            div[data-testid="stVerticalBlockBorderWrapper"] {
-                margin-top: 0 !important;
-                margin-bottom: 0 !important;
-            }
-
-            div[data-testid="stVerticalBlockBorderWrapper"] > div {
-                padding-top: 0.35rem !important;
-                padding-bottom: 0.35rem !important;
-            }
-
-            /* Remove extra Plotly chart whitespace added by Streamlit */
-            div[data-testid="stPlotlyChart"] {
-                margin-top: -0.25rem !important;
-                margin-bottom: -0.45rem !important;
-            }
-
-            /* Compact widget spacing */
-            div[data-testid="stSelectbox"],
-            div[data-testid="stNumberInput"],
-            div[data-testid="stFileUploader"],
-            div[data-testid="stRadio"] {
-                margin-bottom: 0 !important;
-            }
-
-            /* Compact buttons and expanders */
-            div[data-testid="stButton"] {
-                margin-top: 0 !important;
-                margin-bottom: 0 !important;
-            }
-
-            div[data-testid="stExpander"] {
-                margin-top: 0.25rem !important;
-                margin-bottom: 0.25rem !important;
-            }
-
-            /* Reduce heading spacing throughout dashboard */
-            h1, h2, h3, h4, h5, h6 {
-                margin-top: 0 !important;
-                margin-bottom: 0.25rem !important;
-                padding-top: 0 !important;
-            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -995,7 +943,7 @@ def show_overview():
                     )
 
     # Small separator before charts
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # Monthly revenue data used for monthly trend and MoM growth
     monthly = (
@@ -1132,8 +1080,8 @@ def show_overview():
 
             fig_yoy.update_layout(
                 barmode="group",
-                height=230,
-                margin=dict(l=2, r=2, t=22, b=0),
+                height=250,
+                margin=dict(l=2, r=2, t=30, b=0),
                 xaxis_title="",
                 yaxis_title="Revenue (Cr)",
                 plot_bgcolor="white",
@@ -1173,13 +1121,13 @@ def show_overview():
                         font=dict(size=11)
                     )
                 ],
-                height=230,
-                margin=dict(l=0, r=0, t=0, b=0)
+                height=250,
+                margin=dict(l=0, r=0, t=5, b=0)
             )
 
             st.plotly_chart(fig_load, use_container_width=True)
 
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # =========================
     # Weight trend data is prepared inside the chart based on selected granularity
@@ -1333,8 +1281,8 @@ def show_overview():
 
         fig_weight.update_layout(
             barmode="group",
-            height=230,
-            margin=dict(l=2, r=2, t=22, b=0),
+            height=250,
+            margin=dict(l=2, r=2, t=30, b=2),
             plot_bgcolor="white",
             paper_bgcolor="white",
             legend=dict(
@@ -1352,7 +1300,7 @@ def show_overview():
 
         st.plotly_chart(fig_weight, use_container_width=True)
 
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # =====================================================
     # Zone and Country analysis on the next row
@@ -1384,8 +1332,8 @@ def show_overview():
 
             zone_max = zone_df["Revenue Cr"].max() if not zone_df.empty else 1
             fig_zone.update_layout(
-                height=225,
-                margin=dict(l=2, r=30, t=0, b=0),
+                height=240,
+                margin=dict(l=2, r=35, t=2, b=2),
                 xaxis_range=[0, zone_max * 1.15],
                 xaxis_title="Revenue (Cr)",
                 yaxis_title="",
@@ -1428,7 +1376,7 @@ def show_overview():
     # =====================================================
     # Management Key Insights
     # =====================================================
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # Zone YoY movement used for management commentary.
     current_zone_insights = (
@@ -1587,7 +1535,7 @@ def show_overview():
     # =====================================================
     # Management visual: Revenue Waterfall
     # =====================================================
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown("###### Revenue Waterfall | Last Year to Current Year (Cr)")
 
@@ -1714,8 +1662,8 @@ def show_overview():
             1,
         )
         fig_waterfall.update_layout(
-            height=290,
-            margin=dict(l=5, r=5, t=35, b=30),
+            height=320,
+            margin=dict(l=5, r=5, t=45, b=45),
             plot_bgcolor="white",
             paper_bgcolor="white",
             showlegend=False,
@@ -1739,7 +1687,7 @@ def show_overview():
 
 
     # Small separator before branch analysis
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # Branch summary for top/bottom branches and insights
     branch_summary = (
@@ -1824,7 +1772,7 @@ def show_overview():
     - **Branches/Agencies Closed:** {closed_branches}
     - **Net Increase:** {net_increase:+}
     """)
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
     with st.expander(f"📍 View Opened Branch Details ({opened_branches})"):
 
