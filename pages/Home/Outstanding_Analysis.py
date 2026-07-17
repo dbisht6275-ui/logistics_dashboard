@@ -497,8 +497,8 @@ def show_OutstandingAnalysis():
     # -----------------------------------------------------------------------
 
     default_from_date = date(1980, 1, 1)
-    default_to_date = date(2026, 6, 30)
-    default_as_on_date = date(2026, 6, 30)
+    default_to_date = date.today()      #current date
+    default_as_on_date = date.today()   #current date
 
     date_col1, date_col2, date_col3, run_col = st.columns(
         [1.25, 1.25, 1.25, 0.9]
