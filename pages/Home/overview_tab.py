@@ -1558,7 +1558,7 @@ def show_overview():
 
             with filter_col:
                 trend_type = st.segmented_control(
-                    "",
+                    "Revenue trend period",
                     ["Daily", "Weekly", "Monthly", "Quarterly"],
                     default="Monthly",
                     label_visibility="collapsed"
@@ -1582,16 +1582,21 @@ def show_overview():
             # Revenue trend grouped bar chart — LY vs Current FY vs Forecast
             fig_yoy = go.Figure()
 
+            period_count = len(yoy_df)
+            show_bar_values = trend_type in ["Monthly", "Quarterly"] or period_count <= 12
+
             fig_yoy.add_trace(
                 go.Bar(
                     x=yoy_df["Period"],
                     y=yoy_df["Prev Revenue Cr"],
                     name=f"LY ({prev_fy})",
                     marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.3)),
-                    text=yoy_df["Prev Revenue Cr"],
-                    texttemplate="%{text:.2f}",
+                    text=yoy_df["Prev Revenue Cr"] if show_bar_values else None,
+                    texttemplate="%{text:.2f}" if show_bar_values else None,
                     textposition="outside",
-                    textfont=dict(size=9, color="#64748b")
+                    textfont=dict(size=9, color="#64748b"),
+                    cliponaxis=False,
+                    hovertemplate="<b>%{x}</b><br>LY Revenue: ₹%{y:.2f} Cr<extra></extra>",
                 )
             )
 
@@ -1601,10 +1606,12 @@ def show_overview():
                     y=yoy_df["Revenue Cr"],
                     name=f"Current ({fy})",
                     marker=dict(color="#2563eb", line=dict(color="#1e3a8a", width=1.3)),
-                    text=yoy_df["Revenue Cr"],
-                    texttemplate="%{text:.2f}",
+                    text=yoy_df["Revenue Cr"] if show_bar_values else None,
+                    texttemplate="%{text:.2f}" if show_bar_values else None,
                     textposition="outside",
-                    textfont=dict(size=9, color="#2563eb")
+                    textfont=dict(size=9, color="#2563eb"),
+                    cliponaxis=False,
+                    hovertemplate="<b>%{x}</b><br>Current Revenue: ₹%{y:.2f} Cr<extra></extra>",
                 )
             )
 
@@ -1618,59 +1625,170 @@ def show_overview():
                         y=forecast_df["Forecast Revenue Cr"],
                         name="Forecast",
                         marker=dict(color="#f97316", line=dict(color="#c2410c", width=1.3)),
-                        text=forecast_df["Forecast Revenue Cr"],
-                        texttemplate="%{text:.2f}",
+                        text=forecast_df["Forecast Revenue Cr"] if show_bar_values else None,
+                        texttemplate="%{text:.2f}" if show_bar_values else None,
                         textposition="outside",
-                        textfont=dict(size=9, color="#f97316")
+                        textfont=dict(size=9, color="#f97316"),
+                        cliponaxis=False,
+                        hovertemplate="<b>%{x}</b><br>Forecast Revenue: ₹%{y:.2f} Cr<extra></extra>",
                     )
                 )
 
-            # Growth % annotated above each period's pair of bars
-            yoy_max = pd.concat([
-                yoy_df["Revenue Cr"],
-                yoy_df["Prev Revenue Cr"],
-                yoy_df["Forecast Revenue Cr"]
-            ]).max()
+            # =====================================================
+            # Responsive formatting for Daily / Weekly / Monthly / Quarterly
+            # =====================================================
+            yoy_max = pd.concat(
+                [
+                    pd.to_numeric(yoy_df["Revenue Cr"], errors="coerce"),
+                    pd.to_numeric(yoy_df["Prev Revenue Cr"], errors="coerce"),
+                    pd.to_numeric(yoy_df["Forecast Revenue Cr"], errors="coerce"),
+                ],
+                ignore_index=True,
+            ).max()
             yoy_max = yoy_max if pd.notna(yoy_max) and yoy_max > 0 else 1
 
-            # Skip annotation clutter when there are too many bars (Daily/Weekly with long ranges)
-            show_annotations = len(yoy_df) <= 40
+            if trend_type == "Daily":
+                chart_height = 360
+            elif trend_type == "Weekly":
+                chart_height = 390
+            else:
+                chart_height = 310
+
+            if period_count <= 8:
+                annotation_font_size = 11
+                growth_gap = 0.15
+            elif period_count <= 16:
+                annotation_font_size = 9
+                growth_gap = 0.13
+            else:
+                annotation_font_size = 8
+                growth_gap = 0.11
+
+            show_annotations = (
+                trend_type in ["Monthly", "Quarterly"]
+                or period_count <= 16
+            )
 
             if show_annotations:
                 for _, r in yoy_df.iterrows():
-                    if r["Growth Label"] and r["Growth Label"] not in ["N/A", "Forecast"]:
-                        label_color = "#166534" if (r["Growth %"] or 0) >= 0 else "#dc2626"
+                    growth_value = r.get("Growth %")
+                    growth_text = r.get("Growth Label")
+
+                    if (
+                        pd.notna(growth_value)
+                        and growth_text
+                        and growth_text not in ["N/A", "Forecast"]
+                    ):
+                        label_color = "#166534" if growth_value >= 0 else "#dc2626"
                         bar_top = max(
                             r["Revenue Cr"] if pd.notna(r["Revenue Cr"]) else 0,
                             r["Prev Revenue Cr"] if pd.notna(r["Prev Revenue Cr"]) else 0,
-                            r["Forecast Revenue Cr"] if pd.notna(r["Forecast Revenue Cr"]) else 0
+                            r["Forecast Revenue Cr"] if pd.notna(r["Forecast Revenue Cr"]) else 0,
                         )
+
                         fig_yoy.add_annotation(
                             x=r["Period"],
-                            y=bar_top + (yoy_max * 0.16),
-                            text=r["Growth Label"],
+                            y=bar_top + (yoy_max * growth_gap),
+                            text=growth_text,
                             showarrow=False,
-                            font=dict(size=10, color=label_color, family="Arial Black")
+                            yanchor="bottom",
+                            font=dict(
+                                size=annotation_font_size,
+                                color=label_color,
+                                family="Arial Black",
+                            ),
                         )
+
+            # Short and readable labels for Weekly view.
+            if trend_type == "Weekly":
+                weekly_labels = []
+                for period in yoy_df["Period"].astype(str):
+                    try:
+                        start_text, end_text = period.split("/")
+                        start_label = pd.to_datetime(start_text)
+                        end_label = pd.to_datetime(end_text)
+                        weekly_labels.append(
+                            f"{start_label.strftime('%d %b')}–{end_label.strftime('%d %b')}"
+                        )
+                    except Exception:
+                        weekly_labels.append(period)
+
+                fig_yoy.update_xaxes(
+                    tickmode="array",
+                    tickvals=yoy_df["Period"].tolist(),
+                    ticktext=weekly_labels,
+                )
+
+            # Show only around 10 date labels in Daily view.
+            elif trend_type == "Daily" and period_count > 15:
+                step = max(1, period_count // 10)
+                daily_tickvals = yoy_df["Period"].iloc[::step].tolist()
+                daily_ticktext = []
+                for value in daily_tickvals:
+                    try:
+                        daily_ticktext.append(pd.to_datetime(value).strftime("%d %b"))
+                    except Exception:
+                        daily_ticktext.append(str(value))
+
+                fig_yoy.update_xaxes(
+                    tickmode="array",
+                    tickvals=daily_tickvals,
+                    ticktext=daily_ticktext,
+                )
+
+            x_tick_angle = -25 if trend_type == "Weekly" else -35 if trend_type == "Daily" else 0
+            y_range_multiplier = 1.40 if show_annotations else 1.24
 
             fig_yoy.update_layout(
                 barmode="group",
-                height=250,
-                margin=dict(l=2, r=2, t=30, b=0),
+                height=chart_height,
+                margin=dict(
+                    l=45,
+                    r=18,
+                    t=58,
+                    b=88 if trend_type in ["Daily", "Weekly"] else 45,
+                ),
                 xaxis_title="",
                 yaxis_title="Revenue (Cr)",
-                plot_bgcolor="white",
-                paper_bgcolor="white",
-                legend=dict(orientation="h", yanchor="bottom", y=1.05, x=0, font=dict(size=9)),
-                yaxis_range=[0, yoy_max * 1.35],
-                bargap=0.22,
-                bargroupgap=0.08,
+                plot_bgcolor="#f8fafc",
+                paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.03,
+                    xanchor="left",
+                    x=0,
+                    font=dict(size=9),
+                ),
+                yaxis_range=[0, yoy_max * y_range_multiplier],
+                bargap=0.18,
+                bargroupgap=0.06,
+                hovermode="x unified",
+                uniformtext=dict(minsize=8, mode="hide"),
             )
-            apply_3d_chart_layout(fig_yoy, height=250, margin=dict(l=8, r=8, t=34, b=8))
-            fig_yoy.update_xaxes(showgrid=False, showline=False, zeroline=False)
-            fig_yoy.update_yaxes(showgrid=False, showline=False, zeroline=False)
 
-            st.plotly_chart(fig_yoy, use_container_width=True)
+            fig_yoy.update_xaxes(
+                showgrid=False,
+                showline=False,
+                zeroline=False,
+                tickangle=x_tick_angle,
+                tickfont=dict(size=9),
+                automargin=True,
+            )
+            fig_yoy.update_yaxes(
+                showgrid=True,
+                gridcolor="rgba(148,163,184,0.18)",
+                showline=False,
+                zeroline=False,
+                tickfont=dict(size=9),
+                automargin=True,
+            )
+
+            st.plotly_chart(
+                fig_yoy,
+                width="stretch",
+                config={"displayModeBar": False, "responsive": True},
+            )
 
     with row2:
         with st.container(border=True):
@@ -1870,9 +1988,11 @@ def show_overview():
                         r["Weight MT"] if pd.notna(r["Weight MT"]) else 0,
                         r["Prev Weight MT"] if pd.notna(r["Prev Weight MT"]) else 0,
                     )
+                    # Add more space in Monthly view between the bar values and growth %.
+                    growth_gap = 0.24 if weight_trend_type == "Monthly" else 0.16
                     fig_weight.add_annotation(
                         x=r["Period"],
-                        y=bar_top + (weight_max * 0.16),
+                        y=bar_top + (weight_max * growth_gap),
                         text=r["Growth Label"],
                         showarrow=False,
                         font=dict(size=10, color=label_color, family="Arial Black"),
@@ -1892,7 +2012,7 @@ def show_overview():
                 font=dict(size=9),
             ),
             yaxis_title="Weight (MT)",
-            yaxis_range=[0, weight_max * 1.35],
+            yaxis_range=[0, weight_max * (1.48 if weight_trend_type == "Monthly" else 1.35)],
             bargap=0.22,
             bargroupgap=0.08,
         )
@@ -2038,33 +2158,85 @@ def show_overview():
                     )
                 )
 
-                matrix_styled = (
-                    matrix_value_display.style
-                    .set_properties(**{
-                        "background-color": "#f8fbff",
-                        "color": "#475569",
-                        "border-color": "#e2e8f0",
-                        "font-size": "10px",
-                    })
-                    .set_table_styles([
-                        {
-                            "selector": "th",
-                            "props": [
-                                ("background-color", "#eef6ff"),
-                                ("color", "#334155"),
-                                ("font-weight", "700"),
-                                ("border-color", "#dbe7f3"),
-                            ],
-                        }
-                    ])
+                # Render as HTML so the percentage part can have its own colour.
+                # Revenue remains dark while contribution % is highlighted in blue.
+                table_headers = "".join(
+                    f"<th>{str(col)}</th>" for col in matrix_display.columns
                 )
+                table_rows = []
+                for _, row in matrix_display.iterrows():
+                    cells = [f"<td class='zone-name'>{row['zone']}</td>"]
+                    for col in matrix_display.columns[1:]:
+                        value = float(row[col]) if pd.notna(row[col]) else 0.0
+                        pct = (value / grand_total * 100) if grand_total > 0 else 0.0
+                        cells.append(
+                            "<td>"
+                            f"<span class='matrix-value'>₹{value:.2f} Cr</span>"
+                            "<span class='matrix-separator'> | </span>"
+                            f"<span class='matrix-percent'>{pct:.1f}%</span>"
+                            "</td>"
+                        )
+                    table_rows.append(f"<tr>{''.join(cells)}</tr>")
 
-                st.dataframe(
-                    matrix_styled,
-                    use_container_width=True,
-                    hide_index=True,
-                    height=240,
-                )
+                matrix_html = f"""
+                <style>
+                    .zone-country-wrap {{
+                        width: 100%;
+                        max-height: 240px;
+                        overflow: auto;
+                        border: 1px solid #e2e8f0;
+                        border-radius: 10px;
+                        background: #ffffff;
+                    }}
+                    .zone-country-table {{
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 10px;
+                        color: #475569;
+                    }}
+                    .zone-country-table th {{
+                        position: sticky;
+                        top: 0;
+                        z-index: 1;
+                        padding: 9px 8px;
+                        text-align: center;
+                        white-space: nowrap;
+                        background: #eef6ff;
+                        color: #334155;
+                        font-weight: 700;
+                        border: 1px solid #dbe7f3;
+                    }}
+                    .zone-country-table td {{
+                        padding: 8px;
+                        text-align: center;
+                        white-space: nowrap;
+                        background: #f8fbff;
+                        border: 1px solid #e2e8f0;
+                    }}
+                    .zone-country-table .zone-name {{
+                        text-align: left;
+                        font-weight: 700;
+                        color: #334155;
+                    }}
+                    .matrix-value {{ color: #475569; }}
+                    .matrix-separator {{ color: #94a3b8; }}
+                    .matrix-percent {{
+                        color: #2563eb;
+                        font-weight: 800;
+                    }}
+                </style>
+                <div class="zone-country-wrap">
+                    <table class="zone-country-table">
+                        <thead><tr>{table_headers}</tr></thead>
+                        <tbody>{''.join(table_rows)}</tbody>
+                    </table>
+                </div>
+                """
+
+                if hasattr(st, "html"):
+                    st.html(matrix_html)
+                else:
+                    st.markdown(matrix_html, unsafe_allow_html=True)
 
     # =====================================================
     # Management Key Insights
