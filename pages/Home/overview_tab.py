@@ -1561,8 +1561,9 @@ def show_overview():
                     "Revenue trend period",
                     ["Daily", "Weekly", "Monthly", "Quarterly"],
                     default="Monthly",
-                    label_visibility="collapsed"
-                )
+                    label_visibility="collapsed",
+                    key="revenue_trend_type",
+                ) or "Monthly"
 
             # Build trend data (Current FY vs LY) for the selected granularity
             DATE_COL = "grdt"   # change if your date column is different
@@ -2028,7 +2029,7 @@ def show_overview():
     # Zone and Country analysis on the next row
     # =====================================================
     if view_type == "Origin":
-        zone_col1, zone_col2 = st.columns([1.0, 1.50])
+        zone_col1, zone_col2 = st.columns([1, 1], gap="small")
     else:
         zone_col1 = st.container()
         zone_col2 = None
@@ -2042,7 +2043,7 @@ def show_overview():
             zone_df["Percentage"] = (zone_df["Revenue Cr"] / total_zone_revenue * 100).round(1)
             # Keep revenue and contribution percentage as separate values.
             # Plotly renders the revenue as the main bar label and the percentage below it.
-            zone_df["Revenue Label"] = zone_df["Revenue Cr"].map(lambda value: f"₹{value:.1f} Cr")
+            zone_df["Revenue Label"] = zone_df["Revenue Cr"].map(lambda value: f"₹{value:.2f} Cr")
             zone_df["Percentage Label"] = zone_df["Percentage"].map(lambda value: f"{value:.1f}%")
             zone_df["Text"] = zone_df.apply(
                 lambda row: f"{row['Revenue Label']}<br><span style='font-size:10px'>({row['Percentage Label']})</span>",
@@ -2182,7 +2183,8 @@ def show_overview():
                 <style>
                     .zone-country-wrap {{
                         width: 100%;
-                        max-height: 240px;
+                        height: {zone_chart_height}px;
+                        max-height: {zone_chart_height}px;
                         overflow: auto;
                         border: 1px solid #e2e8f0;
                         border-radius: 10px;
