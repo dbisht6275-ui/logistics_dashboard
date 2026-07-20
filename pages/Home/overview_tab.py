@@ -1022,166 +1022,106 @@ def show_overview():
         unsafe_allow_html=True,
     )
 
-    # Top filter row: view type, FY, zone, circle, branch, quarter, month and load type
-    (
-        filter_col1, filter_col2, filter_col3, filter_col4,
-        filter_col5, filter_col6, filter_col7, filter_col8
-    ) = st.columns(8)
-
-    with filter_col1:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>View Type</div>", unsafe_allow_html=True)
-        view_type = st.selectbox("View Type", ["Origin", "Destination"], label_visibility="collapsed")
-
-    with filter_col2:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Financial Year</div>", unsafe_allow_html=True)
-        fy = st.selectbox(
-            "Financial Year",
-            [
-                "Select FY",
-                "2026-2027",
-                "2025-2026",
-                "2024-2025",
-                "2023-2024",
-                "2022-2023",
-                "2021-2022",
-                "2020-2021",
-            ],
-            label_visibility="collapsed"
+    # Dashboard filters arranged in two balanced rows for better readability
+    with st.container(border=True):
+        st.markdown(
+            "<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;'>"
+            "<div><span style='font-size:14px;font-weight:900;color:#102a43;'>Dashboard Filters</span>"
+            "<span style='font-size:10px;color:#64748b;margin-left:8px;'>Refine the executive view</span></div>"
+            "<span style='font-size:10px;font-weight:800;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;"
+            "border-radius:999px;padding:4px 9px;'>8 filters</span></div>",
+            unsafe_allow_html=True,
         )
 
-    if fy == "Select FY":
-        st.info("Please select financial year")
-        return
+        filter_row1 = st.columns(4, gap="medium")
+        with filter_row1[0]:
+            view_type = st.selectbox("View Type", ["Origin", "Destination"], key="overview_view_type")
+        with filter_row1[1]:
+            fy = st.selectbox("Financial Year", ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"], key="overview_fy")
 
-    start_date, end_date = get_date_range(fy)
+        if fy == "Select FY":
+            st.info("Please select financial year")
+            return
 
-    prev_fy = get_previous_fy(fy)
-    prev_start, prev_end = get_date_range(prev_fy)
+        start_date, end_date = get_date_range(fy)
+        prev_fy = get_previous_fy(fy)
+        prev_start, prev_end = get_date_range(prev_fy)
 
-    # Load current-FY AND last-year data TOGETHER, in parallel,
-    # instead of one after another. This roughly halves the wait time
-    # compared to two sequential stored-procedure calls.
-    with st.spinner("Loading data..."):
-        df, prev_df = load_booking_data_pair(
-            start_date, end_date, prev_start, prev_end, view_type.lower()
-        )
+        with st.spinner("Loading data..."):
+            df, prev_df = load_booking_data_pair(start_date, end_date, prev_start, prev_end, view_type.lower())
 
-    station_df = load_stationmast_data(start_date, end_date)
-    
-    # Add FIN_MONTH to station_df if it doesn't exist
-    if "FIN_MONTH" not in station_df.columns:
-        def get_fin_month(date_str):
-            try:
-                date = pd.to_datetime(date_str)
-                month = date.month
-                return ((month - 4) % 12) + 1
-            except:
-                return None
-        
-        # Try to add FIN_MONTH from activedate or closedate
-        if "activedate" in station_df.columns:
-            station_df["FIN_MONTH"] = station_df["activedate"].apply(get_fin_month)
-        elif "closedate" in station_df.columns:
-            station_df["FIN_MONTH"] = station_df["closedate"].apply(get_fin_month)
-        else:
-            station_df["FIN_MONTH"] = None
+        station_df = load_stationmast_data(start_date, end_date)
+        if "FIN_MONTH" not in station_df.columns:
+            def get_fin_month(date_str):
+                try:
+                    date = pd.to_datetime(date_str)
+                    return ((date.month - 4) % 12) + 1
+                except Exception:
+                    return None
+            if "activedate" in station_df.columns:
+                station_df["FIN_MONTH"] = station_df["activedate"].apply(get_fin_month)
+            elif "closedate" in station_df.columns:
+                station_df["FIN_MONTH"] = station_df["closedate"].apply(get_fin_month)
+            else:
+                station_df["FIN_MONTH"] = None
 
-    if df.empty:
-        st.warning("No data found")
-        return
+        if df.empty:
+            st.warning("No data found")
+            return
 
-    month_map = {
-        1: "Apr", 2: "May", 3: "Jun", 4: "Jul",
-        5: "Aug", 6: "Sep", 7: "Oct", 8: "Nov",
-        9: "Dec", 10: "Jan", 11: "Feb", 12: "Mar"
-    }
+        month_map = {1:"Apr",2:"May",3:"Jun",4:"Jul",5:"Aug",6:"Sep",7:"Oct",8:"Nov",9:"Dec",10:"Jan",11:"Feb",12:"Mar"}
+        df["Month"] = df["FIN_MONTH"].map(month_map)
+        df["Quarter"] = df["FIN_MONTH"].map(QUARTER_MAP)
+        if not prev_df.empty:
+            prev_df["Month"] = prev_df["FIN_MONTH"].map(month_map)
+            prev_df["Quarter"] = prev_df["FIN_MONTH"].map(QUARTER_MAP)
 
-    df["Month"] = df["FIN_MONTH"].map(month_map)
-    df["Quarter"] = df["FIN_MONTH"].map(QUARTER_MAP)
-
-    if not prev_df.empty:
-        prev_df["Month"] = prev_df["FIN_MONTH"].map(month_map)
-        prev_df["Quarter"] = prev_df["FIN_MONTH"].map(QUARTER_MAP)
-
-    # Data-scope restriction for this employee (set at login, from config/data_scope.json)
-    # e.g. {} = no restriction, {"zone": "Nepal Zone"}, {"circle": "NCR Circle"}, {"branch": "Noida"}
-    data_scope = st.session_state.get("data_scope", {})
-
-    # -----------------------------
-    # Auto derive parent hierarchy
-    # -----------------------------
-    locked_zone = data_scope.get("zone")
-    locked_circle = data_scope.get("circle")
-    locked_branch = data_scope.get("branch")
-
-    # If branch right is given, derive its circle and zone
-    if locked_branch:
-        branch_row = df[df["branch"] == locked_branch]
-        if not branch_row.empty:
-            locked_circle = branch_row["circle"].iloc[0]
-            locked_zone = branch_row["zone"].iloc[0]
-
-    # If circle right is given, derive its zone
-    elif locked_circle:
-        circle_row = df[df["circle"] == locked_circle]
-        if not circle_row.empty:
-            locked_zone = circle_row["zone"].iloc[0]
-
-    with filter_col3:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Zone</div>", unsafe_allow_html=True)
-        if locked_zone:
-            zone = locked_zone
-            st.selectbox("Zone", [zone], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
-        else:
-            zone = st.selectbox("Zone", ["All"] + sorted(df["zone"].dropna().unique().tolist()), label_visibility="collapsed")
-
-    if zone != "All":
-        df = df[df["zone"] == zone]
-
-    with filter_col4:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Circle</div>", unsafe_allow_html=True)
-        if locked_circle:
-            circle = locked_circle
-            st.selectbox("Circle", [circle], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
-        else:
-            circle = st.selectbox("Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()), label_visibility="collapsed")
-
-    if circle != "All":
-        df = df[df["circle"] == circle]
-
-    with filter_col5:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Branch</div>", unsafe_allow_html=True)
+        data_scope = st.session_state.get("data_scope", {})
+        locked_zone = data_scope.get("zone")
+        locked_circle = data_scope.get("circle")
+        locked_branch = data_scope.get("branch")
         if locked_branch:
-            branch = locked_branch
-            st.selectbox("Branch", [branch], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
-        else:
-            branch = st.selectbox("Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()), label_visibility="collapsed")
+            branch_row = df[df["branch"] == locked_branch]
+            if not branch_row.empty:
+                locked_circle = branch_row["circle"].iloc[0]
+                locked_zone = branch_row["zone"].iloc[0]
+        elif locked_circle:
+            circle_row = df[df["circle"] == locked_circle]
+            if not circle_row.empty:
+                locked_zone = circle_row["zone"].iloc[0]
 
-    if branch != "All":
-        df = df[df["branch"] == branch]
+        with filter_row1[2]:
+            zone = locked_zone if locked_zone else st.selectbox("Zone", ["All"] + sorted(df["zone"].dropna().unique().tolist()), key="overview_zone")
+            if locked_zone:
+                st.selectbox("Zone", [zone], disabled=True, key="overview_zone_locked")
+        if zone != "All": df = df[df["zone"] == zone]
 
-    with filter_col6:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Quarter</div>", unsafe_allow_html=True)
-        available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().unique().tolist()]
-        quarter = st.selectbox("Quarter", ["All"] + available_quarters, label_visibility="collapsed")
+        with filter_row1[3]:
+            circle = locked_circle if locked_circle else st.selectbox("Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()), key="overview_circle")
+            if locked_circle:
+                st.selectbox("Circle", [circle], disabled=True, key="overview_circle_locked")
+        if circle != "All": df = df[df["circle"] == circle]
 
-    if quarter != "All":
-        df = df[df["Quarter"] == quarter]
+        filter_row2 = st.columns(4, gap="medium")
+        with filter_row2[0]:
+            branch = locked_branch if locked_branch else st.selectbox("Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()), key="overview_branch")
+            if locked_branch:
+                st.selectbox("Branch", [branch], disabled=True, key="overview_branch_locked")
+        if branch != "All": df = df[df["branch"] == branch]
 
-    with filter_col7:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Month</div>", unsafe_allow_html=True)
-        available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().unique().tolist()]
-        month = st.selectbox("Month", ["All"] + available_months, label_visibility="collapsed")
+        with filter_row2[1]:
+            available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().unique().tolist()]
+            quarter = st.selectbox("Quarter", ["All"] + available_quarters, key="overview_quarter")
+        if quarter != "All": df = df[df["Quarter"] == quarter]
 
-    if month != "All":
-        df = df[df["Month"] == month]
+        with filter_row2[2]:
+            available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().unique().tolist()]
+            month = st.selectbox("Month", ["All"] + available_months, key="overview_month")
+        if month != "All": df = df[df["Month"] == month]
 
-    with filter_col8:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Load Type</div>", unsafe_allow_html=True)
-        loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()), label_visibility="collapsed")
-
-    if loadtype != "All":
-        df = df[df["LOADTYPE"] == loadtype]
+        with filter_row2[3]:
+            loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()), key="overview_loadtype")
+        if loadtype != "All": df = df[df["LOADTYPE"] == loadtype]
 
     if df.empty:
         st.warning("No data found for selected filters")
