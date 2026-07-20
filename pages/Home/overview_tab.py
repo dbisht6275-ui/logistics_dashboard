@@ -1189,18 +1189,35 @@ def show_overview():
     paid = current_kpis["paid"]
     tbb = current_kpis["tbb"]
 
+    # Delivered consignments: a GR is treated as delivered when Deliverydt is populated.
+    delivery_col = next(
+        (col for col in df.columns if str(col).replace("_", "").replace(" ", "").casefold() == "deliverydt"),
+        None,
+    )
+    prev_delivery_col = next(
+        (col for col in prev_df.columns if str(col).replace("_", "").replace(" ", "").casefold() == "deliverydt"),
+        None,
+    ) if prev_df is not None and not prev_df.empty else None
+
+    delivered_gr = int(pd.to_datetime(df[delivery_col], errors="coerce").notna().sum()) if delivery_col else 0
+    prev_delivered_gr = (
+        int(pd.to_datetime(prev_df[prev_delivery_col], errors="coerce").notna().sum())
+        if prev_delivery_col else 0
+    )
+
     # Auto-calculated growth % vs Last Year for each KPI
     revenue_growth = pct_growth(revenue, prev_kpis["revenue"])
     ftl_growth = pct_growth(ftl, prev_kpis["ftl"])
     ltl_growth = pct_growth(ltl, prev_kpis["ltl"])
     gr_growth = pct_growth(total_gr, prev_kpis["total_gr"])
+    delivered_growth = pct_growth(delivered_gr, prev_delivered_gr)
     weight_growth = pct_growth(aweight, prev_kpis["aweight"])
     topay_growth = pct_growth(topay, prev_kpis["topay"])
     paid_growth = pct_growth(paid, prev_kpis["paid"])
     tbb_growth = pct_growth(tbb, prev_kpis["tbb"])
 
     # KPI Cards
-    k1, k2, k3, k4, k5, k6, k7, k8 = st.columns(8)
+    k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9)
 
     with k1:
         create_card("Revenue", format_cr(revenue), "#2563eb", "💰", revenue_growth)
@@ -1215,15 +1232,18 @@ def show_overview():
         create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth)
 
     with k5:
-        create_card("Total Weight (MT)", f"{aweight:,.0f}", "#2563eb", "⚓", weight_growth)
+        create_card("Delivered GR", f"{delivered_gr:,}", "#16a34a", "✅", delivered_growth)
 
     with k6:
-        create_card("Topay", format_cr(topay), "#2563eb", "🧾", topay_growth)
+        create_card("Total Weight (MT)", f"{aweight:,.0f}", "#2563eb", "⚓", weight_growth)
 
     with k7:
-        create_card("Paid", format_cr(paid), "#2563eb", "🔗", paid_growth)
+        create_card("Topay", format_cr(topay), "#2563eb", "🧾", topay_growth)
 
     with k8:
+        create_card("Paid", format_cr(paid), "#2563eb", "🔗", paid_growth)
+
+    with k9:
         create_card("T.B.B", format_cr(tbb), "#2563eb", "🚚", tbb_growth)
 
     # =====================================================
@@ -2328,91 +2348,78 @@ def show_overview():
 
 
     # =====================================================
-    # Top 10 Consignors | Current FY vs LY with YoY growth
+    # Top 10 Consignors / Consignees | View-type aware
     # =====================================================
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    # Locate the consignor/customer column without hard-coding a single schema.
-    consignor_candidates = [
-        "consignor", "CONSIGNOR", "Consignor",
-        "consignorname", "CONSIGNORNAME", "ConsignorName",
-        "consignor_name", "CONSIGNOR_NAME",
-        "customer", "CUSTOMER", "Customer",
-        "customername", "CUSTOMERNAME", "CustomerName",
-        "partyname", "PARTYNAME", "PartyName",
-        "clientname", "CLIENTNAME", "ClientName",
-    ]
-
-    consignor_col = next((col for col in consignor_candidates if col in df.columns), None)
-
-    if consignor_col is None:
-        # Case-insensitive fallback for minor column-name variations.
-        normalized_cols = {
-            str(col).replace(" ", "").replace("_", "").casefold(): col
-            for col in df.columns
+    def _find_column(frame, candidates):
+        """Find a dataframe column using exact and normalized candidate names."""
+        if frame is None:
+            return None
+        for candidate in candidates:
+            if candidate in frame.columns:
+                return candidate
+        normalized = {
+            str(col).replace(" ", "").replace("_", "").replace("-", "").casefold(): col
+            for col in frame.columns
         }
-        for candidate in [
-            "consignor", "consignorname", "customer", "customername",
-            "partyname", "clientname"
-        ]:
-            if candidate in normalized_cols:
-                consignor_col = normalized_cols[candidate]
-                break
+        for candidate in candidates:
+            key = str(candidate).replace(" ", "").replace("_", "").replace("-", "").casefold()
+            if key in normalized:
+                return normalized[key]
+        return None
 
-    if consignor_col is not None:
-        current_consignor = (
-            df.assign(
-                _consignor=df[consignor_col].fillna("Unknown").astype(str).str.strip()
-            )
-            .query("_consignor != ''")
-            .groupby("_consignor", dropna=False)["REVENUE"]
+    if view_type == "Origin":
+        party_label = "Consignor"
+        party_candidates = [
+            "consignor", "CONSIGNOR", "Consignor", "consignorname", "CONSIGNORNAME",
+            "ConsignorName", "consignor_name", "CONSIGNOR_NAME", "customer", "CUSTOMER",
+            "customername", "CUSTOMERNAME", "partyname", "PARTYNAME", "clientname", "CLIENTNAME",
+        ]
+    else:
+        party_label = "Consignee"
+        party_candidates = [
+            "consignee", "CONSIGNEE", "Consignee", "consigneename", "CONSIGNEENAME",
+            "ConsigneeName", "consignee_name", "CONSIGNEE_NAME", "receiver", "RECEIVER",
+            "receivername", "RECEIVERNAME", "deliveryparty", "DELIVERYPARTY",
+        ]
+
+    party_col = _find_column(df, party_candidates)
+    prev_party_col = _find_column(prev_df, party_candidates) if prev_df is not None and not prev_df.empty else None
+
+    if party_col is not None:
+        current_party = (
+            df.assign(_party=df[party_col].fillna("Unknown").astype(str).str.strip())
+            .query("_party != ''")
+            .groupby("_party", dropna=False)["REVENUE"]
             .sum()
             .reset_index(name="Current Revenue")
         )
 
-        if prev_df is not None and not prev_df.empty and consignor_col in prev_df.columns:
-            previous_consignor = (
-                prev_df.assign(
-                    _consignor=prev_df[consignor_col].fillna("Unknown").astype(str).str.strip()
-                )
-                .query("_consignor != ''")
-                .groupby("_consignor", dropna=False)["REVENUE"]
+        if prev_party_col is not None:
+            previous_party = (
+                prev_df.assign(_party=prev_df[prev_party_col].fillna("Unknown").astype(str).str.strip())
+                .query("_party != ''")
+                .groupby("_party", dropna=False)["REVENUE"]
                 .sum()
                 .reset_index(name="Previous Revenue")
             )
         else:
-            previous_consignor = pd.DataFrame(
-                columns=["_consignor", "Previous Revenue"]
-            )
+            previous_party = pd.DataFrame(columns=["_party", "Previous Revenue"])
 
-        consignor_yoy = current_consignor.merge(
-            previous_consignor,
-            on="_consignor",
-            how="left",
-        ).fillna({"Previous Revenue": 0})
-
-        consignor_yoy["Current Revenue Cr"] = (
-            consignor_yoy["Current Revenue"] / 10000000
-        ).round(2)
-        consignor_yoy["Previous Revenue Cr"] = (
-            consignor_yoy["Previous Revenue"] / 10000000
-        ).round(2)
-        consignor_yoy["Growth %"] = consignor_yoy.apply(
-            lambda row: pct_growth(
-                row["Current Revenue"], row["Previous Revenue"]
-            ) if row["Previous Revenue"] > 0 else None,
+        party_yoy = current_party.merge(previous_party, on="_party", how="left").fillna({"Previous Revenue": 0})
+        party_yoy["Current Revenue Cr"] = (party_yoy["Current Revenue"] / 10000000).round(2)
+        party_yoy["Previous Revenue Cr"] = (party_yoy["Previous Revenue"] / 10000000).round(2)
+        party_yoy["Growth %"] = party_yoy.apply(
+            lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"])
+            if row["Previous Revenue"] > 0 else None,
             axis=1,
         )
-
-        consignor_yoy = (
-            consignor_yoy
-            .sort_values("Current Revenue", ascending=False)
-            .head(10)
-            .sort_values("Current Revenue", ascending=True)
-            .reset_index(drop=True)
+        party_yoy = (
+            party_yoy.sort_values("Current Revenue", ascending=False).head(10)
+            .sort_values("Current Revenue", ascending=True).reset_index(drop=True)
         )
-
-        consignor_yoy["Consignor Display"] = consignor_yoy["_consignor"].apply(
+        party_yoy["Party Display"] = party_yoy["_party"].apply(
             lambda value: value if len(value) <= 28 else value[:26] + "…"
         )
 
@@ -2420,159 +2427,204 @@ def show_overview():
             title_col, metric_col = st.columns([3, 1])
             with title_col:
                 st.markdown(
-                    "###### Top 10 Consignors | Current FY vs LY"
+                    f"###### Top 10 {party_label}s | Current FY vs LY"
                     "<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
-                    "Ranked by current-year revenue; growth is calculated against the same filtered period last year."
+                    f"View Type: {view_type}. Ranked by current-year revenue against the same filtered period last year."
                     "</div>",
                     unsafe_allow_html=True,
                 )
             with metric_col:
-                total_top10_current = consignor_yoy["Current Revenue Cr"].sum()
-                total_top10_previous = consignor_yoy["Previous Revenue Cr"].sum()
-                total_top10_growth = pct_growth(
-                    total_top10_current, total_top10_previous
-                ) if total_top10_previous > 0 else 0
-                total_growth_color = "#166534" if total_top10_growth >= 0 else "#dc2626"
+                total_current = party_yoy["Current Revenue Cr"].sum()
+                total_previous = party_yoy["Previous Revenue Cr"].sum()
+                total_growth = pct_growth(total_current, total_previous) if total_previous > 0 else 0
+                growth_color = "#166534" if total_growth >= 0 else "#dc2626"
                 st.markdown(
                     f"<div style='text-align:right;font-size:10px;color:#64748b;'>Top 10 Revenue</div>"
-                    f"<div style='text-align:right;font-size:16px;font-weight:900;color:#0f172a;'>"
-                    f"₹{total_top10_current:.2f} Cr</div>"
-                    f"<div style='text-align:right;font-size:10px;font-weight:800;color:{total_growth_color};'>"
-                    f"{growth_label(total_top10_growth)} vs LY</div>",
+                    f"<div style='text-align:right;font-size:16px;font-weight:900;color:#0f172a;'>₹{total_current:.2f} Cr</div>"
+                    f"<div style='text-align:right;font-size:10px;font-weight:800;color:{growth_color};'>"
+                    f"{growth_label(total_growth)} vs LY</div>",
                     unsafe_allow_html=True,
                 )
 
-            fig_consignor = go.Figure()
+            fig_party = go.Figure()
+            fig_party.add_trace(go.Bar(
+                y=party_yoy["Party Display"], x=party_yoy["Previous Revenue Cr"],
+                name=f"LY ({prev_fy})", orientation="h",
+                marker=dict(color="#dbe4f0", line=dict(color="#b8c7dc", width=1)),
+                text=party_yoy["Previous Revenue Cr"], texttemplate="₹%{text:.2f}",
+                textposition="inside", insidetextanchor="middle",
+                textfont=dict(size=9, color="#475569"),
+                hovertemplate="<b>%{y}</b><br>LY Revenue: ₹%{x:.2f} Cr<extra></extra>",
+            ))
+            fig_party.add_trace(go.Bar(
+                y=party_yoy["Party Display"], x=party_yoy["Current Revenue Cr"],
+                name=f"Current ({fy})", orientation="h",
+                marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1)),
+                customdata=party_yoy[["Growth %", "_party"]].to_numpy(),
+                text=party_yoy["Current Revenue Cr"], texttemplate="₹%{text:.2f}",
+                textposition="outside", textfont=dict(size=10, color="#0f172a", family="Arial Black"),
+                cliponaxis=False,
+                hovertemplate=("<b>%{customdata[1]}</b><br>Current Revenue: ₹%{x:.2f} Cr"
+                               "<br>YoY Growth: %{customdata[0]:.1f}%<extra></extra>"),
+            ))
 
-            fig_consignor.add_trace(
-                go.Bar(
-                    y=consignor_yoy["Consignor Display"],
-                    x=consignor_yoy["Previous Revenue Cr"],
-                    name=f"LY ({prev_fy})",
-                    orientation="h",
-                    marker=dict(
-                        color="#dbe4f0",
-                        line=dict(color="#b8c7dc", width=1),
-                    ),
-                    text=consignor_yoy["Previous Revenue Cr"],
-                    texttemplate="₹%{text:.2f}",
-                    textposition="inside",
-                    insidetextanchor="middle",
-                    textfont=dict(size=9, color="#475569"),
-                    hovertemplate=(
-                        "<b>%{y}</b><br>LY Revenue: ₹%{x:.2f} Cr<extra></extra>"
-                    ),
-                )
-            )
-
-            growth_customdata = consignor_yoy[["Growth %", "_consignor"]].to_numpy()
-            fig_consignor.add_trace(
-                go.Bar(
-                    y=consignor_yoy["Consignor Display"],
-                    x=consignor_yoy["Current Revenue Cr"],
-                    name=f"Current ({fy})",
-                    orientation="h",
-                    marker=dict(
-                        color="#2563eb",
-                        line=dict(color="#1d4ed8", width=1),
-                    ),
-                    customdata=growth_customdata,
-                    text=consignor_yoy["Current Revenue Cr"],
-                    texttemplate="₹%{text:.2f}",
-                    textposition="outside",
-                    textfont=dict(size=10, color="#0f172a", family="Arial Black"),
-                    cliponaxis=False,
-                    hovertemplate=(
-                        "<b>%{customdata[1]}</b>"
-                        "<br>Current Revenue: ₹%{x:.2f} Cr"
-                        "<br>YoY Growth: %{customdata[0]:.1f}%<extra></extra>"
-                    ),
-                )
-            )
-
-            max_consignor_revenue = max(
-                consignor_yoy["Current Revenue Cr"].max(),
-                consignor_yoy["Previous Revenue Cr"].max(),
-                1,
-            )
-
-            for _, row in consignor_yoy.iterrows():
+            max_party_revenue = max(party_yoy["Current Revenue Cr"].max(), party_yoy["Previous Revenue Cr"].max(), 1)
+            for _, row in party_yoy.iterrows():
                 if pd.notna(row["Growth %"]):
-                    growth_color = "#15803d" if row["Growth %"] >= 0 else "#dc2626"
-                    growth_arrow = "▲" if row["Growth %"] >= 0 else "▼"
-                    fig_consignor.add_annotation(
-                        x=max(
-                            row["Current Revenue Cr"],
-                            row["Previous Revenue Cr"],
-                        ) + max_consignor_revenue * 0.12,
-                        y=row["Consignor Display"],
-                        text=f"<b>{growth_arrow} {abs(row['Growth %']):.1f}%</b>",
-                        showarrow=False,
-                        xanchor="left",
-                        font=dict(size=10, color=growth_color),
-                        bgcolor="#ffffff",
-                        bordercolor="#e2e8f0",
-                        borderwidth=1,
-                        borderpad=3,
-                    )
+                    c = "#15803d" if row["Growth %"] >= 0 else "#dc2626"
+                    a = "▲" if row["Growth %"] >= 0 else "▼"
+                    label = f"<b>{a} {abs(row['Growth %']):.1f}%</b>"
                 else:
-                    fig_consignor.add_annotation(
-                        x=max(
-                            row["Current Revenue Cr"],
-                            row["Previous Revenue Cr"],
-                        ) + max_consignor_revenue * 0.12,
-                        y=row["Consignor Display"],
-                        text="<b>New</b>",
-                        showarrow=False,
-                        xanchor="left",
-                        font=dict(size=9, color="#7c3aed"),
-                        bgcolor="#f5f3ff",
-                        bordercolor="#ddd6fe",
-                        borderwidth=1,
-                        borderpad=3,
-                    )
+                    c, label = "#7c3aed", "<b>New</b>"
+                fig_party.add_annotation(
+                    x=max(row["Current Revenue Cr"], row["Previous Revenue Cr"]) + max_party_revenue * 0.12,
+                    y=row["Party Display"], text=label, showarrow=False, xanchor="left",
+                    font=dict(size=10, color=c), bgcolor="#ffffff", bordercolor="#e2e8f0",
+                    borderwidth=1, borderpad=3,
+                )
 
-            consignor_chart_height = max(360, 42 * len(consignor_yoy) + 105)
-            fig_consignor.update_layout(
-                barmode="group",
-                bargap=0.28,
-                bargroupgap=0.08,
-                height=consignor_chart_height,
-                margin=dict(l=8, r=105, t=35, b=28),
-                plot_bgcolor="#f8fafc",
+            party_chart_height = max(360, 42 * len(party_yoy) + 105)
+            fig_party.update_layout(
+                barmode="group", bargap=0.28, bargroupgap=0.08, height=party_chart_height,
+                margin=dict(l=8, r=105, t=35, b=28), plot_bgcolor="#f8fafc",
                 paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    x=0,
-                    font=dict(size=10),
-                ),
-                xaxis_title="Revenue (Cr)",
-                xaxis_range=[0, max_consignor_revenue * 1.52],
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10)),
+                xaxis_title="Revenue (Cr)", xaxis_range=[0, max_party_revenue * 1.52],
                 hoverlabel=dict(bgcolor="white", font_size=11),
             )
-            apply_3d_chart_layout(
-                fig_consignor,
-                height=consignor_chart_height,
-                margin=dict(l=8, r=105, t=35, b=28),
-            )
-            fig_consignor.update_xaxes(
-                showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10)
-            )
-            fig_consignor.update_yaxes(
-                showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10)
-            )
-
-            st.plotly_chart(fig_consignor, use_container_width=True)
+            apply_3d_chart_layout(fig_party, height=party_chart_height, margin=dict(l=8, r=105, t=35, b=28))
+            fig_party.update_xaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10))
+            fig_party.update_yaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10))
+            st.plotly_chart(fig_party, use_container_width=True)
     else:
         with st.container(border=True):
             st.info(
-                "Top 10 Consignors visual could not be displayed because a consignor/customer "
-                "column was not found in the booking dataset. Expected names include "
-                "CONSIGNOR, CONSIGNORNAME, CUSTOMERNAME, or PARTYNAME."
+                f"Top 10 {party_label}s could not be displayed because a matching {party_label.lower()} column "
+                f"was not found in the booking dataset."
             )
 
+    # =====================================================
+    # Top 10 Routes | View-type aware direction
+    # =====================================================
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    origin_candidates = [
+        "origin", "ORIGIN", "originname", "ORIGINNAME", "originstation", "ORIGINSTATION",
+        "fromstation", "FROMSTATION", "frombranch", "FROMBRANCH", "bookingbranch", "BOOKINGBRANCH",
+        "source", "SOURCE", "sourcebranch", "SOURCEBRANCH", "orgbranch", "ORGBRANCH",
+    ]
+    destination_candidates = [
+        "destination", "DESTINATION", "destinationname", "DESTINATIONNAME",
+        "destinationstation", "DESTINATIONSTATION", "tostation", "TOSTATION",
+        "tobranch", "TOBRANCH", "deliverybranch", "DELIVERYBRANCH", "destbranch", "DESTBRANCH",
+    ]
+
+    origin_col = _find_column(df, origin_candidates)
+    destination_col = _find_column(df, destination_candidates)
+    prev_origin_col = _find_column(prev_df, origin_candidates) if prev_df is not None and not prev_df.empty else None
+    prev_destination_col = _find_column(prev_df, destination_candidates) if prev_df is not None and not prev_df.empty else None
+
+    if origin_col and destination_col:
+        route_start_col, route_end_col = (
+            (origin_col, destination_col) if view_type == "Origin" else (destination_col, origin_col)
+        )
+        current_routes = df.assign(
+            _route=(
+                df[route_start_col].fillna("Unknown").astype(str).str.strip()
+                + " → " +
+                df[route_end_col].fillna("Unknown").astype(str).str.strip()
+            )
+        )
+        current_routes = (
+            current_routes.query("_route != 'Unknown → Unknown'")
+            .groupby("_route", dropna=False)["REVENUE"].sum()
+            .reset_index(name="Current Revenue")
+        )
+
+        if prev_origin_col and prev_destination_col:
+            prev_start_col, prev_end_col = (
+                (prev_origin_col, prev_destination_col)
+                if view_type == "Origin" else (prev_destination_col, prev_origin_col)
+            )
+            previous_routes = prev_df.assign(
+                _route=(
+                    prev_df[prev_start_col].fillna("Unknown").astype(str).str.strip()
+                    + " → " +
+                    prev_df[prev_end_col].fillna("Unknown").astype(str).str.strip()
+                )
+            )
+            previous_routes = (
+                previous_routes.query("_route != 'Unknown → Unknown'")
+                .groupby("_route", dropna=False)["REVENUE"].sum()
+                .reset_index(name="Previous Revenue")
+            )
+        else:
+            previous_routes = pd.DataFrame(columns=["_route", "Previous Revenue"])
+
+        route_yoy = current_routes.merge(previous_routes, on="_route", how="left").fillna({"Previous Revenue": 0})
+        route_yoy["Current Revenue Cr"] = (route_yoy["Current Revenue"] / 10000000).round(2)
+        route_yoy["Previous Revenue Cr"] = (route_yoy["Previous Revenue"] / 10000000).round(2)
+        route_yoy["Growth %"] = route_yoy.apply(
+            lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"])
+            if row["Previous Revenue"] > 0 else None,
+            axis=1,
+        )
+        route_yoy = (
+            route_yoy.sort_values("Current Revenue", ascending=False).head(10)
+            .sort_values("Current Revenue", ascending=True).reset_index(drop=True)
+        )
+        route_yoy["Route Display"] = route_yoy["_route"].apply(
+            lambda value: value if len(value) <= 42 else value[:40] + "…"
+        )
+
+        with st.container(border=True):
+            st.markdown(
+                f"###### Top 10 Routes | {view_type} View"
+                "<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
+                + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
+                + " direction, ranked by current-year revenue.</div>",
+                unsafe_allow_html=True,
+            )
+            fig_route = go.Figure()
+            fig_route.add_trace(go.Bar(
+                y=route_yoy["Route Display"], x=route_yoy["Previous Revenue Cr"],
+                name=f"LY ({prev_fy})", orientation="h",
+                marker=dict(color="#dbe4f0", line=dict(color="#b8c7dc", width=1)),
+                text=route_yoy["Previous Revenue Cr"], texttemplate="₹%{text:.2f}",
+                textposition="inside", textfont=dict(size=9, color="#475569"),
+                hovertemplate="<b>%{y}</b><br>LY Revenue: ₹%{x:.2f} Cr<extra></extra>",
+            ))
+            fig_route.add_trace(go.Bar(
+                y=route_yoy["Route Display"], x=route_yoy["Current Revenue Cr"],
+                name=f"Current ({fy})", orientation="h",
+                marker=dict(color="#0f766e", line=dict(color="#115e59", width=1)),
+                customdata=route_yoy[["Growth %", "_route"]].to_numpy(),
+                text=route_yoy["Current Revenue Cr"], texttemplate="₹%{text:.2f}",
+                textposition="outside", textfont=dict(size=10, color="#0f172a", family="Arial Black"),
+                cliponaxis=False,
+                hovertemplate=("<b>%{customdata[1]}</b><br>Current Revenue: ₹%{x:.2f} Cr"
+                               "<br>YoY Growth: %{customdata[0]:.1f}%<extra></extra>"),
+            ))
+            max_route_revenue = max(route_yoy["Current Revenue Cr"].max(), route_yoy["Previous Revenue Cr"].max(), 1)
+            route_chart_height = max(360, 42 * len(route_yoy) + 105)
+            fig_route.update_layout(
+                barmode="group", bargap=0.28, bargroupgap=0.08, height=route_chart_height,
+                margin=dict(l=8, r=105, t=35, b=28), plot_bgcolor="#f8fafc",
+                paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10)),
+                xaxis_title="Revenue (Cr)", xaxis_range=[0, max_route_revenue * 1.45],
+            )
+            apply_3d_chart_layout(fig_route, height=route_chart_height, margin=dict(l=8, r=105, t=35, b=28))
+            fig_route.update_xaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10))
+            fig_route.update_yaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10))
+            st.plotly_chart(fig_route, use_container_width=True)
+    else:
+        with st.container(border=True):
+            st.info(
+                "Top 10 Routes could not be displayed because origin and destination columns were not found. "
+                "The code checks common names such as ORIGIN, DESTINATION, FROMSTATION, TOSTATION, "
+                "BOOKINGBRANCH and DELIVERYBRANCH."
+            )
 
     # Small separator before branch analysis
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
