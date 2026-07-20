@@ -2028,7 +2028,7 @@ def show_overview():
     # Zone and Country analysis on the next row
     # =====================================================
     if view_type == "Origin":
-        zone_col1, zone_col2 = st.columns([1.15, 1.25])
+        zone_col1, zone_col2 = st.columns([1.10, 1.25])
     else:
         zone_col1 = st.container()
         zone_col2 = None
