@@ -313,47 +313,75 @@ def _inject_overview_css():
             }
 
             /* Compact outlined filter controls */
+            .filter-field-label {
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                margin: 0 0 5px 3px;
+                color: #243b53;
+                font-size: 10px;
+                font-weight: 900;
+                letter-spacing: .12px;
+                white-space: nowrap;
+            }
+
+            .filter-field-label span:first-child {
+                display: inline-flex;
+                width: 18px;
+                height: 18px;
+                align-items: center;
+                justify-content: center;
+                border-radius: 6px;
+                color: #1d4ed8;
+                background: linear-gradient(145deg, #eff6ff, #dbeafe);
+                border: 1px solid #bfdbfe;
+                box-shadow: inset 0 1px 0 #ffffff, 0 2px 4px rgba(37,99,235,.12);
+                font-size: 10px;
+            }
+
             div[data-testid="stSelectbox"] {
-                padding: 4px 5px 6px 5px;
-                border: 1.5px solid #cbd5e1;
-                border-radius: 10px;
-                background: rgba(255,255,255,.42);
-                box-shadow: 0 3px 7px rgba(15,23,42,.07);
-                transform: none;
-                transition: border-color .16s ease, box-shadow .16s ease;
+                padding: 3px;
+                border: 1px solid #cbd9ea;
+                border-radius: 12px;
+                background: linear-gradient(145deg, #ffffff 0%, #f7faff 58%, #edf3fb 100%);
+                box-shadow: 0 5px 10px rgba(15,42,67,.09), inset 0 1px 0 #ffffff;
+                transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
             }
 
             div[data-testid="stSelectbox"]:hover {
-                transform: none;
-                border-color: #94a3b8;
-                box-shadow: 0 4px 9px rgba(15,23,42,.10);
+                transform: translateY(-2px);
+                border-color: #7aa7e8;
+                box-shadow: 0 8px 15px rgba(37,99,235,.14), inset 0 1px 0 #ffffff;
             }
 
             div[data-testid="stSelectbox"]:focus-within {
-                border-color: #60a5fa;
-                box-shadow: 0 0 0 2px rgba(59,130,246,.12);
+                border-color: #2563eb;
+                box-shadow: 0 0 0 3px rgba(37,99,235,.13), 0 8px 16px rgba(37,99,235,.14);
             }
 
             div[data-baseweb="select"] > div {
-                min-height: 32px !important;
-                border: 1px solid rgba(100,116,139,.38) !important;
+                min-height: 43px !important;
+                border: 0 !important;
                 border-radius: 9px !important;
-                background: linear-gradient(145deg, #ffffff 0%, #f8fafc 48%, #e2e8f0 100%) !important;
-                box-shadow:
-                    inset 2px 2px 4px rgba(15,23,42,.07),
-                    inset -2px -2px 4px rgba(255,255,255,.96),
-                    0 2px 3px rgba(15,23,42,.08) !important;
+                background: linear-gradient(180deg, #ffffff 0%, #f4f7fb 100%) !important;
+                box-shadow: inset 0 1px 0 #ffffff, inset 0 -1px 0 rgba(148,163,184,.16) !important;
+                padding-left: 5px !important;
             }
 
             div[data-baseweb="select"] span {
-                color: #0f2747 !important;
-                font-weight: 700 !important;
-                font-size: 9px !important;
+                color: #102a43 !important;
+                font-weight: 800 !important;
+                font-size: 11px !important;
             }
 
             div[data-baseweb="select"] svg {
-                color: #2563eb !important;
-                filter: drop-shadow(0 1px 1px rgba(15,23,42,.18));
+                color: #1d4ed8 !important;
+                width: 18px !important;
+                height: 18px !important;
+                padding: 2px;
+                border-radius: 5px;
+                background: #eaf2ff;
+                filter: none;
             }
 
             div[data-baseweb="popover"] ul {
@@ -1022,31 +1050,31 @@ def show_overview():
         unsafe_allow_html=True,
     )
 
-    # Top filter row: view type, FY, zone, circle, branch, quarter, month and load type
-    (
-        filter_col1, filter_col2, filter_col3, filter_col4,
-        filter_col5, filter_col6, filter_col7, filter_col8
-    ) = st.columns(8)
+    # Attractive single-row filter strip
+    filter_cols = st.columns(8, gap="small")
 
-    with filter_col1:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>View Type</div>", unsafe_allow_html=True)
-        view_type = st.selectbox("View Type", ["Origin", "Destination"], label_visibility="collapsed")
+    def _filter_label(icon, text):
+        st.markdown(
+            f"<div class='filter-field-label'><span>{icon}</span><span>{text}</span></div>",
+            unsafe_allow_html=True,
+        )
 
-    with filter_col2:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Financial Year</div>", unsafe_allow_html=True)
+    with filter_cols[0]:
+        _filter_label("⇄", "View Type")
+        view_type = st.selectbox(
+            "View Type",
+            ["Origin", "Destination"],
+            key="overview_view_type",
+            label_visibility="collapsed",
+        )
+
+    with filter_cols[1]:
+        _filter_label("◷", "Financial Year")
         fy = st.selectbox(
             "Financial Year",
-            [
-                "Select FY",
-                "2026-2027",
-                "2025-2026",
-                "2024-2025",
-                "2023-2024",
-                "2022-2023",
-                "2021-2022",
-                "2020-2021",
-            ],
-            label_visibility="collapsed"
+            ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"],
+            key="overview_fy",
+            label_visibility="collapsed",
         )
 
     if fy == "Select FY":
@@ -1054,31 +1082,20 @@ def show_overview():
         return
 
     start_date, end_date = get_date_range(fy)
-
     prev_fy = get_previous_fy(fy)
     prev_start, prev_end = get_date_range(prev_fy)
 
-    # Load current-FY AND last-year data TOGETHER, in parallel,
-    # instead of one after another. This roughly halves the wait time
-    # compared to two sequential stored-procedure calls.
     with st.spinner("Loading data..."):
-        df, prev_df = load_booking_data_pair(
-            start_date, end_date, prev_start, prev_end, view_type.lower()
-        )
+        df, prev_df = load_booking_data_pair(start_date, end_date, prev_start, prev_end, view_type.lower())
 
     station_df = load_stationmast_data(start_date, end_date)
-    
-    # Add FIN_MONTH to station_df if it doesn't exist
     if "FIN_MONTH" not in station_df.columns:
         def get_fin_month(date_str):
             try:
                 date = pd.to_datetime(date_str)
-                month = date.month
-                return ((month - 4) % 12) + 1
-            except:
+                return ((date.month - 4) % 12) + 1
+            except Exception:
                 return None
-        
-        # Try to add FIN_MONTH from activedate or closedate
         if "activedate" in station_df.columns:
             station_df["FIN_MONTH"] = station_df["activedate"].apply(get_fin_month)
         elif "closedate" in station_df.columns:
@@ -1090,96 +1107,74 @@ def show_overview():
         st.warning("No data found")
         return
 
-    month_map = {
-        1: "Apr", 2: "May", 3: "Jun", 4: "Jul",
-        5: "Aug", 6: "Sep", 7: "Oct", 8: "Nov",
-        9: "Dec", 10: "Jan", 11: "Feb", 12: "Mar"
-    }
-
+    month_map = {1:"Apr",2:"May",3:"Jun",4:"Jul",5:"Aug",6:"Sep",7:"Oct",8:"Nov",9:"Dec",10:"Jan",11:"Feb",12:"Mar"}
     df["Month"] = df["FIN_MONTH"].map(month_map)
     df["Quarter"] = df["FIN_MONTH"].map(QUARTER_MAP)
-
     if not prev_df.empty:
         prev_df["Month"] = prev_df["FIN_MONTH"].map(month_map)
         prev_df["Quarter"] = prev_df["FIN_MONTH"].map(QUARTER_MAP)
 
-    # Data-scope restriction for this employee (set at login, from config/data_scope.json)
-    # e.g. {} = no restriction, {"zone": "Nepal Zone"}, {"circle": "NCR Circle"}, {"branch": "Noida"}
     data_scope = st.session_state.get("data_scope", {})
-
-    # -----------------------------
-    # Auto derive parent hierarchy
-    # -----------------------------
     locked_zone = data_scope.get("zone")
     locked_circle = data_scope.get("circle")
     locked_branch = data_scope.get("branch")
-
-    # If branch right is given, derive its circle and zone
     if locked_branch:
         branch_row = df[df["branch"] == locked_branch]
         if not branch_row.empty:
             locked_circle = branch_row["circle"].iloc[0]
             locked_zone = branch_row["zone"].iloc[0]
-
-    # If circle right is given, derive its zone
     elif locked_circle:
         circle_row = df[df["circle"] == locked_circle]
         if not circle_row.empty:
             locked_zone = circle_row["zone"].iloc[0]
 
-    with filter_col3:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Zone</div>", unsafe_allow_html=True)
+    with filter_cols[2]:
+        _filter_label("◉", "Zone")
         if locked_zone:
             zone = locked_zone
-            st.selectbox("Zone", [zone], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
+            st.selectbox("Zone", [zone], disabled=True, key="overview_zone_locked", label_visibility="collapsed")
         else:
-            zone = st.selectbox("Zone", ["All"] + sorted(df["zone"].dropna().unique().tolist()), label_visibility="collapsed")
-
+            zone = st.selectbox("Zone", ["All"] + sorted(df["zone"].dropna().unique().tolist()), key="overview_zone", label_visibility="collapsed")
     if zone != "All":
         df = df[df["zone"] == zone]
 
-    with filter_col4:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Circle</div>", unsafe_allow_html=True)
+    with filter_cols[3]:
+        _filter_label("◎", "Circle")
         if locked_circle:
             circle = locked_circle
-            st.selectbox("Circle", [circle], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
+            st.selectbox("Circle", [circle], disabled=True, key="overview_circle_locked", label_visibility="collapsed")
         else:
-            circle = st.selectbox("Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()), label_visibility="collapsed")
-
+            circle = st.selectbox("Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()), key="overview_circle", label_visibility="collapsed")
     if circle != "All":
         df = df[df["circle"] == circle]
 
-    with filter_col5:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Branch</div>", unsafe_allow_html=True)
+    with filter_cols[4]:
+        _filter_label("⌂", "Branch")
         if locked_branch:
             branch = locked_branch
-            st.selectbox("Branch", [branch], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
+            st.selectbox("Branch", [branch], disabled=True, key="overview_branch_locked", label_visibility="collapsed")
         else:
-            branch = st.selectbox("Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()), label_visibility="collapsed")
-
+            branch = st.selectbox("Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()), key="overview_branch", label_visibility="collapsed")
     if branch != "All":
         df = df[df["branch"] == branch]
 
-    with filter_col6:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Quarter</div>", unsafe_allow_html=True)
+    with filter_cols[5]:
+        _filter_label("▦", "Quarter")
         available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().unique().tolist()]
-        quarter = st.selectbox("Quarter", ["All"] + available_quarters, label_visibility="collapsed")
-
+        quarter = st.selectbox("Quarter", ["All"] + available_quarters, key="overview_quarter", label_visibility="collapsed")
     if quarter != "All":
         df = df[df["Quarter"] == quarter]
 
-    with filter_col7:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Month</div>", unsafe_allow_html=True)
+    with filter_cols[6]:
+        _filter_label("▣", "Month")
         available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().unique().tolist()]
-        month = st.selectbox("Month", ["All"] + available_months, label_visibility="collapsed")
-
+        month = st.selectbox("Month", ["All"] + available_months, key="overview_month", label_visibility="collapsed")
     if month != "All":
         df = df[df["Month"] == month]
 
-    with filter_col8:
-        st.markdown("<div style='font-weight:800;font-size:11px;color:#334155;margin:0 0 6px 3px;text-shadow:0 1px 0 #ffffff;'>Load Type</div>", unsafe_allow_html=True)
-        loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()), label_visibility="collapsed")
-
+    with filter_cols[7]:
+        _filter_label("▤", "Load Type")
+        loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()), key="overview_loadtype", label_visibility="collapsed")
     if loadtype != "All":
         df = df[df["LOADTYPE"] == loadtype]
 
