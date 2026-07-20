@@ -138,6 +138,112 @@ def _inject_overview_css():
                 color: inherit !important;
             }
 
+            /* Strong 3D KPI cards */
+            .kpi-3d-card {
+                position: relative;
+                overflow: hidden;
+                min-height: 82px;
+                padding: 10px 11px 11px 11px;
+                border: 1px solid #cbd5e1;
+                border-radius: 14px;
+                background: linear-gradient(145deg, #ffffff 0%, #f8fafc 45%, #e7edf5 100%);
+                box-shadow:
+                    0 7px 0 #c2ccd9,
+                    0 11px 17px rgba(15,23,42,.18),
+                    inset 1px 1px 0 rgba(255,255,255,.98),
+                    inset -1px -1px 0 rgba(100,116,139,.18);
+                transform: translateY(-3px);
+                transition: transform .15s ease, box-shadow .15s ease;
+            }
+
+            .kpi-3d-card:hover {
+                transform: translateY(-5px);
+                box-shadow:
+                    0 9px 0 #b9c5d3,
+                    0 15px 22px rgba(15,23,42,.22),
+                    inset 1px 1px 0 rgba(255,255,255,.98),
+                    inset -1px -1px 0 rgba(100,116,139,.20);
+            }
+
+            .kpi-3d-topline {
+                position: absolute;
+                left: 0;
+                right: 0;
+                top: 0;
+                height: 4px;
+                background: linear-gradient(90deg, var(--kpi-accent), color-mix(in srgb, var(--kpi-accent) 55%, white));
+                box-shadow: 0 2px 4px color-mix(in srgb, var(--kpi-accent) 28%, transparent);
+            }
+
+            .kpi-3d-gloss {
+                position: absolute;
+                inset: 1px 1px auto 1px;
+                height: 38%;
+                border-radius: 13px 13px 50% 50%;
+                background: linear-gradient(180deg, rgba(255,255,255,.78), rgba(255,255,255,0));
+                pointer-events: none;
+            }
+
+            .kpi-3d-head {
+                position: relative;
+                z-index: 1;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .kpi-3d-title {
+                color: #486581;
+                font-size: 10px;
+                font-weight: 900;
+                letter-spacing: .15px;
+                text-shadow: 0 1px 0 rgba(255,255,255,.95);
+            }
+
+            .kpi-3d-icon {
+                width: 27px;
+                height: 27px;
+                border-radius: 9px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 15px;
+                background: linear-gradient(145deg, #ffffff, #dfe7f1);
+                border: 1px solid color-mix(in srgb, var(--kpi-accent) 38%, #cbd5e1);
+                box-shadow:
+                    0 3px 0 color-mix(in srgb, var(--kpi-accent) 24%, #b8c2cf),
+                    0 5px 8px rgba(15,23,42,.14),
+                    inset 1px 1px 0 rgba(255,255,255,.95);
+            }
+
+            .kpi-3d-value {
+                position: relative;
+                z-index: 1;
+                margin-top: 4px;
+                color: #102a43;
+                font-size: 18px;
+                font-weight: 950;
+                line-height: 1.08;
+                text-shadow: 0 1px 0 #ffffff, 0 2px 3px rgba(15,23,42,.12);
+            }
+
+            .kpi-3d-footer {
+                position: relative;
+                z-index: 1;
+                margin-top: 6px;
+            }
+
+            .kpi-3d-growth {
+                display: inline-block;
+                padding: 2px 7px;
+                border: 1px solid;
+                border-radius: 999px;
+                font-size: 9px;
+                font-weight: 900;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 3px rgba(15,23,42,.10);
+            }
+
             /* Reduce dataframe/table vertical spacing */
             div[data-testid="stDataFrame"] {
                 font-size: 12px;
@@ -756,34 +862,33 @@ def add_revenue_forecast(yoy_df, trend_type, selected_quarter="All", selected_mo
 
 
 def create_card(title, value, color, icon, growth_value=0.0):
-    """Executive KPI card with compact hierarchy and a growth pill."""
+    """Compact 3D KPI card with bevel, depth, gloss and growth badge."""
     positive = growth_value >= 0
     growth_color = "#15803d" if positive else "#dc2626"
     growth_bg = "#ecfdf3" if positive else "#fff1f2"
-    growth_border = "#bbf7d0" if positive else "#fecdd3"
+    growth_border = "#86efac" if positive else "#fda4af"
     growth_text = growth_label(growth_value)
 
     html = f"""
-    <div style="background:#ffffff;padding:10px 11px;border-radius:13px;
-                border:1px solid #dce5ef;border-top:3px solid {color};
-                box-shadow:0 6px 14px rgba(15,42,67,.08),inset 0 1px 0 #ffffff;
-                min-height:77px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
-            <div style="color:#486581;font-size:10px;font-weight:800;letter-spacing:.15px;">{title}</div>
-            <div style="width:25px;height:25px;border-radius:8px;background:{color}12;color:{color};
-                        display:flex;align-items:center;justify-content:center;font-size:15px;">{icon}</div>
+    <div class="kpi-3d-card" style="--kpi-accent:{color};">
+        <div class="kpi-3d-gloss"></div>
+        <div class="kpi-3d-topline"></div>
+
+        <div class="kpi-3d-head">
+            <div class="kpi-3d-title">{title}</div>
+            <div class="kpi-3d-icon">{icon}</div>
         </div>
-        <div style="font-size:18px;font-weight:900;color:#102a43;margin-top:3px;line-height:1.1;">{value}</div>
-        <div style="margin-top:5px;">
-            <span style="display:inline-block;padding:2px 6px;border-radius:999px;background:{growth_bg};
-                         border:1px solid {growth_border};color:{growth_color};font-size:9px;font-weight:800;">
+
+        <div class="kpi-3d-value">{value}</div>
+
+        <div class="kpi-3d-footer">
+            <span class="kpi-3d-growth" style="background:{growth_bg};border-color:{growth_border};color:{growth_color};">
                 {growth_text} vs LY
             </span>
         </div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
-
 
 def create_target_card(title, actual, target, unit="", decimals=2, icon="🎯"):
     """Render a compact Target vs Actual card.
