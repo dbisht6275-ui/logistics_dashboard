@@ -1591,7 +1591,7 @@ def show_overview():
     # Zone and Country analysis on the next row
     # =====================================================
     if view_type == "Origin":
-        zone_col1, zone_col2 = st.columns([1.05, 1.45])
+        zone_col1, zone_col2 = st.columns([1.25, 1.25])
     else:
         zone_col1 = st.container()
         zone_col2 = None
@@ -1642,18 +1642,25 @@ def show_overview():
             )
 
             zone_max = zone_df_sorted["Revenue Cr"].max() if not zone_df_sorted.empty else 1
+            # Use the complete card area: thicker bars, tighter margins and
+            # less unused x-axis headroom while preserving outside labels.
+            zone_chart_height = max(300, 52 * len(zone_df_sorted) + 54)
             fig_zone.update_layout(
-                height=305,
-                margin=dict(l=10, r=105, t=10, b=45),
-                xaxis_range=[0, zone_max * 1.30],
+                height=zone_chart_height,
+                margin=dict(l=4, r=72, t=2, b=34),
+                xaxis_range=[0, zone_max * 1.16],
                 xaxis_title="Revenue (Cr)",
                 yaxis_title="",
                 showlegend=False,
                 plot_bgcolor="white",
                 paper_bgcolor="rgba(0,0,0,0)",
-                bargap=0.18,
+                bargap=0.06,
             )
-            apply_3d_chart_layout(fig_zone, height=305, margin=dict(l=10, r=105, t=10, b=45))
+            apply_3d_chart_layout(
+                fig_zone,
+                height=zone_chart_height,
+                margin=dict(l=4, r=72, t=2, b=34),
+            )
             fig_zone.update_xaxes(
                 showgrid=False, showline=False, zeroline=False,
                 tickfont=dict(size=11), title_font=dict(size=13),
@@ -1662,6 +1669,8 @@ def show_overview():
             fig_zone.update_yaxes(
                 showgrid=False, showline=False, zeroline=False,
                 tickfont=dict(size=12), automargin=True,
+                categoryorder="array",
+                categoryarray=zone_df_sorted["zone_short"].tolist(),
             )
 
             st.plotly_chart(fig_zone, use_container_width=True)
