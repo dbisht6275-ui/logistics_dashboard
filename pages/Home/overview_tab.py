@@ -501,7 +501,7 @@ def show_overview():
 
     # Bold Filters header
     st.markdown(
-        "<div style='font-weight:900;font-size:12px;color:#2563eb;margin-bottom:8px;'>FILTERS</div>",
+        "<div style='font-weight:400;font-size:12px;color:#2563eb;margin-bottom:8px;'>FILTERS</div>",
         unsafe_allow_html=True,
     )
 
