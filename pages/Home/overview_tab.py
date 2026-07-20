@@ -92,40 +92,30 @@ def _inject_overview_css():
                 transition: all 0.18s ease;
             }
 
-            /* Raised 3D filter controls */
+            /* Compact outlined filter controls */
             div[data-testid="stSelectbox"] {
-                padding: 7px 8px 9px 8px;
-                border: 1px solid rgba(148,163,184,.42);
-                border-radius: 13px;
-                background: linear-gradient(145deg, #ffffff 0%, #f3f6fa 55%, #dfe7f1 100%);
-                box-shadow:
-                    0 6px 0 #cbd5e1,
-                    0 10px 18px rgba(15,23,42,.13),
-                    inset 1px 1px 0 rgba(255,255,255,.95),
-                    inset -1px -1px 0 rgba(148,163,184,.20);
-                transform: translateY(-2px);
-                transition: transform .16s ease, box-shadow .16s ease;
+                padding: 4px 5px 6px 5px;
+                border: 1.5px solid #cbd5e1;
+                border-radius: 10px;
+                background: rgba(255,255,255,.42);
+                box-shadow: 0 3px 7px rgba(15,23,42,.07);
+                transform: none;
+                transition: border-color .16s ease, box-shadow .16s ease;
             }
 
             div[data-testid="stSelectbox"]:hover {
-                transform: translateY(-4px);
-                box-shadow:
-                    0 8px 0 #cbd5e1,
-                    0 14px 22px rgba(15,23,42,.16),
-                    inset 1px 1px 0 rgba(255,255,255,.95);
+                transform: none;
+                border-color: #94a3b8;
+                box-shadow: 0 4px 9px rgba(15,23,42,.10);
             }
 
             div[data-testid="stSelectbox"]:focus-within {
                 border-color: #60a5fa;
-                box-shadow:
-                    0 5px 0 #93c5fd,
-                    0 10px 20px rgba(37,99,235,.18),
-                    0 0 0 3px rgba(59,130,246,.14),
-                    inset 1px 1px 0 rgba(255,255,255,.95);
+                box-shadow: 0 0 0 2px rgba(59,130,246,.12);
             }
 
             div[data-baseweb="select"] > div {
-                min-height: 36px !important;
+                min-height: 32px !important;
                 border: 1px solid rgba(100,116,139,.38) !important;
                 border-radius: 9px !important;
                 background: linear-gradient(145deg, #ffffff 0%, #f8fafc 48%, #e2e8f0 100%) !important;
@@ -138,7 +128,7 @@ def _inject_overview_css():
             div[data-baseweb="select"] span {
                 color: #0f2747 !important;
                 font-weight: 700 !important;
-                font-size: 11px !important;
+                font-size: 9px !important;
             }
 
             div[data-baseweb="select"] svg {
@@ -252,14 +242,8 @@ def apply_3d_chart_layout(fig, height=250, margin=None):
         font=dict(color="#0f172a"),
         hoverlabel=dict(bgcolor="#0f172a", font_color="white", bordercolor="#334155"),
     )
-    fig.update_xaxes(
-        showline=True, linecolor="#94a3b8", linewidth=1,
-        mirror=False, gridcolor="rgba(148,163,184,.16)", zeroline=False,
-    )
-    fig.update_yaxes(
-        showline=True, linecolor="#94a3b8", linewidth=1,
-        gridcolor="rgba(148,163,184,.20)", zeroline=False,
-    )
+    fig.update_xaxes(showline=False, showgrid=False, zeroline=False)
+    fig.update_yaxes(showline=False, showgrid=False, zeroline=False)
     return fig
 
 
@@ -1308,8 +1292,8 @@ def show_overview():
                 bargroupgap=0.08,
             )
             apply_3d_chart_layout(fig_yoy, height=250, margin=dict(l=8, r=8, t=34, b=8))
-            fig_yoy.update_xaxes(showgrid=False, zeroline=False)
-            fig_yoy.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,.18)", zeroline=False)
+            fig_yoy.update_xaxes(showgrid=False, showline=False, zeroline=False)
+            fig_yoy.update_yaxes(showgrid=False, showline=False, zeroline=False)
 
             st.plotly_chart(fig_yoy, use_container_width=True)
 
@@ -1341,11 +1325,12 @@ def show_overview():
             fig_load.update_layout(
                 annotations=[
                     dict(
-                        text=f"₹{(ftl + ltl)/10000000:.2f} Cr<br>Total",
+                        text=f"<b>₹{(ftl + ltl)/10000000:.2f} Cr</b><br><b>Total</b>",
                         x=0.5,
                         y=0.5,
                         showarrow=False,
-                        font=dict(size=11)
+                        align="center",
+                        font=dict(size=16, color="#0f172a", family="Arial Black")
                     )
                 ],
                 height=250,
@@ -1528,8 +1513,8 @@ def show_overview():
             bargroupgap=0.08,
         )
         apply_3d_chart_layout(fig_weight, height=250, margin=dict(l=8, r=8, t=34, b=8))
-        fig_weight.update_xaxes(showgrid=False, zeroline=False)
-        fig_weight.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,.18)", zeroline=False)
+        fig_weight.update_xaxes(showgrid=False, showline=False, zeroline=False)
+        fig_weight.update_yaxes(showgrid=False, showline=False, zeroline=False)
 
         st.plotly_chart(fig_weight, use_container_width=True)
 
@@ -1602,8 +1587,8 @@ def show_overview():
                 bargap=0.28,
             )
             apply_3d_chart_layout(fig_zone, height=240, margin=dict(l=8, r=86, t=8, b=8))
-            fig_zone.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,.18)")
-            fig_zone.update_yaxes(showgrid=False)
+            fig_zone.update_xaxes(showgrid=False, showline=False, zeroline=False)
+            fig_zone.update_yaxes(showgrid=False, showline=False, zeroline=False)
 
             st.plotly_chart(fig_zone, use_container_width=True)
 
@@ -1649,8 +1634,29 @@ def show_overview():
                     )
                 )
 
+                matrix_styled = (
+                    matrix_value_display.style
+                    .set_properties(**{
+                        "background-color": "#f8fbff",
+                        "color": "#475569",
+                        "border-color": "#e2e8f0",
+                        "font-size": "10px",
+                    })
+                    .set_table_styles([
+                        {
+                            "selector": "th",
+                            "props": [
+                                ("background-color", "#eef6ff"),
+                                ("color", "#334155"),
+                                ("font-weight", "700"),
+                                ("border-color", "#dbe7f3"),
+                            ],
+                        }
+                    ])
+                )
+
                 st.dataframe(
-                    matrix_value_display,
+                    matrix_styled,
                     use_container_width=True,
                     hide_index=True,
                     height=240,
@@ -1958,12 +1964,14 @@ def show_overview():
         fig_waterfall.update_xaxes(
             title="",
             showgrid=False,
+            showline=False,
+            zeroline=False,
             tickangle=-20,
             tickfont=dict(size=10),
         )
         fig_waterfall.update_yaxes(
-            showgrid=True,
-            gridcolor="#e2e8f0",
+            showgrid=False,
+            showline=False,
             zeroline=False,
         )
 
