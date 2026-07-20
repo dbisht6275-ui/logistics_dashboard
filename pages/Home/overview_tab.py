@@ -1645,12 +1645,9 @@ def show_overview():
                             r["Prev Revenue Cr"] if pd.notna(r["Prev Revenue Cr"]) else 0,
                             r["Forecast Revenue Cr"] if pd.notna(r["Forecast Revenue Cr"]) else 0
                         )
-                        # Give Monthly labels extra vertical space so the growth % does not
-                        # touch the bar-value labels. Other views retain a compact gap.
-                        growth_gap = 0.24 if revenue_trend_type == "Monthly" else 0.16
                         fig_yoy.add_annotation(
                             x=r["Period"],
-                            y=bar_top + (yoy_max * growth_gap),
+                            y=bar_top + (yoy_max * 0.16),
                             text=r["Growth Label"],
                             showarrow=False,
                             font=dict(size=10, color=label_color, family="Arial Black")
@@ -1665,7 +1662,7 @@ def show_overview():
                 plot_bgcolor="white",
                 paper_bgcolor="white",
                 legend=dict(orientation="h", yanchor="bottom", y=1.05, x=0, font=dict(size=9)),
-                yaxis_range=[0, yoy_max * (1.48 if revenue_trend_type == "Monthly" else 1.35)],
+                yaxis_range=[0, yoy_max * 1.35],
                 bargap=0.22,
                 bargroupgap=0.08,
             )
@@ -1873,11 +1870,9 @@ def show_overview():
                         r["Weight MT"] if pd.notna(r["Weight MT"]) else 0,
                         r["Prev Weight MT"] if pd.notna(r["Prev Weight MT"]) else 0,
                     )
-                    # Add more space in Monthly view between the bar values and growth %.
-                    growth_gap = 0.24 if weight_trend_type == "Monthly" else 0.16
                     fig_weight.add_annotation(
                         x=r["Period"],
-                        y=bar_top + (weight_max * growth_gap),
+                        y=bar_top + (weight_max * 0.16),
                         text=r["Growth Label"],
                         showarrow=False,
                         font=dict(size=10, color=label_color, family="Arial Black"),
@@ -1897,7 +1892,7 @@ def show_overview():
                 font=dict(size=9),
             ),
             yaxis_title="Weight (MT)",
-            yaxis_range=[0, weight_max * (1.48 if weight_trend_type == "Monthly" else 1.35)],
+            yaxis_range=[0, weight_max * 1.35],
             bargap=0.22,
             bargroupgap=0.08,
         )
@@ -2043,85 +2038,33 @@ def show_overview():
                     )
                 )
 
-                # Render as HTML so the percentage part can have its own colour.
-                # Revenue remains dark while contribution % is highlighted in blue.
-                table_headers = "".join(
-                    f"<th>{str(col)}</th>" for col in matrix_display.columns
+                matrix_styled = (
+                    matrix_value_display.style
+                    .set_properties(**{
+                        "background-color": "#f8fbff",
+                        "color": "#475569",
+                        "border-color": "#e2e8f0",
+                        "font-size": "10px",
+                    })
+                    .set_table_styles([
+                        {
+                            "selector": "th",
+                            "props": [
+                                ("background-color", "#eef6ff"),
+                                ("color", "#334155"),
+                                ("font-weight", "700"),
+                                ("border-color", "#dbe7f3"),
+                            ],
+                        }
+                    ])
                 )
-                table_rows = []
-                for _, row in matrix_display.iterrows():
-                    cells = [f"<td class='zone-name'>{row['zone']}</td>"]
-                    for col in matrix_display.columns[1:]:
-                        value = float(row[col]) if pd.notna(row[col]) else 0.0
-                        pct = (value / grand_total * 100) if grand_total > 0 else 0.0
-                        cells.append(
-                            "<td>"
-                            f"<span class='matrix-value'>₹{value:.2f} Cr</span>"
-                            "<span class='matrix-separator'> | </span>"
-                            f"<span class='matrix-percent'>{pct:.1f}%</span>"
-                            "</td>"
-                        )
-                    table_rows.append(f"<tr>{''.join(cells)}</tr>")
 
-                matrix_html = f"""
-                <style>
-                    .zone-country-wrap {{
-                        width: 100%;
-                        max-height: 240px;
-                        overflow: auto;
-                        border: 1px solid #e2e8f0;
-                        border-radius: 10px;
-                        background: #ffffff;
-                    }}
-                    .zone-country-table {{
-                        width: 100%;
-                        border-collapse: collapse;
-                        font-size: 10px;
-                        color: #475569;
-                    }}
-                    .zone-country-table th {{
-                        position: sticky;
-                        top: 0;
-                        z-index: 1;
-                        padding: 9px 8px;
-                        text-align: center;
-                        white-space: nowrap;
-                        background: #eef6ff;
-                        color: #334155;
-                        font-weight: 700;
-                        border: 1px solid #dbe7f3;
-                    }}
-                    .zone-country-table td {{
-                        padding: 8px;
-                        text-align: center;
-                        white-space: nowrap;
-                        background: #f8fbff;
-                        border: 1px solid #e2e8f0;
-                    }}
-                    .zone-country-table .zone-name {{
-                        text-align: left;
-                        font-weight: 700;
-                        color: #334155;
-                    }}
-                    .matrix-value {{ color: #475569; }}
-                    .matrix-separator {{ color: #94a3b8; }}
-                    .matrix-percent {{
-                        color: #2563eb;
-                        font-weight: 800;
-                    }}
-                </style>
-                <div class="zone-country-wrap">
-                    <table class="zone-country-table">
-                        <thead><tr>{table_headers}</tr></thead>
-                        <tbody>{''.join(table_rows)}</tbody>
-                    </table>
-                </div>
-                """
-
-                if hasattr(st, "html"):
-                    st.html(matrix_html)
-                else:
-                    st.markdown(matrix_html, unsafe_allow_html=True)
+                st.dataframe(
+                    matrix_styled,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=240,
+                )
 
     # =====================================================
     # Management Key Insights
