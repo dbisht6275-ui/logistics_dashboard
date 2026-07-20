@@ -2,7 +2,6 @@ import io
 import streamlit as st
 import pandas as pd
 import calendar
-from textwrap import dedent
 import plotly.graph_objects as go
 import plotly.express as px
 from services.data_loader import load_booking_data_pair, get_date_range
@@ -863,42 +862,38 @@ def add_revenue_forecast(yoy_df, trend_type, selected_quarter="All", selected_mo
 
 
 def create_card(title, value, color, icon, growth_value=0.0):
-    """Compact 3D KPI card with bevel, depth, gloss and growth badge."""
+    """Render a compact KPI card without Markdown parsing the HTML as code."""
     positive = growth_value >= 0
     growth_color = "#15803d" if positive else "#dc2626"
     growth_bg = "#ecfdf3" if positive else "#fff1f2"
     growth_border = "#86efac" if positive else "#fda4af"
     growth_text = growth_label(growth_value)
 
-    # dedent() removes the leading Python indentation from the multiline HTML.
-    # Without this, Markdown may interpret the HTML as a code block and display
-    # raw <div> tags instead of rendering the KPI card.
-    html = dedent(
-        f"""
-        <div class="kpi-3d-card" style="--kpi-accent:{color};">
-            <div class="kpi-3d-gloss"></div>
-            <div class="kpi-3d-topline"></div>
+    # Keep the complete HTML on one logical line. Blank lines or indented lines
+    # inside st.markdown can be interpreted by Markdown as a fenced code block.
+    html = (
+        f'<div class="kpi-3d-card" style="--kpi-accent:{color};">'
+        f'<div class="kpi-3d-gloss"></div>'
+        f'<div class="kpi-3d-topline"></div>'
+        f'<div class="kpi-3d-head">'
+        f'<div class="kpi-3d-title">{title}</div>'
+        f'<div class="kpi-3d-icon">{icon}</div>'
+        f'</div>'
+        f'<div class="kpi-3d-value">{value}</div>'
+        f'<div class="kpi-3d-footer">'
+        f'<span class="kpi-3d-growth" '
+        f'style="background:{growth_bg};border-color:{growth_border};color:{growth_color};">'
+        f'{growth_text} vs LY'
+        f'</span>'
+        f'</div>'
+        f'</div>'
+    )
 
-            <div class="kpi-3d-head">
-                <div class="kpi-3d-title">{title}</div>
-                <div class="kpi-3d-icon">{icon}</div>
-            </div>
-
-            <div class="kpi-3d-value">{value}</div>
-
-            <div class="kpi-3d-footer">
-                <span
-                    class="kpi-3d-growth"
-                    style="background:{growth_bg};border-color:{growth_border};color:{growth_color};"
-                >
-                    {growth_text} vs LY
-                </span>
-            </div>
-        </div>
-        """
-    ).strip()
-
-    st.markdown(html, unsafe_allow_html=True)
+    # st.html bypasses Markdown parsing. The fallback supports older Streamlit versions.
+    if hasattr(st, "html"):
+        st.html(html)
+    else:
+        st.markdown(html, unsafe_allow_html=True)
 
 def create_target_card(title, actual, target, unit="", decimals=2, icon="🎯"):
     """Render a compact Target vs Actual card.
