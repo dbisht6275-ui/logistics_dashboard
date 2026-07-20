@@ -512,9 +512,11 @@ def show_overview():
     ) = st.columns(8)
 
     with filter_col1:
-        view_type = st.selectbox("View Type", ["Origin", "Destination"])
+        st.markdown("<div style='font-weight:900;font-size:12px;color:#0f172a;'>View Type</div>", unsafe_allow_html=True)
+        view_type = st.selectbox("View Type", ["Origin", "Destination"], label_visibility="collapsed")
 
     with filter_col2:
+        st.markdown("<div style='font-weight:900;font-size:12px;color:#0f172a;'>Financial Year</div>", unsafe_allow_html=True)
         fy = st.selectbox(
             "Financial Year",
             [
@@ -527,6 +529,7 @@ def show_overview():
                 "2021-2022",
                 "2020-2021",
             ],
+            label_visibility="collapsed"
         )
 
     if fy == "Select FY":
@@ -547,6 +550,24 @@ def show_overview():
         )
 
     station_df = load_stationmast_data(start_date, end_date)
+    
+    # Add FIN_MONTH to station_df if it doesn't exist
+    if "FIN_MONTH" not in station_df.columns:
+        def get_fin_month(date_str):
+            try:
+                date = pd.to_datetime(date_str)
+                month = date.month
+                return ((month - 4) % 12) + 1
+            except:
+                return None
+        
+        # Try to add FIN_MONTH from activedate or closedate
+        if "activedate" in station_df.columns:
+            station_df["FIN_MONTH"] = station_df["activedate"].apply(get_fin_month)
+        elif "closedate" in station_df.columns:
+            station_df["FIN_MONTH"] = station_df["closedate"].apply(get_fin_month)
+        else:
+            station_df["FIN_MONTH"] = None
 
     if df.empty:
         st.warning("No data found")
@@ -590,51 +611,57 @@ def show_overview():
             locked_zone = circle_row["zone"].iloc[0]
 
     with filter_col3:
+        st.markdown("<div style='font-weight:900;font-size:12px;color:#0f172a;'>Zone</div>", unsafe_allow_html=True)
         if locked_zone:
             zone = locked_zone
-            st.selectbox("Zone", [zone], disabled=True, help="Locked as per your assigned rights")
+            st.selectbox("Zone", [zone], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
         else:
-            zone = st.selectbox("Zone", ["All"] + sorted(df["zone"].dropna().unique().tolist()))
+            zone = st.selectbox("Zone", ["All"] + sorted(df["zone"].dropna().unique().tolist()), label_visibility="collapsed")
 
     if zone != "All":
         df = df[df["zone"] == zone]
 
     with filter_col4:
+        st.markdown("<div style='font-weight:900;font-size:12px;color:#0f172a;'>Circle</div>", unsafe_allow_html=True)
         if locked_circle:
             circle = locked_circle
-            st.selectbox("Circle", [circle], disabled=True, help="Locked as per your assigned rights")
+            st.selectbox("Circle", [circle], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
         else:
-            circle = st.selectbox("Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()))
+            circle = st.selectbox("Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()), label_visibility="collapsed")
 
     if circle != "All":
         df = df[df["circle"] == circle]
 
     with filter_col5:
+        st.markdown("<div style='font-weight:900;font-size:12px;color:#0f172a;'>Branch</div>", unsafe_allow_html=True)
         if locked_branch:
             branch = locked_branch
-            st.selectbox("Branch", [branch], disabled=True, help="Locked as per your assigned rights")
+            st.selectbox("Branch", [branch], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
         else:
-            branch = st.selectbox("Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()))
+            branch = st.selectbox("Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()), label_visibility="collapsed")
 
     if branch != "All":
         df = df[df["branch"] == branch]
 
     with filter_col6:
+        st.markdown("<div style='font-weight:900;font-size:12px;color:#0f172a;'>Quarter</div>", unsafe_allow_html=True)
         available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().unique().tolist()]
-        quarter = st.selectbox("Quarter", ["All"] + available_quarters)
+        quarter = st.selectbox("Quarter", ["All"] + available_quarters, label_visibility="collapsed")
 
     if quarter != "All":
         df = df[df["Quarter"] == quarter]
 
     with filter_col7:
+        st.markdown("<div style='font-weight:900;font-size:12px;color:#0f172a;'>Month</div>", unsafe_allow_html=True)
         available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().unique().tolist()]
-        month = st.selectbox("Month", ["All"] + available_months)
+        month = st.selectbox("Month", ["All"] + available_months, label_visibility="collapsed")
 
     if month != "All":
         df = df[df["Month"] == month]
 
     with filter_col8:
-        loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()))
+        st.markdown("<div style='font-weight:900;font-size:12px;color:#0f172a;'>Load Type</div>", unsafe_allow_html=True)
+        loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()), label_visibility="collapsed")
 
     if loadtype != "All":
         df = df[df["LOADTYPE"] == loadtype]
@@ -1314,18 +1341,29 @@ def show_overview():
         with st.container(border=True):
             st.markdown("###### Revenue by Zone")
 
+            # Calculate percentage for each zone
+            total_zone_revenue = zone_df["Revenue Cr"].sum()
+            zone_df["Percentage"] = (zone_df["Revenue Cr"] / total_zone_revenue * 100).round(1)
+            zone_df["Text"] = zone_df.apply(
+                lambda row: f"₹{row['Revenue Cr']:.2f} Cr<br>({row['Percentage']:.1f}%)", 
+                axis=1
+            )
+
+            # Sort for display
+            zone_df_sorted = zone_df.sort_values("Revenue Cr", ascending=True).reset_index(drop=True)
+
             fig_zone = px.bar(
-                zone_df.sort_values("Revenue Cr", ascending=True),
+                zone_df_sorted,
                 y="zone_short",
                 x="Revenue Cr",
                 orientation="h",
-                text="Revenue Cr",
                 color="zone",
                 color_discrete_map=zone_colors
             )
 
             fig_zone.update_traces(
-                texttemplate="₹%{text:.2f} Cr",
+                text=zone_df_sorted["Text"],
+                texttemplate="%{text}",
                 textposition="outside"
             )
 
@@ -1344,7 +1382,7 @@ def show_overview():
     if view_type == "Origin" and zone_col2 is not None:
         with zone_col2:
             with st.container(border=True):
-                st.markdown("###### Zone vs Country Revenue")
+                st.markdown("###### Zone vs Country Revenue (%)")
 
                 matrix_display = matrix_df.reset_index().reset_index(drop=True)
 
@@ -1358,10 +1396,21 @@ def show_overview():
                 })
 
                 numeric_cols = matrix_display.columns[1:]
+                
+                # Calculate grand total and convert to percentages
+                grand_total = matrix_display[numeric_cols].sum().sum()
+                
+                # Create a copy for percentage calculation
+                matrix_pct = matrix_display.copy()
+                for col in numeric_cols:
+                    if grand_total > 0:
+                        matrix_pct[col] = (matrix_display[col] / grand_total * 100)
+                    else:
+                        matrix_pct[col] = 0
 
                 styled_matrix = (
-                    matrix_display.style
-                    .format("{:.2f}", subset=numeric_cols)
+                    matrix_pct.style
+                    .format("{:.1f}%", subset=numeric_cols)
                     .background_gradient(cmap="Blues", subset=numeric_cols)
                 )
 
@@ -1770,13 +1819,17 @@ def show_overview():
     # Filter station_df based on selected month and quarter
     filtered_station_df = station_df.copy()
     
-    if month != "All":
-        # Filter by specific month
-        filtered_station_df = filtered_station_df[filtered_station_df["FIN_MONTH"].map(month_map) == month]
-    elif quarter != "All":
-        # Filter by quarter
-        quarter_fin_months = [k for k, v in QUARTER_MAP.items() if v == quarter]
-        filtered_station_df = filtered_station_df[filtered_station_df["FIN_MONTH"].isin(quarter_fin_months)]
+    # Only filter if FIN_MONTH column exists and has valid values
+    if "FIN_MONTH" in filtered_station_df.columns and filtered_station_df["FIN_MONTH"].notna().any():
+        if month != "All":
+            # Filter by specific month
+            fin_month_for_month = [k for k, v in month_map.items() if v == month]
+            if fin_month_for_month:
+                filtered_station_df = filtered_station_df[filtered_station_df["FIN_MONTH"].isin(fin_month_for_month)]
+        elif quarter != "All":
+            # Filter by quarter
+            quarter_fin_months = [k for k, v in QUARTER_MAP.items() if v == quarter]
+            filtered_station_df = filtered_station_df[filtered_station_df["FIN_MONTH"].isin(quarter_fin_months)]
     
     opened_df = filtered_station_df[filtered_station_df["STATUS"] == "OPENED"]
     closed_df = filtered_station_df[filtered_station_df["STATUS"] == "CLOSED"]
