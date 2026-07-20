@@ -42,6 +42,12 @@ def _inject_overview_css():
                 height: 24px !important;
             }
 
+            [data-testid="stDataFrame"] {
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 7px 14px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.9);
+            }
+
             /* Compact markdown headings inside cards */
             h5, h6 {
                 margin-top: 0rem !important;
@@ -63,6 +69,50 @@ def _inject_overview_css():
             div[data-testid="stDataFrame"] {
                 font-size: 12px;
             }
+
+            /* 3D dashboard surface treatment */
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                border: 1px solid rgba(148, 163, 184, 0.45) !important;
+                border-radius: 16px !important;
+                background: linear-gradient(145deg, #ffffff 0%, #f8fafc 58%, #e8eef7 100%) !important;
+                box-shadow:
+                    0 12px 24px rgba(15, 23, 42, 0.10),
+                    0 4px 8px rgba(15, 23, 42, 0.08),
+                    inset 1px 1px 0 rgba(255,255,255,0.95),
+                    inset -1px -1px 0 rgba(148,163,184,0.18) !important;
+                transform: translateZ(0);
+            }
+
+            div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+                transform: translateY(-2px);
+                box-shadow:
+                    0 16px 30px rgba(15, 23, 42, 0.14),
+                    0 6px 12px rgba(15, 23, 42, 0.10),
+                    inset 1px 1px 0 rgba(255,255,255,0.95) !important;
+                transition: all 0.18s ease;
+            }
+
+            div[data-baseweb="select"] > div,
+            div[data-testid="stNumberInput"] input,
+            div[data-testid="stFileUploader"] section {
+                border-radius: 10px !important;
+                background: linear-gradient(145deg, #ffffff, #eef2f7) !important;
+                box-shadow: inset 2px 2px 4px rgba(15,23,42,.08),
+                            inset -2px -2px 4px rgba(255,255,255,.95) !important;
+            }
+
+            .stButton > button, .stDownloadButton > button {
+                border-radius: 10px !important;
+                background: linear-gradient(145deg, #ffffff, #dfe7f2) !important;
+                box-shadow: 0 5px 0 #cbd5e1, 0 8px 14px rgba(15,23,42,.14) !important;
+                transform: translateY(-2px);
+                transition: all .12s ease;
+            }
+
+            .stButton > button:active, .stDownloadButton > button:active {
+                transform: translateY(2px);
+                box-shadow: 0 1px 0 #cbd5e1, 0 3px 7px rgba(15,23,42,.12) !important;
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -71,6 +121,81 @@ def _inject_overview_css():
 
 def format_cr(v):
     return f"{v / 10000000:.2f} Cr"
+
+
+def _hex_to_rgb(hex_color):
+    """Convert #RRGGBB into an RGB tuple."""
+    value = hex_color.lstrip("#")
+    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _shade(hex_color, factor=0.78):
+    """Create a darker shade used for the visual side/depth of 3D bars."""
+    r, g, b = _hex_to_rgb(hex_color)
+    return f"rgb({int(r * factor)},{int(g * factor)},{int(b * factor)})"
+
+
+def add_3d_bar(fig, x, y, name, color, text=None, texttemplate=None,
+               textposition="outside", textfont=None, orientation="v",
+               customdata=None, hovertemplate=None, offsetgroup=None):
+    """Add a layered Plotly bar that looks three-dimensional without changing the data."""
+    side_color = _shade(color, 0.68)
+
+    if orientation == "h":
+        fig.add_trace(go.Bar(
+            y=y, x=y if False else x, orientation="h", name=name,
+            marker=dict(color=side_color, line=dict(color=side_color, width=0)),
+            opacity=0.42, hoverinfo="skip", showlegend=False,
+            offsetgroup=offsetgroup,
+        ))
+        fig.add_trace(go.Bar(
+            y=y, x=x, orientation="h", name=name,
+            marker=dict(
+                color=color,
+                line=dict(color=_shade(color, 0.55), width=1.2),
+            ),
+            text=text, texttemplate=texttemplate, textposition=textposition,
+            textfont=textfont, customdata=customdata, hovertemplate=hovertemplate,
+            offsetgroup=offsetgroup,
+        ))
+    else:
+        fig.add_trace(go.Bar(
+            x=x, y=y, name=name,
+            marker=dict(color=side_color, line=dict(color=side_color, width=0)),
+            opacity=0.35, hoverinfo="skip", showlegend=False,
+            offsetgroup=offsetgroup,
+        ))
+        fig.add_trace(go.Bar(
+            x=x, y=y, name=name,
+            marker=dict(
+                color=color,
+                line=dict(color=_shade(color, 0.55), width=1.2),
+            ),
+            text=text, texttemplate=texttemplate, textposition=textposition,
+            textfont=textfont, customdata=customdata, hovertemplate=hovertemplate,
+            offsetgroup=offsetgroup,
+        ))
+
+
+def apply_3d_chart_layout(fig, height=250, margin=None):
+    """Apply a raised panel, perspective-like axes and soft depth to Plotly visuals."""
+    fig.update_layout(
+        height=height,
+        margin=margin or dict(l=8, r=8, t=34, b=8),
+        plot_bgcolor="#f8fafc",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color="#0f172a"),
+        hoverlabel=dict(bgcolor="#0f172a", font_color="white", bordercolor="#334155"),
+    )
+    fig.update_xaxes(
+        showline=True, linecolor="#94a3b8", linewidth=1,
+        mirror=False, gridcolor="rgba(148,163,184,.16)", zeroline=False,
+    )
+    fig.update_yaxes(
+        showline=True, linecolor="#94a3b8", linewidth=1,
+        gridcolor="rgba(148,163,184,.20)", zeroline=False,
+    )
+    return fig
 
 
 # =========================
@@ -405,7 +530,7 @@ def create_card(title, value, color, icon, growth_value=0.0):
     growth_color = "#166534" if growth_value >= 0 else "#dc2626"
     growth_text = growth_label(growth_value)
 
-    html = f"""<div style="background:#ffffff;padding:8px;border-radius:10px;border:1px solid #e5e7eb;border-left:4px solid {color};box-shadow:0 3px 10px rgba(0,0,0,0.08);min-height:70px;">
+    html = f"""<div style="background:linear-gradient(145deg,#ffffff 0%,#f8fafc 62%,#e5edf7 100%);padding:9px;border-radius:14px;border:1px solid #dbe3ee;border-left:5px solid {color};box-shadow:0 8px 0 #d6deea,0 13px 22px rgba(15,23,42,.16),inset 1px 1px 0 rgba(255,255,255,.95);min-height:72px;transform:translateY(-3px);">
 <div style="display:flex;justify-content:space-between;align-items:center;">
 <div style="color:{color};font-size:11px;font-weight:800;">{title}</div>
 <div style="font-size:18px;">{icon}</div>
@@ -443,8 +568,8 @@ def create_target_card(title, actual, target, unit="", decimals=2, icon="🎯"):
         achievement_label = "Waiting for target"
 
     html = f"""
-    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;
-                padding:10px 11px;box-shadow:0 3px 10px rgba(15,23,42,.06);min-height:112px;">
+    <div style="background:linear-gradient(145deg,#ffffff 0%,#f8fafc 60%,#e5edf7 100%);border:1px solid #d7e0eb;border-radius:15px;
+                padding:11px 12px;box-shadow:0 8px 0 #d6deea,0 13px 22px rgba(15,23,42,.14),inset 1px 1px 0 rgba(255,255,255,.95);min-height:114px;transform:translateY(-3px);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
             <div style="font-size:11px;font-weight:800;color:#334155;">{title}</div>
             <div style="font-size:17px;">{icon}</div>
@@ -474,8 +599,8 @@ def mini_rank_card(rank, name, value, max_value, color):
 <div style="display:flex;align-items:center;gap:6px;">
 <div style="background:#f1f5f9;border-radius:4px;padding:2px 6px;font-size:10px;color:#64748b;">{rank}</div>
 <div style="font-size:10px;font-weight:800;color:#0f2747;min-width:95px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{name}</div>
-<div style="flex:1;height:5px;background:#e5e7eb;border-radius:20px;overflow:hidden;">
-<div style="width:{pct}%;height:5px;background:{color};border-radius:20px;"></div>
+<div style="flex:1;height:8px;background:linear-gradient(180deg,#d8e0ea,#f8fafc);border-radius:20px;overflow:hidden;box-shadow:inset 1px 2px 3px rgba(15,23,42,.18);">
+<div style="width:{pct}%;height:8px;background:linear-gradient(180deg,{color},color-mix(in srgb,{color} 68%,black));border-radius:20px;box-shadow:0 2px 4px rgba(15,23,42,.25),inset 0 1px 0 rgba(255,255,255,.35);"></div>
 </div>
 <div style="font-size:10px;font-weight:800;color:#0f2747;min-width:45px;text-align:right;">₹{value:.2f}</div>
 </div>
@@ -1038,7 +1163,7 @@ def show_overview():
                     x=yoy_df["Period"],
                     y=yoy_df["Prev Revenue Cr"],
                     name=f"LY ({prev_fy})",
-                    marker_color="#cbd5e1",
+                    marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.3)),
                     text=yoy_df["Prev Revenue Cr"],
                     texttemplate="%{text:.2f}",
                     textposition="outside",
@@ -1051,7 +1176,7 @@ def show_overview():
                     x=yoy_df["Period"],
                     y=yoy_df["Revenue Cr"],
                     name=f"Current ({fy})",
-                    marker_color="#2563eb",
+                    marker=dict(color="#2563eb", line=dict(color="#1e3a8a", width=1.3)),
                     text=yoy_df["Revenue Cr"],
                     texttemplate="%{text:.2f}",
                     textposition="outside",
@@ -1068,7 +1193,7 @@ def show_overview():
                         x=forecast_df["Period"],
                         y=forecast_df["Forecast Revenue Cr"],
                         name="Forecast",
-                        marker_color="#f97316",
+                        marker=dict(color="#f97316", line=dict(color="#c2410c", width=1.3)),
                         text=forecast_df["Forecast Revenue Cr"],
                         texttemplate="%{text:.2f}",
                         textposition="outside",
@@ -1113,11 +1238,13 @@ def show_overview():
                 plot_bgcolor="white",
                 paper_bgcolor="white",
                 legend=dict(orientation="h", yanchor="bottom", y=1.05, x=0, font=dict(size=9)),
-                yaxis_range=[0, yoy_max * 1.35]
+                yaxis_range=[0, yoy_max * 1.35],
+                bargap=0.22,
+                bargroupgap=0.08,
             )
-
+            apply_3d_chart_layout(fig_yoy, height=250, margin=dict(l=8, r=8, t=34, b=8))
             fig_yoy.update_xaxes(showgrid=False, zeroline=False)
-            fig_yoy.update_yaxes(showgrid=False, zeroline=False)
+            fig_yoy.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,.18)", zeroline=False)
 
             st.plotly_chart(fig_yoy, use_container_width=True)
 
@@ -1131,8 +1258,17 @@ def show_overview():
                     go.Pie(
                         labels=["FTL", "LTL"],
                         values=[ftl, ltl],
-                        hole=0.65,
-                        textinfo="percent",
+                        hole=0.58,
+                        textinfo="percent+label",
+                        pull=[0.035, 0.035],
+                        rotation=135,
+                        direction="clockwise",
+                        marker=dict(
+                            colors=["#2563eb", "#0f766e"],
+                            line=dict(color="#ffffff", width=3),
+                        ),
+                        textfont=dict(size=10, color="white"),
+                        hovertemplate="<b>%{label}</b><br>Revenue: ₹%{value:,.0f}<br>Share: %{percent}<extra></extra>",
                     )
                 ]
             )
@@ -1148,8 +1284,11 @@ def show_overview():
                     )
                 ],
                 height=250,
-                margin=dict(l=0, r=0, t=5, b=0)
+                margin=dict(l=4, r=4, t=10, b=4),
+                paper_bgcolor="rgba(0,0,0,0)",
+                showlegend=False,
             )
+            fig_load.update_traces(sort=False)
 
             st.plotly_chart(fig_load, use_container_width=True)
 
@@ -1261,7 +1400,7 @@ def show_overview():
                 x=weight_yoy_df["Period"],
                 y=weight_yoy_df["Prev Weight MT"],
                 name=f"LY ({prev_fy})",
-                marker_color="#cbd5e1",
+                marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.3)),
                 text=weight_yoy_df["Prev Weight MT"],
                 texttemplate="%{text:.0f}",
                 textposition="outside",
@@ -1274,7 +1413,7 @@ def show_overview():
                 x=weight_yoy_df["Period"],
                 y=weight_yoy_df["Weight MT"],
                 name=f"Current ({fy})",
-                marker_color="#0f766e",
+                marker=dict(color="#0f766e", line=dict(color="#134e4a", width=1.3)),
                 text=weight_yoy_df["Weight MT"],
                 texttemplate="%{text:.0f}",
                 textposition="outside",
@@ -1309,8 +1448,8 @@ def show_overview():
             barmode="group",
             height=250,
             margin=dict(l=2, r=2, t=30, b=2),
-            plot_bgcolor="white",
-            paper_bgcolor="white",
+            plot_bgcolor="#f8fafc",
+            paper_bgcolor="rgba(0,0,0,0)",
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
@@ -1320,9 +1459,12 @@ def show_overview():
             ),
             yaxis_title="Weight (MT)",
             yaxis_range=[0, weight_max * 1.35],
+            bargap=0.22,
+            bargroupgap=0.08,
         )
+        apply_3d_chart_layout(fig_weight, height=250, margin=dict(l=8, r=8, t=34, b=8))
         fig_weight.update_xaxes(showgrid=False, zeroline=False)
-        fig_weight.update_yaxes(showgrid=False, zeroline=False)
+        fig_weight.update_yaxes(showgrid=True, gridcolor="rgba(148,163,184,.18)", zeroline=False)
 
         st.plotly_chart(fig_weight, use_container_width=True)
 
@@ -1363,10 +1505,13 @@ def show_overview():
                     y=zone_df_sorted["zone_short"].tolist(),
                     x=zone_df_sorted["Revenue Cr"].tolist(),
                     orientation="h",
-                    marker_color=[
-                        zone_colors.get(zone_name, "#2563eb")
-                        for zone_name in zone_df_sorted["zone"].tolist()
-                    ],
+                    marker=dict(
+                        color=[
+                            zone_colors.get(zone_name, "#2563eb")
+                            for zone_name in zone_df_sorted["zone"].tolist()
+                        ],
+                        line=dict(color="#334155", width=1.1),
+                    ),
                     customdata=zone_df_sorted[["Percentage"]].to_numpy(),
                     texttemplate="₹%{x:.2f} Cr<br>(%{customdata[0]:.1f}%)",
                     textposition="outside",
@@ -1388,8 +1533,12 @@ def show_overview():
                 yaxis_title="",
                 showlegend=False,
                 plot_bgcolor="white",
-                paper_bgcolor="white",
+                paper_bgcolor="rgba(0,0,0,0)",
+                bargap=0.28,
             )
+            apply_3d_chart_layout(fig_zone, height=240, margin=dict(l=8, r=86, t=8, b=8))
+            fig_zone.update_xaxes(showgrid=True, gridcolor="rgba(148,163,184,.18)")
+            fig_zone.update_yaxes(showgrid=False)
 
             st.plotly_chart(fig_zone, use_container_width=True)
 
@@ -1693,10 +1842,10 @@ def show_overview():
                 text=waterfall_text,
                 textposition="outside",
                 textfont=dict(size=10, color="#0f172a"),
-                connector={"line": {"color": "#94a3b8", "width": 1}},
-                increasing={"marker": {"color": "#22c55e"}},
-                decreasing={"marker": {"color": "#ef4444"}},
-                totals={"marker": {"color": "#0f2747"}},
+                connector={"line": {"color": "#64748b", "width": 2}},
+                increasing={"marker": {"color": "#22c55e", "line": {"color": "#166534", "width": 1.4}}},
+                decreasing={"marker": {"color": "#ef4444", "line": {"color": "#991b1b", "width": 1.4}}},
+                totals={"marker": {"color": "#0f2747", "line": {"color": "#020617", "width": 1.5}}},
                 hovertemplate=(
                     "<b>%{x}</b><br>Revenue movement: ₹%{y:.2f} Cr<extra></extra>"
                 ),
@@ -1733,13 +1882,14 @@ def show_overview():
         fig_waterfall.update_layout(
             height=320,
             margin=dict(l=5, r=5, t=45, b=45),
-            plot_bgcolor="white",
-            paper_bgcolor="white",
+            plot_bgcolor="#f8fafc",
+            paper_bgcolor="rgba(0,0,0,0)",
             showlegend=False,
             yaxis_title="Revenue (Cr)",
             yaxis_range=[0, chart_max * 1.35],
-            waterfallgap=0.35,
+            waterfallgap=0.28,
         )
+        apply_3d_chart_layout(fig_waterfall, height=320, margin=dict(l=8, r=8, t=48, b=48))
         fig_waterfall.update_xaxes(
             title="",
             showgrid=False,
