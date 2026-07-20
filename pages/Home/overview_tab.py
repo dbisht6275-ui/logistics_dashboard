@@ -499,6 +499,12 @@ def show_overview():
         unsafe_allow_html=True,
     )
 
+    # Bold Filters header
+    st.markdown(
+        "<div style='font-weight:900;font-size:12px;color:#0f172a;margin-bottom:8px;'>FILTERS</div>",
+        unsafe_allow_html=True,
+    )
+
     # Top filter row: view type, FY, zone, circle, branch, quarter, month and load type
     (
         filter_col1, filter_col2, filter_col3, filter_col4,
@@ -541,13 +547,6 @@ def show_overview():
         )
 
     station_df = load_stationmast_data(start_date, end_date)
-
-    opened_df = station_df[station_df["STATUS"] == "OPENED"]
-    closed_df = station_df[station_df["STATUS"] == "CLOSED"]
-
-    opened_branches = len(opened_df)
-    closed_branches = len(closed_df)
-    net_increase = opened_branches - closed_branches
 
     if df.empty:
         st.warning("No data found")
@@ -704,13 +703,13 @@ def show_overview():
         create_card("Total Weight (MT)", f"{aweight:,.0f}", "#2563eb", "⚓", weight_growth)
 
     with k6:
-        create_card("Topay Revenue", format_cr(topay), "#2563eb", "🧾", topay_growth)
+        create_card("Topay", format_cr(topay), "#2563eb", "🧾", topay_growth)
 
     with k7:
-        create_card("Paid Revenue", format_cr(paid), "#2563eb", "🔗", paid_growth)
+        create_card("Paid", format_cr(paid), "#2563eb", "🔗", paid_growth)
 
     with k8:
-        create_card("T.B.B Revenue", format_cr(tbb), "#2563eb", "🚚", tbb_growth)
+        create_card("T.B.B", format_cr(tbb), "#2563eb", "🚚", tbb_growth)
 
     # =====================================================
     # Actual vs Target (shown only when user clicks the button)
@@ -1764,9 +1763,36 @@ def show_overview():
                 height=190
             )
 
+    # =====================================================
+    # Branch/Agency Network Changes - NOW FILTERED BY MONTH & QUARTER
+    # =====================================================
+    
+    # Filter station_df based on selected month and quarter
+    filtered_station_df = station_df.copy()
+    
+    if month != "All":
+        # Filter by specific month
+        filtered_station_df = filtered_station_df[filtered_station_df["FIN_MONTH"].map(month_map) == month]
+    elif quarter != "All":
+        # Filter by quarter
+        quarter_fin_months = [k for k, v in QUARTER_MAP.items() if v == quarter]
+        filtered_station_df = filtered_station_df[filtered_station_df["FIN_MONTH"].isin(quarter_fin_months)]
+    
+    opened_df = filtered_station_df[filtered_station_df["STATUS"] == "OPENED"]
+    closed_df = filtered_station_df[filtered_station_df["STATUS"] == "CLOSED"]
+
+    opened_branches = len(opened_df)
+    closed_branches = len(closed_df)
+    net_increase = opened_branches - closed_branches
+
+    period_label = f"{fy}"
+    if month != "All":
+        period_label = f"{month} {fy}"
+    elif quarter != "All":
+        period_label = f"{quarter} {fy}"
 
     st.markdown(f"""
-    ###### 🏢 Branch/Agency Network Changes ({fy})
+    ###### 🏢 Branch/Agency Network Changes ({period_label})
 
     - **New Branches/Agencies Opened:** {opened_branches}
     - **Branches/Agencies Closed:** {closed_branches}
