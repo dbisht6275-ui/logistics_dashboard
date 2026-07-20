@@ -516,7 +516,7 @@ def show_overview():
         view_type = st.selectbox("View Type", ["Origin", "Destination"], label_visibility="collapsed")
 
     with filter_col2:
-        st.markdown("<div style='font-weight:900;font-size:12px;color:#2563eb;'>Financial Year</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-weight:400;font-size:12px;color:#2563eb;'>Financial Year</div>", unsafe_allow_html=True)
         fy = st.selectbox(
             "Financial Year",
             [
@@ -611,7 +611,7 @@ def show_overview():
             locked_zone = circle_row["zone"].iloc[0]
 
     with filter_col3:
-        st.markdown("<div style='font-weight:900;font-size:12px;color:#2563eb;'>Zone</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-weight:400;font-size:12px;color:#2563eb;'>Zone</div>", unsafe_allow_html=True)
         if locked_zone:
             zone = locked_zone
             st.selectbox("Zone", [zone], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
@@ -622,7 +622,7 @@ def show_overview():
         df = df[df["zone"] == zone]
 
     with filter_col4:
-        st.markdown("<div style='font-weight:900;font-size:12px;color:#2563eb;'>Circle</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-weight:400;font-size:12px;color:#2563eb;'>Circle</div>", unsafe_allow_html=True)
         if locked_circle:
             circle = locked_circle
             st.selectbox("Circle", [circle], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
@@ -633,7 +633,7 @@ def show_overview():
         df = df[df["circle"] == circle]
 
     with filter_col5:
-        st.markdown("<div style='font-weight:900;font-size:12px;color:#2563eb;'>Branch</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-weight:400;font-size:12px;color:#2563eb;'>Branch</div>", unsafe_allow_html=True)
         if locked_branch:
             branch = locked_branch
             st.selectbox("Branch", [branch], disabled=True, help="Locked as per your assigned rights", label_visibility="collapsed")
@@ -644,7 +644,7 @@ def show_overview():
         df = df[df["branch"] == branch]
 
     with filter_col6:
-        st.markdown("<div style='font-weight:900;font-size:12px;color:#2563eb;'>Quarter</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-weight:400;font-size:12px;color:#2563eb;'>Quarter</div>", unsafe_allow_html=True)
         available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().unique().tolist()]
         quarter = st.selectbox("Quarter", ["All"] + available_quarters, label_visibility="collapsed")
 
@@ -652,7 +652,7 @@ def show_overview():
         df = df[df["Quarter"] == quarter]
 
     with filter_col7:
-        st.markdown("<div style='font-weight:900;font-size:12px;color:#2563eb;'>Month</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-weight:400;font-size:12px;color:#2563eb;'>Month</div>", unsafe_allow_html=True)
         available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().unique().tolist()]
         month = st.selectbox("Month", ["All"] + available_months, label_visibility="collapsed")
 
@@ -660,7 +660,7 @@ def show_overview():
         df = df[df["Month"] == month]
 
     with filter_col8:
-        st.markdown("<div style='font-weight:900;font-size:12px;color:#2563eb;'>Load Type</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-weight:400;font-size:12px;color:#2563eb;'>Load Type</div>", unsafe_allow_html=True)
         loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()), label_visibility="collapsed")
 
     if loadtype != "All":
