@@ -2504,64 +2504,73 @@ def show_overview():
             )
 
     # =====================================================
-    # Top 10 Routes | View-type aware direction
+    # Top 10 Routes | Use existing route column
     # =====================================================
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    origin_candidates = [
-        "origin", "ORIGIN", "originname", "ORIGINNAME", "originstation", "ORIGINSTATION",
-        "fromstation", "FROMSTATION", "frombranch", "FROMBRANCH", "bookingbranch", "BOOKINGBRANCH",
-        "source", "SOURCE", "sourcebranch", "SOURCEBRANCH", "orgbranch", "ORGBRANCH",
-    ]
-    destination_candidates = [
-        "destination", "DESTINATION", "destinationname", "DESTINATIONNAME",
-        "destinationstation", "DESTINATIONSTATION", "tostation", "TOSTATION",
-        "tobranch", "TOBRANCH", "deliverybranch", "DELIVERYBRANCH", "destbranch", "DESTBRANCH",
-    ]
+    route_candidates = ["route", "ROUTE", "Route"]
+    route_col = _find_column(df, route_candidates)
+    prev_route_col = (
+        _find_column(prev_df, route_candidates)
+        if prev_df is not None and not prev_df.empty
+        else None
+    )
 
-    origin_col = _find_column(df, origin_candidates)
-    destination_col = _find_column(df, destination_candidates)
-    prev_origin_col = _find_column(prev_df, origin_candidates) if prev_df is not None and not prev_df.empty else None
-    prev_destination_col = _find_column(prev_df, destination_candidates) if prev_df is not None and not prev_df.empty else None
+    def _orient_route(route_value, selected_view):
+        """Keep stored route for Origin view and reverse it for Destination view."""
+        if pd.isna(route_value):
+            return "Unknown"
 
-    if origin_col and destination_col:
-        route_start_col, route_end_col = (
-            (origin_col, destination_col) if view_type == "Origin" else (destination_col, origin_col)
-        )
-        current_routes = df.assign(
-            _route=(
-                df[route_start_col].fillna("Unknown").astype(str).str.strip()
-                + " → " +
-                df[route_end_col].fillna("Unknown").astype(str).str.strip()
-            )
+        route_text = str(route_value).strip()
+        if not route_text:
+            return "Unknown"
+
+        if selected_view == "Origin":
+            return route_text
+
+        # Reverse only when a clear route separator is available.
+        separators = [" → ", "→", " -> ", "->", " - ", " TO ", " to "]
+        for separator in separators:
+            if separator in route_text:
+                parts = [part.strip() for part in route_text.split(separator) if part.strip()]
+                if len(parts) >= 2:
+                    return " → ".join(reversed(parts))
+
+        # Keep the original text when its format cannot be safely split.
+        return route_text
+
+    if route_col:
+        current_route_data = df.copy()
+        current_route_data["_route"] = current_route_data[route_col].apply(
+            lambda value: _orient_route(value, view_type)
         )
         current_routes = (
-            current_routes.query("_route != 'Unknown → Unknown'")
-            .groupby("_route", dropna=False)["REVENUE"].sum()
+            current_route_data[current_route_data["_route"] != "Unknown"]
+            .groupby("_route", dropna=False)["REVENUE"]
+            .sum()
             .reset_index(name="Current Revenue")
         )
 
-        if prev_origin_col and prev_destination_col:
-            prev_start_col, prev_end_col = (
-                (prev_origin_col, prev_destination_col)
-                if view_type == "Origin" else (prev_destination_col, prev_origin_col)
-            )
-            previous_routes = prev_df.assign(
-                _route=(
-                    prev_df[prev_start_col].fillna("Unknown").astype(str).str.strip()
-                    + " → " +
-                    prev_df[prev_end_col].fillna("Unknown").astype(str).str.strip()
-                )
+        if prev_route_col:
+            previous_route_data = prev_df.copy()
+            previous_route_data["_route"] = previous_route_data[prev_route_col].apply(
+                lambda value: _orient_route(value, view_type)
             )
             previous_routes = (
-                previous_routes.query("_route != 'Unknown → Unknown'")
-                .groupby("_route", dropna=False)["REVENUE"].sum()
+                previous_route_data[previous_route_data["_route"] != "Unknown"]
+                .groupby("_route", dropna=False)["REVENUE"]
+                .sum()
                 .reset_index(name="Previous Revenue")
             )
         else:
             previous_routes = pd.DataFrame(columns=["_route", "Previous Revenue"])
 
-        route_yoy = current_routes.merge(previous_routes, on="_route", how="left").fillna({"Previous Revenue": 0})
+        route_yoy = current_routes.merge(
+            previous_routes,
+            on="_route",
+            how="left",
+        ).fillna({"Previous Revenue": 0})
+
         route_yoy["Current Revenue Cr"] = (route_yoy["Current Revenue"] / 10000000).round(2)
         route_yoy["Previous Revenue Cr"] = (route_yoy["Previous Revenue"] / 10000000).round(2)
         route_yoy["Growth %"] = route_yoy.apply(
@@ -2570,8 +2579,10 @@ def show_overview():
             axis=1,
         )
         route_yoy = (
-            route_yoy.sort_values("Current Revenue", ascending=False).head(10)
-            .sort_values("Current Revenue", ascending=True).reset_index(drop=True)
+            route_yoy.sort_values("Current Revenue", ascending=False)
+            .head(10)
+            .sort_values("Current Revenue", ascending=True)
+            .reset_index(drop=True)
         )
         route_yoy["Route Display"] = route_yoy["_route"].apply(
             lambda value: value if len(value) <= 42 else value[:40] + "…"
@@ -2585,45 +2596,88 @@ def show_overview():
                 + " direction, ranked by current-year revenue.</div>",
                 unsafe_allow_html=True,
             )
-            fig_route = go.Figure()
-            fig_route.add_trace(go.Bar(
-                y=route_yoy["Route Display"], x=route_yoy["Previous Revenue Cr"],
-                name=f"LY ({prev_fy})", orientation="h",
-                marker=dict(color="#dbe4f0", line=dict(color="#b8c7dc", width=1)),
-                text=route_yoy["Previous Revenue Cr"], texttemplate="₹%{text:.2f}",
-                textposition="inside", textfont=dict(size=9, color="#475569"),
-                hovertemplate="<b>%{y}</b><br>LY Revenue: ₹%{x:.2f} Cr<extra></extra>",
-            ))
-            fig_route.add_trace(go.Bar(
-                y=route_yoy["Route Display"], x=route_yoy["Current Revenue Cr"],
-                name=f"Current ({fy})", orientation="h",
-                marker=dict(color="#0f766e", line=dict(color="#115e59", width=1)),
-                customdata=route_yoy[["Growth %", "_route"]].to_numpy(),
-                text=route_yoy["Current Revenue Cr"], texttemplate="₹%{text:.2f}",
-                textposition="outside", textfont=dict(size=10, color="#0f172a", family="Arial Black"),
-                cliponaxis=False,
-                hovertemplate=("<b>%{customdata[1]}</b><br>Current Revenue: ₹%{x:.2f} Cr"
-                               "<br>YoY Growth: %{customdata[0]:.1f}%<extra></extra>"),
-            ))
-            max_route_revenue = max(route_yoy["Current Revenue Cr"].max(), route_yoy["Previous Revenue Cr"].max(), 1)
-            route_chart_height = max(360, 42 * len(route_yoy) + 105)
-            fig_route.update_layout(
-                barmode="group", bargap=0.28, bargroupgap=0.08, height=route_chart_height,
-                margin=dict(l=8, r=105, t=35, b=28), plot_bgcolor="#f8fafc",
-                paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10)),
-                xaxis_title="Revenue (Cr)", xaxis_range=[0, max_route_revenue * 1.45],
-            )
-            apply_3d_chart_layout(fig_route, height=route_chart_height, margin=dict(l=8, r=105, t=35, b=28))
-            fig_route.update_xaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10))
-            fig_route.update_yaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10))
-            st.plotly_chart(fig_route, use_container_width=True)
+
+            if route_yoy.empty:
+                st.info("No route data is available for the selected filters.")
+            else:
+                fig_route = go.Figure()
+                fig_route.add_trace(go.Bar(
+                    y=route_yoy["Route Display"],
+                    x=route_yoy["Previous Revenue Cr"],
+                    name=f"LY ({prev_fy})",
+                    orientation="h",
+                    marker=dict(color="#dbe4f0", line=dict(color="#b8c7dc", width=1)),
+                    text=route_yoy["Previous Revenue Cr"],
+                    texttemplate="₹%{text:.2f}",
+                    textposition="inside",
+                    textfont=dict(size=9, color="#475569"),
+                    hovertemplate="<b>%{y}</b><br>LY Revenue: ₹%{x:.2f} Cr<extra></extra>",
+                ))
+                fig_route.add_trace(go.Bar(
+                    y=route_yoy["Route Display"],
+                    x=route_yoy["Current Revenue Cr"],
+                    name=f"Current ({fy})",
+                    orientation="h",
+                    marker=dict(color="#0f766e", line=dict(color="#115e59", width=1)),
+                    customdata=route_yoy[["Growth %", "_route"]].to_numpy(),
+                    text=route_yoy["Current Revenue Cr"],
+                    texttemplate="₹%{text:.2f}",
+                    textposition="outside",
+                    textfont=dict(size=10, color="#0f172a", family="Arial Black"),
+                    cliponaxis=False,
+                    hovertemplate=(
+                        "<b>%{customdata[1]}</b><br>Current Revenue: ₹%{x:.2f} Cr"
+                        "<br>YoY Growth: %{customdata[0]:.1f}%<extra></extra>"
+                    ),
+                ))
+
+                max_route_revenue = max(
+                    route_yoy["Current Revenue Cr"].max(),
+                    route_yoy["Previous Revenue Cr"].max(),
+                    1,
+                )
+                route_chart_height = max(360, 42 * len(route_yoy) + 105)
+                fig_route.update_layout(
+                    barmode="group",
+                    bargap=0.28,
+                    bargroupgap=0.08,
+                    height=route_chart_height,
+                    margin=dict(l=8, r=105, t=35, b=28),
+                    plot_bgcolor="#f8fafc",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        x=0,
+                        font=dict(size=10),
+                    ),
+                    xaxis_title="Revenue (Cr)",
+                    xaxis_range=[0, max_route_revenue * 1.45],
+                )
+                apply_3d_chart_layout(
+                    fig_route,
+                    height=route_chart_height,
+                    margin=dict(l=8, r=105, t=35, b=28),
+                )
+                fig_route.update_xaxes(
+                    showgrid=False,
+                    showline=False,
+                    zeroline=False,
+                    tickfont=dict(size=10),
+                )
+                fig_route.update_yaxes(
+                    showgrid=False,
+                    showline=False,
+                    zeroline=False,
+                    tickfont=dict(size=10),
+                )
+                st.plotly_chart(fig_route, use_container_width=True)
     else:
         with st.container(border=True):
             st.info(
-                "Top 10 Routes could not be displayed because origin and destination columns were not found. "
-                "The code checks common names such as ORIGIN, DESTINATION, FROMSTATION, TOSTATION, "
-                "BOOKINGBRANCH and DELIVERYBRANCH."
+                "Top 10 Routes could not be displayed because the route column was not found "
+                "in the booking dataset."
             )
 
     # Small separator before branch analysis
