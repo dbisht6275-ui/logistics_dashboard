@@ -54,85 +54,88 @@ def _inject_overview_css():
                 margin-bottom: 0.35rem !important;
             }
 
-            /* Compact 3D segmented control: Daily / Weekly / Monthly / Quarterly */
+            /* Compact 3D period buttons used in Revenue and Weight trends */
             div[data-testid="stSegmentedControl"] {
-                display: flex;
-                justify-content: flex-end;
+                display: flex !important;
+                justify-content: flex-end !important;
+                width: 100% !important;
             }
 
-            div[data-testid="stSegmentedControl"] > div {
+            div[data-testid="stSegmentedControl"] > div,
+            div[data-testid="stSegmentedControl"] [role="radiogroup"] {
+                display: inline-flex !important;
+                flex: 0 0 auto !important;
+                width: fit-content !important;
+                min-width: 0 !important;
                 gap: 3px !important;
                 padding: 3px !important;
-                border: 1px solid #cbd5e1 !important;
-                border-radius: 9px !important;
-                background: linear-gradient(145deg, #f8fafc, #e2e8f0) !important;
+                border: 1px solid #b8c4d4 !important;
+                border-radius: 8px !important;
+                background: linear-gradient(145deg, #eef3f8, #d8e0ea) !important;
                 box-shadow:
-                    inset 1px 1px 2px rgba(255,255,255,.95),
-                    inset -1px -1px 2px rgba(100,116,139,.18),
-                    0 2px 4px rgba(15,23,42,.12) !important;
+                    inset 1px 1px 1px rgba(255,255,255,.95),
+                    inset -1px -1px 2px rgba(71,85,105,.18),
+                    0 3px 0 #aeb9c8,
+                    0 5px 8px rgba(15,23,42,.13) !important;
             }
 
             div[data-testid="stSegmentedControl"] label,
             div[data-testid="stSegmentedControl"] button {
-                min-height: 26px !important;
-                height: 26px !important;
+                flex: 0 0 auto !important;
+                min-width: auto !important;
+                width: auto !important;
+                min-height: 25px !important;
+                height: 25px !important;
                 padding: 2px 8px !important;
                 margin: 0 !important;
-                border: 1px solid #cbd5e1 !important;
-                border-radius: 6px !important;
-                background: linear-gradient(145deg, #ffffff, #e8edf4) !important;
+                border: 1px solid #b9c5d4 !important;
+                border-radius: 5px !important;
+                background: linear-gradient(145deg, #ffffff 0%, #edf1f6 55%, #d7dee8 100%) !important;
                 box-shadow:
-                    1px 1px 3px rgba(15,23,42,.17),
-                    -1px -1px 2px rgba(255,255,255,.95),
-                    inset 0 1px 0 rgba(255,255,255,.85) !important;
-                color: #475569 !important;
+                    0 2px 0 #aab5c4,
+                    0 3px 4px rgba(15,23,42,.14),
+                    inset 1px 1px 0 rgba(255,255,255,.95) !important;
+                color: #334155 !important;
                 font-size: 10px !important;
                 font-weight: 700 !important;
                 line-height: 1 !important;
-                transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+                white-space: nowrap !important;
+                transition: transform .10s ease, box-shadow .10s ease, background .10s ease;
             }
 
             div[data-testid="stSegmentedControl"] label:hover,
             div[data-testid="stSegmentedControl"] button:hover {
                 transform: translateY(-1px);
+                border-color: #7da8e8 !important;
                 background: linear-gradient(145deg, #ffffff, #dbeafe) !important;
-                border-color: #93c5fd !important;
                 box-shadow:
-                    0 3px 5px rgba(15,23,42,.16),
-                    inset 0 1px 0 rgba(255,255,255,.95) !important;
+                    0 3px 0 #86a9d8,
+                    0 5px 7px rgba(15,23,42,.15),
+                    inset 1px 1px 0 rgba(255,255,255,.95) !important;
             }
 
-            /* Selected state for Streamlit versions using radio inputs */
-            div[data-testid="stSegmentedControl"] label:has(input:checked) {
-                color: #ffffff !important;
-                border-color: #1d4ed8 !important;
-                background: linear-gradient(145deg, #3b82f6, #1d4ed8) !important;
-                transform: translateY(1px);
-                box-shadow:
-                    inset 2px 2px 4px rgba(15,23,42,.24),
-                    inset -1px -1px 2px rgba(147,197,253,.30),
-                    0 1px 2px rgba(15,23,42,.12) !important;
-            }
-
-            /* Selected state for Streamlit versions using aria-pressed buttons */
+            /* Pressed/selected 3D state */
+            div[data-testid="stSegmentedControl"] label:has(input:checked),
             div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
                 color: #ffffff !important;
-                border-color: #1d4ed8 !important;
-                background: linear-gradient(145deg, #3b82f6, #1d4ed8) !important;
-                transform: translateY(1px);
+                border-color: #1749a8 !important;
+                background: linear-gradient(145deg, #4285ef 0%, #2563eb 55%, #1749a8 100%) !important;
+                transform: translateY(2px) !important;
                 box-shadow:
-                    inset 2px 2px 4px rgba(15,23,42,.24),
-                    inset -1px -1px 2px rgba(147,197,253,.30),
-                    0 1px 2px rgba(15,23,42,.12) !important;
+                    0 0 0 #1749a8,
+                    inset 2px 2px 4px rgba(15,23,42,.28),
+                    inset -1px -1px 2px rgba(191,219,254,.35) !important;
             }
 
             div[data-testid="stSegmentedControl"] label p,
             div[data-testid="stSegmentedControl"] button p,
             div[data-testid="stSegmentedControl"] label span,
             div[data-testid="stSegmentedControl"] button span {
+                margin: 0 !important;
                 font-size: 10px !important;
                 font-weight: 700 !important;
                 line-height: 1 !important;
+                color: inherit !important;
             }
 
             /* Reduce dataframe/table vertical spacing */
@@ -740,12 +743,6 @@ def show_overview():
             Revenue, shipment and branch performance overview
         </p>
         """,
-        unsafe_allow_html=True,
-    )
-
-    # Bold Filters header
-    st.markdown(
-        "<div style='display:inline-flex;align-items:center;gap:7px;font-weight:900;font-size:12px;letter-spacing:.7px;color:#0f2747;margin:2px 0 13px 2px;padding:7px 14px;border:1px solid #cbd5e1;border-radius:10px;background:linear-gradient(145deg,#ffffff,#dfe7f2);box-shadow:0 5px 0 #cbd5e1,0 9px 15px rgba(15,23,42,.14);'>⚙ FILTERS</div>",
         unsafe_allow_html=True,
     )
 
