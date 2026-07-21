@@ -2358,6 +2358,95 @@ def show_overview():
                 else:
                     st.markdown(matrix_html, unsafe_allow_html=True)
 
+        # Month-on-month analysis is shown as one full-width chart directly
+        # below the Zone vs Country table.
+        monthly_chart = monthly.copy()
+        monthly_chart["Growth %"] = (
+            monthly_chart["Revenue Cr"].pct_change().mul(100).round(2)
+        )
+        monthly_chart = monthly_chart.dropna(subset=["Month"]).copy()
+        monthly_chart["Month"] = monthly_chart["Month"].astype(str)
+
+        with st.container(border=True):
+            st.markdown("###### Month on Month Revenue & Growth")
+
+            fig_mom = go.Figure()
+            fig_mom.add_trace(
+                go.Bar(
+                    x=monthly_chart["Month"],
+                    y=monthly_chart["Revenue Cr"],
+                    name="Revenue",
+                    marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
+                    text=monthly_chart["Revenue Cr"],
+                    texttemplate="₹%{text:.2f} Cr",
+                    textposition="outside",
+                    cliponaxis=False,
+                    hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:.2f} Cr<extra></extra>",
+                )
+            )
+
+            growth_colors = [
+                "#16a34a" if pd.notna(v) and v >= 0 else "#dc2626"
+                for v in monthly_chart["Growth %"]
+            ]
+            fig_mom.add_trace(
+                go.Scatter(
+                    x=monthly_chart["Month"],
+                    y=monthly_chart["Growth %"],
+                    name="MoM Growth",
+                    mode="lines+markers+text",
+                    yaxis="y2",
+                    line=dict(color="#f59e0b", width=3),
+                    marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
+                    text=[
+                        "" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%"
+                        for v in monthly_chart["Growth %"]
+                    ],
+                    textposition="top center",
+                    textfont=dict(size=10, color="#334155"),
+                    hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
+                )
+            )
+
+            revenue_max = pd.to_numeric(monthly_chart["Revenue Cr"], errors="coerce").max()
+            revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
+            growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
+            growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
+
+            fig_mom.update_layout(
+                height=330,
+                margin=dict(l=10, r=10, t=35, b=10),
+                plot_bgcolor="#f8fafc",
+                paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(orientation="h", y=1.10, x=0),
+                bargap=0.35,
+                yaxis=dict(
+                    title="Revenue (Cr)",
+                    range=[0, revenue_max * 1.30],
+                    showgrid=False,
+                    zeroline=False,
+                ),
+                yaxis2=dict(
+                    title="Growth (%)",
+                    overlaying="y",
+                    side="right",
+                    range=[-growth_abs_max * 1.35, growth_abs_max * 1.35],
+                    showgrid=False,
+                    zeroline=True,
+                    zerolinecolor="#cbd5e1",
+                ),
+                xaxis=dict(showgrid=False, title=""),
+            )
+            apply_3d_chart_layout(fig_mom, height=330, margin=dict(l=10, r=10, t=38, b=10))
+            fig_mom.update_xaxes(showline=False, zeroline=False)
+            fig_mom.update_yaxes(showline=False)
+
+            st.plotly_chart(
+                fig_mom,
+                width="stretch",
+                config={"displayModeBar": False, "responsive": True},
+            )
+
     # =====================================================
     # Management Key Insights
     # =====================================================
@@ -2875,19 +2964,7 @@ def show_overview():
     bottom10_df = bottom10_df.sort_values("Revenue", ascending=True).head(10)
     bottom10_df["Revenue Cr"] = (bottom10_df["Revenue"] / 10000000).round(2)
 
-    monthly["Growth %"] = monthly["Revenue Cr"].pct_change().mul(100).round(2)
-
-    def growth_indicator(x):
-        if pd.isna(x):
-            return "-"
-        elif x >= 0:
-            return f"▲ {x:.2f}%"
-        else:
-            return f"▼ {abs(x):.2f}%"
-
-    monthly["Growth"] = monthly["Growth %"].apply(growth_indicator)
-
-    b1, b2, b3 = st.columns([1, 1, 0.95])
+    b1, b2 = st.columns(2)
 
     with b1:
         with st.container(border=True):
@@ -2918,17 +2995,6 @@ def show_overview():
                     max_bottom,
                     "#ef4444"
                 )
-
-    with b3:
-        with st.container(border=True):
-            st.markdown("###### Month on Month Growth")
-
-            st.dataframe(
-                monthly[["Month", "Revenue Cr", "Growth"]],
-                width="stretch",
-                hide_index=True,
-                height=190
-            )
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
