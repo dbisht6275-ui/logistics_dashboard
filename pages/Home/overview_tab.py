@@ -1361,7 +1361,7 @@ def show_overview():
         else "🎯 Actual vs Target"
     )
 
-    if st.button(target_button_label, key="actual_vs_target_button", use_container_width=False):
+    if st.button(target_button_label, key="actual_vs_target_button", width="content"):
         st.session_state[target_toggle_key] = not st.session_state[target_toggle_key]
         st.rerun()
 
@@ -1482,7 +1482,7 @@ def show_overview():
                         data=template_buffer.getvalue(),
                         file_name="target_upload_template.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True,
+                        width="stretch",
                     )
 
                 if target_file is not None:
@@ -1544,7 +1544,7 @@ def show_overview():
                             with st.expander("View Matched Target Rows", expanded=False):
                                 st.dataframe(
                                     matched_targets[required_cols],
-                                    use_container_width=True,
+                                    width="stretch",
                                     hide_index=True,
                                 )
                     except Exception as exc:
@@ -1789,7 +1789,7 @@ def show_overview():
             )
             fig_load.update_traces(sort=False)
 
-            st.plotly_chart(fig_load, use_container_width=True)
+            st.plotly_chart(fig_load, width="stretch")
             st.markdown(
                 f"""
                 <div style="display:flex;justify-content:center;gap:10px;margin-top:-10px;margin-bottom:2px;">
@@ -1846,11 +1846,17 @@ def show_overview():
                     "#7c3aed", "#f97316", "#94a3b8",
                 ]
 
+                # Define chart inputs explicitly to prevent NameError after deployment.
+                company_labels = company_chart_df["Company"].astype(str).tolist()
+                company_values = pd.to_numeric(
+                    company_chart_df["Revenue Cr"], errors="coerce"
+                ).fillna(0).tolist()
+
                 fig_company = go.Figure(
                     data=[
                         go.Pie(
-                            labels=company_chart_df["Company"],
-                            values=company_chart_df["Revenue Cr"],
+                            labels=company_labels,
+                            values=company_values,
                             hole=0.72,
                             sort=False,
                             direction="clockwise",
@@ -1908,7 +1914,7 @@ def show_overview():
 
                 st.plotly_chart(
                     fig_company,
-                    use_container_width=True,
+                    width="stretch",
                     config={
                         "displayModeBar": False,
                         "responsive": True,
@@ -2101,7 +2107,7 @@ def show_overview():
 
             st.plotly_chart(
                 fig_weight,
-                use_container_width=True,
+                width="stretch",
                 config={"displayModeBar": False, "responsive": True},
             )
 
@@ -2186,7 +2192,7 @@ def show_overview():
 
             st.plotly_chart(
                 fig_zone,
-                use_container_width=True,
+                width="stretch",
                 config={"displayModeBar": False, "responsive": True},
             )
 
@@ -2613,7 +2619,7 @@ def show_overview():
                 apply_3d_chart_layout(fig_party, height=party_chart_height, margin=dict(l=8, r=105, t=35, b=28))
                 fig_party.update_xaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10))
                 fig_party.update_yaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10))
-                st.plotly_chart(fig_party, use_container_width=True)
+                st.plotly_chart(fig_party, width="stretch")
     else:
         with party_layout_col:
             with st.container(border=True):
@@ -2806,7 +2812,7 @@ def show_overview():
                         zeroline=False,
                         tickfont=dict(size=10),
                     )
-                    st.plotly_chart(fig_route, use_container_width=True)
+                    st.plotly_chart(fig_route, width="stretch")
     else:
         with route_layout_col:
             with st.container(border=True):
@@ -2888,7 +2894,7 @@ def show_overview():
 
             st.dataframe(
                 monthly[["Month", "Revenue Cr", "Growth"]],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 height=190
             )
@@ -2975,7 +2981,7 @@ def show_overview():
                     "activedate"
                 ]
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True
         )
 
@@ -2993,7 +2999,7 @@ def show_overview():
                     "closedate"
                 ]
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True
         )
 
