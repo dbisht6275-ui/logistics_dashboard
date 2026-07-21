@@ -524,37 +524,37 @@ def _inject_overview_css():
                 background: #fbfdff;
             }
 
-            /* Premium export button in the Revenue Overview header */
+            /* Compact export button in the Revenue Overview header */
             div[data-testid="stDownloadButton"] > button {
-                min-height: 46px !important;
-                padding: 9px 15px !important;
-                border: 1px solid #1d4ed8 !important;
-                border-radius: 12px !important;
+                min-height: 34px !important;
+                width: auto !important;
+                padding: 5px 10px !important;
+                border: 1px solid #2563eb !important;
+                border-radius: 8px !important;
                 color: #ffffff !important;
-                font-size: 12px !important;
-                font-weight: 900 !important;
-                letter-spacing: .15px !important;
-                background: linear-gradient(145deg, #3b82f6 0%, #2563eb 55%, #1749a8 100%) !important;
-                box-shadow: 0 5px 0 #123d91, 0 9px 15px rgba(37,99,235,.28), inset 1px 1px 0 rgba(255,255,255,.28) !important;
-                transform: translateY(-2px);
+                font-size: 10px !important;
+                font-weight: 850 !important;
+                letter-spacing: .1px !important;
+                background: linear-gradient(145deg, #3b82f6 0%, #2563eb 58%, #1d4ed8 100%) !important;
+                box-shadow: 0 3px 0 #1e40af, 0 6px 10px rgba(37,99,235,.20) !important;
+                transform: translateY(-1px);
                 transition: transform .14s ease, box-shadow .14s ease !important;
             }
 
             div[data-testid="stDownloadButton"] > button:hover {
-                transform: translateY(-4px) !important;
-                border-color: #1e40af !important;
-                background: linear-gradient(145deg, #60a5fa 0%, #2563eb 52%, #1e3a8a 100%) !important;
-                box-shadow: 0 7px 0 #123d91, 0 13px 20px rgba(37,99,235,.32), inset 1px 1px 0 rgba(255,255,255,.32) !important;
+                transform: translateY(-2px) !important;
+                box-shadow: 0 4px 0 #1e40af, 0 8px 12px rgba(37,99,235,.24) !important;
             }
 
             div[data-testid="stDownloadButton"] > button:active {
                 transform: translateY(1px) !important;
-                box-shadow: 0 2px 0 #123d91, 0 5px 9px rgba(37,99,235,.24), inset 1px 1px 4px rgba(15,23,42,.24) !important;
+                box-shadow: 0 1px 0 #1e40af, 0 3px 6px rgba(37,99,235,.18) !important;
             }
 
             div[data-testid="stDownloadButton"] > button p {
                 color: #ffffff !important;
-                font-weight: 900 !important;
+                font-size: 10px !important;
+                font-weight: 850 !important;
             }
 
         </style>
@@ -1074,7 +1074,7 @@ def show_overview():
     _inject_overview_css()
 
     # Header with CSV export action on the top-right.
-    header_left, header_right = st.columns([5.2, 1], gap="small")
+    header_left, header_right = st.columns([7, 0.8], gap="small")
 
     with header_left:
         st.markdown(
@@ -1270,13 +1270,13 @@ def show_overview():
     safe_view = str(view_type).strip().lower().replace(" ", "_")
     safe_fy = str(fy).strip().replace("/", "-").replace(" ", "_")
     export_placeholder.download_button(
-        label="⬇  Export Filtered CSV",
+        label="⬇ CSV",
         data=export_csv,
         file_name=f"revenue_overview_{safe_view}_{safe_fy}.csv",
         mime="text/csv",
         key="overview_export_csv",
         help="Download the revenue overview data after applying the selected filters.",
-        width="stretch",
+        width="content",
     )
 
     active_filter_items = [
@@ -1890,10 +1890,10 @@ def show_overview():
                         go.Pie(
                             labels=company_labels,
                             values=company_values,
-                            hole=0.74,
+                            hole=0.72,
                             sort=False,
                             direction="clockwise",
-                            domain=dict(x=[0.27, 0.73], y=[0.25, 0.79]),
+                            domain=dict(x=[0.18, 0.82], y=[0.10, 0.90]),
                             customdata=company_chart_df[["Contribution %"]].to_numpy(),
                             texttemplate="%{percent:.0%}",
                             textposition="inside",
@@ -1913,15 +1913,15 @@ def show_overview():
                 )
 
                 fig_company.update_layout(
-                    height=245,
-                    margin=dict(l=22, r=22, t=14, b=42),
+                    height=205,
+                    margin=dict(l=8, r=8, t=4, b=28),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     showlegend=True,
                     legend=dict(
                         orientation="h",
                         yanchor="top",
-                        y=-0.03,
+                        y=-0.01,
                         xanchor="center",
                         x=0.5,
                         font=dict(size=8),
@@ -1935,7 +1935,7 @@ def show_overview():
                                 "<br><span style='font-size:10px'>Total</span>"
                             ),
                             x=0.5,
-                            y=0.52,
+                            y=0.50,
                             showarrow=False,
                             align="center",
                             font=dict(size=13, color="#0f172a", family="Arial Black"),
