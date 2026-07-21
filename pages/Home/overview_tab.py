@@ -2230,17 +2230,16 @@ def show_overview():
                         )
                     table_rows.append(f"<tr>{''.join(cells)}</tr>")
 
-                # Keep the Zone vs Country table aligned with the zone chart card.
-                # This variable must be defined before it is used inside the f-string.
-                zone_chart_height = 430
-
+                # Let the table height follow its data rows. A maximum height is kept
+                # so longer matrices scroll instead of making the page excessively tall.
                 matrix_html = f"""
                 <style>
                     .zone-country-wrap {{
                         width: 100%;
-                        height: {zone_chart_height}px;
-                        max-height: {zone_chart_height}px;
-                        overflow: auto;
+                        height: auto;
+                        max-height: 430px;
+                        overflow-x: auto;
+                        overflow-y: auto;
                         border: 1px solid #e2e8f0;
                         border-radius: 10px;
                         background: #ffffff;
