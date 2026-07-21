@@ -1847,7 +1847,7 @@ def show_overview():
                 )
 
                 fig_company.update_layout(
-                    height=255,
+                    height=240,
                     margin=dict(l=2, r=2, t=2, b=44),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
