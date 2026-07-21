@@ -4,7 +4,7 @@ import streamlit as st
 from sqlalchemy import text
 from services.database import get_engine
 
-@st.cache_data(ttl=1800, show_spinner="Fetching outstanding data...")
+@st.cache_data(ttl=3600, show_spinner="Fetching outstanding data...")
 def get_outstanding_data(
     branch,
     grtype,
