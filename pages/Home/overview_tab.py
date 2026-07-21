@@ -2113,7 +2113,7 @@ def show_overview():
                     customdata=zone_df_sorted[["Percentage"]].to_numpy(),
                     texttemplate="₹%{x:.2f} Cr<br>(%{customdata[0]:.1f}%)",
                     textposition="outside",
-                    textfont=dict(size=11, color="#334155", family="Arial Black"),
+                    textfont=dict(size=14, color="#1e293b", family="Arial Black"),
                     cliponaxis=False,
                     hovertemplate=(
                         "<b>%{y}</b><br>Revenue: ₹%{x:.2f} Cr"
@@ -2125,8 +2125,8 @@ def show_overview():
             zone_max = zone_df_sorted["Revenue Cr"].max() if not zone_df_sorted.empty else 1
             fig_zone.update_layout(
                 height=aligned_chart_height,
-                margin=dict(l=6, r=74, t=40, b=8),
-                xaxis_range=[0, zone_max * 1.20],
+                margin=dict(l=10, r=100, t=40, b=12),
+                xaxis_range=[0, zone_max * 1.28],
                 xaxis_title="Revenue (Cr)",
                 yaxis_title="",
                 showlegend=False,
@@ -2137,21 +2137,21 @@ def show_overview():
             apply_3d_chart_layout(
                 fig_zone,
                 height=aligned_chart_height,
-                margin=dict(l=6, r=74, t=40, b=8),
+                margin=dict(l=10, r=100, t=40, b=12),
             )
             fig_zone.update_xaxes(
                 showgrid=False,
                 showline=False,
                 zeroline=False,
-                tickfont=dict(size=10),
-                title_font=dict(size=12),
+                tickfont=dict(size=12),
+                title_font=dict(size=14),
                 automargin=True,
             )
             fig_zone.update_yaxes(
                 showgrid=False,
                 showline=False,
                 zeroline=False,
-                tickfont=dict(size=11),
+                tickfont=dict(size=14, family="Arial Black", color="#1e293b"),
                 automargin=True,
                 categoryorder="array",
                 categoryarray=zone_df_sorted["zone_short"].tolist(),
