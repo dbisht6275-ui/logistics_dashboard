@@ -1107,27 +1107,27 @@ def show_overview():
         st.warning("No data found")
         return
 
-    # Entity is supplied by the booking query as COMPNAME/compname.
-    entity_col = next(
+    # Company is supplied by the booking query as COMPNAME/compname.
+    company_col = next(
         (col for col in df.columns if str(col).strip().casefold() == "compname"),
         None,
     )
-    if entity_col is None:
-        st.error("Entity filter cannot be displayed because the compname column is missing from the booking data.")
+    if company_col is None:
+        st.error("Company filter cannot be displayed because the compname column is missing from the booking data.")
         return
 
     # Standardise the column name so all filters and visuals use one stable field.
-    if entity_col != "compname":
-        df = df.rename(columns={entity_col: "compname"})
+    if company_col != "compname":
+        df = df.rename(columns={company_col: "compname"})
     df["compname"] = df["compname"].fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
 
     if prev_df is not None and not prev_df.empty:
-        prev_entity_col = next(
+        prev_company_col = next(
             (col for col in prev_df.columns if str(col).strip().casefold() == "compname"),
             None,
         )
-        if prev_entity_col is not None and prev_entity_col != "compname":
-            prev_df = prev_df.rename(columns={prev_entity_col: "compname"})
+        if prev_company_col is not None and prev_company_col != "compname":
+            prev_df = prev_df.rename(columns={prev_company_col: "compname"})
         if "compname" in prev_df.columns:
             prev_df["compname"] = (
                 prev_df["compname"].fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
@@ -1155,16 +1155,16 @@ def show_overview():
             locked_zone = circle_row["zone"].iloc[0]
 
     with filter_cols[2]:
-        _filter_label("▥", "Entity")
-        entity_options = sorted(df["compname"].dropna().unique().tolist())
-        entity = st.selectbox(
-            "Entity",
-            ["All"] + entity_options,
-            key="overview_entity",
+        _filter_label("▥", "Company")
+        company_options = sorted(df["compname"].dropna().unique().tolist())
+        company = st.selectbox(
+            "Company",
+            ["All"] + company_options,
+            key="overview_company",
             label_visibility="collapsed",
         )
-    if entity != "All":
-        df = df[df["compname"] == entity]
+    if company != "All":
+        df = df[df["compname"] == company]
 
     with filter_cols[3]:
         _filter_label("◉", "Zone")
@@ -1221,7 +1221,7 @@ def show_overview():
         return
 
     active_filter_items = [
-        ("FY", fy), ("View", view_type), ("Entity", entity), ("Zone", zone), ("Circle", circle),
+        ("FY", fy), ("View", view_type), ("Company", company), ("Zone", zone), ("Circle", circle),
         ("Branch", branch), ("Quarter", quarter), ("Month", month), ("Load", loadtype),
     ]
     active_filter_html = "".join(
@@ -1233,11 +1233,11 @@ def show_overview():
         st.markdown(f'<div class="filter-summary">{active_filter_html}</div>', unsafe_allow_html=True)
 
     # =========================
-    # Apply the same entity/zone/circle/branch/quarter/month/loadtype filters to the LY data
+    # Apply the same company/zone/circle/branch/quarter/month/loadtype filters to the LY data
     # =========================
     if not prev_df.empty:
-        if entity != "All" and "compname" in prev_df.columns:
-            prev_df = prev_df[prev_df["compname"] == entity]
+        if company != "All" and "compname" in prev_df.columns:
+            prev_df = prev_df[prev_df["compname"] == company]
         if zone != "All":
             prev_df = prev_df[prev_df["zone"] == zone]
         if circle != "All":
@@ -1777,65 +1777,90 @@ def show_overview():
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # =====================================================
-    # Revenue by Entity
+    # Revenue by Company - Donut Chart
     # =====================================================
-    entity_df = (
+    company_df = (
         df.groupby("compname", dropna=False)["REVENUE"]
         .sum()
         .reset_index()
+        .rename(columns={"compname": "Company"})
     )
-    entity_df["Revenue Cr"] = (entity_df["REVENUE"] / 10000000).round(2)
-    entity_total = entity_df["Revenue Cr"].sum()
-    entity_df["Contribution %"] = (
-        entity_df["Revenue Cr"] / entity_total * 100 if entity_total else 0
-    ).round(1)
-    entity_df = entity_df.sort_values("Revenue Cr", ascending=True).reset_index(drop=True)
+    company_df["Revenue Cr"] = company_df["REVENUE"] / 10000000
+    company_total = company_df["Revenue Cr"].sum()
+    company_df["Contribution %"] = (
+        company_df["Revenue Cr"] / company_total * 100 if company_total else 0
+    )
+    company_df = company_df.sort_values("Revenue Cr", ascending=False).reset_index(drop=True)
 
     with st.container(border=True):
-        st.markdown("###### Revenue by Entity")
+        st.markdown("###### Revenue by Company")
 
-        fig_entity = go.Figure(
-            go.Bar(
-                y=entity_df["compname"],
-                x=entity_df["Revenue Cr"],
-                orientation="h",
-                marker=dict(
-                    color="#2563eb",
-                    line=dict(color="#1d4ed8", width=1.2),
-                ),
-                customdata=entity_df[["Contribution %"]].to_numpy(),
-                texttemplate="₹%{x:.2f} Cr<br>(%{customdata[0]:.1f}%)",
-                textposition="outside",
-                textfont=dict(size=11, color="#0f172a", family="Arial Black"),
-                cliponaxis=False,
-                hovertemplate=(
-                    "<b>%{y}</b><br>Revenue: ₹%{x:.2f} Cr"
-                    "<br>Contribution: %{customdata[0]:.1f}%<extra></extra>"
-                ),
+        if company_df.empty or company_total <= 0:
+            st.info("No company revenue is available for the selected filters.")
+        else:
+            fig_company = go.Figure(
+                data=[
+                    go.Pie(
+                        labels=company_df["Company"],
+                        values=company_df["Revenue Cr"],
+                        hole=0.60,
+                        sort=False,
+                        direction="clockwise",
+                        customdata=company_df[["Contribution %"]].to_numpy(),
+                        texttemplate="<b>%{label}</b><br>%{percent:.1%}",
+                        textposition="outside",
+                        textfont=dict(size=11, family="Arial Black"),
+                        hovertemplate=(
+                            "<b>%{label}</b><br>"
+                            "Revenue: ₹%{value:.2f} Cr<br>"
+                            "Contribution: %{customdata[0]:.1f}%"
+                            "<extra></extra>"
+                        ),
+                        marker=dict(
+                            line=dict(color="#ffffff", width=2)
+                        ),
+                    )
+                ]
             )
-        )
 
-        entity_max = entity_df["Revenue Cr"].max() if not entity_df.empty else 1
-        entity_height = max(260, 48 * len(entity_df) + 70)
-        fig_entity.update_layout(
-            height=entity_height,
-            margin=dict(l=8, r=90, t=8, b=32),
-            xaxis_title="Revenue (Cr)",
-            xaxis_range=[0, max(entity_max * 1.22, 1)],
-            yaxis_title="",
-            showlegend=False,
-            bargap=0.18,
-            plot_bgcolor="#f8fafc",
-            paper_bgcolor="rgba(0,0,0,0)",
-        )
-        apply_3d_chart_layout(
-            fig_entity,
-            height=entity_height,
-            margin=dict(l=8, r=90, t=8, b=32),
-        )
-        fig_entity.update_xaxes(showgrid=False, showline=False, zeroline=False)
-        fig_entity.update_yaxes(showgrid=False, showline=False, zeroline=False, automargin=True)
-        st.plotly_chart(fig_entity, use_container_width=True)
+            fig_company.update_layout(
+                height=max(390, min(520, 390 + max(0, len(company_df) - 5) * 12)),
+                margin=dict(l=35, r=35, t=25, b=25),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="top",
+                    y=-0.08,
+                    xanchor="center",
+                    x=0.5,
+                    font=dict(size=10),
+                    itemclick="toggle",
+                    itemdoubleclick="toggleothers",
+                ),
+                annotations=[
+                    dict(
+                        text=f"<b>₹{company_total:.2f} Cr</b><br><span style='font-size:12px'>Total Revenue</span>",
+                        x=0.5,
+                        y=0.5,
+                        showarrow=False,
+                        align="center",
+                        font=dict(size=17, color="#0f172a", family="Arial Black"),
+                    )
+                ],
+                uniformtext_minsize=9,
+                uniformtext_mode="hide",
+            )
+
+            st.plotly_chart(
+                fig_company,
+                use_container_width=True,
+                config={
+                    "displayModeBar": False,
+                    "responsive": True,
+                },
+            )
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
