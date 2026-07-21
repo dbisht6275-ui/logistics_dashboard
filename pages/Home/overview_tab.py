@@ -1951,154 +1951,149 @@ def show_overview():
         matrix_df = matrix_df.sort_values("Total", ascending=False)
 
     # =====================================================
-    # Weight trend on a separate full-width row
+    # Weight Trend and Revenue by Zone in one aligned row
     # =====================================================
-    with st.container(border=True):
-        weight_title_col, weight_filter_col = st.columns([2, 2])
+    weight_zone_left, weight_zone_right = st.columns([1.55, 1], gap="small")
+    aligned_chart_height = 340
 
-        with weight_filter_col:
-            weight_trend_type = st.segmented_control(
-                "",
-                ["Daily", "Weekly", "Monthly", "Quarterly"],
-                default="Monthly",
-                label_visibility="collapsed",
-                key="weight_trend_type",
+    with weight_zone_left:
+        with st.container(border=True):
+            weight_title_col, weight_filter_col = st.columns([2, 2])
+
+            with weight_filter_col:
+                weight_trend_type = st.segmented_control(
+                    "Weight trend period",
+                    ["Daily", "Weekly", "Monthly", "Quarterly"],
+                    default="Monthly",
+                    label_visibility="collapsed",
+                    key="weight_trend_type",
+                )
+
+            DATE_COL = "grdt"
+            weight_yoy_df = build_weight_yoy_trend(
+                df,
+                prev_df,
+                weight_trend_type,
+                DATE_COL,
+                start_date,
+                prev_start,
+                month_map,
             )
 
-        DATE_COL = "grdt"
-        weight_yoy_df = build_weight_yoy_trend(
-            df,
-            prev_df,
-            weight_trend_type,
-            DATE_COL,
-            start_date,
-            prev_start,
-            month_map,
-        )
+            weight_growth_total = pct_growth(
+                weight_yoy_df["Weight MT"].sum(),
+                weight_yoy_df["Prev Weight MT"].sum(),
+            )
+            _w_badge_color = "#166534" if weight_growth_total >= 0 else "#dc2626"
 
-        weight_growth_total = pct_growth(
-            weight_yoy_df["Weight MT"].sum(),
-            weight_yoy_df["Prev Weight MT"].sum(),
-        )
-        _w_badge_color = "#166534" if weight_growth_total >= 0 else "#dc2626"
+            with weight_title_col:
+                st.markdown(
+                    f"###### Weight (MT) Trend "
+                    f"<span style='font-size:11px;font-weight:700;color:{_w_badge_color};'>"
+                    f"({growth_label(weight_growth_total)} vs LY)</span>",
+                    unsafe_allow_html=True,
+                )
 
-        with weight_title_col:
-            st.markdown(
-                f"###### Weight(MT) Trend "
-                f"<span style='font-size:11px;font-weight:700;color:{_w_badge_color};'>"
-                f"({growth_label(weight_growth_total)} vs LY)</span>",
-                unsafe_allow_html=True,
+            fig_weight = go.Figure()
+
+            fig_weight.add_trace(
+                go.Bar(
+                    x=weight_yoy_df["Period"],
+                    y=weight_yoy_df["Prev Weight MT"],
+                    name=f"LY ({prev_fy})",
+                    marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.3)),
+                    text=weight_yoy_df["Prev Weight MT"],
+                    texttemplate="%{text:.0f}",
+                    textposition="outside",
+                    textfont=dict(size=9, color="#64748b"),
+                )
             )
 
-        fig_weight = go.Figure()
-
-        fig_weight.add_trace(
-            go.Bar(
-                x=weight_yoy_df["Period"],
-                y=weight_yoy_df["Prev Weight MT"],
-                name=f"LY ({prev_fy})",
-                marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.3)),
-                text=weight_yoy_df["Prev Weight MT"],
-                texttemplate="%{text:.0f}",
-                textposition="outside",
-                textfont=dict(size=9, color="#64748b"),
+            fig_weight.add_trace(
+                go.Bar(
+                    x=weight_yoy_df["Period"],
+                    y=weight_yoy_df["Weight MT"],
+                    name=f"Current ({fy})",
+                    marker=dict(color="#0f766e", line=dict(color="#134e4a", width=1.3)),
+                    text=weight_yoy_df["Weight MT"],
+                    texttemplate="%{text:.0f}",
+                    textposition="outside",
+                    textfont=dict(size=9, color="#0f766e"),
+                )
             )
-        )
 
-        fig_weight.add_trace(
-            go.Bar(
-                x=weight_yoy_df["Period"],
-                y=weight_yoy_df["Weight MT"],
-                name=f"Current ({fy})",
-                marker=dict(color="#0f766e", line=dict(color="#134e4a", width=1.3)),
-                text=weight_yoy_df["Weight MT"],
-                texttemplate="%{text:.0f}",
-                textposition="outside",
-                textfont=dict(size=9, color="#0f766e"),
+            weight_max = pd.concat([
+                weight_yoy_df["Weight MT"],
+                weight_yoy_df["Prev Weight MT"],
+            ]).max()
+            weight_max = weight_max if pd.notna(weight_max) and weight_max > 0 else 1
+
+            show_weight_annotations = len(weight_yoy_df) <= 40
+            if show_weight_annotations:
+                for _, r in weight_yoy_df.iterrows():
+                    if r["Growth Label"] and r["Growth Label"] != "N/A":
+                        label_color = "#166534" if (r["Growth %"] or 0) >= 0 else "#dc2626"
+                        bar_top = max(
+                            r["Weight MT"] if pd.notna(r["Weight MT"]) else 0,
+                            r["Prev Weight MT"] if pd.notna(r["Prev Weight MT"]) else 0,
+                        )
+                        growth_gap = 0.24 if weight_trend_type == "Monthly" else 0.16
+                        fig_weight.add_annotation(
+                            x=r["Period"],
+                            y=bar_top + (weight_max * growth_gap),
+                            text=r["Growth Label"],
+                            showarrow=False,
+                            font=dict(size=10, color=label_color, family="Arial Black"),
+                        )
+
+            fig_weight.update_layout(
+                barmode="group",
+                height=aligned_chart_height,
+                margin=dict(l=8, r=8, t=40, b=8),
+                plot_bgcolor="#f8fafc",
+                paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.03,
+                    x=0,
+                    font=dict(size=9),
+                ),
+                yaxis_title="Weight (MT)",
+                yaxis_range=[0, weight_max * (1.48 if weight_trend_type == "Monthly" else 1.35)],
+                bargap=0.22,
+                bargroupgap=0.08,
             )
-        )
+            apply_3d_chart_layout(
+                fig_weight,
+                height=aligned_chart_height,
+                margin=dict(l=8, r=8, t=40, b=8),
+            )
+            fig_weight.update_xaxes(showgrid=False, showline=False, zeroline=False)
+            fig_weight.update_yaxes(showgrid=False, showline=False, zeroline=False)
 
-        weight_max = pd.concat([
-            weight_yoy_df["Weight MT"],
-            weight_yoy_df["Prev Weight MT"],
-        ]).max()
-        weight_max = weight_max if pd.notna(weight_max) and weight_max > 0 else 1
+            st.plotly_chart(
+                fig_weight,
+                use_container_width=True,
+                config={"displayModeBar": False, "responsive": True},
+            )
 
-        show_weight_annotations = len(weight_yoy_df) <= 40
-        if show_weight_annotations:
-            for _, r in weight_yoy_df.iterrows():
-                if r["Growth Label"] and r["Growth Label"] != "N/A":
-                    label_color = "#166534" if (r["Growth %"] or 0) >= 0 else "#dc2626"
-                    bar_top = max(
-                        r["Weight MT"] if pd.notna(r["Weight MT"]) else 0,
-                        r["Prev Weight MT"] if pd.notna(r["Prev Weight MT"]) else 0,
-                    )
-                    # Add more space in Monthly view between the bar values and growth %.
-                    growth_gap = 0.24 if weight_trend_type == "Monthly" else 0.16
-                    fig_weight.add_annotation(
-                        x=r["Period"],
-                        y=bar_top + (weight_max * growth_gap),
-                        text=r["Growth Label"],
-                        showarrow=False,
-                        font=dict(size=10, color=label_color, family="Arial Black"),
-                    )
-
-        fig_weight.update_layout(
-            barmode="group",
-            height=250,
-            margin=dict(l=2, r=2, t=30, b=2),
-            plot_bgcolor="#f8fafc",
-            paper_bgcolor="rgba(0,0,0,0)",
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.05,
-                x=0,
-                font=dict(size=9),
-            ),
-            yaxis_title="Weight (MT)",
-            yaxis_range=[0, weight_max * (1.48 if weight_trend_type == "Monthly" else 1.35)],
-            bargap=0.22,
-            bargroupgap=0.08,
-        )
-        apply_3d_chart_layout(fig_weight, height=250, margin=dict(l=8, r=8, t=34, b=8))
-        fig_weight.update_xaxes(showgrid=False, showline=False, zeroline=False)
-        fig_weight.update_yaxes(showgrid=False, showline=False, zeroline=False)
-
-        st.plotly_chart(fig_weight, use_container_width=True)
-
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-    # =====================================================
-    # Zone and Country analysis on the next row
-    # =====================================================
-    if view_type == "Origin":
-        zone_col1, zone_col2 = st.columns([1, 1], gap="small")
-    else:
-        zone_col1 = st.container()
-        zone_col2 = None
-
-    with zone_col1:
+    with weight_zone_right:
         with st.container(border=True):
             st.markdown("###### Revenue by Zone")
 
-            # Calculate percentage for each zone
             total_zone_revenue = zone_df["Revenue Cr"].sum()
-            zone_df["Percentage"] = (zone_df["Revenue Cr"] / total_zone_revenue * 100).round(1)
-            # Keep revenue and contribution percentage as separate values.
-            # Plotly renders the revenue as the main bar label and the percentage below it.
-            zone_df["Revenue Label"] = zone_df["Revenue Cr"].map(lambda value: f"₹{value:.2f} Cr")
-            zone_df["Percentage Label"] = zone_df["Percentage"].map(lambda value: f"{value:.1f}%")
-            zone_df["Text"] = zone_df.apply(
-                lambda row: f"{row['Revenue Label']}<br><span style='font-size:10px'>({row['Percentage Label']})</span>",
-                axis=1,
+            zone_df["Percentage"] = (
+                zone_df["Revenue Cr"] / total_zone_revenue * 100
+                if total_zone_revenue > 0
+                else 0
+            ).round(1)
+
+            zone_df_sorted = (
+                zone_df.sort_values("Revenue Cr", ascending=True)
+                .reset_index(drop=True)
             )
 
-            # Sort for display
-            zone_df_sorted = zone_df.sort_values("Revenue Cr", ascending=True).reset_index(drop=True)
-
-            # Use a direct go.Bar trace so every label is generated from the
-            # same row as its bar. This avoids Plotly/Pandas text alignment issues.
             fig_zone = go.Figure(
                 go.Bar(
                     y=zone_df_sorted["zone_short"].tolist(),
@@ -2112,13 +2107,13 @@ def show_overview():
                         opacity=[
                             1.0 if value == zone_df_sorted["Revenue Cr"].max() else 0.76
                             for value in zone_df_sorted["Revenue Cr"].tolist()
-                        ],
+                        ] if not zone_df_sorted.empty else [],
                         line=dict(color="#ffffff", width=1.2),
                     ),
                     customdata=zone_df_sorted[["Percentage"]].to_numpy(),
                     texttemplate="₹%{x:.2f} Cr<br>(%{customdata[0]:.1f}%)",
                     textposition="outside",
-                    textfont=dict(size=12, color="#334155", family="Arial Black"),
+                    textfont=dict(size=11, color="#334155", family="Arial Black"),
                     cliponaxis=False,
                     hovertemplate=(
                         "<b>%{y}</b><br>Revenue: ₹%{x:.2f} Cr"
@@ -2128,38 +2123,50 @@ def show_overview():
             )
 
             zone_max = zone_df_sorted["Revenue Cr"].max() if not zone_df_sorted.empty else 1
-            # Use the complete card area: thicker bars, tighter margins and
-            # less unused x-axis headroom while preserving outside labels.
-            zone_chart_height = max(300, 52 * len(zone_df_sorted) + 54)
             fig_zone.update_layout(
-                height=zone_chart_height,
-                margin=dict(l=4, r=72, t=2, b=34),
-                xaxis_range=[0, zone_max * 1.16],
+                height=aligned_chart_height,
+                margin=dict(l=6, r=74, t=40, b=8),
+                xaxis_range=[0, zone_max * 1.20],
                 xaxis_title="Revenue (Cr)",
                 yaxis_title="",
                 showlegend=False,
-                plot_bgcolor="white",
+                plot_bgcolor="#f8fafc",
                 paper_bgcolor="rgba(0,0,0,0)",
-                bargap=0.06,
+                bargap=0.12,
             )
             apply_3d_chart_layout(
                 fig_zone,
-                height=zone_chart_height,
-                margin=dict(l=4, r=72, t=2, b=34),
+                height=aligned_chart_height,
+                margin=dict(l=6, r=74, t=40, b=8),
             )
             fig_zone.update_xaxes(
-                showgrid=False, showline=False, zeroline=False,
-                tickfont=dict(size=11), title_font=dict(size=13),
+                showgrid=False,
+                showline=False,
+                zeroline=False,
+                tickfont=dict(size=10),
+                title_font=dict(size=12),
                 automargin=True,
             )
             fig_zone.update_yaxes(
-                showgrid=False, showline=False, zeroline=False,
-                tickfont=dict(size=12), automargin=True,
+                showgrid=False,
+                showline=False,
+                zeroline=False,
+                tickfont=dict(size=11),
+                automargin=True,
                 categoryorder="array",
                 categoryarray=zone_df_sorted["zone_short"].tolist(),
             )
 
-            st.plotly_chart(fig_zone, use_container_width=True)
+            st.plotly_chart(
+                fig_zone,
+                use_container_width=True,
+                config={"displayModeBar": False, "responsive": True},
+            )
+
+    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+
+    # Keep Zone vs Country analysis below the aligned row in Origin view.
+    zone_col2 = st.container() if view_type == "Origin" else None
 
     if view_type == "Origin" and zone_col2 is not None:
         with zone_col2:
