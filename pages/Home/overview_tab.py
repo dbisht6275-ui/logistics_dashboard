@@ -1040,15 +1040,26 @@ def show_overview():
 
     _inject_overview_css()
 
-    st.markdown(
-        """
-        <div class="executive-header">
-            <div class="executive-title">Revenue Overview</div>
-            <div class="executive-subtitle">Executive view of revenue, shipments, load mix, geography and branch performance</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    # Header with CSV export action on the top-right.
+    header_left, header_right = st.columns([5.2, 1], gap="small")
+
+    with header_left:
+        st.markdown(
+            """
+            <div class="executive-header">
+                <div class="executive-title">Revenue Overview</div>
+                <div class="executive-subtitle">Executive view of revenue, shipments, load mix, geography and branch performance</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # The filtered dataframe is prepared later. This placeholder keeps the
+    # download button aligned with the header while allowing us to populate it
+    # after all dashboard filters have been applied.
+    with header_right:
+        st.markdown("<div style='height:7px'></div>", unsafe_allow_html=True)
+        export_placeholder = st.empty()
 
     # Attractive single-row filter strip
     filter_cols = st.columns(9, gap="small")
@@ -1219,6 +1230,21 @@ def show_overview():
     if df.empty:
         st.warning("No data found for selected filters")
         return
+
+    # Export exactly the rows currently visible under the selected filters.
+    export_df = df.copy()
+    export_csv = export_df.to_csv(index=False).encode("utf-8-sig")
+    safe_view = str(view_type).strip().lower().replace(" ", "_")
+    safe_fy = str(fy).strip().replace("/", "-").replace(" ", "_")
+    export_placeholder.download_button(
+        label="⬇ Export CSV",
+        data=export_csv,
+        file_name=f"revenue_overview_{safe_view}_{safe_fy}.csv",
+        mime="text/csv",
+        key="overview_export_csv",
+        help="Download the revenue overview data after applying the selected filters.",
+        width="stretch",
+    )
 
     active_filter_items = [
         ("FY", fy), ("View", view_type), ("Company", company), ("Zone", zone), ("Circle", circle),
