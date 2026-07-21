@@ -1268,7 +1268,7 @@ def show_overview():
     safe_view = str(view_type).strip().lower().replace(" ", "_")
     safe_fy = str(fy).strip().replace("/", "-").replace(" ", "_")
     export_placeholder.download_button(
-        label="⬇ CSV",
+        label="⬇ Export CSV",
         data=export_csv,
         file_name=f"revenue_overview_{safe_view}_{safe_fy}.csv",
         mime="text/csv",
@@ -1888,10 +1888,10 @@ def show_overview():
                         go.Pie(
                             labels=company_labels,
                             values=company_values,
-                            hole=0.72,
+                            hole=0.64,
                             sort=False,
                             direction="clockwise",
-                            domain=dict(x=[0.18, 0.82], y=[0.10, 0.90]),
+                            domain=dict(x=[0.06, 0.94], y=[0.18, 0.98]),
                             customdata=company_chart_df[["Contribution %"]].to_numpy(),
                             texttemplate="%{percent:.0%}",
                             textposition="inside",
@@ -1911,15 +1911,15 @@ def show_overview():
                 )
 
                 fig_company.update_layout(
-                    height=205,
-                    margin=dict(l=8, r=8, t=4, b=28),
+                    height=255,
+                    margin=dict(l=2, r=2, t=2, b=42),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     showlegend=True,
                     legend=dict(
                         orientation="h",
                         yanchor="top",
-                        y=-0.01,
+                        y=-0.03,
                         xanchor="center",
                         x=0.5,
                         font=dict(size=8),
@@ -1933,10 +1933,10 @@ def show_overview():
                                 "<br><span style='font-size:10px'>Total</span>"
                             ),
                             x=0.5,
-                            y=0.50,
+                            y=0.58,
                             showarrow=False,
                             align="center",
-                            font=dict(size=13, color="#0f172a", family="Arial Black"),
+                            font=dict(size=15, color="#0f172a", family="Arial Black"),
                         )
                     ],
                     uniformtext_minsize=8,
