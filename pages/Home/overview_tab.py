@@ -2230,6 +2230,10 @@ def show_overview():
                         )
                     table_rows.append(f"<tr>{''.join(cells)}</tr>")
 
+                # Keep the Zone vs Country table aligned with the zone chart card.
+                # This variable must be defined before it is used inside the f-string.
+                zone_chart_height = 430
+
                 matrix_html = f"""
                 <style>
                     .zone-country-wrap {{
