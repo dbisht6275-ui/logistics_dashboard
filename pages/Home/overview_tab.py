@@ -1823,61 +1823,70 @@ def show_overview():
                 fig_company = go.Figure(
                     data=[
                         go.Pie(
-                            labels=company_labels,
-                            values=company_values,
-                            hole=0.72,                     # Larger hole = smaller donut
+                            labels=company_chart_df["Company"],
+                            values=company_chart_df["Revenue Cr"],
+                            hole=0.72,
                             sort=False,
                             direction="clockwise",
-                            textinfo="percent",
+                            domain=dict(x=[0.20, 0.80], y=[0.20, 0.86]),
+                            customdata=company_chart_df[["Contribution %"]].to_numpy(),
+                            texttemplate="%{percent:.0%}",
                             textposition="inside",
-                            textfont=dict(
-                                size=11,
-                                color="white"
+                            textfont=dict(size=9, color="white", family="Arial Black"),
+                            hovertemplate=(
+                                "<b>%{label}</b><br>"
+                                "Revenue: ₹%{value:.2f} Cr<br>"
+                                "Contribution: %{customdata[0]:.1f}%"
+                                "<extra></extra>"
                             ),
                             marker=dict(
-                                line=dict(color="white", width=2)
+                                colors=company_colors[:len(company_chart_df)],
+                                line=dict(color="#ffffff", width=2),
                             ),
-                            domain=dict(
-                                x=[0.18, 0.82],            # Shrink horizontally
-                                y=[0.16, 0.86]             # Shrink vertically
-                            ),
-                            hovertemplate="<b>%{label}</b><br>Revenue : ₹%{value:.2f} Cr<br>%{percent}<extra></extra>"
                         )
                     ]
                 )
+
                 fig_company.update_layout(
-                    height=260,
-                    margin=dict(
-                        l=15,
-                        r=15,
-                        t=45,
-                        b=15
-                    ),
+                    height=245,
+                    margin=dict(l=12, r=12, t=8, b=38),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
                     showlegend=True,
                     legend=dict(
                         orientation="h",
-                        y=-0.12,
-                        x=0.5,
+                        yanchor="top",
+                        y=-0.03,
                         xanchor="center",
-                        font=dict(size=10)
+                        x=0.5,
+                        font=dict(size=8),
+                        itemclick="toggle",
+                        itemdoubleclick="toggleothers",
                     ),
                     annotations=[
                         dict(
-                            text=f"<b>₹{total_revenue:.2f} Cr</b><br><b>Total</b>",
+                            text=(
+                                f"<b>₹{company_total:.2f} Cr</b>"
+                                "<br><span style='font-size:10px'>Total</span>"
+                            ),
                             x=0.5,
-                            y=0.50,
+                            y=0.53,
                             showarrow=False,
-                            font=dict(
-                                size=12,
-                                color="#001b44"
-                            )
+                            align="center",
+                            font=dict(size=13, color="#0f172a", family="Arial Black"),
                         )
-                    ]
+                    ],
+                    uniformtext_minsize=8,
+                    uniformtext_mode="hide",
                 )
+
                 st.plotly_chart(
                     fig_company,
                     use_container_width=True,
-                    config={"displayModeBar": False},
+                    config={
+                        "displayModeBar": False,
+                        "responsive": True,
+                    },
                 )
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
