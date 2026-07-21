@@ -1756,8 +1756,8 @@ def show_overview():
                         font=dict(size=16, color="#0f172a", family="Arial Black")
                     )
                 ],
-                height=250,
-                margin=dict(l=2, r=2, t=6, b=2),
+                height=220,
+                margin=dict(l=2, r=2, t=2, b=2),
                 paper_bgcolor="rgba(0,0,0,0)",
                 showlegend=False,
             )
@@ -1774,96 +1774,122 @@ def show_overview():
                 unsafe_allow_html=True,
             )
 
-    # =====================================================
-    # Revenue by Company - Donut Chart
-    # =====================================================
-    company_df = (
-        df.groupby("compname", dropna=False)["REVENUE"]
-        .sum()
-        .reset_index()
-        .rename(columns={"compname": "Company"})
-    )
-    company_df["Revenue Cr"] = company_df["REVENUE"] / 10000000
-    company_total = company_df["Revenue Cr"].sum()
-    company_df["Contribution %"] = (
-        company_df["Revenue Cr"] / company_total * 100 if company_total else 0
-    )
-    company_df = company_df.sort_values("Revenue Cr", ascending=False).reset_index(drop=True)
+        # Revenue by Company is intentionally placed below Load Type
+        # inside the same right-side column as the Revenue Trend chart.
+        company_df = (
+            df.groupby("compname", dropna=False)["REVENUE"]
+            .sum()
+            .reset_index()
+            .rename(columns={"compname": "Company"})
+        )
+        company_df["Company"] = company_df["Company"].fillna("Unknown").astype(str)
+        company_df["Revenue Cr"] = company_df["REVENUE"] / 10000000
+        company_total = company_df["Revenue Cr"].sum()
+        company_df["Contribution %"] = (
+            company_df["Revenue Cr"] / company_total * 100 if company_total else 0
+        )
+        company_df = company_df.sort_values("Revenue Cr", ascending=False).reset_index(drop=True)
 
-    with st.container(border=True):
-        st.markdown("###### Revenue by Company")
-
-        if company_df.empty or company_total <= 0:
-            st.info("No company revenue is available for the selected filters.")
+        # Keep the compact donut readable: show the five largest companies and
+        # combine the remaining companies under Others.
+        if len(company_df) > 6:
+            top_company_df = company_df.head(5).copy()
+            others_revenue = company_df.iloc[5:]["Revenue Cr"].sum()
+            others_row = pd.DataFrame(
+                {
+                    "Company": ["Others"],
+                    "REVENUE": [others_revenue * 10000000],
+                    "Revenue Cr": [others_revenue],
+                    "Contribution %": [
+                        (others_revenue / company_total * 100) if company_total else 0
+                    ],
+                }
+            )
+            company_chart_df = pd.concat([top_company_df, others_row], ignore_index=True)
         else:
-            fig_company = go.Figure(
-                data=[
-                    go.Pie(
-                        labels=company_df["Company"],
-                        values=company_df["Revenue Cr"],
-                        hole=0.60,
-                        sort=False,
-                        direction="clockwise",
-                        customdata=company_df[["Contribution %"]].to_numpy(),
-                        texttemplate="%{percent:.0%}",
-                        textposition="inside",
-                        textfont=dict(size=11, family="Arial Black"),
-                        hovertemplate=(
-                            "<b>%{label}</b><br>"
-                            "Revenue: ₹%{value:.2f} Cr<br>"
-                            "Contribution: %{customdata[0]:.1f}%"
-                            "<extra></extra>"
-                        ),
-                        marker=dict(
-                            line=dict(color="#ffffff", width=2)
-                        ),
-                    )
+            company_chart_df = company_df.copy()
+
+        with st.container(border=True):
+            st.markdown("###### Revenue by Company")
+
+            if company_chart_df.empty or company_total <= 0:
+                st.info("No company revenue is available for the selected filters.")
+            else:
+                company_colors = [
+                    "#2563eb", "#16a34a", "#f59e0b",
+                    "#7c3aed", "#f97316", "#94a3b8",
                 ]
-            )
 
-            fig_company.update_layout(
-                height=250,
-                margin=dict(l=2, r=105, t=5, b=2),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                showlegend=True,
-                legend=dict(
-                    orientation="v",
-                    yanchor="middle",
-                    y=0.5,
-                    xanchor="left",
-                    x=1.02,
-                    font=dict(size=10),
-                    itemclick="toggle",
-                    itemdoubleclick="toggleothers",
-                ),
-                annotations=[
-                    dict(
-                        text=f"<b>₹{company_total:.2f} Cr</b><br><span style='font-size:12px'>Total Revenue</span>",
+                fig_company = go.Figure(
+                    data=[
+                        go.Pie(
+                            labels=company_chart_df["Company"],
+                            values=company_chart_df["Revenue Cr"],
+                            hole=0.62,
+                            sort=False,
+                            direction="clockwise",
+                            customdata=company_chart_df[["Contribution %"]].to_numpy(),
+                            texttemplate="%{percent:.0%}",
+                            textposition="inside",
+                            textfont=dict(size=9, color="white", family="Arial Black"),
+                            hovertemplate=(
+                                "<b>%{label}</b><br>"
+                                "Revenue: ₹%{value:.2f} Cr<br>"
+                                "Contribution: %{customdata[0]:.1f}%"
+                                "<extra></extra>"
+                            ),
+                            marker=dict(
+                                colors=company_colors[:len(company_chart_df)],
+                                line=dict(color="#ffffff", width=2),
+                            ),
+                        )
+                    ]
+                )
+
+                fig_company.update_layout(
+                    height=255,
+                    margin=dict(l=2, r=2, t=2, b=44),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    showlegend=True,
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top",
+                        y=-0.03,
+                        xanchor="center",
                         x=0.5,
-                        y=0.5,
-                        showarrow=False,
-                        align="center",
-                        font=dict(size=14, color="#0f172a", family="Arial Black"),
-                    )
-                ],
-                uniformtext_minsize=9,
-                uniformtext_mode="hide",
-            )
+                        font=dict(size=8),
+                        itemclick="toggle",
+                        itemdoubleclick="toggleothers",
+                    ),
+                    annotations=[
+                        dict(
+                            text=(
+                                f"<b>₹{company_total:.2f} Cr</b>"
+                                "<br><span style='font-size:10px'>Total</span>"
+                            ),
+                            x=0.5,
+                            y=0.5,
+                            showarrow=False,
+                            align="center",
+                            font=dict(size=13, color="#0f172a", family="Arial Black"),
+                        )
+                    ],
+                    uniformtext_minsize=8,
+                    uniformtext_mode="hide",
+                )
 
-            st.plotly_chart(
-                fig_company,
-                use_container_width=True,
-                config={
-                    "displayModeBar": False,
-                    "responsive": True,
-                },
-            )
+                st.plotly_chart(
+                    fig_company,
+                    use_container_width=True,
+                    config={
+                        "displayModeBar": False,
+                        "responsive": True,
+                    },
+                )
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
     # =========================
     # Weight trend data is prepared inside the chart based on selected granularity
