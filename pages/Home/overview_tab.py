@@ -589,6 +589,137 @@ def _inject_overview_css():
                 box-shadow: 0 4px 0 #1e40af, 0 8px 12px rgba(37,99,235,.24) !important;
             }
 
+
+            /* ============================================================
+               Responsive filter strip
+               Use Streamlit's native widget labels so the label always owns
+               its vertical space and cannot overlap the select control.
+               ============================================================ */
+            div[data-testid="stSelectbox"] {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 7px !important;
+                padding: 0 !important;
+                margin: 0 0 8px 0 !important;
+                border: 0 !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                transform: none !important;
+                overflow: visible !important;
+            }
+
+            div[data-testid="stSelectbox"] > label,
+            div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
+                display: block !important;
+                position: static !important;
+                min-height: 22px !important;
+                margin: 0 0 2px 2px !important;
+                padding: 0 !important;
+                line-height: 22px !important;
+                color: #243b53 !important;
+                font-size: 10px !important;
+                font-weight: 850 !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                z-index: auto !important;
+            }
+
+            div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] p,
+            div[data-testid="stSelectbox"] > label p {
+                margin: 0 !important;
+                padding: 0 !important;
+                line-height: 22px !important;
+                font-size: inherit !important;
+                font-weight: inherit !important;
+                color: inherit !important;
+            }
+
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] {
+                width: 100% !important;
+                margin: 0 !important;
+            }
+
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+                min-height: 40px !important;
+                height: 40px !important;
+                padding: 0 8px !important;
+                border: 1px solid #cbd9ea !important;
+                border-radius: 10px !important;
+                background: linear-gradient(180deg, #ffffff 0%, #f5f8fc 100%) !important;
+                box-shadow: inset 0 1px 2px rgba(15,23,42,.06) !important;
+            }
+
+            /* Keep columns usable on common laptop widths. */
+            div[data-testid="stHorizontalBlock"] {
+                align-items: flex-start !important;
+            }
+
+            div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+                min-width: 0 !important;
+            }
+
+            @media (min-width: 1800px) {
+                .block-container {
+                    padding-left: 0.85rem !important;
+                    padding-right: 0.85rem !important;
+                }
+                div[data-testid="stSelectbox"] > label,
+                div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
+                    font-size: 11px !important;
+                }
+                div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+                    min-height: 42px !important;
+                    height: 42px !important;
+                }
+            }
+
+            @media (max-width: 1500px) {
+                .block-container {
+                    padding-left: 0.45rem !important;
+                    padding-right: 0.45rem !important;
+                }
+                div[data-testid="stHorizontalBlock"] {
+                    gap: 0.35rem !important;
+                }
+                div[data-testid="stSelectbox"] {
+                    gap: 6px !important;
+                    margin-bottom: 7px !important;
+                }
+                div[data-testid="stSelectbox"] > label,
+                div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
+                    min-height: 21px !important;
+                    line-height: 21px !important;
+                    font-size: 9px !important;
+                    letter-spacing: 0 !important;
+                }
+                div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+                    min-height: 38px !important;
+                    height: 38px !important;
+                    padding-left: 6px !important;
+                    padding-right: 5px !important;
+                }
+                div[data-baseweb="select"] span {
+                    font-size: 10px !important;
+                }
+            }
+
+            @media (max-width: 1180px) {
+                div[data-testid="stSelectbox"] > label,
+                div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
+                    font-size: 8.5px !important;
+                }
+                div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+                    min-height: 36px !important;
+                    height: 36px !important;
+                    padding-left: 5px !important;
+                    padding-right: 4px !important;
+                }
+                div[data-baseweb="select"] span {
+                    font-size: 9px !important;
+                }
+            }
+
             div[data-testid="stDownloadButton"] > button:active {
                 transform: translateY(1px) !important;
                 box-shadow: 0 1px 0 #1e40af, 0 3px 6px rgba(37,99,235,.18) !important;
@@ -1135,31 +1266,23 @@ def show_overview():
         with header_right:
             export_placeholder = st.empty()
 
-    # Attractive single-row filter strip
+    # Responsive single-row filter strip. Native labels reserve their own
+    # vertical space, preventing label/select overlap on laptop screens.
+    compact_spacer(4)
     filter_cols = st.columns(9, gap="small")
 
-    def _filter_label(icon, text):
-        st.markdown(
-            f"<div class='filter-field-label'><span>{icon}</span><span>{text}</span></div>",
-            unsafe_allow_html=True,
-        )
-
     with filter_cols[0]:
-        _filter_label("⇄", "View Type")
         view_type = st.selectbox(
-            "View Type",
+            "⇄ View Type",
             ["Origin", "Destination"],
             key="overview_view_type",
-            label_visibility="collapsed",
         )
 
     with filter_cols[1]:
-        _filter_label("◷", "Financial Year")
         fy = st.selectbox(
-            "Financial Year",
+            "◷ Financial Year",
             ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"],
             key="overview_fy",
-            label_visibility="collapsed",
         )
 
     if fy == "Select FY":
@@ -1240,66 +1363,61 @@ def show_overview():
             locked_zone = circle_row["zone"].iloc[0]
 
     with filter_cols[2]:
-        _filter_label("▥", "Company")
         company_options = sorted(df["compname"].dropna().unique().tolist())
         company = st.selectbox(
-            "Company",
+            "▥ Company",
             ["All"] + company_options,
             key="overview_company",
-            label_visibility="collapsed",
         )
     if company != "All":
         df = df[df["compname"] == company]
 
     with filter_cols[3]:
-        _filter_label("◉", "Zone")
         if locked_zone:
             zone = locked_zone
-            st.selectbox("Zone", [zone], disabled=True, key="overview_zone_locked", label_visibility="collapsed")
+            st.selectbox("◉ Zone", [zone], disabled=True, key="overview_zone_locked")
         else:
-            zone = st.selectbox("Zone", ["All"] + sorted(df["zone"].dropna().unique().tolist()), key="overview_zone", label_visibility="collapsed")
+            zone = st.selectbox("◉ Zone", ["All"] + sorted(df["zone"].dropna().unique().tolist()), key="overview_zone")
     if zone != "All":
         df = df[df["zone"] == zone]
 
     with filter_cols[4]:
-        _filter_label("◎", "Circle")
         if locked_circle:
             circle = locked_circle
-            st.selectbox("Circle", [circle], disabled=True, key="overview_circle_locked", label_visibility="collapsed")
+            st.selectbox("◎ Circle", [circle], disabled=True, key="overview_circle_locked")
         else:
-            circle = st.selectbox("Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()), key="overview_circle", label_visibility="collapsed")
+            circle = st.selectbox("◎ Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()), key="overview_circle")
     if circle != "All":
         df = df[df["circle"] == circle]
 
     with filter_cols[5]:
-        _filter_label("⌂", "Branch")
         if locked_branch:
             branch = locked_branch
-            st.selectbox("Branch", [branch], disabled=True, key="overview_branch_locked", label_visibility="collapsed")
+            st.selectbox("⌂ Branch", [branch], disabled=True, key="overview_branch_locked")
         else:
-            branch = st.selectbox("Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()), key="overview_branch", label_visibility="collapsed")
+            branch = st.selectbox("⌂ Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()), key="overview_branch")
     if branch != "All":
         df = df[df["branch"] == branch]
 
     with filter_cols[6]:
-        _filter_label("▦", "Quarter")
         available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().unique().tolist()]
-        quarter = st.selectbox("Quarter", ["All"] + available_quarters, key="overview_quarter", label_visibility="collapsed")
+        quarter = st.selectbox("▦ Quarter", ["All"] + available_quarters, key="overview_quarter")
     if quarter != "All":
         df = df[df["Quarter"] == quarter]
 
     with filter_cols[7]:
-        _filter_label("▣", "Month")
         available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().unique().tolist()]
-        month = st.selectbox("Month", ["All"] + available_months, key="overview_month", label_visibility="collapsed")
+        month = st.selectbox("▣ Month", ["All"] + available_months, key="overview_month")
     if month != "All":
         df = df[df["Month"] == month]
 
     with filter_cols[8]:
-        _filter_label("▤", "Load Type")
-        loadtype = st.selectbox("Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()), key="overview_loadtype", label_visibility="collapsed")
+        loadtype = st.selectbox("▤ Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()), key="overview_loadtype")
     if loadtype != "All":
         df = df[df["LOADTYPE"] == loadtype]
+
+    # Separate filters from the summary chips/KPIs on every screen size.
+    compact_spacer(6)
 
     if df.empty:
         st.warning("No data found for selected filters")
