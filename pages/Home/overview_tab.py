@@ -3162,29 +3162,87 @@ def show_overview():
     compact_spacer()
 
     with st.container(border=True):
+        # Gradient management insight panel with larger, more readable typography.
         st.markdown(
-            "<div style='font-size:13px;font-weight:900;color:#102a43;margin-bottom:8px;'>MANAGEMENT INSIGHTS</div>",
+            """
+            <div style="font-size:16px;font-weight:950;color:#0f2744;margin:1px 0 10px 2px;
+                        letter-spacing:.25px;">MANAGEMENT INSIGHTS</div>
+            """,
             unsafe_allow_html=True,
         )
         insight_icons = ["📈", "🚛", "🎯", "🌐", "⚠️"]
         insight_titles = ["Revenue movement", "Load mix", "Revenue concentration", "Zone watch", "Branch watch"]
-        insight_cols = st.columns(5)
+        insight_gradients = [
+            ("#eaf3ff", "#dbeafe", "#2563eb"),
+            ("#ecfeff", "#ccfbf1", "#0f766e"),
+            ("#fff7ed", "#ffedd5", "#ea580c"),
+            ("#f5f3ff", "#ede9fe", "#7c3aed"),
+            ("#fff1f2", "#ffe4e6", "#dc2626"),
+        ]
+        insight_cols = st.columns(5, gap="small")
         for idx, (message, icon, title) in enumerate(zip(key_insight_messages, insight_icons, insight_titles)):
+            start_color, end_color, accent_color = insight_gradients[idx]
             with insight_cols[idx]:
                 st.markdown(
                     f"""
-                    <div style="min-height:92px;padding:8px;border:1px solid #dfe8f2;border-radius:11px;
-                                background:linear-gradient(180deg,#ffffff,#f7fbff);box-shadow:0 4px 10px rgba(15,42,67,.06);">
-                        <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
-                            <span style="font-size:14px;">{icon}</span>
-                            <span style="font-size:9px;font-weight:900;color:#486581;text-transform:uppercase;letter-spacing:.25px;">{title}</span>
+                    <div style="min-height:118px;padding:12px 13px;border:1px solid {accent_color}35;
+                                border-radius:13px;background:linear-gradient(145deg,{start_color} 0%,#ffffff 48%,{end_color} 100%);
+                                box-shadow:0 7px 16px rgba(15,42,67,.10),inset 0 1px 0 rgba(255,255,255,.95);">
+                        <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px;">
+                            <span style="display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;
+                                         font-size:17px;border-radius:9px;background:#ffffffcc;border:1px solid {accent_color}45;
+                                         box-shadow:0 3px 7px rgba(15,42,67,.10);">{icon}</span>
+                            <span style="font-size:11px;font-weight:950;color:{accent_color};text-transform:uppercase;
+                                         letter-spacing:.30px;line-height:1.15;">{title}</span>
                         </div>
-                        <div style="font-size:10px;line-height:1.38;color:#243b53;font-weight:650;">{message}</div>
+                        <div style="font-size:13px;line-height:1.48;color:#18344f;font-weight:700;">{message}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
 
+
+    # Colour the branch-detail expanders and make their labels look like action buttons.
+    st.markdown(
+        """
+        <style>
+            div[data-testid="stExpander"] {
+                border: 1px solid #93b4df !important;
+                border-radius: 12px !important;
+                overflow: hidden !important;
+                background: linear-gradient(145deg,#f8fbff 0%,#eef5ff 100%) !important;
+                box-shadow: 0 6px 14px rgba(37,99,235,.10) !important;
+            }
+            div[data-testid="stExpander"] summary {
+                min-height: 46px !important;
+                padding: 8px 13px !important;
+                background: linear-gradient(90deg,#2563eb 0%,#1d4ed8 55%,#0f766e 100%) !important;
+                color: #ffffff !important;
+                border-radius: 10px !important;
+            }
+            div[data-testid="stExpander"] summary:hover {
+                background: linear-gradient(90deg,#1d4ed8 0%,#1e40af 55%,#0f766e 100%) !important;
+            }
+            div[data-testid="stExpander"] summary p,
+            div[data-testid="stExpander"] summary span,
+            div[data-testid="stExpander"] summary svg {
+                color: #ffffff !important;
+                fill: #ffffff !important;
+                font-size: 13px !important;
+                font-weight: 900 !important;
+            }
+            div[data-testid="stExpander"] details[open] summary {
+                border-radius: 10px 10px 0 0 !important;
+                box-shadow: 0 4px 9px rgba(15,42,67,.16) !important;
+            }
+            div[data-testid="stExpander"] details > div {
+                padding: 10px !important;
+                background: #ffffff !important;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # =====================================================
     # Branch/Agency Network Changes - NOW FILTERED BY MONTH & QUARTER
