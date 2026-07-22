@@ -439,9 +439,22 @@ def _inject_overview_css():
             div[data-testid="stVerticalBlockBorderWrapper"] > div {padding:.55rem .65rem!important;}
             .executive-title {font-size:19px;}
             .filter-summary {margin:3px 0 6px;gap:4px;}
-            .filter-field-label {margin-bottom:3px;}
-            div[data-testid="stSelectbox"] {padding:1px 2px 3px;}
-            div[data-baseweb="select"] > div {min-height:28px!important;}
+            .filter-field-label {
+                margin: 0 0 4px 2px !important;
+                min-height: 18px;
+                line-height: 18px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                position: relative;
+                z-index: 2;
+            }
+            div[data-testid="stSelectbox"] {
+                padding: 2px 3px 4px !important;
+                margin-top: 0 !important;
+                overflow: visible !important;
+            }
+            div[data-baseweb="select"] > div {min-height:34px!important;}
+            div[data-testid="stHorizontalBlock"] > div {min-width:0!important;}
             .kpi-3d-card {min-height:70px;padding:8px 9px;transform:none;box-shadow:0 3px 8px rgba(15,23,42,.10)!important;}
             .kpi-3d-value {font-size:16px;margin-top:2px;}
             .kpi-3d-footer {margin-top:4px;}
@@ -2259,11 +2272,11 @@ def show_overview():
 
     compact_spacer()
 
-    # Keep Zone vs Country analysis below the aligned row in Origin view.
-    zone_col2 = st.container() if view_type == "Origin" else None
+    # Keep Zone vs Country and Month-on-Month analysis on the same row.
+    if view_type == "Origin":
+        zone_table_col, mom_chart_col = st.columns([1.05, 0.95], gap="small")
 
-    if view_type == "Origin" and zone_col2 is not None:
-        with zone_col2:
+        with zone_table_col:
             with st.container(border=True):
                 st.markdown("###### Zone vs Country Revenue (%)")
 
@@ -2331,7 +2344,7 @@ def show_overview():
                     .zone-country-wrap {{
                         width: 100%;
                         height: auto;
-                        max-height: 430px;
+                        max-height: 300px;
                         overflow-x: auto;
                         overflow-y: auto;
                         border: 1px solid #e2e8f0;
@@ -2388,8 +2401,7 @@ def show_overview():
                 else:
                     st.markdown(matrix_html, unsafe_allow_html=True)
 
-        # Month-on-month analysis is shown as one full-width chart directly
-        # below the Zone vs Country table.
+        # Prepare Month-on-Month analysis for the right-hand column.
         monthly_chart = monthly.copy()
         monthly_chart["Growth %"] = (
             monthly_chart["Revenue Cr"].pct_change().mul(100).round(2)
@@ -2397,86 +2409,86 @@ def show_overview():
         monthly_chart = monthly_chart.dropna(subset=["Month"]).copy()
         monthly_chart["Month"] = monthly_chart["Month"].astype(str)
 
-        with st.container(border=True):
-            st.markdown("###### Month on Month Revenue & Growth")
-
-            fig_mom = go.Figure()
-            fig_mom.add_trace(
-                go.Bar(
-                    x=monthly_chart["Month"],
-                    y=monthly_chart["Revenue Cr"],
-                    name="Revenue",
-                    marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
-                    text=monthly_chart["Revenue Cr"],
-                    texttemplate="₹%{text:.2f} Cr",
-                    textposition="outside",
-                    cliponaxis=False,
-                    hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:.2f} Cr<extra></extra>",
+        with mom_chart_col:
+            with st.container(border=True):
+                st.markdown("###### Month on Month Revenue & Growth")
+    
+                fig_mom = go.Figure()
+                fig_mom.add_trace(
+                    go.Bar(
+                        x=monthly_chart["Month"],
+                        y=monthly_chart["Revenue Cr"],
+                        name="Revenue",
+                        marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
+                        text=monthly_chart["Revenue Cr"],
+                        texttemplate="₹%{text:.2f} Cr",
+                        textposition="outside",
+                        cliponaxis=False,
+                        hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:.2f} Cr<extra></extra>",
+                    )
                 )
-            )
-
-            growth_colors = [
-                "#16a34a" if pd.notna(v) and v >= 0 else "#dc2626"
-                for v in monthly_chart["Growth %"]
-            ]
-            fig_mom.add_trace(
-                go.Scatter(
-                    x=monthly_chart["Month"],
-                    y=monthly_chart["Growth %"],
-                    name="MoM Growth",
-                    mode="lines+markers+text",
-                    yaxis="y2",
-                    line=dict(color="#f59e0b", width=3),
-                    marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
-                    text=[
-                        "" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%"
-                        for v in monthly_chart["Growth %"]
-                    ],
-                    textposition="top center",
-                    textfont=dict(size=10, color="#334155"),
-                    hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
+    
+                growth_colors = [
+                    "#16a34a" if pd.notna(v) and v >= 0 else "#dc2626"
+                    for v in monthly_chart["Growth %"]
+                ]
+                fig_mom.add_trace(
+                    go.Scatter(
+                        x=monthly_chart["Month"],
+                        y=monthly_chart["Growth %"],
+                        name="MoM Growth",
+                        mode="lines+markers+text",
+                        yaxis="y2",
+                        line=dict(color="#f59e0b", width=3),
+                        marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
+                        text=[
+                            "" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%"
+                            for v in monthly_chart["Growth %"]
+                        ],
+                        textposition="top center",
+                        textfont=dict(size=10, color="#ffffff"),
+                        hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
+                    )
                 )
-            )
-
-            revenue_max = pd.to_numeric(monthly_chart["Revenue Cr"], errors="coerce").max()
-            revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
-            growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
-            growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
-
-            fig_mom.update_layout(
-                height=330,
-                margin=dict(l=10, r=10, t=35, b=10),
-                plot_bgcolor="#f8fafc",
-                paper_bgcolor="rgba(0,0,0,0)",
-                legend=dict(orientation="h", y=1.10, x=0),
-                bargap=0.35,
-                yaxis=dict(
-                    title="Revenue (Cr)",
-                    range=[0, revenue_max * 1.30],
-                    showgrid=False,
-                    zeroline=False,
-                ),
-                yaxis2=dict(
-                    title="Growth (%)",
-                    overlaying="y",
-                    side="right",
-                    range=[-growth_abs_max * 1.35, growth_abs_max * 1.35],
-                    showgrid=False,
-                    zeroline=True,
-                    zerolinecolor="#cbd5e1",
-                ),
-                xaxis=dict(showgrid=False, title=""),
-            )
-            apply_3d_chart_layout(fig_mom, height=330, margin=dict(l=10, r=10, t=38, b=10))
-            fig_mom.update_xaxes(showline=False, zeroline=False)
-            fig_mom.update_yaxes(showline=False)
-
-            st.plotly_chart(
-                fig_mom,
-                width="stretch",
-                config={"displayModeBar": False, "responsive": True},
-            )
-
+    
+                revenue_max = pd.to_numeric(monthly_chart["Revenue Cr"], errors="coerce").max()
+                revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
+                growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
+                growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
+    
+                fig_mom.update_layout(
+                    height=300,
+                    margin=dict(l=10, r=10, t=35, b=10),
+                    plot_bgcolor="#f8fafc",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    legend=dict(orientation="h", y=1.10, x=0),
+                    bargap=0.35,
+                    yaxis=dict(
+                        title="Revenue (Cr)",
+                        range=[0, revenue_max * 1.30],
+                        showgrid=False,
+                        zeroline=False,
+                    ),
+                    yaxis2=dict(
+                        title="Growth (%)",
+                        overlaying="y",
+                        side="right",
+                        range=[-growth_abs_max * 1.35, growth_abs_max * 1.35],
+                        showgrid=False,
+                        zeroline=True,
+                        zerolinecolor="#cbd5e1",
+                    ),
+                    xaxis=dict(showgrid=False, title=""),
+                )
+                apply_3d_chart_layout(fig_mom, height=300, margin=dict(l=10, r=10, t=38, b=10))
+                fig_mom.update_xaxes(showline=False, zeroline=False)
+                fig_mom.update_yaxes(showline=False)
+    
+                st.plotly_chart(
+                    fig_mom,
+                    width="stretch",
+                    config={"displayModeBar": False, "responsive": True},
+                )
     # =====================================================
     # Management Key Insights
     # =====================================================
