@@ -7,6 +7,18 @@ import plotly.express as px
 from services.data_loader import load_booking_data_pair, get_date_range
 from services.branch_agency_mast import load_stationmast_data
 
+# Compact layout constants
+SPACER_HEIGHT = 4
+REVENUE_CHART_HEIGHT = 440
+ALIGNED_CHART_HEIGHT = 310
+RANKING_CHART_HEIGHT = 360
+
+
+def compact_spacer(height=SPACER_HEIGHT):
+    """Render a consistent, minimal vertical gap between sections."""
+    st.markdown(f"<div aria-hidden='true' style='height:{height}px'></div>", unsafe_allow_html=True)
+
+
 # =========================
 # Compact dashboard styling
 # =========================
@@ -417,6 +429,24 @@ def _inject_overview_css():
                 box-shadow: 0 1px 0 #cbd5e1, 0 3px 7px rgba(15,23,42,.12) !important;
             }
 
+
+
+            /* Compact layout overrides */
+            .block-container {max-width:100%;padding:.35rem .75rem .75rem!important;}
+            div[data-testid="stVerticalBlock"] {gap:.35rem!important;}
+            div[data-testid="stHorizontalBlock"] {gap:.5rem!important;}
+            div[data-testid="stVerticalBlockBorderWrapper"] {border-radius:11px!important;box-shadow:0 3px 10px rgba(15,42,67,.07)!important;}
+            div[data-testid="stVerticalBlockBorderWrapper"] > div {padding:.55rem .65rem!important;}
+            .executive-title {font-size:19px;}
+            .filter-summary {margin:3px 0 6px;gap:4px;}
+            .filter-field-label {margin-bottom:3px;}
+            div[data-testid="stSelectbox"] {padding:1px 2px 3px;}
+            div[data-baseweb="select"] > div {min-height:28px!important;}
+            .kpi-3d-card {min-height:70px;padding:8px 9px;transform:none;box-shadow:0 3px 8px rgba(15,23,42,.10)!important;}
+            .kpi-3d-value {font-size:16px;margin-top:2px;}
+            .kpi-3d-footer {margin-top:4px;}
+            [data-testid="stDataFrame"] tbody tr {height:22px!important;}
+            h5,h6 {margin:.1rem 0 .25rem!important;}
 
             /* Executive dashboard refinement */
             :root {
@@ -1350,7 +1380,7 @@ def show_overview():
     tbb_growth = pct_growth(tbb, prev_kpis["tbb"])
 
     # KPI Cards
-    k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9)
+    k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     with k1:
         create_card("Revenue", format_cr(revenue), "#2563eb", "💰", revenue_growth)
@@ -1610,7 +1640,7 @@ def show_overview():
                     )
 
     # Small separator before charts
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    compact_spacer()
 
     # Monthly revenue data used for monthly trend and MoM growth
     monthly = (
@@ -1754,7 +1784,7 @@ def show_overview():
 
             fig_yoy.update_layout(
                 barmode="group",
-                height=520,
+                height=REVENUE_CHART_HEIGHT,
                 margin=dict(l=2, r=2, t=30, b=2),
                 plot_bgcolor="#f8fafc",
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -1771,7 +1801,7 @@ def show_overview():
                 bargap=0.22,
                 bargroupgap=0.08,
             )
-            apply_3d_chart_layout(fig_yoy, height=520, margin=dict(l=8, r=8, t=34, b=8))
+            apply_3d_chart_layout(fig_yoy, height=REVENUE_CHART_HEIGHT, margin=dict(l=8, r=8, t=34, b=8))
             fig_yoy.update_xaxes(showgrid=False, showline=False, zeroline=False)
             fig_yoy.update_yaxes(showgrid=False, showline=False, zeroline=False)
 
@@ -1952,7 +1982,7 @@ def show_overview():
                     },
                 )
 
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    compact_spacer()
 
 
     # =========================
@@ -2018,7 +2048,7 @@ def show_overview():
     # Weight Trend and Revenue by Zone in one aligned row
     # =====================================================
     weight_zone_left, weight_zone_right = st.columns([1.55, 1], gap="small")
-    aligned_chart_height = 340
+    aligned_chart_height = ALIGNED_CHART_HEIGHT
 
     with weight_zone_left:
         with st.container(border=True):
@@ -2227,7 +2257,7 @@ def show_overview():
                 config={"displayModeBar": False, "responsive": True},
             )
 
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    compact_spacer()
 
     # Keep Zone vs Country analysis below the aligned row in Origin view.
     zone_col2 = st.container() if view_type == "Origin" else None
@@ -2450,7 +2480,7 @@ def show_overview():
     # =====================================================
     # Management Key Insights
     # =====================================================
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    compact_spacer()
 
     # Zone YoY movement used for management commentary.
     current_zone_insights = (
@@ -2591,7 +2621,7 @@ def show_overview():
     # =====================================================
     # Top 10 Consignors / Consignees | View-type aware
     # =====================================================
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    compact_spacer()
 
     def _find_column(frame, candidates):
         """Find a dataframe column using exact and normalized candidate names."""
@@ -2727,7 +2757,7 @@ def show_overview():
                         borderwidth=1, borderpad=3,
                     )
 
-                party_chart_height = 430
+                party_chart_height = RANKING_CHART_HEIGHT
                 fig_party.update_layout(
                     barmode="group", bargap=0.28, bargroupgap=0.08, height=party_chart_height,
                     margin=dict(l=8, r=105, t=35, b=28), plot_bgcolor="#f8fafc",
@@ -2751,7 +2781,7 @@ def show_overview():
     # =====================================================
     # Top 7 Routes | Use existing route column
     # =====================================================
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    compact_spacer()
 
     route_candidates = ["route", "ROUTE", "Route"]
     route_col = _find_column(df, route_candidates)
@@ -2896,7 +2926,7 @@ def show_overview():
                         route_yoy["Previous Revenue Cr"].max(),
                         1,
                     )
-                    route_chart_height = 430
+                    route_chart_height = RANKING_CHART_HEIGHT
                     fig_route.update_layout(
                         barmode="group",
                         bargap=0.28,
@@ -2942,7 +2972,7 @@ def show_overview():
                 )
 
     # Small separator before branch analysis
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    compact_spacer()
 
     # Branch summary for top/bottom branches and insights
     branch_summary = (
@@ -2996,7 +3026,7 @@ def show_overview():
                     "#ef4444"
                 )
 
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    compact_spacer()
 
     with st.container(border=True):
         st.markdown(
@@ -3010,7 +3040,7 @@ def show_overview():
             with insight_cols[idx]:
                 st.markdown(
                     f"""
-                    <div style="height:108px;padding:9px;border:1px solid #dfe8f2;border-radius:11px;
+                    <div style="min-height:92px;padding:8px;border:1px solid #dfe8f2;border-radius:11px;
                                 background:linear-gradient(180deg,#ffffff,#f7fbff);box-shadow:0 4px 10px rgba(15,42,67,.06);">
                         <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;">
                             <span style="font-size:14px;">{icon}</span>
@@ -3062,7 +3092,7 @@ def show_overview():
     - **Branches/Agencies Closed:** {closed_branches}
     - **Net Increase:** {net_increase:+}
     """)
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    compact_spacer()
 
     with st.expander(f"📍 View Opened Branch Details ({opened_branches})"):
 
