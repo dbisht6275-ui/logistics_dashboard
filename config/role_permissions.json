@@ -1,7 +1,7 @@
 {
   "admin": {
     "menu": [
-      "🏠 Overview",
+      "🏠 Revenue Overview",
       "📊 Comparison",
       "📈 Outstanding Analysis",
       "👥 Customer Analysis",
@@ -16,7 +16,7 @@
   },
   "manager": {
     "menu": [
-      "🏠 Overview",
+      "🏠 Revenue Overview",
       "📊 Comparison",
       "👥 Customer Analysis",
       "📄 Reports"
@@ -27,7 +27,7 @@
   },
   "viewer": {
     "menu": [
-      "🏠 Overview"
+      "🏠 Revenue Overview"
     ],
     "reports": []
   }
