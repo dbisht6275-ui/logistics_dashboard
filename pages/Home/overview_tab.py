@@ -11,7 +11,7 @@ from services.branch_agency_mast import load_stationmast_data
 SPACER_HEIGHT = 4
 REVENUE_CHART_HEIGHT = 440
 ALIGNED_CHART_HEIGHT = 310
-RANKING_CHART_HEIGHT = 360
+RANKING_CHART_HEIGHT = 330
 
 
 def compact_spacer(height=SPACER_HEIGHT):
@@ -2472,14 +2472,16 @@ def show_overview():
                     .zone-country-table {{
                         width: 100%;
                         border-collapse: collapse;
-                        font-size: 10px;
-                        color: #475569;
+                        font-size: 12px;
+                        line-height: 1.35;
+                        color: #334155;
                     }}
                     .zone-country-table th {{
                         position: sticky;
                         top: 0;
                         z-index: 1;
-                        padding: 9px 8px;
+                        padding: 11px 10px;
+                        font-size: 12px;
                         text-align: center;
                         white-space: nowrap;
                         background: #eef6ff;
@@ -2488,7 +2490,8 @@ def show_overview():
                         border: 1px solid #dbe7f3;
                     }}
                     .zone-country-table td {{
-                        padding: 8px;
+                        padding: 10px;
+                        font-size: 12px;
                         text-align: center;
                         white-space: nowrap;
                         background: #f8fbff;
@@ -2857,7 +2860,7 @@ def show_overview():
                     marker=dict(color="#dbe4f0", line=dict(color="#b8c7dc", width=1)),
                     text=party_yoy["Previous Revenue Cr"], texttemplate="₹%{text:.2f}",
                     textposition="inside", insidetextanchor="middle",
-                    textfont=dict(size=9, color="#475569"),
+                    textfont=dict(size=11, color="#475569", family="Arial Black"),
                     hovertemplate="<b>%{y}</b><br>LY Revenue: ₹%{x:.2f} Cr<extra></extra>",
                 ))
                 fig_party.add_trace(go.Bar(
@@ -2866,7 +2869,7 @@ def show_overview():
                     marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1)),
                     customdata=party_yoy[["Growth %", "_party"]].to_numpy(),
                     text=party_yoy["Current Revenue Cr"], texttemplate="₹%{text:.2f}",
-                    textposition="outside", textfont=dict(size=10, color="#0f172a", family="Arial Black"),
+                    textposition="outside", textfont=dict(size=12, color="#0f172a", family="Arial Black"),
                     cliponaxis=False,
                     hovertemplate=("<b>%{customdata[1]}</b><br>Current Revenue: ₹%{x:.2f} Cr"
                                    "<br>YoY Growth: %{customdata[0]:.1f}%<extra></extra>"),
@@ -2889,16 +2892,16 @@ def show_overview():
 
                 party_chart_height = RANKING_CHART_HEIGHT
                 fig_party.update_layout(
-                    barmode="group", bargap=0.28, bargroupgap=0.08, height=party_chart_height,
-                    margin=dict(l=8, r=105, t=35, b=28), plot_bgcolor="#f8fafc",
+                    barmode="group", bargap=0.10, bargroupgap=0.03, height=party_chart_height,
+                    margin=dict(l=6, r=72, t=28, b=22), plot_bgcolor="#f8fafc",
                     paper_bgcolor="rgba(0,0,0,0)",
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10)),
-                    xaxis_title="Revenue (Cr)", xaxis_range=[0, max_party_revenue * 1.52],
+                    xaxis_title="Revenue (Cr)", xaxis_range=[0, max_party_revenue * 1.28],
                     hoverlabel=dict(bgcolor="white", font_size=11),
                 )
-                apply_3d_chart_layout(fig_party, height=party_chart_height, margin=dict(l=8, r=105, t=35, b=28))
-                fig_party.update_xaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10))
-                fig_party.update_yaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10))
+                apply_3d_chart_layout(fig_party, height=party_chart_height, margin=dict(l=6, r=72, t=28, b=22))
+                fig_party.update_xaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=11))
+                fig_party.update_yaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=12, family="Arial Black"), automargin=True)
                 st.plotly_chart(fig_party, width="stretch")
     else:
         with party_layout_col:
@@ -3030,7 +3033,7 @@ def show_overview():
                         text=route_yoy["Previous Revenue Cr"],
                         texttemplate="₹%{text:.2f}",
                         textposition="inside",
-                        textfont=dict(size=9, color="#475569"),
+                        textfont=dict(size=11, color="#475569", family="Arial Black"),
                         hovertemplate="<b>%{y}</b><br>LY Revenue: ₹%{x:.2f} Cr<extra></extra>",
                     ))
                     fig_route.add_trace(go.Bar(
@@ -3043,7 +3046,7 @@ def show_overview():
                         text=route_yoy["Current Revenue Cr"],
                         texttemplate="₹%{text:.2f}",
                         textposition="outside",
-                        textfont=dict(size=10, color="#0f172a", family="Arial Black"),
+                        textfont=dict(size=12, color="#0f172a", family="Arial Black"),
                         cliponaxis=False,
                         hovertemplate=(
                             "<b>%{customdata[1]}</b><br>Current Revenue: ₹%{x:.2f} Cr"
@@ -3059,10 +3062,10 @@ def show_overview():
                     route_chart_height = RANKING_CHART_HEIGHT
                     fig_route.update_layout(
                         barmode="group",
-                        bargap=0.28,
-                        bargroupgap=0.08,
+                        bargap=0.10,
+                        bargroupgap=0.03,
                         height=route_chart_height,
-                        margin=dict(l=8, r=105, t=35, b=28),
+                        margin=dict(l=6, r=72, t=28, b=22),
                         plot_bgcolor="#f8fafc",
                         paper_bgcolor="rgba(0,0,0,0)",
                         legend=dict(
@@ -3078,19 +3081,19 @@ def show_overview():
                     apply_3d_chart_layout(
                         fig_route,
                         height=route_chart_height,
-                        margin=dict(l=8, r=105, t=35, b=28),
+                        margin=dict(l=6, r=72, t=28, b=22),
                     )
                     fig_route.update_xaxes(
                         showgrid=False,
                         showline=False,
                         zeroline=False,
-                        tickfont=dict(size=10),
+                        tickfont=dict(size=11),
                     )
                     fig_route.update_yaxes(
                         showgrid=False,
                         showline=False,
                         zeroline=False,
-                        tickfont=dict(size=10),
+                        tickfont=dict(size=11),
                     )
                     st.plotly_chart(fig_route, width="stretch")
     else:
