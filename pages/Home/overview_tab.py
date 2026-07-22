@@ -1949,7 +1949,7 @@ def show_overview():
                         labels=["FTL", "LTL"],
                         values=[ftl, ltl],
                         hole=0.64,
-                        textinfo="none",
+                        textinfo="percent+label",
                         pull=[0.018, 0.018],
                         rotation=135,
                         direction="clockwise",
@@ -1974,21 +1974,11 @@ def show_overview():
                         font=dict(size=16, color="#0f172a", family="Arial Black")
                     )
                 ],
-                height=255,
-                margin=dict(l=2, r=8, t=2, b=2),
+                height=220,
+                margin=dict(l=2, r=2, t=2, b=2),
                 paper_bgcolor="rgba(0,0,0,0)",
                 showlegend=False,
             )
-            # Keep the donut compact and reserve the right side for readable labels.
-            fig_load.update_traces(domain=dict(x=[0.02, 0.68], y=[0.08, 0.98]))
-            fig_load.add_annotation(x=0.78, y=0.66, xref="paper", yref="paper",
-                                    text=f"<b>LTL</b><br><b>{ltl_pct:.1f}%</b>",
-                                    showarrow=True, arrowhead=0, ax=-28, ay=0,
-                                    arrowcolor="#0f766e", font=dict(size=11, color="#0f766e"), align="left")
-            fig_load.add_annotation(x=0.78, y=0.34, xref="paper", yref="paper",
-                                    text=f"<b>FTL</b><br><b>{ftl_pct:.1f}%</b>",
-                                    showarrow=True, arrowhead=0, ax=-28, ay=0,
-                                    arrowcolor="#2563eb", font=dict(size=11, color="#2563eb"), align="left")
             fig_load.update_traces(sort=False)
 
             st.plotly_chart(fig_load, width="stretch")
@@ -2062,7 +2052,7 @@ def show_overview():
                             hole=0.64,
                             sort=False,
                             direction="clockwise",
-                            domain=dict(x=[0.12, 0.88], y=[0.12, 0.98]),
+                            domain=dict(x=[0.06, 0.94], y=[0.18, 0.98]),
                             customdata=company_chart_df[["Contribution %"]].to_numpy(),
                             texttemplate="%{percent:.0%}",
                             textposition="inside",
@@ -2541,57 +2531,83 @@ def show_overview():
             with st.container(border=True):
                 st.markdown("###### Month on Month Revenue & Growth")
     
-                # Generated-image style: clean MoM growth line with soft area fill and white labels.
                 fig_mom = go.Figure()
-                growth_values = pd.to_numeric(monthly_chart["Growth %"], errors="coerce")
-                label_values = ["" if pd.isna(v) else f"{v:.1f}%" for v in growth_values]
-
+                fig_mom.add_trace(
+                    go.Bar(
+                        x=monthly_chart["Month"],
+                        y=monthly_chart["Revenue Cr"],
+                        name="Revenue",
+                        marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
+                        text=monthly_chart["Revenue Cr"],
+                        texttemplate="₹%{text:.2f} Cr",
+                        textposition="outside",
+                        cliponaxis=False,
+                        hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:.2f} Cr<extra></extra>",
+                    )
+                )
+    
+                growth_colors = [
+                    "#16a34a" if pd.notna(v) and v >= 0 else "#dc2626"
+                    for v in monthly_chart["Growth %"]
+                ]
                 fig_mom.add_trace(
                     go.Scatter(
                         x=monthly_chart["Month"],
-                        y=growth_values,
+                        y=monthly_chart["Growth %"],
                         name="MoM Growth",
                         mode="lines+markers+text",
-                        line=dict(color="#2563eb", width=3),
-                        marker=dict(size=9, color="#2563eb", line=dict(color="#ffffff", width=2)),
-                        fill="tozeroy",
-                        fillcolor="rgba(37, 99, 235, 0.14)",
-                        text=label_values,
+                        yaxis="y2",
+                        line=dict(color="#f59e0b", width=3),
+                        marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
+                        text=[
+                            "" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%"
+                            for v in monthly_chart["Growth %"]
+                        ],
                         textposition="top center",
-                        textfont=dict(size=10, color="#ffffff", family="Arial Black"),
+                        textfont=dict(size=10, color="#ffffff"),
                         hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
                     )
                 )
-
-                growth_abs_max = growth_values.abs().max()
+    
+                revenue_max = pd.to_numeric(monthly_chart["Revenue Cr"], errors="coerce").max()
+                revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
+                growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
                 growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
-
+    
                 fig_mom.update_layout(
                     height=300,
                     margin=dict(l=10, r=10, t=35, b=10),
-                    plot_bgcolor="#ffffff",
+                    plot_bgcolor="#f8fafc",
                     paper_bgcolor="rgba(0,0,0,0)",
-                    showlegend=False,
+                    legend=dict(orientation="h", y=1.10, x=0),
+                    bargap=0.35,
                     yaxis=dict(
+                        title="Revenue (Cr)",
+                        range=[0, revenue_max * 1.30],
+                        showgrid=False,
+                        zeroline=False,
+                    ),
+                    yaxis2=dict(
                         title="Growth (%)",
+                        overlaying="y",
+                        side="right",
                         range=[-growth_abs_max * 1.35, growth_abs_max * 1.35],
-                        ticksuffix="%",
-                        showgrid=True,
-                        gridcolor="#e2e8f0",
+                        showgrid=False,
                         zeroline=True,
-                        zerolinecolor="#94a3b8",
-                        zerolinewidth=1.2,
+                        zerolinecolor="#cbd5e1",
                     ),
                     xaxis=dict(showgrid=False, title=""),
                 )
+                apply_3d_chart_layout(fig_mom, height=300, margin=dict(l=10, r=10, t=38, b=10))
                 fig_mom.update_xaxes(showline=False, zeroline=False)
                 fig_mom.update_yaxes(showline=False)
-
+    
                 st.plotly_chart(
                     fig_mom,
                     width="stretch",
                     config={"displayModeBar": False, "responsive": True},
-                )    # =====================================================
+                )
+    # =====================================================
     # Management Key Insights
     # =====================================================
     compact_spacer()
