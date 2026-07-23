@@ -3016,7 +3016,7 @@ def show_overview():
                 )
 
     # =====================================================
-    # Top 7 Routes | Same executive table treatment as Top Customers
+    # Top 10 Routes | Same executive table treatment as Top Customers
     # =====================================================
     compact_spacer()
 
@@ -3098,14 +3098,14 @@ def show_overview():
         # Preserve the existing Top-7 ranking business rule.
         route_yoy = (
             route_yoy.sort_values("Current Revenue", ascending=False)
-            .head(7)
+            .head(10)
             .reset_index(drop=True)
         )
 
         with route_layout_col:
             with st.container(border=True):
                 st.markdown(
-                    f"###### Top 7 Routes by Revenue"
+                    f"###### Top 10 Routes by Revenue"
                     "<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
                     + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
                     + " | Current FY revenue, share and YoY movement.</div>",
