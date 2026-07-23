@@ -2331,16 +2331,23 @@ def show_overview():
                     for zone_name in zone_donut_df["zone"].tolist()
                 ]
 
+                # Keep the donut inside the left 60% of the card.  The exact
+                # centre of this domain is x=0.30, y=0.50; using that same point
+                # for the annotation keeps the total perfectly centred.
+                donut_domain = dict(x=[0.00, 0.60], y=[0.00, 1.00])
+                donut_center_x = sum(donut_domain["x"]) / 2
+                donut_center_y = sum(donut_domain["y"]) / 2
+
                 fig_zone = go.Figure(
                     data=[
                         go.Pie(
                             labels=zone_labels,
                             values=zone_values,
-                            hole=0.58,
+                            hole=0.62,
                             sort=False,
                             direction="clockwise",
                             rotation=90,
-                            domain=dict(x=[0.00, 0.57], y=[0.08, 0.96]),
+                            domain=donut_domain,
                             marker=dict(
                                 colors=zone_color_list,
                                 line=dict(color="#ffffff", width=2),
@@ -2388,10 +2395,12 @@ def show_overview():
                     showlegend=False,
                     annotations=list(fig_zone.layout.annotations) + [
                         dict(
-                            x=0.285,
-                            y=0.52,
+                            x=donut_center_x,
+                            y=donut_center_y,
                             xref="paper",
                             yref="paper",
+                            xanchor="center",
+                            yanchor="middle",
                             text=(
                                 f"<b>₹{total_zone_revenue:.2f} Cr</b>"
                                 "<br><span style='font-size:10px;color:#64748b'>Total</span>"
@@ -2989,7 +2998,7 @@ def show_overview():
                 )
 
     # =====================================================
-    # Top 7 Routes | Use existing route column
+    # Top 7 Routes | Same executive table treatment as Top Customers
     # =====================================================
     compact_spacer()
 
@@ -3056,123 +3065,141 @@ def show_overview():
             how="left",
         ).fillna({"Previous Revenue": 0})
 
-        route_yoy["Current Revenue Cr"] = (route_yoy["Current Revenue"] / 10000000).round(2)
-        route_yoy["Previous Revenue Cr"] = (route_yoy["Previous Revenue"] / 10000000).round(2)
+        route_yoy["Revenue Cr"] = (route_yoy["Current Revenue"] / 10000000).round(2)
+        route_total_revenue = route_yoy["Current Revenue"].sum()
+        route_yoy["Share %"] = (
+            route_yoy["Current Revenue"] / route_total_revenue * 100
+            if route_total_revenue > 0 else 0
+        )
         route_yoy["Growth %"] = route_yoy.apply(
             lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"])
             if row["Previous Revenue"] > 0 else None,
             axis=1,
         )
+
+        # Preserve the existing Top-7 ranking business rule.
         route_yoy = (
             route_yoy.sort_values("Current Revenue", ascending=False)
             .head(7)
-            .sort_values("Current Revenue", ascending=True)
             .reset_index(drop=True)
-        )
-        route_yoy["Route Display"] = route_yoy["_route"].apply(
-            lambda value: value if len(value) <= 42 else value[:40] + "…"
         )
 
         with route_layout_col:
             with st.container(border=True):
-                route_title_col, route_metric_col = st.columns([3, 1])
-                with route_title_col:
-                    st.markdown(
-                    f"###### Top 7 Routes | {view_type} View"
+                st.markdown(
+                    f"###### Top 7 Routes by Revenue"
                     "<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
                     + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
-                    + " direction, ranked by current-year revenue.</div>",
+                    + " | Current FY revenue, share and YoY movement.</div>",
                     unsafe_allow_html=True,
-                    )
-                with route_metric_col:
-                    route_total_current = route_yoy["Current Revenue Cr"].sum() if not route_yoy.empty else 0
-                    route_total_previous = route_yoy["Previous Revenue Cr"].sum() if not route_yoy.empty else 0
-                    route_total_growth = pct_growth(route_total_current, route_total_previous) if route_total_previous > 0 else 0
-                    route_growth_color = "#166534" if route_total_growth >= 0 else "#dc2626"
-                    st.markdown(
-                        f"<div style='text-align:right;font-size:10px;color:#64748b;'>Top 7 Revenue</div>"
-                        f"<div style='text-align:right;font-size:16px;font-weight:900;color:#0f172a;'>₹{route_total_current:.2f} Cr</div>"
-                        f"<div style='text-align:right;font-size:10px;font-weight:800;color:{route_growth_color};'>"
-                        f"{growth_label(route_total_growth)} vs LY</div>",
-                        unsafe_allow_html=True,
-                    )
+                )
 
                 if route_yoy.empty:
                     st.info("No route data is available for the selected filters.")
                 else:
-                    fig_route = go.Figure()
-                    fig_route.add_trace(go.Bar(
-                        y=route_yoy["Route Display"],
-                        x=route_yoy["Previous Revenue Cr"],
-                        name=f"LY ({prev_fy})",
-                        orientation="h",
-                        marker=dict(color="#dbe4f0", line=dict(color="#b8c7dc", width=1)),
-                        text=route_yoy["Previous Revenue Cr"],
-                        texttemplate="₹%{text:.2f}",
-                        textposition="inside",
-                        textfont=dict(size=11, color="#475569", family="Arial Black"),
-                        hovertemplate="<b>%{y}</b><br>LY Revenue: ₹%{x:.2f} Cr<extra></extra>",
-                    ))
-                    fig_route.add_trace(go.Bar(
-                        y=route_yoy["Route Display"],
-                        x=route_yoy["Current Revenue Cr"],
-                        name=f"Current ({fy})",
-                        orientation="h",
-                        marker=dict(color="#0f766e", line=dict(color="#115e59", width=1)),
-                        customdata=route_yoy[["Growth %", "_route"]].to_numpy(),
-                        text=route_yoy["Current Revenue Cr"],
-                        texttemplate="₹%{text:.2f}",
-                        textposition="outside",
-                        textfont=dict(size=12, color="#0f172a", family="Arial Black"),
-                        cliponaxis=False,
-                        hovertemplate=(
-                            "<b>%{customdata[1]}</b><br>Current Revenue: ₹%{x:.2f} Cr"
-                            "<br>YoY Growth: %{customdata[0]:.1f}%<extra></extra>"
-                        ),
-                    ))
+                    max_route_revenue = max(route_yoy["Revenue Cr"].max(), 1)
+                    route_rows = []
 
-                    max_route_revenue = max(
-                        route_yoy["Current Revenue Cr"].max(),
-                        route_yoy["Previous Revenue Cr"].max(),
-                        1,
-                    )
-                    route_chart_height = RANKING_CHART_HEIGHT
-                    fig_route.update_layout(
-                        barmode="group",
-                        bargap=0.10,
-                        bargroupgap=0.03,
-                        height=route_chart_height,
-                        margin=dict(l=6, r=72, t=28, b=22),
-                        plot_bgcolor="#f8fafc",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        legend=dict(
-                            orientation="h",
-                            yanchor="bottom",
-                            y=1.02,
-                            x=0,
-                            font=dict(size=10),
-                        ),
-                        xaxis_title="Revenue (Cr)",
-                        xaxis_range=[0, max_route_revenue * 1.45],
-                    )
-                    apply_3d_chart_layout(
-                        fig_route,
-                        height=route_chart_height,
-                        margin=dict(l=6, r=72, t=28, b=22),
-                    )
-                    fig_route.update_xaxes(
-                        showgrid=False,
-                        showline=False,
-                        zeroline=False,
-                        tickfont=dict(size=11),
-                    )
-                    fig_route.update_yaxes(
-                        showgrid=False,
-                        showline=False,
-                        zeroline=False,
-                        tickfont=dict(size=11),
-                    )
-                    st.plotly_chart(fig_route, width="stretch")
+                    for idx, row in route_yoy.iterrows():
+                        revenue_cr = float(row["Revenue Cr"] or 0)
+                        share_pct = float(row["Share %"] or 0)
+                        bar_width = min((revenue_cr / max_route_revenue) * 100, 100)
+                        growth = row["Growth %"]
+
+                        if pd.isna(growth):
+                            growth_html = "<span class='route-growth new'>NEW</span>"
+                        else:
+                            positive = growth >= 0
+                            growth_class = "up" if positive else "down"
+                            growth_arrow = "▲" if positive else "▼"
+                            growth_html = (
+                                f"<span class='route-growth {growth_class}'>"
+                                f"{growth_arrow} {abs(growth):.1f}%</span>"
+                            )
+
+                        full_route = escape(str(row["_route"]))
+                        route_rows.append(
+                            "<tr>"
+                            f"<td class='route-rank'>{idx + 1}</td>"
+                            f"<td class='route-name' title='{full_route}'>{full_route}</td>"
+                            "<td class='route-revenue'>"
+                            f"<div class='route-value'>₹{revenue_cr:.2f} Cr</div>"
+                            "<div class='route-bar-track'>"
+                            f"<div class='route-bar-fill' style='width:{bar_width:.1f}%'></div>"
+                            "</div></td>"
+                            f"<td class='route-share'>{share_pct:.1f}%</td>"
+                            f"<td class='route-yoy'>{growth_html}</td>"
+                            "</tr>"
+                        )
+
+                    route_table_html = f"""
+                    <style>
+                        .route-insight-wrap {{
+                            width:100%; overflow-x:auto; margin-top:5px;
+                            border:1px solid #e2e8f0; border-radius:10px;
+                            background:#ffffff;
+                        }}
+                        .route-insight-table {{
+                            width:100%; border-collapse:collapse;
+                            table-layout:fixed; font-size:10px; color:#334155;
+                        }}
+                        .route-insight-table th {{
+                            padding:7px 6px; background:#f8fafc;
+                            color:#64748b; font-size:9px; font-weight:800;
+                            text-align:left; border-bottom:1px solid #e2e8f0;
+                            white-space:nowrap;
+                        }}
+                        .route-insight-table td {{
+                            padding:6px; border-bottom:1px solid #edf2f7;
+                            vertical-align:middle;
+                        }}
+                        .route-insight-table tr:last-child td {{border-bottom:0;}}
+                        .route-insight-table tbody tr:hover {{background:#f8fbff;}}
+                        .route-rank {{width:7%; text-align:center; font-weight:800; color:#64748b;}}
+                        .route-name {{
+                            width:35%; font-weight:750; color:#1e293b;
+                            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                        }}
+                        .route-revenue {{width:32%;}}
+                        .route-value {{font-weight:850; color:#0f172a; margin-bottom:3px;}}
+                        .route-bar-track {{
+                            width:100%; height:4px; border-radius:999px;
+                            background:#e8eef8; overflow:hidden;
+                        }}
+                        .route-bar-fill {{
+                            height:4px; border-radius:999px;
+                            background:linear-gradient(90deg,#2dd4bf,#0f766e);
+                        }}
+                        .route-share {{width:12%; text-align:right; font-weight:800; color:#475569;}}
+                        .route-yoy {{width:14%; text-align:right;}}
+                        .route-growth {{
+                            display:inline-block; min-width:50px; text-align:right;
+                            font-size:9px; font-weight:900;
+                        }}
+                        .route-growth.up {{color:#16a34a;}}
+                        .route-growth.down {{color:#dc2626;}}
+                        .route-growth.new {{color:#7c3aed;}}
+                    </style>
+                    <div class="route-insight-wrap">
+                        <table class="route-insight-table">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:center;">#</th>
+                                    <th>Route</th>
+                                    <th>Revenue (Cr)</th>
+                                    <th style="text-align:right;">% Share</th>
+                                    <th style="text-align:right;">vs LY</th>
+                                </tr>
+                            </thead>
+                            <tbody>{''.join(route_rows)}</tbody>
+                        </table>
+                    </div>
+                    """
+
+                    if hasattr(st, "html"):
+                        st.html(route_table_html)
+                    else:
+                        st.markdown(route_table_html, unsafe_allow_html=True)
     else:
         with route_layout_col:
             with st.container(border=True):
