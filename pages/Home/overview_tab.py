@@ -2977,11 +2977,11 @@ def show_overview():
                             height:4px; border-radius:999px;
                             background:linear-gradient(90deg,#60a5fa,#2563eb);
                         }}
-                        .cust-share {{width:12%; text-align:right; font-weight:800; color:#475569;}}
-                        .cust-yoy {{width:14%; text-align:right;}}
+                        .cust-share {{width:12%; text-align:right; font-size:12px; font-weight:850; color:#334155;}}
+                        .cust-yoy {{width:14%; text-align:right; font-size:12px;}}
                         .cust-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:9px; font-weight:900;
+                            font-size:11px; font-weight:900;
                         }}
                         .cust-growth.up {{color:#16a34a;}}
                         .cust-growth.down {{color:#dc2626;}}
@@ -3188,11 +3188,11 @@ def show_overview():
                             height:4px; border-radius:999px;
                             background:linear-gradient(90deg,#2dd4bf,#0f766e);
                         }}
-                        .route-share {{width:12%; text-align:right; font-weight:800; color:#475569;}}
-                        .route-yoy {{width:14%; text-align:right;}}
+                        .route-share {{width:12%; text-align:right; font-size:12px; font-weight:850; color:#334155;}}
+                        .route-yoy {{width:14%; text-align:right; font-size:12px;}}
                         .route-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:9px; font-weight:900;
+                            font-size:11px; font-weight:900;
                         }}
                         .route-growth.up {{color:#16a34a;}}
                         .route-growth.down {{color:#dc2626;}}
