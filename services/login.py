@@ -10,26 +10,29 @@ from services.roles import (
 
 def check_login(username: str, password: str):
     """
-    Validate the user's login credentials.
+    Check login credentials against USERMAST.
 
-    Username comparison:
-        - Case-insensitive
-        - Ignores spaces before and after the username
+    Both username and password are:
+    - Case-insensitive
+    - Trimmed for leading and trailing spaces
 
-    Password comparison:
-        - Case-sensitive for security
+    Examples:
+        Username: ADMIN, Admin, admin
+        Password: ABC123, abc123, AbC123
+
+    All of the above variations will be treated as equal.
 
     Returns:
-        tuple:
-            (True, employee_id) when login succeeds
-            (False, None) when login fails
+        (True, employee_id) if login is successful
+        (False, None) if login fails
     """
 
     try:
         engine = get_engine()
 
-        # Remove accidental spaces entered before or after the username.
+        # Remove accidental spaces before and after the entered values.
         clean_username = username.strip()
+        clean_password = password.strip()
 
         with engine.connect() as conn:
             result = conn.execute(
@@ -41,6 +44,7 @@ def check_login(username: str, password: str):
                         EMPLOYEEID
                     FROM USERMAST
                     WHERE LOWER(TRIM(USERNAME)) = LOWER(TRIM(:username))
+                      AND LOWER(TRIM(PASSWORD)) = LOWER(TRIM(:password))
                       AND (
                             EXPIRED IS NULL
                             OR LOWER(TRIM(EXPIRED)) <> 'y'
@@ -48,20 +52,19 @@ def check_login(username: str, password: str):
                     """
                 ),
                 {
-                    "username": clean_username
+                    "username": clean_username,
+                    "password": clean_password,
                 },
             )
 
             row = result.fetchone()
 
-        # Password remains case-sensitive.
-        if row and row[1] == password:
+        if row:
             return True, row[2]
 
         return False, None
 
     except Exception as e:
-        # Display database error on the Streamlit page.
         st.error(f"Database error: {e}")
         return False, None
 
@@ -71,7 +74,6 @@ def login_page():
     Display the Streamlit login page and authenticate the user.
     """
 
-    # Custom styling for the login page.
     st.markdown(
         """
         <style>
@@ -87,7 +89,7 @@ def login_page():
             background: white;
             padding: 30px;
             border-radius: 20px;
-            box-shadow: 0 10px 35px rgba(0, 0, 0, 0.12);
+            box-shadow: 0 10px 35px rgba(0, 0,0,0.12);
             border: 1px solid #eeeeee;
             text-align: center;
             margin-bottom: 20px;
@@ -123,7 +125,8 @@ def login_page():
         unsafe_allow_html=True,
     )
 
-    # Keep the login form in the centre column.
+    # Create three columns and display the login form
+    # in the centre column.
     col1, col2, col3 = st.columns([3, 2, 3])
 
     with col2:
@@ -142,7 +145,6 @@ def login_page():
             unsafe_allow_html=True,
         )
 
-        # Login input fields.
         username = st.text_input(
             "Username",
             placeholder="Enter your username",
@@ -156,14 +158,13 @@ def login_page():
             key="login_password",
         )
 
-        # Login button.
         if st.button(
             "Login",
             use_container_width=True,
             key="login_button",
         ):
-            # Validate that both fields have been entered.
-            if not username.strip() or not password:
+            # Username and password must not be blank.
+            if not username.strip() or not password.strip():
                 st.warning("Enter username and password")
                 return
 
@@ -173,20 +174,20 @@ def login_page():
             )
 
             if success:
-                # Load the employee's role and permitted data scope.
+                # Get employee access permissions.
                 role = get_role_for_employee(employee_id)
                 data_scope = get_data_scope_for_employee(employee_id)
 
-                # Save authenticated-user information in session state.
+                # Store login information in Streamlit session.
                 st.session_state["logged_in"] = True
                 st.session_state["employee_id"] = employee_id
                 st.session_state["role"] = role
                 st.session_state["data_scope"] = data_scope
 
-                # Save a cleaned version of the entered username.
+                # Store the username entered by the user.
                 st.session_state["username"] = username.strip()
 
-                # Reload the Streamlit application after successful login.
+                # Reload the application after successful login.
                 st.rerun()
 
             else:
