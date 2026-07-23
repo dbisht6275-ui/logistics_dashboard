@@ -1794,606 +1794,329 @@ def show_overview():
     ftl_pct = (ftl / revenue * 100) if revenue else 0
     ltl_pct = (ltl / revenue * 100) if revenue else 0
 
-    # ============================================================
-    # Revenue Trend – full width
-    # ============================================================
-    with st.container(border=True):
-        title_col, filter_col = st.columns([2, 2])
-    
-        with title_col:
-            _trend_badge_color = "#166534" if revenue_growth >= 0 else "#dc2626"
-            st.markdown(
-                f"###### Revenue Trend "
-                f"<span style='font-size:11px;font-weight:700;color:{_trend_badge_color};'>"
-                f"({growth_label(revenue_growth)} vs LY)</span>",
-                unsafe_allow_html=True,
+    # Revenue trend and load type charts
+    row1, row2 = st.columns([1.35, 0.65])
+
+    with row1:
+        with st.container(border=True):
+            title_col, filter_col = st.columns([2, 2])
+
+            with title_col:
+                _trend_badge_color = "#166534" if revenue_growth >= 0 else "#dc2626"
+                st.markdown(
+                    f"###### Revenue Trend "
+                    f"<span style='font-size:11px;font-weight:700;color:{_trend_badge_color};'>"
+                    f"({growth_label(revenue_growth)} vs LY)</span>",
+                    unsafe_allow_html=True
+                )
+
+            with filter_col:
+                trend_type = st.segmented_control(
+                    "Revenue trend period",
+                    ["Daily", "Weekly", "Monthly", "Quarterly"],
+                    default="Monthly",
+                    label_visibility="collapsed",
+                    key="revenue_trend_type",
+                ) or "Monthly"
+
+            # Build trend data (Current FY vs LY) for the selected granularity
+            DATE_COL = "grdt"   # change if your date column is different
+
+            yoy_df = build_yoy_trend(
+                df, prev_df, trend_type, DATE_COL, start_date, prev_start, month_map
             )
-    
-        with filter_col:
-            trend_type = st.segmented_control(
-                "Revenue trend period",
-                ["Daily", "Weekly", "Monthly", "Quarterly"],
-                default="Monthly",
-                label_visibility="collapsed",
-                key="revenue_trend_type",
-            ) or "Monthly"
-    
-        DATE_COL = "grdt"
-    
-        yoy_df = build_yoy_trend(
-            df,
-            prev_df,
-            trend_type,
-            DATE_COL,
-            start_date,
-            prev_start,
-            month_map,
-        )
-    
-        yoy_df = add_revenue_forecast(
-            yoy_df,
-            trend_type,
-            selected_quarter=quarter,
-            selected_month=month,
-        )
-    
-        fig_yoy = go.Figure()
-    
-        fig_yoy.add_trace(
-            go.Bar(
-                x=yoy_df["Period"],
-                y=yoy_df["Prev Revenue Cr"],
-                name=f"LY ({prev_fy})",
-                marker=dict(
-                    color="#cbd5e1",
-                    line=dict(color="#94a3b8", width=1.3),
-                ),
-                text=yoy_df["Prev Revenue Cr"],
-                texttemplate="%{text:.2f}",
-                textposition="outside",
-                textfont=dict(size=9, color="#64748b"),
-                cliponaxis=False,
-                hovertemplate=(
-                    "<b>%{x}</b><br>"
-                    "LY Revenue: ₹%{y:.2f} Cr"
-                    "<extra></extra>"
-                ),
+
+            # Add forecast only for the current ongoing month and remove future blank months
+            yoy_df = add_revenue_forecast(
+                yoy_df,
+                trend_type,
+                selected_quarter=quarter,
+                selected_month=month
             )
-        )
-    
-        fig_yoy.add_trace(
-            go.Bar(
-                x=yoy_df["Period"],
-                y=yoy_df["Revenue Cr"],
-                name=f"Current ({fy})",
-                marker=dict(
-                    color="#2563eb",
-                    line=dict(color="#1e3a8a", width=1.3),
-                ),
-                text=yoy_df["Revenue Cr"],
-                texttemplate="%{text:.2f}",
-                textposition="outside",
-                textfont=dict(size=9, color="#2563eb"),
-                cliponaxis=False,
-                hovertemplate=(
-                    "<b>%{x}</b><br>"
-                    "Current Revenue: ₹%{y:.2f} Cr"
-                    "<extra></extra>"
-                ),
-            )
-        )
-    
-        forecast_df = yoy_df[
-            yoy_df["Forecast Revenue Cr"].notna()
-        ].copy()
-    
-        if not forecast_df.empty:
+
+            # Revenue trend in the same visual format as Weight Trend
+            fig_yoy = go.Figure()
+
             fig_yoy.add_trace(
                 go.Bar(
-                    x=forecast_df["Period"],
-                    y=forecast_df["Forecast Revenue Cr"],
-                    name="Forecast",
-                    marker=dict(
-                        color="#f97316",
-                        line=dict(color="#c2410c", width=1.3),
-                    ),
-                    text=forecast_df["Forecast Revenue Cr"],
+                    x=yoy_df["Period"],
+                    y=yoy_df["Prev Revenue Cr"],
+                    name=f"LY ({prev_fy})",
+                    marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.3)),
+                    text=yoy_df["Prev Revenue Cr"],
                     texttemplate="%{text:.2f}",
                     textposition="outside",
-                    textfont=dict(size=9, color="#f97316"),
+                    textfont=dict(size=9, color="#64748b"),
                     cliponaxis=False,
-                    hovertemplate=(
-                        "<b>%{x}</b><br>"
-                        "Forecast Revenue: ₹%{y:.2f} Cr"
-                        "<extra></extra>"
-                    ),
+                    hovertemplate="<b>%{x}</b><br>LY Revenue: ₹%{y:.2f} Cr<extra></extra>",
                 )
             )
-    
-        yoy_max = pd.concat(
-            [
-                pd.to_numeric(
-                    yoy_df["Revenue Cr"],
-                    errors="coerce",
-                ),
-                pd.to_numeric(
-                    yoy_df["Prev Revenue Cr"],
-                    errors="coerce",
-                ),
-                pd.to_numeric(
-                    yoy_df["Forecast Revenue Cr"],
-                    errors="coerce",
-                ),
-            ],
-            ignore_index=True,
-        ).max()
-    
-        yoy_max = (
-            yoy_max
-            if pd.notna(yoy_max) and yoy_max > 0
-            else 1
-        )
-    
-        show_revenue_annotations = len(yoy_df) <= 40
-    
-        if show_revenue_annotations:
-            for _, row in yoy_df.iterrows():
-                if (
-                    row["Growth Label"]
-                    and row["Growth Label"] != "N/A"
-                ):
-                    growth_value = (
-                        row["Growth %"]
-                        if pd.notna(row["Growth %"])
-                        else 0
-                    )
-    
-                    label_color = (
-                        "#166534"
-                        if growth_value >= 0
-                        else "#dc2626"
-                    )
-    
-                    bar_top = max(
-                        row["Revenue Cr"]
-                        if pd.notna(row["Revenue Cr"])
-                        else 0,
-                        row["Prev Revenue Cr"]
-                        if pd.notna(row["Prev Revenue Cr"])
-                        else 0,
-                        row["Forecast Revenue Cr"]
-                        if pd.notna(row["Forecast Revenue Cr"])
-                        else 0,
-                    )
-    
-                    growth_gap = (
-                        0.24
-                        if trend_type == "Monthly"
-                        else 0.16
-                    )
-    
-                    fig_yoy.add_annotation(
-                        x=row["Period"],
-                        y=bar_top + (yoy_max * growth_gap),
-                        text=row["Growth Label"],
-                        showarrow=False,
-                        font=dict(
-                            size=10,
-                            color=label_color,
-                            family="Arial Black",
-                        ),
-                    )
-    
-        fig_yoy.update_layout(
-            barmode="group",
-            height=REVENUE_CHART_HEIGHT,
-            margin=dict(l=8, r=8, t=34, b=8),
-            plot_bgcolor="#f8fafc",
-            paper_bgcolor="rgba(0,0,0,0)",
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.05,
-                x=0,
-                font=dict(size=9),
-            ),
-            xaxis_title="",
-            yaxis_title="Revenue (Cr)",
-            yaxis_range=[
-                0,
-                yoy_max * (
-                    1.48
-                    if trend_type == "Monthly"
-                    else 1.35
-                ),
-            ],
-            bargap=0.22,
-            bargroupgap=0.08,
-        )
-    
-        apply_3d_chart_layout(
-            fig_yoy,
-            height=REVENUE_CHART_HEIGHT,
-            margin=dict(l=8, r=8, t=34, b=8),
-        )
-    
-        fig_yoy.update_xaxes(
-            showgrid=False,
-            showline=False,
-            zeroline=False,
-        )
-    
-        fig_yoy.update_yaxes(
-            showgrid=False,
-            showline=False,
-            zeroline=False,
-        )
-    
-        st.plotly_chart(
-            fig_yoy,
-            width="stretch",
-            config={
-                "displayModeBar": False,
-                "responsive": True,
-            },
-        )
-    
-    
-    compact_spacer()
 
-
-# ============================================================
-# Donut charts below Revenue Trend
-# ============================================================
-load_col, company_col = st.columns(
-    [1, 1],
-    gap="small",
-)
-
-
-# ------------------------------------------------------------
-# Revenue by Load Type
-# ------------------------------------------------------------
-with load_col:
-    with st.container(border=True):
-        st.markdown("###### Revenue by Load Type")
-
-        fig_load = go.Figure(
-            data=[
-                go.Pie(
-                    labels=["FTL", "LTL"],
-                    values=[ftl, ltl],
-                    hole=0.64,
-                    textinfo="percent+label",
-                    pull=[0.018, 0.018],
-                    rotation=135,
-                    direction="clockwise",
-                    marker=dict(
-                        colors=["#2563eb", "#0f766e"],
-                        line=dict(
-                            color="#ffffff",
-                            width=3,
-                        ),
-                    ),
-                    textfont=dict(
-                        size=11,
-                        color="white",
-                    ),
-                    hovertemplate=(
-                        "<b>%{label}</b><br>"
-                        "Revenue: ₹%{value:,.0f}<br>"
-                        "Share: %{percent}"
-                        "<extra></extra>"
-                    ),
+            fig_yoy.add_trace(
+                go.Bar(
+                    x=yoy_df["Period"],
+                    y=yoy_df["Revenue Cr"],
+                    name=f"Current ({fy})",
+                    marker=dict(color="#2563eb", line=dict(color="#1e3a8a", width=1.3)),
+                    text=yoy_df["Revenue Cr"],
+                    texttemplate="%{text:.2f}",
+                    textposition="outside",
+                    textfont=dict(size=9, color="#2563eb"),
+                    cliponaxis=False,
+                    hovertemplate="<b>%{x}</b><br>Current Revenue: ₹%{y:.2f} Cr<extra></extra>",
                 )
-            ]
-        )
-
-        fig_load.update_layout(
-            annotations=[
-                dict(
-                    text=(
-                        f"<b>₹{(ftl + ltl) / 10000000:.2f} Cr</b>"
-                        "<br><span style='font-size:10px'>Total</span>"
-                    ),
-                    x=0.5,
-                    y=0.5,
-                    xanchor="center",
-                    yanchor="middle",
-                    showarrow=False,
-                    align="center",
-                    font=dict(
-                        size=16,
-                        color="#0f172a",
-                        family="Arial Black",
-                    ),
-                )
-            ],
-            height=310,
-            margin=dict(l=5, r=5, t=5, b=5),
-            paper_bgcolor="rgba(0,0,0,0)",
-            showlegend=False,
-        )
-
-        fig_load.update_traces(sort=False)
-
-        st.plotly_chart(
-            fig_load,
-            width="stretch",
-            config={
-                "displayModeBar": False,
-                "responsive": True,
-            },
-        )
-
-        st.markdown(
-            f"""
-            <div style="
-                display:flex;
-                justify-content:center;
-                flex-wrap:wrap;
-                gap:10px;
-                margin-top:-12px;
-                margin-bottom:2px;
-            ">
-                <span style="
-                    font-size:10px;
-                    font-weight:800;
-                    color:#2563eb;
-                    background:#eff6ff;
-                    border:1px solid #bfdbfe;
-                    border-radius:999px;
-                    padding:4px 9px;
-                ">
-                    🚛 FTL ₹{ftl / 10000000:.2f} Cr
-                </span>
-
-                <span style="
-                    font-size:10px;
-                    font-weight:800;
-                    color:#0f766e;
-                    background:#f0fdfa;
-                    border:1px solid #99f6e4;
-                    border-radius:999px;
-                    padding:4px 9px;
-                ">
-                    🚚 LTL ₹{ltl / 10000000:.2f} Cr
-                </span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
-# ------------------------------------------------------------
-# Prepare Revenue by Company data
-# Existing calculation logic is unchanged.
-# ------------------------------------------------------------
-company_df = (
-    df.groupby(
-        "compname",
-        dropna=False,
-    )["REVENUE"]
-    .sum()
-    .reset_index()
-    .rename(
-        columns={
-            "compname": "Company",
-        }
-    )
-)
-
-company_df["Company"] = (
-    company_df["Company"]
-    .fillna("Unknown")
-    .astype(str)
-)
-
-company_df["Revenue Cr"] = (
-    company_df["REVENUE"] / 10000000
-)
-
-company_total = company_df["Revenue Cr"].sum()
-
-company_df["Contribution %"] = (
-    company_df["Revenue Cr"]
-    / company_total
-    * 100
-    if company_total
-    else 0
-)
-
-company_df = (
-    company_df
-    .sort_values(
-        "Revenue Cr",
-        ascending=False,
-    )
-    .reset_index(drop=True)
-)
-
-if len(company_df) > 6:
-    top_company_df = company_df.head(5).copy()
-
-    others_revenue = (
-        company_df.iloc[5:]["Revenue Cr"].sum()
-    )
-
-    others_row = pd.DataFrame(
-        {
-            "Company": ["Others"],
-            "REVENUE": [
-                others_revenue * 10000000
-            ],
-            "Revenue Cr": [
-                others_revenue
-            ],
-            "Contribution %": [
-                (
-                    others_revenue
-                    / company_total
-                    * 100
-                )
-                if company_total
-                else 0
-            ],
-        }
-    )
-
-    company_chart_df = pd.concat(
-        [
-            top_company_df,
-            others_row,
-        ],
-        ignore_index=True,
-    )
-else:
-    company_chart_df = company_df.copy()
-
-
-# ------------------------------------------------------------
-# Revenue by Company
-# ------------------------------------------------------------
-with company_col:
-    with st.container(border=True):
-        st.markdown("###### Revenue by Company")
-
-        if (
-            company_chart_df.empty
-            or company_total <= 0
-        ):
-            st.info(
-                "No company revenue is available "
-                "for the selected filters."
             )
 
-        else:
-            company_colors = [
-                "#2563eb",
-                "#16a34a",
-                "#f59e0b",
-                "#7c3aed",
-                "#f97316",
-                "#94a3b8",
-            ]
-
-            company_labels = (
-                company_chart_df["Company"]
-                .astype(str)
-                .tolist()
-            )
-
-            company_values = (
-                pd.to_numeric(
-                    company_chart_df["Revenue Cr"],
-                    errors="coerce",
+            forecast_df = yoy_df[yoy_df["Forecast Revenue Cr"].notna()].copy()
+            if not forecast_df.empty:
+                fig_yoy.add_trace(
+                    go.Bar(
+                        x=forecast_df["Period"],
+                        y=forecast_df["Forecast Revenue Cr"],
+                        name="Forecast",
+                        marker=dict(color="#f97316", line=dict(color="#c2410c", width=1.3)),
+                        text=forecast_df["Forecast Revenue Cr"],
+                        texttemplate="%{text:.2f}",
+                        textposition="outside",
+                        textfont=dict(size=9, color="#f97316"),
+                        cliponaxis=False,
+                        hovertemplate="<b>%{x}</b><br>Forecast Revenue: ₹%{y:.2f} Cr<extra></extra>",
+                    )
                 )
-                .fillna(0)
-                .tolist()
-            )
 
-            fig_company = go.Figure(
+            yoy_max = pd.concat(
+                [
+                    pd.to_numeric(yoy_df["Revenue Cr"], errors="coerce"),
+                    pd.to_numeric(yoy_df["Prev Revenue Cr"], errors="coerce"),
+                    pd.to_numeric(yoy_df["Forecast Revenue Cr"], errors="coerce"),
+                ],
+                ignore_index=True,
+            ).max()
+            yoy_max = yoy_max if pd.notna(yoy_max) and yoy_max > 0 else 1
+
+            show_revenue_annotations = len(yoy_df) <= 40
+            if show_revenue_annotations:
+                for _, r in yoy_df.iterrows():
+                    if r["Growth Label"] and r["Growth Label"] != "N/A":
+                        growth_value = r["Growth %"] if pd.notna(r["Growth %"]) else 0
+                        label_color = "#166534" if growth_value >= 0 else "#dc2626"
+                        bar_top = max(
+                            r["Revenue Cr"] if pd.notna(r["Revenue Cr"]) else 0,
+                            r["Prev Revenue Cr"] if pd.notna(r["Prev Revenue Cr"]) else 0,
+                            r["Forecast Revenue Cr"] if pd.notna(r["Forecast Revenue Cr"]) else 0,
+                        )
+                        growth_gap = 0.24 if trend_type == "Monthly" else 0.16
+                        fig_yoy.add_annotation(
+                            x=r["Period"],
+                            y=bar_top + (yoy_max * growth_gap),
+                            text=r["Growth Label"],
+                            showarrow=False,
+                            font=dict(size=10, color=label_color, family="Arial Black"),
+                        )
+
+            fig_yoy.update_layout(
+                barmode="group",
+                height=REVENUE_CHART_HEIGHT,
+                margin=dict(l=2, r=2, t=30, b=2),
+                plot_bgcolor="#f8fafc",
+                paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.05,
+                    x=0,
+                    font=dict(size=9),
+                ),
+                xaxis_title="",
+                yaxis_title="Revenue (Cr)",
+                yaxis_range=[0, yoy_max * (1.48 if trend_type == "Monthly" else 1.35)],
+                bargap=0.22,
+                bargroupgap=0.08,
+            )
+            apply_3d_chart_layout(fig_yoy, height=REVENUE_CHART_HEIGHT, margin=dict(l=8, r=8, t=34, b=8))
+            fig_yoy.update_xaxes(showgrid=False, showline=False, zeroline=False)
+            fig_yoy.update_yaxes(showgrid=False, showline=False, zeroline=False)
+
+            st.plotly_chart(fig_yoy, width="stretch")
+
+    with row2:
+        with st.container(border=True):
+            st.markdown("###### Revenue by Load Type")
+
+            # Donut chart for FTL/LTL revenue share
+            fig_load = go.Figure(
                 data=[
                     go.Pie(
-                        labels=company_labels,
-                        values=company_values,
+                        labels=["FTL", "LTL"],
+                        values=[ftl, ltl],
                         hole=0.64,
-                        sort=False,
+                        textinfo="percent+label",
+                        pull=[0.018, 0.018],
+                        rotation=135,
                         direction="clockwise",
-                        domain=dict(
-                            x=[0.08, 0.92],
-                            y=[0.16, 0.98],
-                        ),
-                        customdata=(
-                            company_chart_df[
-                                ["Contribution %"]
-                            ].to_numpy()
-                        ),
-                        texttemplate="%{percent:.0%}",
-                        textposition="inside",
-                        textfont=dict(
-                            size=10,
-                            color="white",
-                            family="Arial Black",
-                        ),
-                        hovertemplate=(
-                            "<b>%{label}</b><br>"
-                            "Revenue: ₹%{value:.2f} Cr<br>"
-                            "Contribution: "
-                            "%{customdata[0]:.1f}%"
-                            "<extra></extra>"
-                        ),
                         marker=dict(
-                            colors=company_colors[
-                                :len(company_chart_df)
-                            ],
-                            line=dict(
-                                color="#ffffff",
-                                width=2,
-                            ),
+                            colors=["#2563eb", "#0f766e"],
+                            line=dict(color="#ffffff", width=3),
                         ),
+                        textfont=dict(size=10, color="white"),
+                        hovertemplate="<b>%{label}</b><br>Revenue: ₹%{value:,.0f}<br>Share: %{percent}<extra></extra>",
                     )
                 ]
             )
 
-            fig_company.update_layout(
-                height=310,
-                margin=dict(
-                    l=5,
-                    r=5,
-                    t=5,
-                    b=52,
-                ),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                showlegend=True,
-                legend=dict(
-                    orientation="h",
-                    yanchor="top",
-                    y=-0.03,
-                    xanchor="center",
-                    x=0.5,
-                    font=dict(size=9),
-                    itemclick="toggle",
-                    itemdoubleclick="toggleothers",
-                ),
+            fig_load.update_layout(
                 annotations=[
                     dict(
-                        text=(
-                            f"<b>₹{company_total:.2f} Cr</b>"
-                            "<br>"
-                            "<span style='font-size:10px'>"
-                            "Total"
-                            "</span>"
-                        ),
+                        text=f"<b>₹{(ftl + ltl)/10000000:.2f} Cr</b><br><b>Total</b>",
                         x=0.5,
-                        y=0.57,
-                        xanchor="center",
-                        yanchor="middle",
+                        y=0.5,
                         showarrow=False,
                         align="center",
-                        font=dict(
-                            size=16,
-                            color="#0f172a",
-                            family="Arial Black",
-                        ),
+                        font=dict(size=16, color="#0f172a", family="Arial Black")
                     )
                 ],
-                uniformtext_minsize=8,
-                uniformtext_mode="hide",
+                height=220,
+                margin=dict(l=2, r=2, t=2, b=2),
+                paper_bgcolor="rgba(0,0,0,0)",
+                showlegend=False,
+            )
+            fig_load.update_traces(sort=False)
+
+            st.plotly_chart(fig_load, width="stretch")
+            st.markdown(
+                f"""
+                <div style="display:flex;justify-content:center;gap:10px;margin-top:-10px;margin-bottom:2px;">
+                    <span style="font-size:9px;font-weight:800;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:3px 7px;">🚛 FTL ₹{ftl/10000000:.2f} Cr</span>
+                    <span style="font-size:9px;font-weight:800;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:999px;padding:3px 7px;">🚚 LTL ₹{ltl/10000000:.2f} Cr</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
 
-            st.plotly_chart(
-                fig_company,
-                width="stretch",
-                config={
-                    "displayModeBar": False,
-                    "responsive": True,
-                },
+        # Revenue by Company is intentionally placed below Load Type
+        # inside the same right-side column as the Revenue Trend chart.
+        company_df = (
+            df.groupby("compname", dropna=False)["REVENUE"]
+            .sum()
+            .reset_index()
+            .rename(columns={"compname": "Company"})
+        )
+        company_df["Company"] = company_df["Company"].fillna("Unknown").astype(str)
+        company_df["Revenue Cr"] = company_df["REVENUE"] / 10000000
+        company_total = company_df["Revenue Cr"].sum()
+        company_df["Contribution %"] = (
+            company_df["Revenue Cr"] / company_total * 100 if company_total else 0
+        )
+        company_df = company_df.sort_values("Revenue Cr", ascending=False).reset_index(drop=True)
+
+        # Keep the compact donut readable: show the five largest companies and
+        # combine the remaining companies under Others.
+        if len(company_df) > 6:
+            top_company_df = company_df.head(5).copy()
+            others_revenue = company_df.iloc[5:]["Revenue Cr"].sum()
+            others_row = pd.DataFrame(
+                {
+                    "Company": ["Others"],
+                    "REVENUE": [others_revenue * 10000000],
+                    "Revenue Cr": [others_revenue],
+                    "Contribution %": [
+                        (others_revenue / company_total * 100) if company_total else 0
+                    ],
+                }
             )
+            company_chart_df = pd.concat([top_company_df, others_row], ignore_index=True)
+        else:
+            company_chart_df = company_df.copy()
+
+        with st.container(border=True):
+            st.markdown("###### Revenue by Company")
+
+            if company_chart_df.empty or company_total <= 0:
+                st.info("No company revenue is available for the selected filters.")
+            else:
+                company_colors = [
+                    "#2563eb", "#16a34a", "#f59e0b",
+                    "#7c3aed", "#f97316", "#94a3b8",
+                ]
+
+                # Define chart inputs explicitly to prevent NameError after deployment.
+                company_labels = company_chart_df["Company"].astype(str).tolist()
+                company_values = pd.to_numeric(
+                    company_chart_df["Revenue Cr"], errors="coerce"
+                ).fillna(0).tolist()
+
+                fig_company = go.Figure(
+                    data=[
+                        go.Pie(
+                            labels=company_labels,
+                            values=company_values,
+                            hole=0.64,
+                            sort=False,
+                            direction="clockwise",
+                            domain=dict(x=[0.06, 0.94], y=[0.18, 0.98]),
+                            customdata=company_chart_df[["Contribution %"]].to_numpy(),
+                            texttemplate="%{percent:.0%}",
+                            textposition="inside",
+                            textfont=dict(size=9, color="white", family="Arial Black"),
+                            hovertemplate=(
+                                "<b>%{label}</b><br>"
+                                "Revenue: ₹%{value:.2f} Cr<br>"
+                                "Contribution: %{customdata[0]:.1f}%"
+                                "<extra></extra>"
+                            ),
+                            marker=dict(
+                                colors=company_colors[:len(company_chart_df)],
+                                line=dict(color="#ffffff", width=2),
+                            ),
+                        )
+                    ]
+                )
+
+                fig_company.update_layout(
+                    height=255,
+                    margin=dict(l=2, r=2, t=2, b=42),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    showlegend=True,
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top",
+                        y=-0.03,
+                        xanchor="center",
+                        x=0.5,
+                        font=dict(size=8),
+                        itemclick="toggle",
+                        itemdoubleclick="toggleothers",
+                    ),
+                    annotations=[
+                        dict(
+                            text=(
+                                f"<b>₹{company_total:.2f} Cr</b>"
+                                "<br><span style='font-size:10px'>Total</span>"
+                            ),
+                            x=0.5,
+                            y=0.58,
+                            showarrow=False,
+                            align="center",
+                            font=dict(size=15, color="#0f172a", family="Arial Black"),
+                        )
+                    ],
+                    uniformtext_minsize=8,
+                    uniformtext_mode="hide",
+                )
+
+                st.plotly_chart(
+                    fig_company,
+                    width="stretch",
+                    config={
+                        "displayModeBar": False,
+                        "responsive": True,
+                    },
+                )
+
+    compact_spacer()
 
 
-compact_spacer()
     # =========================
     # Weight trend data is prepared inside the chart based on selected granularity
     # =========================
