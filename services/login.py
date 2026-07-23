@@ -1,5 +1,6 @@
 import streamlit as st
 from sqlalchemy import text
+from textwrap import dedent
 
 from services.database import get_engine
 from services.roles import (
@@ -10,29 +11,26 @@ from services.roles import (
 
 def check_login(username: str, password: str):
     """
-    Check login credentials against USERMAST.
+    Validate the username and password from USERMAST.
 
-    Both username and password are:
-    - Case-insensitive
-    - Trimmed for leading and trailing spaces
-
-    Examples:
-        Username: ADMIN, Admin, admin
-        Password: ABC123, abc123, AbC123
-
-    All of the above variations will be treated as equal.
+    Login behaviour:
+    - Username is case-insensitive.
+    - Password is case-insensitive.
+    - Leading and trailing spaces are ignored.
+    - Expired users are not allowed to log in.
 
     Returns:
-        (True, employee_id) if login is successful
-        (False, None) if login fails
+        tuple:
+            (True, employee_id) when login is successful.
+            (False, None) when login fails.
     """
 
     try:
-        engine = get_engine()
-
-        # Remove accidental spaces before and after the entered values.
+        # Remove accidental spaces from the entered credentials.
         clean_username = username.strip()
         clean_password = password.strip()
+
+        engine = get_engine()
 
         with engine.connect() as conn:
             result = conn.execute(
@@ -57,10 +55,11 @@ def check_login(username: str, password: str):
                 },
             )
 
-            row = result.fetchone()
+            # mappings() allows column names to be used instead of row indexes.
+            row = result.mappings().first()
 
         if row:
-            return True, row[2]
+            return True, row["EMPLOYEEID"]
 
         return False, None
 
@@ -74,121 +73,163 @@ def login_page():
     Display the Streamlit login page and authenticate the user.
     """
 
+    # CSS styling for the complete login page.
     st.markdown(
-        """
-        <style>
+        dedent(
+            """
+            <style>
+                /* Main Streamlit page container */
+                .main .block-container {
+                    max-width: 900px;
+                    padding-top: 40px;
+                    padding-bottom: 40px;
+                }
 
-        .main .block-container {
-            max-width: 900px;
-            padding-top: 40px;
-        }
+                /* Login heading card */
+                .login-card {
+                    width: 100%;
+                    background: white;
+                    padding: 28px 20px;
+                    border-radius: 20px;
+                    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.12);
+                    border: 1px solid #eeeeee;
+                    text-align: center;
+                    margin-bottom: 20px;
+                    box-sizing: border-box;
+                }
 
-        .login-card {
-            width: 280px;
-            margin: auto;
-            background: white;
-            padding: 30px;
-            border-radius: 20px;
-            box-shadow: 0 10px 35px rgba(0, 0,0,0.12);
-            border: 1px solid #eeeeee;
-            text-align: center;
-            margin-bottom: 20px;
-        }
+                /* Main login heading */
+                .login-title {
+                    font-size: 30px;
+                    font-weight: 600;
+                    color: #1f2937;
+                    margin-bottom: 5px;
+                    line-height: 1.25;
+                }
 
-        .login-title {
-            font-size: 30px;
-            font-weight: 600;
-            color: #1f2937;
-            margin-bottom: 5px;
-        }
+                /* Login subtitle */
+                .login-subtitle {
+                    color: #6b7280;
+                    font-size: 15px;
+                    margin-top: 6px;
+                }
 
-        .login-subtitle {
-            color: #6b7280;
-            font-size: 15px;
-        }
+                /* Input field styling */
+                div[data-baseweb="input"] > div {
+                    border-radius: 10px;
+                }
 
-        div.stButton > button {
-            background: linear-gradient(90deg, #0f766e, #2563eb);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            height: 45px;
-            font-weight: 600;
-        }
+                /* Login button styling */
+                div.stButton > button {
+                    width: 100%;
+                    background: linear-gradient(90deg, #0f766e, #2563eb);
+                    color: white;
+                    border: none;
+                    border-radius: 10px;
+                    height: 45px;
+                    font-weight: 600;
+                }
 
-        div.stButton > button:hover {
-            color: white;
-        }
+                /* Login button hover styling */
+                div.stButton > button:hover {
+                    color: white;
+                    border: none;
+                    background: linear-gradient(90deg, #115e59, #1d4ed8);
+                }
 
-        </style>
-        """,
+                /* Login button active styling */
+                div.stButton > button:active {
+                    color: white;
+                    border: none;
+                }
+            </style>
+            """
+        ),
         unsafe_allow_html=True,
     )
 
-    # Create three columns and display the login form
-    # in the centre column.
-    col1, col2, col3 = st.columns([3, 2, 3])
+    # Create a centred login section.
+    left_col, login_col, right_col = st.columns([3, 2, 3])
 
-    with col2:
+    with login_col:
+
+        # dedent() prevents Streamlit from displaying HTML as code.
         st.markdown(
-            """
-            <div class="login-card">
-                <div class="login-title">
-                    Dashboard Login
+            dedent(
+                """
+                <div class="login-card">
+                    <div class="login-title">Dashboard Login</div>
+                    <div class="login-subtitle">
+                        Secure login to continue
+                    </div>
                 </div>
-
-                <div class="login-subtitle">
-                    Secure login to continue
-                </div>
-            </div>
-            """,
+                """
+            ),
             unsafe_allow_html=True,
         )
 
+        # Username input.
         username = st.text_input(
-            "Username",
+            label="Username",
             placeholder="Enter your username",
             key="login_username",
         )
 
+        # Password input.
         password = st.text_input(
-            "Password",
+            label="Password",
             type="password",
             placeholder="Enter your password",
             key="login_password",
         )
 
-        if st.button(
+        # Login button.
+        login_clicked = st.button(
             "Login",
             use_container_width=True,
             key="login_button",
-        ):
-            # Username and password must not be blank.
+        )
+
+        if login_clicked:
+
+            # Check that both fields contain a value.
             if not username.strip() or not password.strip():
-                st.warning("Enter username and password")
+                st.warning("Please enter username and password.")
                 return
 
+            # Check credentials against the database.
             success, employee_id = check_login(
                 username=username,
                 password=password,
             )
 
             if success:
-                # Get employee access permissions.
-                role = get_role_for_employee(employee_id)
-                data_scope = get_data_scope_for_employee(employee_id)
+                try:
+                    # Retrieve employee access rights.
+                    role = get_role_for_employee(employee_id)
+                    data_scope = get_data_scope_for_employee(employee_id)
 
-                # Store login information in Streamlit session.
-                st.session_state["logged_in"] = True
-                st.session_state["employee_id"] = employee_id
-                st.session_state["role"] = role
-                st.session_state["data_scope"] = data_scope
+                    # Save authenticated user information in session state.
+                    st.session_state["logged_in"] = True
+                    st.session_state["employee_id"] = employee_id
+                    st.session_state["role"] = role
+                    st.session_state["data_scope"] = data_scope
+                    st.session_state["username"] = username.strip()
 
-                # Store the username entered by the user.
-                st.session_state["username"] = username.strip()
+                    # Reload the application after successful authentication.
+                    st.rerun()
 
-                # Reload the application after successful login.
-                st.rerun()
+                except Exception as e:
+                    st.error(
+                        f"Login successful, but user access could not be loaded: {e}"
+                    )
 
             else:
-                st.error("Invalid username or password")
+                st.error("Invalid username or password.")
+
+
+# Optional direct execution support.
+# Keep this block if this file is being run directly with:
+# streamlit run login.py
+if __name__ == "__main__":
+    login_page()
