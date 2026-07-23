@@ -26,254 +26,309 @@ st.set_page_config(
 # =========================
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-/* Shrink the default Streamlit top header bar (Share/star/edit/menu row)
-   so it no longer reserves a big empty band above the page content. */
+/* Keep the application content close to the top. */
 [data-testid="stHeader"] {
-    height: 2.2rem;
+    height: 2.1rem;
     background: transparent;
 }
-[data-testid="stToolbar"] {
-    right: 1rem;
-}
-/* Remove the thin decoration/progress stripe Streamlit renders at the very top */
-[data-testid="stDecoration"] {
-    display: none;
-}
-/* Pull main content up close to the shrunk header instead of the large default gap */
-.main .block-container {
-    padding-top: 1.2rem !important;
-}
+[data-testid="stToolbar"] { right: 1rem; }
+[data-testid="stDecoration"] { display: none; }
+.main .block-container { padding-top: 1.05rem !important; }
 
-/* Sidebar base */
+/* ============================================================
+   SUGAM sidebar shell — visual-only update.
+   All menu values, role checks, report routing and button logic
+   remain unchanged in the Python code below.
+   ============================================================ */
 [data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #0B1B33 0%, #0F2340 100%);
-    font-family: 'Inter', -apple-system, sans-serif;
-    border-right: 1px solid rgba(255,255,255,0.06);
-}
-[data-testid="stSidebar"] * {
-    color: #E9EEF6;
+    width: 242px !important;
+    min-width: 242px !important;
+    background: linear-gradient(180deg, #123568 0%, #0b2a58 58%, #08244d 100%);
+    border-right: 1px solid rgba(7, 28, 63, .45);
+    box-shadow: 5px 0 18px rgba(15, 42, 82, .12);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 [data-testid="stSidebar"] > div:first-child {
-    padding-top: 1.2rem;
+    padding: 0 !important;
 }
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    padding: 0 12px 12px !important;
+}
+[data-testid="stSidebar"] * { box-sizing: border-box; }
 
-/* Profile card */
-.sugam-profile-card {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px;
-    padding: 12px 14px;
-    margin-bottom: 10px;
+/* Brand block matching the shared reference layout. */
+.sugam-logo-wrap {
+    min-height: 78px;
+    margin: 0 -12px 10px;
+    padding: 15px 15px 13px;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
+    background: rgba(5, 28, 63, .36);
+    border-bottom: 1px solid rgba(255,255,255,.10);
+}
+.sugam-logo-mark {
     position: relative;
+    width: 35px;
+    height: 31px;
+    flex: 0 0 35px;
+}
+.sugam-logo-mark::before,
+.sugam-logo-mark::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    width: 30px;
+    height: 9px;
+    border-radius: 3px 8px 3px 8px;
+    background: linear-gradient(90deg, #ef233c, #d90429);
+    transform: skewX(-28deg) rotate(-12deg);
+    box-shadow: 0 2px 5px rgba(217,4,41,.24);
+}
+.sugam-logo-mark::before { top: 4px; }
+.sugam-logo-mark::after { top: 17px; left: 6px; width: 25px; }
+.sugam-logo-copy { min-width: 0; line-height: 1; }
+.sugam-logo-name {
+    color: #ffffff;
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+}
+.sugam-logo-sub {
+    margin-top: 4px;
+    color: #cbd8ea;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 3.1px;
+}
+
+/* Navigation. */
+.sugam-nav-label {
+    margin: 10px 7px 6px;
+    color: #91a9c9;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+}
+[data-testid="stSidebar"] div[role="radiogroup"] {
+    gap: 3px !important;
+}
+[data-testid="stSidebar"] div[role="radiogroup"] label {
+    min-height: 39px;
+    margin: 0 !important;
+    padding: 8px 10px !important;
+    display: flex !important;
+    align-items: center !important;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    transition: background .14s ease, border-color .14s ease, transform .14s ease;
+}
+[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+    background: rgba(255,255,255,.075);
+    transform: translateX(1px);
+}
+[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
+    background: linear-gradient(90deg, #1f70e8 0%, #1761d2 100%);
+    border-color: rgba(123,184,255,.32);
+    box-shadow: 0 5px 12px rgba(3, 35, 83, .28), inset 0 1px 0 rgba(255,255,255,.15);
+}
+[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
+    display: none !important;
+}
+[data-testid="stSidebar"] div[role="radiogroup"] label p {
+    margin: 0 !important;
+    color: #d9e5f4 !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    line-height: 1.2 !important;
+}
+[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* Report controls. */
+[data-testid="stSidebar"] input[type="text"] {
+    min-height: 37px;
+    color: #eef5ff !important;
+    background: rgba(255,255,255,.07) !important;
+    border: 1px solid rgba(255,255,255,.12) !important;
+    border-radius: 7px !important;
+}
+[data-testid="stSidebar"] input[type="text"]::placeholder { color: #9fb2cc !important; }
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    border: 1px solid rgba(255,255,255,.10) !important;
+    border-radius: 7px !important;
+    background: rgba(255,255,255,.045) !important;
+}
+[data-testid="stSidebar"] [data-testid="stExpander"] summary p {
+    color: #dce7f5 !important;
+    font-size: 11px !important;
+}
+
+/* Bottom operational card. */
+.sugam-sidebar-spacer { height: 12px; }
+.sugam-refresh-card {
+    margin-top: 12px;
+    padding: 11px 11px 9px;
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 8px;
+    background: rgba(3, 25, 58, .32);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+}
+.sugam-refresh-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #edf5ff;
+    font-size: 10px;
+    font-weight: 700;
+}
+.sugam-refresh-icon {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    color: #8fc5ff;
+    background: rgba(44,126,229,.15);
+}
+.sugam-refresh-time {
+    margin-top: 3px;
+    color: #91a6c2;
+    font-size: 9px;
+    font-weight: 500;
+}
+.sugam-auto-row {
+    margin-top: 9px;
+    padding-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid rgba(255,255,255,.08);
+    color: #aabbd1;
+    font-size: 9px;
+}
+.sugam-static-toggle {
+    width: 31px;
+    height: 16px;
+    padding: 2px;
+    display: inline-flex;
+    justify-content: flex-end;
+    border-radius: 99px;
+    background: #2d7ff0;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,.24);
+}
+.sugam-static-toggle span {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0,0,0,.24);
+}
+
+/* Profile card at the foot of the navigation, as in the reference. */
+.sugam-profile-card {
+    margin-top: 9px;
+    padding: 9px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 8px;
+    background: rgba(3, 25, 58, .35);
 }
 .sugam-avatar {
-    width: 42px;
-    height: 42px;
-    border-radius: 11px;
-    background: linear-gradient(135deg, #F5A623, #E0821A);
+    position: relative;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 17px;
-    font-weight: 700;
-    color: #1a1200;
-    flex-shrink: 0;
-    position: relative;
-    box-shadow: 0 2px 6px rgba(245,166,35,0.35);
+    border-radius: 50%;
+    color: #184170;
+    background: linear-gradient(145deg, #f7fbff, #dcecff);
+    font-size: 11px;
+    font-weight: 800;
+    border: 2px solid rgba(255,255,255,.75);
 }
 .sugam-status-dot {
     position: absolute;
-    bottom: -2px;
-    right: -2px;
-    width: 11px;
-    height: 11px;
+    right: -1px;
+    bottom: -1px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
-    background: #22c55e;
-    border: 2px solid #0F2340;
+    background: #34d399;
+    border: 2px solid #0a2a58;
 }
-.sugam-profile-text {
-    line-height: 1.3;
-    min-width: 0;
-    flex: 1;
-}
+.sugam-profile-text { min-width: 0; flex: 1; line-height: 1.2; }
 .sugam-user-name {
-    font-size: 14px;
+    overflow: hidden;
+    color: #ffffff;
+    font-size: 10.5px;
     font-weight: 700;
-    color: #FFFFFF;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.sugam-user-meta {
+    margin-top: 3px;
+    color: #98aac2;
+    font-size: 8.5px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
-.sugam-emp-id {
-    font-size: 11.5px;
-    font-weight: 500;
-    color: #8FA0BC;
-    margin-top: 1px;
-}
 .sugam-role-badge {
-    display: inline-block;
-    margin-top: 5px;
-    font-size: 10px;
+    margin-left: auto;
+    color: #a8bad1;
+    font-size: 8px;
     font-weight: 700;
-    letter-spacing: 0.06em;
     text-transform: uppercase;
-    padding: 2px 9px;
-    border-radius: 20px;
-}
-.sugam-role-admin {
-    color: #F5A623;
-    background: rgba(245,166,35,0.15);
-}
-.sugam-role-manager {
-    color: #38bdf8;
-    background: rgba(56,189,248,0.15);
-}
-.sugam-role-viewer {
-    color: #a3a3a3;
-    background: rgba(163,163,163,0.15);
 }
 
-/* Session meta row (last login / date) */
+/* Sidebar buttons: refresh and logout keep their original Python callbacks. */
+[data-testid="stSidebar"] .stButton > button {
+    min-height: 34px;
+    border-radius: 7px !important;
+    border: 1px solid rgba(255,255,255,.12) !important;
+    color: #dce8f7 !important;
+    background: rgba(255,255,255,.055) !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    border-color: rgba(112,174,255,.55) !important;
+    background: rgba(45,127,240,.18) !important;
+    color: #ffffff !important;
+}
+[data-testid="stSidebar"] .stButton > button p {
+    color: inherit !important;
+    font-size: inherit !important;
+}
+
 .sugam-session-meta {
-    font-size: 10.5px;
-    color: #5E6E88;
-    padding: 0 2px 12px 2px;
-    display: flex;
-    justify-content: space-between;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    margin-bottom: 14px;
-}
-
-/* Logout / secondary buttons in sidebar */
-[data-testid="stSidebar"] .stButton button {
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.14);
-    color: #C7D2E3;
-    border-radius: 8px;
-    font-weight: 500;
-    font-size: 13.5px;
-    transition: all 0.15s ease;
-}
-[data-testid="stSidebar"] .stButton button:hover {
-    border-color: #E24C4C;
-    color: #FF7A7A;
-    background: rgba(226,76,76,0.08);
-}
-
-/* Brand lockup */
-.sugam-brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 4px 0 16px 0;
-    padding-bottom: 14px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-}
-.sugam-brand-icon {
-    width: 32px;
-    height: 32px;
-    background: rgba(245,166,35,0.15);
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-}
-.sugam-brand-text {
-    font-size: 14.5px;
-    font-weight: 700;
-    letter-spacing: 0.01em;
-    color: #F2F5FA;
-    line-height: 1.2;
-}
-.sugam-brand-sub {
-    font-size: 10px;
-    color: #7C8CA6;
-    text-transform: uppercase;
-    letter-spacing: 0.09em;
-    margin-top: 1px;
-}
-
-/* Section label (Navigation / Quick Actions etc.) */
-.sugam-section-label {
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: #5E6E88;
-    margin: 4px 0 8px 2px;
-}
-
-/* Navigation radio group -> styled nav list */
-[data-testid="stSidebar"] div[role="radiogroup"] {
-    gap: 2px;
-}
-[data-testid="stSidebar"] div[role="radiogroup"] label {
-    background: transparent;
-    border-radius: 8px;
-    padding: 9px 10px !important;
-    margin: 0 !important;
-    border-left: 3px solid transparent;
-    transition: background 0.15s ease;
-}
-[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-    background: rgba(255,255,255,0.05);
-}
-[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-    background: rgba(245,166,35,0.13);
-    border-left: 3px solid #F5A623;
-}
-[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
-    display: none;
-}
-[data-testid="stSidebar"] div[role="radiogroup"] label p {
-    font-size: 13.8px;
-    font-weight: 500;
-    color: #D3DCEA;
-    margin: 0;
-}
-[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {
-    color: #FFFFFF;
-    font-weight: 600;
-}
-
-/* Expanders (report folders) */
-[data-testid="stSidebar"] [data-testid="stExpander"] {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.07);
-    border-radius: 8px;
-}
-
-/* Text input (report search) */
-[data-testid="stSidebar"] input[type="text"] {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 8px;
-    color: #E9EEF6;
-}
-
-/* Dividers */
-[data-testid="stSidebar"] hr {
-    border-color: rgba(255,255,255,0.08) !important;
-    margin: 14px 0 !important;
-}
-
-/* Caption / small text */
-[data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] small {
-    color: #7C8CA6 !important;
-}
-
-/* Sidebar footer (app version / branding) */
-.sugam-footer {
-    font-size: 10px;
-    color: #45536b;
+    margin-top: 5px;
+    color: #8095b1;
+    font-size: 8px;
     text-align: center;
-    padding-top: 10px;
+}
+.sugam-footer {
+    padding: 7px 0 0;
+    color: #6680a1;
+    font-size: 8px;
+    text-align: center;
+}
+[data-testid="stSidebar"] hr {
+    margin: 10px 0 !important;
+    border-color: rgba(255,255,255,.08) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -378,65 +433,61 @@ today_str = datetime.now().strftime("%d %b %Y")
 
 
 with st.sidebar:
-    # ---- Profile card ----
-    st.markdown(f"""
-        <div class="sugam-profile-card">
-            <div class="sugam-avatar">{initials}<span class="sugam-status-dot"></span></div>
-            <div class="sugam-profile-text">
-                <div class="sugam-user-name" title="{display_name}">{display_name}</div>
-                <div class="sugam-emp-id">Employee ID: {st.session_state.get('employee_id', '-')}</div>
-                <span class="sugam-role-badge {role_class}">{role.title()}</span>
+    # ==========================================================
+    # Brand header — visual placement only; no routing logic changed.
+    # ==========================================================
+    st.markdown(
+        """
+        <div class="sugam-logo-wrap">
+            <div class="sugam-logo-mark" aria-hidden="true"></div>
+            <div class="sugam-logo-copy">
+                <div class="sugam-logo-name">SUGAM</div>
+                <div class="sugam-logo-sub">LOGISTICS</div>
             </div>
         </div>
-    """, unsafe_allow_html=True)
-
-    # ---- Session meta: today's date + login time ----
-    st.markdown(f"""
-        <div class="sugam-session-meta">
-            <span>📅 {today_str}</span>
-            <span>🕐 Logged in {st.session_state['_login_time']}</span>
-        </div>
-    """, unsafe_allow_html=True)
-
-    if st.button("🚪 Logout", use_container_width=True, key="sidebar_logout"):
-        st.session_state.clear()
-        st.rerun()
-
-    # ---- Brand lockup ----
-    st.markdown("""
-        <div class="sugam-brand">
-            <div class="sugam-brand-icon">🚚</div>
-            <div>
-                <div class="sugam-brand-sub">Sugam Dashboard</div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True,
+    )
 
     if not allowed_menu:
         st.warning("No access has been assigned to your role yet. Contact the admin.")
         st.stop()
 
-    st.markdown('<div class="sugam-section-label">Navigation</div>', unsafe_allow_html=True)
+    # ==========================================================
+    # Navigation — same role-filtered menu values and same radio.
+    # ==========================================================
+    st.markdown('<div class="sugam-nav-label">Navigation</div>', unsafe_allow_html=True)
     menu = st.radio(
         "Navigation",
         allowed_menu,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="sidebar_main_navigation",
     )
 
+    # Existing reports search/folder logic is preserved exactly.
     if menu == "📄 Reports":
-        st.markdown('<div class="sugam-section-label">Search Report</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sugam-nav-label">Search Report</div>', unsafe_allow_html=True)
 
-        search_text = st.text_input("Search by report name", label_visibility="collapsed", placeholder="🔍 Search by report name")
+        search_text = st.text_input(
+            "Search by report name",
+            label_visibility="collapsed",
+            placeholder="🔍 Search report",
+            key="sidebar_report_search",
+        )
 
         if search_text:
             for department, reports in REPORTS_VISIBLE.items():
                 for report_name in reports.keys():
                     if search_text.lower() in report_name.lower():
-                        if st.button(report_name, key=f"search_{report_name}", use_container_width=True):
+                        if st.button(
+                            report_name,
+                            key=f"search_{report_name}",
+                            use_container_width=True,
+                        ):
                             st.session_state["selected_report"] = report_name
                             st.rerun()
 
-        st.markdown('<div class="sugam-section-label">Report Folders</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sugam-nav-label">Report Folders</div>', unsafe_allow_html=True)
 
         if not REPORTS_VISIBLE:
             st.info("No reports assigned to your role.")
@@ -444,20 +495,76 @@ with st.sidebar:
             for department, reports in REPORTS_VISIBLE.items():
                 with st.expander(department, expanded=False):
                     for report_name in reports.keys():
-                        if st.button(report_name, key=f"{department}_{report_name}", use_container_width=True):
+                        if st.button(
+                            report_name,
+                            key=f"{department}_{report_name}",
+                            use_container_width=True,
+                        ):
                             st.session_state["selected_report"] = report_name
                             st.rerun()
 
-    st.divider()
+    # ==========================================================
+    # Operational status card. The displayed toggle is decorative;
+    # Refresh Data below retains the original cache-clearing logic.
+    # ==========================================================
+    st.markdown('<div class="sugam-sidebar-spacer"></div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="sugam-refresh-card">
+            <div class="sugam-refresh-head">
+                <span class="sugam-refresh-icon">↻</span>
+                <span>
+                    Data Last Refreshed
+                    <div class="sugam-refresh-time">{today_str} · {st.session_state['_login_time']}</div>
+                </span>
+            </div>
+            <div class="sugam-auto-row">
+                <span>Auto Refresh</span>
+                <span class="sugam-static-toggle" title="Visual status only"><span></span></span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    st.markdown('<div class="sugam-section-label">Quick Actions</div>', unsafe_allow_html=True)
-
-    if st.button("🔄 Refresh Data", use_container_width=True):
+    # Original refresh behavior: clear Streamlit data cache and role cache.
+    if st.button("🔄 Refresh Data", use_container_width=True, key="sidebar_refresh_data"):
         st.cache_data.clear()
         clear_role_cache()
         st.success("Data refreshed!")
 
-    st.markdown('<div class="sugam-footer">Sugam Dashboard · v1.0</div>', unsafe_allow_html=True)
+    # ==========================================================
+    # User profile at the bottom, matching the shared design.
+    # ==========================================================
+    st.markdown(
+        f"""
+        <div class="sugam-profile-card">
+            <div class="sugam-avatar">
+                {initials}
+                <span class="sugam-status-dot"></span>
+            </div>
+            <div class="sugam-profile-text">
+                <div class="sugam-user-name" title="{display_name}">{display_name}</div>
+                <div class="sugam-user-meta">
+                    ID: {st.session_state.get('employee_id', '-')} · {role.title()}
+                </div>
+            </div>
+            <span class="sugam-role-badge">⌄</span>
+        </div>
+        <div class="sugam-session-meta">Logged in {st.session_state['_login_time']}</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Original logout behavior preserved.
+    if st.button("🚪 Logout", use_container_width=True, key="sidebar_logout"):
+        st.session_state.clear()
+        st.rerun()
+
+    st.markdown(
+        '<div class="sugam-footer">Sugam Dashboard · v1.0</div>',
+        unsafe_allow_html=True,
+    )
 
 
 if menu == "🏠 Revenue Overview":
