@@ -58,6 +58,70 @@ st.markdown("""
 }
 [data-testid="stSidebar"] * { box-sizing: border-box; }
 
+
+/* ============================================================
+   Highly visible sidebar expand / collapse controls.
+   These selectors cover current and older Streamlit DOM names.
+   Visual-only: no sidebar state or routing logic is changed.
+   ============================================================ */
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapseButton"] {
+    z-index: 999999 !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button,
+[data-testid="stSidebarCollapseButton"] button,
+[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] {
+    width: 38px !important;
+    min-width: 38px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 7px !important;
+    border: 2px solid #ffffff !important;
+    border-radius: 10px !important;
+    background: linear-gradient(145deg, #3182f6 0%, #1761d2 62%, #104eae 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 0 #0a3c8d, 0 7px 14px rgba(4, 29, 72, .35) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button:hover,
+[data-testid="stSidebarCollapseButton"] button:hover,
+[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:hover {
+    background: linear-gradient(145deg, #4d98ff 0%, #1f70e8 62%, #1558c0 100%) !important;
+    transform: translateY(-1px) scale(1.04) !important;
+    box-shadow: 0 5px 0 #0a3c8d, 0 10px 18px rgba(4, 29, 72, .42) !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button:active,
+[data-testid="stSidebarCollapseButton"] button:active,
+[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:active {
+    transform: translateY(2px) !important;
+    box-shadow: 0 1px 0 #0a3c8d, 0 4px 8px rgba(4, 29, 72, .30) !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] svg,
+[data-testid="stSidebarCollapseButton"] svg,
+[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg {
+    width: 23px !important;
+    height: 23px !important;
+    color: #ffffff !important;
+    fill: none !important;
+    stroke: #ffffff !important;
+    stroke-width: 3 !important;
+    opacity: 1 !important;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,.25));
+}
+
+/* Keep the expand button away from the browser edge when sidebar is closed. */
+[data-testid="stSidebarCollapsedControl"] {
+    top: 10px !important;
+    left: 10px !important;
+}
+
 /* Brand block matching the shared reference layout. */
 .sugam-logo-wrap {
     min-height: 78px;
