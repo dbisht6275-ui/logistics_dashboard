@@ -2962,9 +2962,14 @@ def show_overview():
                         }}
                         .customer-insight-table tr:last-child td {{border-bottom:0;}}
                         .customer-insight-table tbody tr:hover {{background:#f8fbff;}}
-                        .cust-rank {{width:7%; text-align:center; font-weight:800; color:#64748b;}}
+                        /* Narrow rank column removes the unnecessary gap before Customer Name. */
+                        .cust-rank {{
+                            width:4%; padding-left:2px !important; padding-right:2px !important;
+                            text-align:center; font-weight:800; color:#64748b;
+                        }}
                         .cust-name {{
-                            width:35%; font-weight:750; color:#1e293b;
+                            width:38%; padding-left:3px !important;
+                            font-weight:750; color:#1e293b;
                             white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
                         }}
                         .cust-revenue {{width:32%;}}
@@ -2977,11 +2982,11 @@ def show_overview():
                             height:4px; border-radius:999px;
                             background:linear-gradient(90deg,#60a5fa,#2563eb);
                         }}
-                        .cust-share {{width:12%; text-align:right; font-size:12px; font-weight:850; color:#334155;}}
-                        .cust-yoy {{width:14%; text-align:right; font-size:12px;}}
+                        .cust-share {{width:12%; text-align:right; font-weight:800; color:#475569;}}
+                        .cust-yoy {{width:14%; text-align:right;}}
                         .cust-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:11px; font-weight:900;
+                            font-size:9px; font-weight:900;
                         }}
                         .cust-growth.up {{color:#16a34a;}}
                         .cust-growth.down {{color:#dc2626;}}
@@ -2989,6 +2994,14 @@ def show_overview():
                     </style>
                     <div class="customer-insight-wrap">
                         <table class="customer-insight-table">
+                            <!-- Explicit column widths keep rank and name close on every screen. -->
+                            <colgroup>
+                                <col style="width:4%">
+                                <col style="width:38%">
+                                <col style="width:32%">
+                                <col style="width:12%">
+                                <col style="width:14%">
+                            </colgroup>
                             <thead>
                                 <tr>
                                     <th style="text-align:center;">#</th>
@@ -3173,9 +3186,14 @@ def show_overview():
                         }}
                         .route-insight-table tr:last-child td {{border-bottom:0;}}
                         .route-insight-table tbody tr:hover {{background:#f8fbff;}}
-                        .route-rank {{width:7%; text-align:center; font-weight:800; color:#64748b;}}
+                        /* Narrow rank column removes the unnecessary gap before Route. */
+                        .route-rank {{
+                            width:4%; padding-left:2px !important; padding-right:2px !important;
+                            text-align:center; font-weight:800; color:#64748b;
+                        }}
                         .route-name {{
-                            width:35%; font-weight:750; color:#1e293b;
+                            width:38%; padding-left:3px !important;
+                            font-weight:750; color:#1e293b;
                             white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
                         }}
                         .route-revenue {{width:32%;}}
@@ -3188,11 +3206,11 @@ def show_overview():
                             height:4px; border-radius:999px;
                             background:linear-gradient(90deg,#2dd4bf,#0f766e);
                         }}
-                        .route-share {{width:12%; text-align:right; font-size:12px; font-weight:850; color:#334155;}}
-                        .route-yoy {{width:14%; text-align:right; font-size:12px;}}
+                        .route-share {{width:12%; text-align:right; font-weight:800; color:#475569;}}
+                        .route-yoy {{width:14%; text-align:right;}}
                         .route-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:11px; font-weight:900;
+                            font-size:9px; font-weight:900;
                         }}
                         .route-growth.up {{color:#16a34a;}}
                         .route-growth.down {{color:#dc2626;}}
@@ -3200,6 +3218,14 @@ def show_overview():
                     </style>
                     <div class="route-insight-wrap">
                         <table class="route-insight-table">
+                            <!-- Explicit column widths keep rank and route close on every screen. -->
+                            <colgroup>
+                                <col style="width:4%">
+                                <col style="width:38%">
+                                <col style="width:32%">
+                                <col style="width:12%">
+                                <col style="width:14%">
+                            </colgroup>
                             <thead>
                                 <tr>
                                     <th style="text-align:center;">#</th>
