@@ -2362,33 +2362,51 @@ def show_overview():
                     ]
                 )
 
-                # Build a clean right-side legend similar to the reference image.
-                legend_y_start = 0.88
-                legend_step = 0.13 if len(zone_donut_df) <= 6 else 0.105
+                # Build a clean right-side legend with one fixed-height row per zone.
+                # Extra vertical spacing prevents the zone name and value lines from
+                # overlapping. The percentage uses the same colour as its zone slice.
+                legend_y_start = 0.91
+                legend_step = 0.145 if len(zone_donut_df) <= 6 else 0.115
                 for idx, row in zone_donut_df.iterrows():
                     y_pos = legend_y_start - (idx * legend_step)
                     color = zone_color_list[idx]
+
+                    # Coloured bullet aligned with the first line of the label.
                     fig_zone.add_annotation(
-                        x=0.64, y=y_pos, xref="paper", yref="paper",
-                        text="●", showarrow=False, xanchor="left",
-                        font=dict(size=17, color=color),
+                        x=0.625,
+                        y=y_pos,
+                        xref="paper",
+                        yref="paper",
+                        text="●",
+                        showarrow=False,
+                        xanchor="left",
+                        yanchor="middle",
+                        font=dict(size=16, color=color),
                     )
+
+                    # Zone name on line 1; revenue and coloured contribution on line 2.
                     fig_zone.add_annotation(
-                        x=0.69, y=y_pos, xref="paper", yref="paper",
+                        x=0.675,
+                        y=y_pos,
+                        xref="paper",
+                        yref="paper",
                         text=(
-                            f"<span style='font-size:15px'><b>{escape(str(row['zone_short']))}</b></span>"
-                            f"<br><span style='font-size:13px'>"
-                            f"₹{row['Revenue Cr']:.2f} Cr &nbsp; ({row['Percentage']:.1f}%)"
-                            "</span>"
+                            f"<span style='font-size:14px;color:#0f172a'><b>"
+                            f"{escape(str(row['zone_short']))}</b></span>"
+                            f"<br><span style='font-size:12px;color:#334155'>"
+                            f"₹{row['Revenue Cr']:.2f} Cr &nbsp; "
+                            f"<span style='color:{color};font-weight:700'>"
+                            f"({row['Percentage']:.1f}%)</span></span>"
                         ),
                         showarrow=False,
                         xanchor="left",
+                        yanchor="middle",
                         align="left",
-                        font=dict(size=14, color="#334155", family="Arial"),
+                        font=dict(size=12, color="#334155", family="Arial"),
                     )
 
                 fig_zone.update_layout(
-                    height=aligned_chart_height,
+                    height=max(aligned_chart_height, 360),
                     margin=dict(l=0, r=0, t=10, b=0),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
