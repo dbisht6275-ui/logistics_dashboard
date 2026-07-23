@@ -2,6 +2,7 @@ import io
 import streamlit as st
 import pandas as pd
 import calendar
+from html import escape
 import plotly.graph_objects as go
 import plotly.express as px
 from services.data_loader import load_booking_data_pair, get_date_range
@@ -2307,86 +2308,106 @@ def show_overview():
         with st.container(border=True):
             st.markdown("###### Revenue by Zone")
 
+            # Preserve the existing zone aggregation and filters; only the
+            # presentation is changed to match the executive-dashboard design.
             total_zone_revenue = zone_df["Revenue Cr"].sum()
-            zone_df["Percentage"] = (
-                zone_df["Revenue Cr"] / total_zone_revenue * 100
-                if total_zone_revenue > 0
-                else 0
+            zone_donut_df = zone_df.copy()
+            zone_donut_df["Percentage"] = (
+                zone_donut_df["Revenue Cr"] / total_zone_revenue * 100
+                if total_zone_revenue > 0 else 0
             ).round(1)
+            zone_donut_df = zone_donut_df.sort_values(
+                "Revenue Cr", ascending=False
+            ).reset_index(drop=True)
 
-            zone_df_sorted = (
-                zone_df.sort_values("Revenue Cr", ascending=True)
-                .reset_index(drop=True)
-            )
+            if zone_donut_df.empty or total_zone_revenue <= 0:
+                st.info("No zone revenue is available for the selected filters.")
+            else:
+                zone_labels = zone_donut_df["zone_short"].astype(str).tolist()
+                zone_values = zone_donut_df["Revenue Cr"].tolist()
+                zone_percentages = zone_donut_df["Percentage"].tolist()
+                zone_color_list = [
+                    zone_colors.get(zone_name, "#2563eb")
+                    for zone_name in zone_donut_df["zone"].tolist()
+                ]
 
-            fig_zone = go.Figure(
-                go.Bar(
-                    y=zone_df_sorted["zone_short"].tolist(),
-                    x=zone_df_sorted["Revenue Cr"].tolist(),
-                    orientation="h",
-                    marker=dict(
-                        color=[
-                            zone_colors.get(zone_name, "#2563eb")
-                            for zone_name in zone_df_sorted["zone"].tolist()
-                        ],
-                        opacity=[
-                            1.0 if value == zone_df_sorted["Revenue Cr"].max() else 0.76
-                            for value in zone_df_sorted["Revenue Cr"].tolist()
-                        ] if not zone_df_sorted.empty else [],
-                        line=dict(color="#ffffff", width=1.2),
-                    ),
-                    customdata=zone_df_sorted[["Percentage"]].to_numpy(),
-                    texttemplate="₹%{x:.2f} Cr<br>(%{customdata[0]:.1f}%)",
-                    textposition="outside",
-                    textfont=dict(size=14, color="#1e293b", family="Arial Black"),
-                    cliponaxis=False,
-                    hovertemplate=(
-                        "<b>%{y}</b><br>Revenue: ₹%{x:.2f} Cr"
-                        "<br>Contribution: %{customdata[0]:.1f}%<extra></extra>"
-                    ),
+                fig_zone = go.Figure(
+                    data=[
+                        go.Pie(
+                            labels=zone_labels,
+                            values=zone_values,
+                            hole=0.58,
+                            sort=False,
+                            direction="clockwise",
+                            rotation=90,
+                            domain=dict(x=[0.00, 0.57], y=[0.08, 0.96]),
+                            marker=dict(
+                                colors=zone_color_list,
+                                line=dict(color="#ffffff", width=2),
+                            ),
+                            customdata=zone_percentages,
+                            textinfo="none",
+                            hovertemplate=(
+                                "<b>%{label}</b><br>Revenue: ₹%{value:.2f} Cr"
+                                "<br>Contribution: %{customdata:.1f}%<extra></extra>"
+                            ),
+                        )
+                    ]
                 )
-            )
 
-            zone_max = zone_df_sorted["Revenue Cr"].max() if not zone_df_sorted.empty else 1
-            fig_zone.update_layout(
-                height=aligned_chart_height,
-                margin=dict(l=10, r=100, t=40, b=12),
-                xaxis_range=[0, zone_max * 1.28],
-                xaxis_title="Revenue (Cr)",
-                yaxis_title="",
-                showlegend=False,
-                plot_bgcolor="#f8fafc",
-                paper_bgcolor="rgba(0,0,0,0)",
-                bargap=0.12,
-            )
-            apply_3d_chart_layout(
-                fig_zone,
-                height=aligned_chart_height,
-                margin=dict(l=10, r=100, t=40, b=12),
-            )
-            fig_zone.update_xaxes(
-                showgrid=False,
-                showline=False,
-                zeroline=False,
-                tickfont=dict(size=12),
-                title_font=dict(size=14),
-                automargin=True,
-            )
-            fig_zone.update_yaxes(
-                showgrid=False,
-                showline=False,
-                zeroline=False,
-                tickfont=dict(size=14, family="Arial Black", color="#1e293b"),
-                automargin=True,
-                categoryorder="array",
-                categoryarray=zone_df_sorted["zone_short"].tolist(),
-            )
+                # Build a clean right-side legend similar to the reference image.
+                legend_y_start = 0.88
+                legend_step = 0.13 if len(zone_donut_df) <= 6 else 0.105
+                for idx, row in zone_donut_df.iterrows():
+                    y_pos = legend_y_start - (idx * legend_step)
+                    color = zone_color_list[idx]
+                    fig_zone.add_annotation(
+                        x=0.64, y=y_pos, xref="paper", yref="paper",
+                        text="●", showarrow=False, xanchor="left",
+                        font=dict(size=13, color=color),
+                    )
+                    fig_zone.add_annotation(
+                        x=0.69, y=y_pos, xref="paper", yref="paper",
+                        text=(
+                            f"<b>{escape(str(row['zone_short']))}</b>"
+                            f"<br><span style='font-size:10px'>"
+                            f"₹{row['Revenue Cr']:.2f} Cr &nbsp; ({row['Percentage']:.1f}%)"
+                            "</span>"
+                        ),
+                        showarrow=False,
+                        xanchor="left",
+                        align="left",
+                        font=dict(size=11, color="#334155"),
+                    )
 
-            st.plotly_chart(
-                fig_zone,
-                width="stretch",
-                config={"displayModeBar": False, "responsive": True},
-            )
+                fig_zone.update_layout(
+                    height=aligned_chart_height,
+                    margin=dict(l=0, r=0, t=10, b=0),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    showlegend=False,
+                    annotations=list(fig_zone.layout.annotations) + [
+                        dict(
+                            x=0.285,
+                            y=0.52,
+                            xref="paper",
+                            yref="paper",
+                            text=(
+                                f"<b>₹{total_zone_revenue:.2f} Cr</b>"
+                                "<br><span style='font-size:10px;color:#64748b'>Total</span>"
+                            ),
+                            showarrow=False,
+                            align="center",
+                            font=dict(size=15, color="#0f172a", family="Arial Black"),
+                        )
+                    ],
+                )
+
+                st.plotly_chart(
+                    fig_zone,
+                    width="stretch",
+                    config={"displayModeBar": False, "responsive": True},
+                )
 
     compact_spacer()
 
@@ -2794,6 +2815,7 @@ def show_overview():
     party_layout_col, route_layout_col = st.columns(2, gap="medium")
 
     if party_col is not None:
+        # Current-year customer revenue under the already-applied dashboard filters.
         current_party = (
             df.assign(_party=df[party_col].fillna("Unknown").astype(str).str.strip())
             .query("_party != ''")
@@ -2802,9 +2824,12 @@ def show_overview():
             .reset_index(name="Current Revenue")
         )
 
+        # Same-period last-year revenue for the same customer field.
         if prev_party_col is not None:
             previous_party = (
-                prev_df.assign(_party=prev_df[prev_party_col].fillna("Unknown").astype(str).str.strip())
+                prev_df.assign(
+                    _party=prev_df[prev_party_col].fillna("Unknown").astype(str).str.strip()
+                )
                 .query("_party != ''")
                 .groupby("_party", dropna=False)["REVENUE"]
                 .sum()
@@ -2813,102 +2838,154 @@ def show_overview():
         else:
             previous_party = pd.DataFrame(columns=["_party", "Previous Revenue"])
 
-        party_yoy = current_party.merge(previous_party, on="_party", how="left").fillna({"Previous Revenue": 0})
-        party_yoy["Current Revenue Cr"] = (party_yoy["Current Revenue"] / 10000000).round(2)
-        party_yoy["Previous Revenue Cr"] = (party_yoy["Previous Revenue"] / 10000000).round(2)
-        party_yoy["Growth %"] = party_yoy.apply(
+        customer_insights = current_party.merge(
+            previous_party, on="_party", how="left"
+        ).fillna({"Previous Revenue": 0})
+        customer_insights["Revenue Cr"] = (
+            customer_insights["Current Revenue"] / 10000000
+        ).round(2)
+        customer_total_revenue = customer_insights["Current Revenue"].sum()
+        customer_insights["Share %"] = (
+            customer_insights["Current Revenue"] / customer_total_revenue * 100
+            if customer_total_revenue > 0 else 0
+        )
+        customer_insights["Growth %"] = customer_insights.apply(
             lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"])
             if row["Previous Revenue"] > 0 else None,
             axis=1,
         )
-        party_yoy = (
-            party_yoy.sort_values("Current Revenue", ascending=False).head(7)
-            .sort_values("Current Revenue", ascending=True).reset_index(drop=True)
-        )
-        party_yoy["Party Display"] = party_yoy["_party"].apply(
-            lambda value: value if len(value) <= 28 else value[:26] + "…"
+        customer_insights = (
+            customer_insights.sort_values("Current Revenue", ascending=False)
+            .head(10)
+            .reset_index(drop=True)
         )
 
         with party_layout_col:
             with st.container(border=True):
-                title_col, metric_col = st.columns([3, 1])
-                with title_col:
-                    st.markdown(
-                        f"###### Top 7 {party_label}s | Current FY vs LY"
-                        "<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
-                        f"View Type: {view_type}. Ranked by current-year revenue against the same filtered period last year."
-                        "</div>",
-                        unsafe_allow_html=True,
-                    )
-                with metric_col:
-                    total_current = party_yoy["Current Revenue Cr"].sum()
-                    total_previous = party_yoy["Previous Revenue Cr"].sum()
-                    total_growth = pct_growth(total_current, total_previous) if total_previous > 0 else 0
-                    growth_color = "#166534" if total_growth >= 0 else "#dc2626"
-                    st.markdown(
-                        f"<div style='text-align:right;font-size:10px;color:#64748b;'>Top 7 Revenue</div>"
-                        f"<div style='text-align:right;font-size:16px;font-weight:900;color:#0f172a;'>₹{total_current:.2f} Cr</div>"
-                        f"<div style='text-align:right;font-size:10px;font-weight:800;color:{growth_color};'>"
-                        f"{growth_label(total_growth)} vs LY</div>",
-                        unsafe_allow_html=True,
-                    )
-
-                fig_party = go.Figure()
-                fig_party.add_trace(go.Bar(
-                    y=party_yoy["Party Display"], x=party_yoy["Previous Revenue Cr"],
-                    name=f"LY ({prev_fy})", orientation="h",
-                    marker=dict(color="#dbe4f0", line=dict(color="#b8c7dc", width=1)),
-                    text=party_yoy["Previous Revenue Cr"], texttemplate="₹%{text:.2f}",
-                    textposition="inside", insidetextanchor="middle",
-                    textfont=dict(size=11, color="#475569", family="Arial Black"),
-                    hovertemplate="<b>%{y}</b><br>LY Revenue: ₹%{x:.2f} Cr<extra></extra>",
-                ))
-                fig_party.add_trace(go.Bar(
-                    y=party_yoy["Party Display"], x=party_yoy["Current Revenue Cr"],
-                    name=f"Current ({fy})", orientation="h",
-                    marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1)),
-                    customdata=party_yoy[["Growth %", "_party"]].to_numpy(),
-                    text=party_yoy["Current Revenue Cr"], texttemplate="₹%{text:.2f}",
-                    textposition="outside", textfont=dict(size=12, color="#0f172a", family="Arial Black"),
-                    cliponaxis=False,
-                    hovertemplate=("<b>%{customdata[1]}</b><br>Current Revenue: ₹%{x:.2f} Cr"
-                                   "<br>YoY Growth: %{customdata[0]:.1f}%<extra></extra>"),
-                ))
-
-                max_party_revenue = max(party_yoy["Current Revenue Cr"].max(), party_yoy["Previous Revenue Cr"].max(), 1)
-                for _, row in party_yoy.iterrows():
-                    if pd.notna(row["Growth %"]):
-                        c = "#15803d" if row["Growth %"] >= 0 else "#dc2626"
-                        a = "▲" if row["Growth %"] >= 0 else "▼"
-                        label = f"<b>{a} {abs(row['Growth %']):.1f}%</b>"
-                    else:
-                        c, label = "#7c3aed", "<b>New</b>"
-                    fig_party.add_annotation(
-                        x=max(row["Current Revenue Cr"], row["Previous Revenue Cr"]) + max_party_revenue * 0.12,
-                        y=row["Party Display"], text=label, showarrow=False, xanchor="left",
-                        font=dict(size=10, color=c), bgcolor="#ffffff", bordercolor="#e2e8f0",
-                        borderwidth=1, borderpad=3,
-                    )
-
-                party_chart_height = RANKING_CHART_HEIGHT
-                fig_party.update_layout(
-                    barmode="group", bargap=0.10, bargroupgap=0.03, height=party_chart_height,
-                    margin=dict(l=6, r=72, t=28, b=22), plot_bgcolor="#f8fafc",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, font=dict(size=10)),
-                    xaxis_title="Revenue (Cr)", xaxis_range=[0, max_party_revenue * 1.28],
-                    hoverlabel=dict(bgcolor="white", font_size=11),
+                st.markdown(
+                    "###### Top 10 Customers by Revenue"
+                    f"<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
+                    f"Customer basis: {party_label} | Current FY revenue, share and YoY movement."
+                    "</div>",
+                    unsafe_allow_html=True,
                 )
-                apply_3d_chart_layout(fig_party, height=party_chart_height, margin=dict(l=6, r=72, t=28, b=22))
-                fig_party.update_xaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=11))
-                fig_party.update_yaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=12, family="Arial Black"), automargin=True)
-                st.plotly_chart(fig_party, width="stretch")
+
+                if customer_insights.empty:
+                    st.info("No customer revenue is available for the selected filters.")
+                else:
+                    max_customer_revenue = max(
+                        customer_insights["Revenue Cr"].max(), 1
+                    )
+                    customer_rows = []
+
+                    for idx, row in customer_insights.iterrows():
+                        revenue_cr = float(row["Revenue Cr"] or 0)
+                        share_pct = float(row["Share %"] or 0)
+                        bar_width = min((revenue_cr / max_customer_revenue) * 100, 100)
+                        growth = row["Growth %"]
+
+                        if pd.isna(growth):
+                            growth_html = (
+                                "<span class='cust-growth new'>NEW</span>"
+                            )
+                        else:
+                            positive = growth >= 0
+                            growth_class = "up" if positive else "down"
+                            growth_arrow = "▲" if positive else "▼"
+                            growth_html = (
+                                f"<span class='cust-growth {growth_class}'>"
+                                f"{growth_arrow} {abs(growth):.1f}%</span>"
+                            )
+
+                        full_name = escape(str(row["_party"]))
+                        customer_rows.append(
+                            "<tr>"
+                            f"<td class='cust-rank'>{idx + 1}</td>"
+                            f"<td class='cust-name' title='{full_name}'>{full_name}</td>"
+                            "<td class='cust-revenue'>"
+                            f"<div class='cust-value'>₹{revenue_cr:.2f} Cr</div>"
+                            "<div class='cust-bar-track'>"
+                            f"<div class='cust-bar-fill' style='width:{bar_width:.1f}%'></div>"
+                            "</div></td>"
+                            f"<td class='cust-share'>{share_pct:.1f}%</td>"
+                            f"<td class='cust-yoy'>{growth_html}</td>"
+                            "</tr>"
+                        )
+
+                    customer_table_html = f"""
+                    <style>
+                        .customer-insight-wrap {{
+                            width:100%; overflow-x:auto; margin-top:5px;
+                            border:1px solid #e2e8f0; border-radius:10px;
+                            background:#ffffff;
+                        }}
+                        .customer-insight-table {{
+                            width:100%; border-collapse:collapse;
+                            table-layout:fixed; font-size:10px; color:#334155;
+                        }}
+                        .customer-insight-table th {{
+                            padding:7px 6px; background:#f8fafc;
+                            color:#64748b; font-size:9px; font-weight:800;
+                            text-align:left; border-bottom:1px solid #e2e8f0;
+                            white-space:nowrap;
+                        }}
+                        .customer-insight-table td {{
+                            padding:6px; border-bottom:1px solid #edf2f7;
+                            vertical-align:middle;
+                        }}
+                        .customer-insight-table tr:last-child td {{border-bottom:0;}}
+                        .customer-insight-table tbody tr:hover {{background:#f8fbff;}}
+                        .cust-rank {{width:7%; text-align:center; font-weight:800; color:#64748b;}}
+                        .cust-name {{
+                            width:35%; font-weight:750; color:#1e293b;
+                            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+                        }}
+                        .cust-revenue {{width:32%;}}
+                        .cust-value {{font-weight:850; color:#0f172a; margin-bottom:3px;}}
+                        .cust-bar-track {{
+                            width:100%; height:4px; border-radius:999px;
+                            background:#e8eef8; overflow:hidden;
+                        }}
+                        .cust-bar-fill {{
+                            height:4px; border-radius:999px;
+                            background:linear-gradient(90deg,#60a5fa,#2563eb);
+                        }}
+                        .cust-share {{width:12%; text-align:right; font-weight:800; color:#475569;}}
+                        .cust-yoy {{width:14%; text-align:right;}}
+                        .cust-growth {{
+                            display:inline-block; min-width:50px; text-align:right;
+                            font-size:9px; font-weight:900;
+                        }}
+                        .cust-growth.up {{color:#16a34a;}}
+                        .cust-growth.down {{color:#dc2626;}}
+                        .cust-growth.new {{color:#7c3aed;}}
+                    </style>
+                    <div class="customer-insight-wrap">
+                        <table class="customer-insight-table">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:center;">#</th>
+                                    <th>Customer Name</th>
+                                    <th>Revenue (Cr)</th>
+                                    <th style="text-align:right;">% Share</th>
+                                    <th style="text-align:right;">vs LY</th>
+                                </tr>
+                            </thead>
+                            <tbody>{''.join(customer_rows)}</tbody>
+                        </table>
+                    </div>
+                    """
+
+                    if hasattr(st, "html"):
+                        st.html(customer_table_html)
+                    else:
+                        st.markdown(customer_table_html, unsafe_allow_html=True)
     else:
         with party_layout_col:
             with st.container(border=True):
                 st.info(
-                    f"Top 7 {party_label}s could not be displayed because a matching {party_label.lower()} column "
-                    f"was not found in the booking dataset."
+                    "Top 10 Customers could not be displayed because a matching "
+                    f"{party_label.lower()} column was not found in the booking dataset."
                 )
 
     # =====================================================
