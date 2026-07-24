@@ -1372,7 +1372,7 @@ def _render_operational_highlights(current_df, previous_df):
 
     with st.container(border=True):
         st.markdown(
-            "<div style='font-size:18px;font-weight:950;color:#0f2744;margin:1px 0 9px 2px;'>"
+            "<div style='font-size:14px;font-weight:950;color:#0f2744;margin:1px 0 7px 2px;'>"
             "Operational Highlights</div>",
             unsafe_allow_html=True,
         )
@@ -1403,21 +1403,21 @@ def _render_operational_highlights(current_df, previous_df):
             change_color = "#16a34a" if is_good else "#dc2626"
 
             rows.append(
-                f'<div style="display:grid;grid-template-columns:36px minmax(110px,1fr) minmax(78px,.72fr) minmax(74px,.65fr);'
-                f'align-items:center;gap:8px;padding:9px 3px;border-bottom:1px solid #edf2f7;">'
-                f'<div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;'
-                f'justify-content:center;background:{metric["icon_bg"]};font-size:17px;'
+                f'<div style="display:grid;grid-template-columns:30px minmax(88px,1fr) minmax(64px,.72fr) minmax(62px,.65fr);'
+                f'align-items:center;gap:6px;padding:7px 2px;border-bottom:1px solid #edf2f7;">'
+                f'<div style="width:27px;height:27px;border-radius:50%;display:flex;align-items:center;'
+                f'justify-content:center;background:{metric["icon_bg"]};font-size:13px;'
                 f'border:1px solid {metric["accent"]}33;">{metric["icon"]}</div>'
-                f'<div style="font-size:13px;font-weight:850;color:#243b53;line-height:1.2;">{metric["label"]}</div>'
+                f'<div style="font-size:10px;font-weight:850;color:#243b53;line-height:1.15;">{metric["label"]}</div>'
                 f'<div style="line-height:1.1;">'
-                f'<div style="font-size:16px;font-weight:950;color:#102a43;">{current_text}</div>'
-                f'<div style="font-size:11px;color:#64748b;">LY {previous_text}</div></div>'
-                f'<div style="font-size:12px;font-weight:900;color:{change_color};text-align:right;white-space:nowrap;">'
+                f'<div style="font-size:12px;font-weight:950;color:#102a43;">{current_text}</div>'
+                f'<div style="font-size:8px;color:#64748b;">LY {previous_text}</div></div>'
+                f'<div style="font-size:9px;font-weight:900;color:{change_color};text-align:right;white-space:nowrap;">'
                 f'{arrow} {change_text}</div></div>'
             )
 
         note = "" if previous_col is not None else (
-            "<div style='font-size:10px;color:#94a3b8;margin-top:6px;'>LY SLAStatus unavailable.</div>"
+            "<div style='font-size:8px;color:#94a3b8;margin-top:5px;'>LY SLAStatus unavailable.</div>"
         )
         st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
 
@@ -3596,26 +3596,21 @@ def show_overview():
     )
 
     # =====================================================
-    # Branch/Agency Network Changes - NOW FILTERED BY MONTH & QUARTER
+    # Branch/Agency Network Changes with revenue from Active Date
     # =====================================================
-    
-    # Filter station_df based on selected month and quarter
     filtered_station_df = station_df.copy()
-    
-    # Only filter if FIN_MONTH column exists and has valid values
+
     if "FIN_MONTH" in filtered_station_df.columns and filtered_station_df["FIN_MONTH"].notna().any():
         if month != "All":
-            # Filter by specific month
             fin_month_for_month = [k for k, v in month_map.items() if v == month]
             if fin_month_for_month:
                 filtered_station_df = filtered_station_df[filtered_station_df["FIN_MONTH"].isin(fin_month_for_month)]
         elif quarter != "All":
-            # Filter by quarter
             quarter_fin_months = [k for k, v in QUARTER_MAP.items() if v == quarter]
             filtered_station_df = filtered_station_df[filtered_station_df["FIN_MONTH"].isin(quarter_fin_months)]
-    
-    opened_df = filtered_station_df[filtered_station_df["STATUS"] == "OPENED"]
-    closed_df = filtered_station_df[filtered_station_df["STATUS"] == "CLOSED"]
+
+    opened_df = filtered_station_df[filtered_station_df["STATUS"].astype(str).str.upper().eq("OPENED")].copy()
+    closed_df = filtered_station_df[filtered_station_df["STATUS"].astype(str).str.upper().eq("CLOSED")].copy()
 
     opened_branches = len(opened_df)
     closed_branches = len(closed_df)
@@ -3627,47 +3622,114 @@ def show_overview():
     elif quarter != "All":
         period_label = f"{quarter} {fy}"
 
-    st.markdown(f"""
-    ###### 🏢 Branch/Agency Network Changes ({period_label})
+    def _normalise_key(value):
+        return "".join(ch for ch in str(value).strip().casefold() if ch.isalnum())
 
-    - **New Branches/Agencies Opened:** {opened_branches}
-    - **Branches/Agencies Closed:** {closed_branches}
-    - **Net Increase:** {net_increase:+}
-    """)
-    compact_spacer()
+    # Revenue is counted only from each branch/agency's own Active Date.
+    booking_date_col = _find_normalized_column(df, "grdt")
+    booking_branch_col = _find_normalized_column(df, "branch")
+    revenue_rows = []
 
-    with st.expander(f"📍 View Opened Branch Details ({opened_branches})"):
+    if not opened_df.empty:
+        opened_df["activedate"] = pd.to_datetime(opened_df["activedate"], errors="coerce")
+        booking_work = df.copy()
+        if booking_date_col:
+            booking_work[booking_date_col] = pd.to_datetime(booking_work[booking_date_col], errors="coerce")
+        if booking_branch_col:
+            booking_work["_branch_key"] = booking_work[booking_branch_col].map(_normalise_key)
 
-        st.dataframe(
-            opened_df[
-                [
-                    "ZONE",
-                    "TYPE",
-                    "BRANCH",
-                    "CODE",
-                    "CITY",
-                    "STATE",
-                    "activedate"
-                ]
-            ],
-            width="stretch",
-            hide_index=True
+        analysis_end = pd.to_datetime(end_date)
+        today = pd.Timestamp.today().normalize()
+        analysis_end = min(analysis_end, today)
+
+        for _, station in opened_df.iterrows():
+            active_date = station.get("activedate")
+            branch_name = station.get("BRANCH", "")
+            branch_code = station.get("CODE", "")
+            keys = {_normalise_key(branch_name), _normalise_key(branch_code)} - {""}
+
+            matched = booking_work.iloc[0:0].copy()
+            if booking_branch_col and booking_date_col and pd.notna(active_date):
+                matched = booking_work[
+                    booking_work["_branch_key"].isin(keys)
+                    & booking_work[booking_date_col].ge(active_date)
+                    & booking_work[booking_date_col].le(analysis_end)
+                ].copy()
+
+            active_days = max((analysis_end - active_date.normalize()).days + 1, 0) if pd.notna(active_date) else 0
+            active_months = max(active_days / 30.44, 1) if active_days else 1
+            revenue_value = float(matched["REVENUE"].sum()) if "REVENUE" in matched.columns else 0.0
+            gr_count = int(matched["grno"].count()) if "grno" in matched.columns else len(matched)
+            weight_mt = float(matched["aweight"].sum() / 1000) if "aweight" in matched.columns else 0.0
+            avg_monthly = revenue_value / active_months if active_days else 0.0
+            revenue_per_day = revenue_value / active_days if active_days else 0.0
+
+            if active_days < 30:
+                performance = "New - Monitoring"
+            elif avg_monthly >= 1000000:
+                performance = "Strong"
+            elif avg_monthly >= 500000:
+                performance = "Developing"
+            else:
+                performance = "Needs Attention"
+
+            revenue_rows.append({
+                "ZONE": station.get("ZONE", ""),
+                "TYPE": station.get("TYPE", ""),
+                "BRANCH": branch_name,
+                "CODE": branch_code,
+                "CITY": station.get("CITY", ""),
+                "STATE": station.get("STATE", ""),
+                "Active Date": active_date,
+                "Active Days": active_days,
+                "GR Count": gr_count,
+                "Weight MT": round(weight_mt, 1),
+                f"Revenue ({revenue_unit})": round(revenue_value / revenue_divisor, 2),
+                f"Avg Monthly Revenue ({revenue_unit})": round(avg_monthly / revenue_divisor, 2),
+                "Revenue / Day": round(revenue_per_day, 0),
+                "Performance": performance,
+            })
+
+    opened_revenue_df = pd.DataFrame(revenue_rows)
+    total_new_revenue = opened_revenue_df.get(f"Revenue ({revenue_unit})", pd.Series(dtype=float)).sum()
+    total_new_gr = opened_revenue_df.get("GR Count", pd.Series(dtype=float)).sum()
+    avg_new_monthly = opened_revenue_df.get(f"Avg Monthly Revenue ({revenue_unit})", pd.Series(dtype=float)).sum()
+    productive_count = int(opened_revenue_df.get("Performance", pd.Series(dtype=str)).isin(["Strong", "Developing"]).sum())
+
+    with st.container(border=True):
+        st.markdown(
+            f"<div style='font-size:16px;font-weight:950;color:#0f2744;'>🏢 Branch/Agency Network Changes ({period_label})</div>"
+            "<div style='font-size:10px;color:#64748b;margin:2px 0 9px;'>Revenue is calculated from each location's Active Date up to the selected period end.</div>",
+            unsafe_allow_html=True,
         )
+        n1, n2, n3, n4, n5, n6 = st.columns(6, gap="small")
+        n1.metric("Opened", f"{opened_branches:,}")
+        n2.metric("Closed", f"{closed_branches:,}")
+        n3.metric("Net Increase", f"{net_increase:+,}")
+        n4.metric(f"New Revenue ({revenue_unit})", f"{total_new_revenue:,.2f}")
+        n5.metric("New-Branch GR", f"{int(total_new_gr):,}")
+        n6.metric("Productive Locations", f"{productive_count}/{opened_branches}")
+
+        if opened_revenue_df.empty:
+            st.info("No newly opened branch/agency records are available for the selected period.")
+        else:
+            st.dataframe(
+                opened_revenue_df.sort_values(f"Revenue ({revenue_unit})", ascending=False),
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "Active Date": st.column_config.DateColumn(format="DD-MMM-YYYY"),
+                    f"Revenue ({revenue_unit})": st.column_config.NumberColumn(format="%.2f"),
+                    f"Avg Monthly Revenue ({revenue_unit})": st.column_config.NumberColumn(format="%.2f"),
+                    "Revenue / Day": st.column_config.NumberColumn(format="₹ %.0f"),
+                    "Weight MT": st.column_config.NumberColumn(format="%.1f"),
+                },
+            )
+            st.caption(
+                f"Combined average monthly revenue of new locations: {avg_new_monthly:,.2f} {revenue_unit}. "
+                "Performance bands: Strong ≥ ₹10 lakh/month; Developing ≥ ₹5 lakh/month; below this Needs Attention."
+            )
 
     with st.expander(f"🔒 View Closed Branch Details ({closed_branches})"):
-
-        st.dataframe(
-            closed_df[
-                [
-                    "ZONE",
-                    "TYPE",
-                    "BRANCH",
-                    "CODE",
-                    "CITY",
-                    "STATE",
-                    "closedate"
-                ]
-            ],
-            width="stretch",
-            hide_index=True
-        )
+        closed_columns = [c for c in ["ZONE", "TYPE", "BRANCH", "CODE", "CITY", "STATE", "closedate"] if c in closed_df.columns]
+        st.dataframe(closed_df[closed_columns], width="stretch", hide_index=True)
