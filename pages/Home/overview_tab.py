@@ -3696,40 +3696,63 @@ def show_overview():
     avg_new_monthly = opened_revenue_df.get(f"Avg Monthly Revenue ({revenue_unit})", pd.Series(dtype=float)).sum()
     productive_count = int(opened_revenue_df.get("Performance", pd.Series(dtype=str)).isin(["Strong", "Developing"]).sum())
 
-    with st.container(border=True):
-        st.markdown(
-            f"<div style='font-size:16px;font-weight:950;color:#0f2744;'>🏢 Branch/Agency Network Changes ({period_label})</div>"
-            "<div style='font-size:10px;color:#64748b;margin:2px 0 9px;'>Revenue is calculated from each location's Active Date up to the selected period end.</div>",
-            unsafe_allow_html=True,
-        )
-        n1, n2, n3, n4, n5, n6 = st.columns(6, gap="small")
-        n1.metric("Opened", f"{opened_branches:,}")
-        n2.metric("Closed", f"{closed_branches:,}")
-        n3.metric("Net Increase", f"{net_increase:+,}")
-        n4.metric(f"New Revenue ({revenue_unit})", f"{total_new_revenue:,.2f}")
-        n5.metric("New-Branch GR", f"{int(total_new_gr):,}")
-        n6.metric("Productive Locations", f"{productive_count}/{opened_branches}")
+    # Collapse/expand control for the complete Branch/Agency Network Changes section.
+    network_toggle_key = "show_branch_agency_network_changes"
+    if network_toggle_key not in st.session_state:
+        st.session_state[network_toggle_key] = False
 
-        if opened_revenue_df.empty:
-            st.info("No newly opened branch/agency records are available for the selected period.")
-        else:
-            st.dataframe(
-                opened_revenue_df.sort_values(f"Revenue ({revenue_unit})", ascending=False),
-                width="stretch",
-                hide_index=True,
-                column_config={
-                    "Active Date": st.column_config.DateColumn(format="DD-MMM-YYYY"),
-                    f"Revenue ({revenue_unit})": st.column_config.NumberColumn(format="%.2f"),
-                    f"Avg Monthly Revenue ({revenue_unit})": st.column_config.NumberColumn(format="%.2f"),
-                    "Revenue / Day": st.column_config.NumberColumn(format="₹ %.0f"),
-                    "Weight MT": st.column_config.NumberColumn(format="%.1f"),
-                },
-            )
-            st.caption(
-                f"Combined average monthly revenue of new locations: {avg_new_monthly:,.2f} {revenue_unit}. "
-                "Performance bands: Strong ≥ ₹10 lakh/month; Developing ≥ ₹5 lakh/month; below this Needs Attention."
-            )
+    network_button_label = (
+        "▼ Collapse Branch/Agency Network Changes"
+        if st.session_state[network_toggle_key]
+        else "▶ Expand Branch/Agency Network Changes"
+    )
 
-    with st.expander(f"🔒 View Closed Branch Details ({closed_branches})"):
-        closed_columns = [c for c in ["ZONE", "TYPE", "BRANCH", "CODE", "CITY", "STATE", "closedate"] if c in closed_df.columns]
-        st.dataframe(closed_df[closed_columns], width="stretch", hide_index=True)
+    if st.button(
+        network_button_label,
+        key="branch_agency_network_changes_button",
+        width="content",
+    ):
+        st.session_state[network_toggle_key] = not st.session_state[network_toggle_key]
+        st.rerun()
+
+    if st.session_state[network_toggle_key]:
+        with st.container(border=True):
+            st.markdown(
+                f"<div style='font-size:16px;font-weight:950;color:#0f2744;'>🏢 Branch/Agency Network Changes ({period_label})</div>"
+                "<div style='font-size:10px;color:#64748b;margin:2px 0 9px;'>Revenue is calculated from each location's Active Date up to the selected period end.</div>",
+                unsafe_allow_html=True,
+            )
+            n1, n2, n3, n4, n5, n6 = st.columns(6, gap="small")
+            n1.metric("Opened", f"{opened_branches:,}")
+            n2.metric("Closed", f"{closed_branches:,}")
+            n3.metric("Net Increase", f"{net_increase:+,}")
+            n4.metric(f"New Revenue ({revenue_unit})", f"{total_new_revenue:,.2f}")
+            n5.metric("New-Branch GR", f"{int(total_new_gr):,}")
+            n6.metric("Productive Locations", f"{productive_count}/{opened_branches}")
+
+            if opened_revenue_df.empty:
+                st.info("No newly opened branch/agency records are available for the selected period.")
+            else:
+                st.dataframe(
+                    opened_revenue_df.sort_values(f"Revenue ({revenue_unit})", ascending=False),
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "Active Date": st.column_config.DateColumn(format="DD-MMM-YYYY"),
+                        f"Revenue ({revenue_unit})": st.column_config.NumberColumn(format="%.2f"),
+                        f"Avg Monthly Revenue ({revenue_unit})": st.column_config.NumberColumn(format="%.2f"),
+                        "Revenue / Day": st.column_config.NumberColumn(format="₹ %.0f"),
+                        "Weight MT": st.column_config.NumberColumn(format="%.1f"),
+                    },
+                )
+                st.caption(
+                    f"Combined average monthly revenue of new locations: {avg_new_monthly:,.2f} {revenue_unit}. "
+                    "Performance bands: Strong ≥ ₹10 lakh/month; Developing ≥ ₹5 lakh/month; below this Needs Attention."
+                )
+
+            with st.expander(f"🔒 View Closed Branch Details ({closed_branches})"):
+                closed_columns = [
+                    c for c in ["ZONE", "TYPE", "BRANCH", "CODE", "CITY", "STATE", "closedate"]
+                    if c in closed_df.columns
+                ]
+                st.dataframe(closed_df[closed_columns], width="stretch", hide_index=True)
