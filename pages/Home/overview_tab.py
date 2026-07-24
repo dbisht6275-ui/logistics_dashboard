@@ -1367,18 +1367,18 @@ def _build_sla_metrics(current_df, previous_df):
 
 
 def _render_operational_highlights(current_df, previous_df):
-    """Render the SLAStatus operational-highlights panel."""
+    """Render a compact SLAStatus panel that fits beside branch rankings."""
     current_col, previous_col, metrics = _build_sla_metrics(current_df, previous_df)
 
     with st.container(border=True):
         st.markdown(
-            "<div style='font-size:15px;font-weight:950;color:#0f2744;margin:1px 0 8px 2px;'>"
+            "<div style='font-size:14px;font-weight:950;color:#0f2744;margin:1px 0 7px 2px;'>"
             "Operational Highlights</div>",
             unsafe_allow_html=True,
         )
 
         if current_col is None:
-            st.info("Operational Highlights cannot be displayed because the SLAStatus column is missing.")
+            st.info("SLAStatus column is missing.")
             return
 
         rows = []
@@ -1397,34 +1397,29 @@ def _render_operational_highlights(current_df, previous_df):
                 previous_text = f"{int(previous):,}"
                 change_text = f"{abs(change):.2f}%" if previous else "N/A"
 
-            # For delay/pending metrics, a reduction is good. For on-time metrics, an increase is good.
             lower_is_better = metric["label"] in {"After EDD", "In Transit", "Overdue"}
             is_good = change <= 0 if lower_is_better else change >= 0
             arrow = "▲" if change >= 0 else "▼"
             change_color = "#16a34a" if is_good else "#dc2626"
 
             rows.append(
-                f'<div style="display:grid;grid-template-columns:42px minmax(145px,1.4fr) '
-                f'minmax(85px,.65fr) minmax(105px,.9fr) minmax(88px,.7fr);'
-                f'align-items:center;gap:10px;padding:9px 5px;border-bottom:1px solid #edf2f7;">'
-                f'<div style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;'
-                f'justify-content:center;background:{metric["icon_bg"]};color:{metric["accent"]};'
-                f'font-size:17px;border:1px solid {metric["accent"]}33;">{metric["icon"]}</div>'
-                f'<div style="font-size:12px;font-weight:850;color:#243b53;">{metric["label"]}</div>'
-                f'<div style="font-size:14px;font-weight:950;color:#102a43;">{current_text}</div>'
-                f'<div style="font-size:10px;color:#64748b;">vs LY: <b>{previous_text}</b></div>'
-                f'<div style="font-size:11px;font-weight:900;color:{change_color};text-align:right;">'
+                f'<div style="display:grid;grid-template-columns:30px minmax(88px,1fr) minmax(64px,.72fr) minmax(62px,.65fr);'
+                f'align-items:center;gap:6px;padding:7px 2px;border-bottom:1px solid #edf2f7;">'
+                f'<div style="width:27px;height:27px;border-radius:50%;display:flex;align-items:center;'
+                f'justify-content:center;background:{metric["icon_bg"]};font-size:13px;'
+                f'border:1px solid {metric["accent"]}33;">{metric["icon"]}</div>'
+                f'<div style="font-size:10px;font-weight:850;color:#243b53;line-height:1.15;">{metric["label"]}</div>'
+                f'<div style="line-height:1.1;">'
+                f'<div style="font-size:12px;font-weight:950;color:#102a43;">{current_text}</div>'
+                f'<div style="font-size:8px;color:#64748b;">LY {previous_text}</div></div>'
+                f'<div style="font-size:9px;font-weight:900;color:{change_color};text-align:right;white-space:nowrap;">'
                 f'{arrow} {change_text}</div></div>'
             )
 
         note = "" if previous_col is not None else (
-            "<div style='font-size:9px;color:#94a3b8;margin-top:6px;'>"
-            "Previous-year SLAStatus data is unavailable; LY values are shown as zero.</div>"
+            "<div style='font-size:8px;color:#94a3b8;margin-top:5px;'>LY SLAStatus unavailable.</div>"
         )
-        st.markdown(
-            "<div style='padding:0 4px;'>" + "".join(rows) + note + "</div>",
-            unsafe_allow_html=True,
-        )
+        st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
 
 def show_overview():
     """Compact overview dashboard page."""
@@ -3479,7 +3474,8 @@ def show_overview():
     bottom10_df = bottom10_df.sort_values("Revenue", ascending=True).head(10)
     bottom10_df["Revenue Cr"] = (bottom10_df["Revenue"] / revenue_divisor).round(2)
 
-    b1, b2 = st.columns(2)
+    # Keep Top Branches, Bottom Branches and Operational Highlights in one fitted row.
+    b1, b2, b3 = st.columns([1, 1, 1.08], gap="small")
 
     with b1:
         with st.container(border=True):
@@ -3500,7 +3496,7 @@ def show_overview():
         with st.container(border=True):
             st.markdown("###### Bottom 10 Branches by Revenue")
 
-            max_bottom = 1
+            max_bottom = bottom10_df["Revenue Cr"].max() if not bottom10_df.empty else 1
 
             for i, row in bottom10_df.reset_index(drop=True).iterrows():
                 mini_rank_card(
@@ -3511,10 +3507,8 @@ def show_overview():
                     "#ef4444"
                 )
 
-    compact_spacer()
-
-    # SLAStatus-based operational insights, shown directly after branch rankings.
-    _render_operational_highlights(df, prev_df)
+    with b3:
+        _render_operational_highlights(df, prev_df)
 
     compact_spacer()
 
