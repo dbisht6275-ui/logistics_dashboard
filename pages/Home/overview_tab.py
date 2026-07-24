@@ -738,8 +738,14 @@ def _inject_overview_css():
     )
 
 
-def format_cr(v):
-    return f"{v / 10000000:.2f} Cr"
+def get_revenue_conversion(conversion_type):
+    """Display-only conversion; business calculations remain in rupees."""
+    return (100000, "Lakh") if conversion_type == "Lakh" else (10000000, "Cr")
+
+
+def format_revenue(v, conversion_type):
+    divisor, unit = get_revenue_conversion(conversion_type)
+    return f"{v / divisor:.2f} {unit}"
 
 
 def _hex_to_rgb(hex_color):
@@ -1270,7 +1276,7 @@ def show_overview():
     # Responsive single-row filter strip. Native labels reserve their own
     # vertical space, preventing label/select overlap on laptop screens.
     compact_spacer(4)
-    filter_cols = st.columns(9, gap="small")
+    filter_cols = st.columns(10, gap="small")
 
     with filter_cols[0]:
         view_type = st.selectbox(
@@ -1417,6 +1423,15 @@ def show_overview():
     if loadtype != "All":
         df = df[df["LOADTYPE"] == loadtype]
 
+    with filter_cols[9]:
+        conversion_type = st.selectbox(
+            "₹ Conversion",
+            ["Crore", "Lakh"],
+            key="overview_conversion_type",
+            help="Changes revenue display in KPIs, charts, tables and insights only.",
+        )
+    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
+
     # Separate filters from the summary chips/KPIs on every screen size.
     compact_spacer(6)
 
@@ -1441,7 +1456,7 @@ def show_overview():
 
     active_filter_items = [
         ("FY", fy), ("View", view_type), ("Company", company), ("Zone", zone), ("Circle", circle),
-        ("Branch", branch), ("Quarter", quarter), ("Month", month), ("Load", loadtype),
+        ("Branch", branch), ("Quarter", quarter), ("Month", month), ("Load", loadtype), ("Unit", conversion_type),
     ]
     active_filter_html = "".join(
         f'<span class="filter-chip">{label}: {value}</span>'
@@ -1515,13 +1530,13 @@ def show_overview():
     k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     with k1:
-        create_card("Revenue", format_cr(revenue), "#2563eb", "💰", revenue_growth)
+        create_card("Revenue", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth)
 
     with k2:
-        create_card("FTL Revenue", format_cr(ftl), "#2563eb", "🚛", ftl_growth)
+        create_card("FTL Revenue", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth)
 
     with k3:
-        create_card("LTL Revenue", format_cr(ltl), "#2563eb", "🚚", ltl_growth)
+        create_card("LTL Revenue", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth)
 
     with k4:
         create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth)
@@ -1533,13 +1548,13 @@ def show_overview():
         create_card("Total Weight (MT)", f"{aweight:,.0f}", "#2563eb", "⚓", weight_growth)
 
     with k7:
-        create_card("Topay", format_cr(topay), "#2563eb", "🧾", topay_growth)
+        create_card("Topay", format_revenue(topay, conversion_type), "#2563eb", "🧾", topay_growth)
 
     with k8:
-        create_card("Paid", format_cr(paid), "#2563eb", "🔗", paid_growth)
+        create_card("Paid", format_revenue(paid, conversion_type), "#2563eb", "🔗", paid_growth)
 
     with k9:
-        create_card("T.B.B", format_cr(tbb), "#2563eb", "🚚", tbb_growth)
+        create_card("T.B.B", format_revenue(tbb, conversion_type), "#2563eb", "🚚", tbb_growth)
 
     # =====================================================
     # Actual vs Target (shown only when user clicks the button)
@@ -1588,7 +1603,7 @@ def show_overview():
 
                     with target_input_cols[0]:
                         revenue_target_cr = st.number_input(
-                            "Revenue Target (Cr)",
+                            f"Revenue Target ({revenue_unit})",
                             min_value=0.0,
                             value=st.session_state.get(f"target_revenue_{fy}", 0.0),
                             step=0.10,
@@ -1596,7 +1611,7 @@ def show_overview():
                         )
                     with target_input_cols[1]:
                         ftl_target_cr = st.number_input(
-                            "FTL Target (Cr)",
+                            f"FTL Target ({revenue_unit})",
                             min_value=0.0,
                             value=st.session_state.get(f"target_ftl_{fy}", 0.0),
                             step=0.10,
@@ -1604,7 +1619,7 @@ def show_overview():
                         )
                     with target_input_cols[2]:
                         ltl_target_cr = st.number_input(
-                            "LTL Target (Cr)",
+                            f"LTL Target ({revenue_unit})",
                             min_value=0.0,
                             value=st.session_state.get(f"target_ltl_{fy}", 0.0),
                             step=0.10,
@@ -1630,7 +1645,7 @@ def show_overview():
                 st.markdown(
                     "<div style='font-size:10px;color:#64748b;margin:2px 0 7px 0;'>"
                     "Excel columns required: <b>zone, circle, branch, month, ltl, ftl, total</b>. "
-                    "Revenue values must be entered in crores. Use <b>All</b> where a target applies to the complete hierarchy."
+                    "Revenue values must be entered in the selected conversion unit. Use <b>All</b> where a target applies to the complete hierarchy."
                     "</div>",
                     unsafe_allow_html=True,
                 )
@@ -1731,8 +1746,8 @@ def show_overview():
                             ltl_target_cr = float(matched_targets["ltl"].sum())
 
                             st.success(
-                                f"Target loaded: Total ₹{revenue_target_cr:.2f} Cr | "
-                                f"FTL ₹{ftl_target_cr:.2f} Cr | LTL ₹{ltl_target_cr:.2f} Cr"
+                                f"Target loaded: Total ₹{revenue_target_cr:.2f} {revenue_unit} | "
+                                f"FTL ₹{ftl_target_cr:.2f} {revenue_unit} | LTL ₹{ltl_target_cr:.2f} {revenue_unit}"
                             )
                             with st.expander("View Matched Target Rows", expanded=False):
                                 st.dataframe(
@@ -1747,17 +1762,17 @@ def show_overview():
             with target_cols[0]:
                 create_target_card(
                     "Revenue", revenue / 10000000, revenue_target_cr,
-                    unit=" Cr", decimals=2, icon="💰",
+                    unit=f" {revenue_unit}", decimals=2, icon="💰",
                 )
             with target_cols[1]:
                 create_target_card(
                     "FTL Revenue", ftl / 10000000, ftl_target_cr,
-                    unit=" Cr", decimals=2, icon="🚛",
+                    unit=f" {revenue_unit}", decimals=2, icon="🚛",
                 )
             with target_cols[2]:
                 create_target_card(
                     "LTL Revenue", ltl / 10000000, ltl_target_cr,
-                    unit=" Cr", decimals=2, icon="🚚",
+                    unit=f" {revenue_unit}", decimals=2, icon="🚚",
                 )
             if target_source == "Manual Entry":
                 with target_cols[3]:
@@ -1781,7 +1796,7 @@ def show_overview():
         .reset_index()
     )
 
-    monthly["Revenue Cr"] = (monthly["REVENUE"] / 10000000).round(2)
+    monthly["Revenue Cr"] = (monthly["REVENUE"] / revenue_divisor).round(2)
 
     monthly["Month"] = pd.Categorical(
         monthly["Month"],
@@ -1826,6 +1841,13 @@ def show_overview():
                 df, prev_df, trend_type, DATE_COL, start_date, prev_start, month_map
             )
 
+            # build_yoy_trend retains its original Crore calculation. Convert only
+            # the returned display columns when Lakh is selected.
+            if conversion_type == "Lakh":
+                for revenue_col in ["Revenue Cr", "Prev Revenue Cr"]:
+                    if revenue_col in yoy_df.columns:
+                        yoy_df[revenue_col] = yoy_df[revenue_col] * 100
+
             # Add forecast only for the current ongoing month and remove future blank months
             yoy_df = add_revenue_forecast(
                 yoy_df,
@@ -1848,7 +1870,7 @@ def show_overview():
                     textposition="outside",
                     textfont=dict(size=9, color="#64748b"),
                     cliponaxis=False,
-                    hovertemplate="<b>%{x}</b><br>LY Revenue: ₹%{y:.2f} Cr<extra></extra>",
+                    hovertemplate=f"<b>%{{x}}</b><br>LY Revenue: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
                 )
             )
 
@@ -1863,7 +1885,7 @@ def show_overview():
                     textposition="outside",
                     textfont=dict(size=9, color="#2563eb"),
                     cliponaxis=False,
-                    hovertemplate="<b>%{x}</b><br>Current Revenue: ₹%{y:.2f} Cr<extra></extra>",
+                    hovertemplate=f"<b>%{{x}}</b><br>Current Revenue: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
                 )
             )
 
@@ -1880,7 +1902,7 @@ def show_overview():
                         textposition="outside",
                         textfont=dict(size=9, color="#f97316"),
                         cliponaxis=False,
-                        hovertemplate="<b>%{x}</b><br>Forecast Revenue: ₹%{y:.2f} Cr<extra></extra>",
+                        hovertemplate=f"<b>%{{x}}</b><br>Forecast Revenue: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
                     )
                 )
 
@@ -1928,7 +1950,7 @@ def show_overview():
                     font=dict(size=9),
                 ),
                 xaxis_title="",
-                yaxis_title="Revenue (Cr)",
+                yaxis_title=f"Revenue ({revenue_unit})",
                 yaxis_range=[0, yoy_max * (1.48 if trend_type == "Monthly" else 1.35)],
                 bargap=0.22,
                 bargroupgap=0.08,
@@ -1967,7 +1989,7 @@ def show_overview():
             fig_load.update_layout(
                 annotations=[
                     dict(
-                        text=f"<b>₹{(ftl + ltl)/10000000:.2f} Cr</b><br><b>Total</b>",
+                        text=f"<b>₹{(ftl + ltl)/revenue_divisor:.2f} {revenue_unit}</b><br><b>Total</b>",
                         x=0.5,
                         y=0.5,
                         showarrow=False,
@@ -1986,8 +2008,8 @@ def show_overview():
             st.markdown(
                 f"""
                 <div style="display:flex;justify-content:center;gap:10px;margin-top:-10px;margin-bottom:2px;">
-                    <span style="font-size:9px;font-weight:800;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:3px 7px;">🚛 FTL ₹{ftl/10000000:.2f} Cr</span>
-                    <span style="font-size:9px;font-weight:800;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:999px;padding:3px 7px;">🚚 LTL ₹{ltl/10000000:.2f} Cr</span>
+                    <span style="font-size:9px;font-weight:800;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:3px 7px;">🚛 FTL ₹{ftl/revenue_divisor:.2f} {revenue_unit}</span>
+                    <span style="font-size:9px;font-weight:800;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:999px;padding:3px 7px;">🚚 LTL ₹{ltl/revenue_divisor:.2f} {revenue_unit}</span>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -2002,7 +2024,7 @@ def show_overview():
             .rename(columns={"compname": "Company"})
         )
         company_df["Company"] = company_df["Company"].fillna("Unknown").astype(str)
-        company_df["Revenue Cr"] = company_df["REVENUE"] / 10000000
+        company_df["Revenue Cr"] = company_df["REVENUE"] / revenue_divisor
         company_total = company_df["Revenue Cr"].sum()
         company_df["Contribution %"] = (
             company_df["Revenue Cr"] / company_total * 100 if company_total else 0
@@ -2017,7 +2039,7 @@ def show_overview():
             others_row = pd.DataFrame(
                 {
                     "Company": ["Others"],
-                    "REVENUE": [others_revenue * 10000000],
+                    "REVENUE": [others_revenue * revenue_divisor],
                     "Revenue Cr": [others_revenue],
                     "Contribution %": [
                         (others_revenue / company_total * 100) if company_total else 0
@@ -2060,7 +2082,7 @@ def show_overview():
                             textfont=dict(size=9, color="white", family="Arial Black"),
                             hovertemplate=(
                                 "<b>%{label}</b><br>"
-                                "Revenue: ₹%{value:.2f} Cr<br>"
+                                "Revenue: ₹%{value:.2f} {revenue_unit}<br>"
                                 "Contribution: %{customdata[0]:.1f}%"
                                 "<extra></extra>"
                             ),
@@ -2091,7 +2113,7 @@ def show_overview():
                     annotations=[
                         dict(
                             text=(
-                                f"<b>₹{company_total:.2f} Cr</b>"
+                                f"<b>₹{company_total:.2f} {revenue_unit}</b>"
                                 "<br><span style='font-size:10px'>Total</span>"
                             ),
                             x=0.5,
@@ -2128,7 +2150,7 @@ def show_overview():
         .reset_index()
     )
 
-    zone_df["Revenue Cr"] = (zone_df["REVENUE"] / 10000000).round(2)
+    zone_df["Revenue Cr"] = (zone_df["REVENUE"] / revenue_divisor).round(2)
     zone_df["zone_short"] = zone_df["zone"].replace({
         "NORTH ZONE": "North",
         "WEST ZONE": "West",
@@ -2164,7 +2186,7 @@ def show_overview():
         )
 
         zone_country_rev["Revenue Cr"] = (
-            zone_country_rev["REVENUE"] / 10000000
+            zone_country_rev["REVENUE"] / revenue_divisor
         ).round(2)
 
         matrix_df = zone_country_rev.pivot(
@@ -2355,7 +2377,7 @@ def show_overview():
                             customdata=zone_percentages,
                             textinfo="none",
                             hovertemplate=(
-                                "<b>%{label}</b><br>Revenue: ₹%{value:.2f} Cr"
+                                "<b>%{label}</b><br>Revenue: ₹%{value:.2f} {revenue_unit}"
                                 "<br>Contribution: %{customdata:.1f}%<extra></extra>"
                             ),
                         )
@@ -2394,7 +2416,7 @@ def show_overview():
                             f"<span style='font-size:14px;color:#0f172a'><b>"
                             f"{escape(str(row['zone_short']))}</b></span>"
                             f"<br><span style='font-size:12px;color:#334155'>"
-                            f"₹{row['Revenue Cr']:.2f} Cr &nbsp; "
+                            f"₹{row['Revenue Cr']:.2f} {revenue_unit} &nbsp; "
                             f"<span style='color:{color};font-weight:700'>"
                             f"({row['Percentage']:.1f}%)</span></span>"
                         ),
@@ -2424,7 +2446,7 @@ def show_overview():
                             xanchor="center",
                             yanchor="middle",
                             text=(
-                                f"<b>₹{total_zone_revenue:.2f} Cr</b>"
+                                f"<b>₹{total_zone_revenue:.2f} {revenue_unit}</b>"
                                 "<br><span style='font-size:10px;color:#64748b'>Total</span>"
                             ),
                             showarrow=False,
@@ -2473,17 +2495,17 @@ def show_overview():
                 for col in country_cols:
                     matrix_value_display[col] = matrix_display[col].apply(
                         lambda value: (
-                            f"₹{value:.2f} Cr | {(value / grand_total * 100):.1f}%"
+                            f"₹{value:.2f} {revenue_unit} | {(value / grand_total * 100):.1f}%"
                             if grand_total > 0
-                            else f"₹{value:.2f} Cr | 0.0%"
+                            else f"₹{value:.2f} {revenue_unit} | 0.0%"
                         )
                     )
 
                 matrix_value_display["Total"] = matrix_display["Total"].apply(
                     lambda value: (
-                        f"₹{value:.2f} Cr | {(value / grand_total * 100):.1f}%"
+                        f"₹{value:.2f} {revenue_unit} | {(value / grand_total * 100):.1f}%"
                         if grand_total > 0
-                        else f"₹{value:.2f} Cr | 0.0%"
+                        else f"₹{value:.2f} {revenue_unit} | 0.0%"
                     )
                 )
 
@@ -2500,7 +2522,7 @@ def show_overview():
                         pct = (value / grand_total * 100) if grand_total > 0 else 0.0
                         cells.append(
                             "<td>"
-                            f"<span class='matrix-value'>₹{value:.2f} Cr</span>"
+                            f"<span class='matrix-value'>₹{value:.2f} {revenue_unit}</span>"
                             "<span class='matrix-separator'> | </span>"
                             f"<span class='matrix-percent'>{pct:.1f}%</span>"
                             "</td>"
@@ -2594,10 +2616,10 @@ def show_overview():
                         name="Revenue",
                         marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
                         text=monthly_chart["Revenue Cr"],
-                        texttemplate="₹%{text:.2f} Cr",
+                        texttemplate=f"₹%{{text:.2f}} {revenue_unit}",
                         textposition="outside",
                         cliponaxis=False,
-                        hovertemplate="<b>%{x}</b><br>Revenue: ₹%{y:.2f} Cr<extra></extra>",
+                        hovertemplate=f"<b>%{{x}}</b><br>Revenue: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
                     )
                 )
     
@@ -2637,7 +2659,7 @@ def show_overview():
                     legend=dict(orientation="h", y=1.10, x=0),
                     bargap=0.35,
                     yaxis=dict(
-                        title="Revenue (Cr)",
+                        title=f"Revenue ({revenue_unit})",
                         range=[0, revenue_max * 1.30],
                         showgrid=False,
                         zeroline=False,
@@ -2873,7 +2895,7 @@ def show_overview():
             previous_party, on="_party", how="left"
         ).fillna({"Previous Revenue": 0})
         customer_insights["Revenue Cr"] = (
-            customer_insights["Current Revenue"] / 10000000
+            customer_insights["Current Revenue"] / revenue_divisor
         ).round(2)
         customer_total_revenue = customer_insights["Current Revenue"].sum()
         customer_insights["Share %"] = (
@@ -2934,7 +2956,7 @@ def show_overview():
                             f"<td class='cust-rank'>{idx + 1}</td>"
                             f"<td class='cust-name' title='{full_name}'>{full_name}</td>"
                             "<td class='cust-revenue'>"
-                            f"<div class='cust-value'>₹{revenue_cr:.2f} Cr</div>"
+                            f"<div class='cust-value'>₹{revenue_cr:.2f} {revenue_unit}</div>"
                             "<div class='cust-bar-track'>"
                             f"<div class='cust-bar-fill' style='width:{bar_width:.1f}%'></div>"
                             "</div></td>"
@@ -3010,7 +3032,7 @@ def show_overview():
                                 <tr>
                                     <th style="text-align:center;">#</th>
                                     <th>Customer Name</th>
-                                    <th>Revenue (Cr)</th>
+                                    <th>Revenue ({revenue_unit})</th>
                                     <th style="text-align:right;">% Share</th>
                                     <th style="text-align:right;">vs LY</th>
                                 </tr>
@@ -3100,7 +3122,7 @@ def show_overview():
             how="left",
         ).fillna({"Previous Revenue": 0})
 
-        route_yoy["Revenue Cr"] = (route_yoy["Current Revenue"] / 10000000).round(2)
+        route_yoy["Revenue Cr"] = (route_yoy["Current Revenue"] / revenue_divisor).round(2)
         route_total_revenue = route_yoy["Current Revenue"].sum()
         route_yoy["Share %"] = (
             route_yoy["Current Revenue"] / route_total_revenue * 100
@@ -3158,7 +3180,7 @@ def show_overview():
                             f"<td class='route-rank'>{idx + 1}</td>"
                             f"<td class='route-name' title='{full_route}'>{full_route}</td>"
                             "<td class='route-revenue'>"
-                            f"<div class='route-value'>₹{revenue_cr:.2f} Cr</div>"
+                            f"<div class='route-value'>₹{revenue_cr:.2f} {revenue_unit}</div>"
                             "<div class='route-bar-track'>"
                             f"<div class='route-bar-fill' style='width:{bar_width:.1f}%'></div>"
                             "</div></td>"
@@ -3234,7 +3256,7 @@ def show_overview():
                                 <tr>
                                     <th style="text-align:center;">#</th>
                                     <th>Route</th>
-                                    <th>Revenue (Cr)</th>
+                                    <th>Revenue ({revenue_unit})</th>
                                     <th style="text-align:right;">% Share</th>
                                     <th style="text-align:right;">vs LY</th>
                                 </tr>
@@ -3273,11 +3295,11 @@ def show_overview():
     )
 
     top10_df = branch_summary.sort_values("Revenue", ascending=False).head(10).copy()
-    top10_df["Revenue Cr"] = (top10_df["Revenue"] / 10000000).round(2)
+    top10_df["Revenue Cr"] = (top10_df["Revenue"] / revenue_divisor).round(2)
 
     bottom10_df = branch_summary[branch_summary["Revenue"] >= 1000000].copy()
     bottom10_df = bottom10_df.sort_values("Revenue", ascending=True).head(10)
-    bottom10_df["Revenue Cr"] = (bottom10_df["Revenue"] / 10000000).round(2)
+    bottom10_df["Revenue Cr"] = (bottom10_df["Revenue"] / revenue_divisor).round(2)
 
     b1, b2 = st.columns(2)
 
