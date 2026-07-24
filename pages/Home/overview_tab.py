@@ -1249,6 +1249,183 @@ def mini_rank_card(rank, name, value, max_value, color):
     st.markdown(html, unsafe_allow_html=True)
 
 
+
+def _find_normalized_column(data, target_name):
+    """Find a dataframe column while ignoring spaces, underscores and case."""
+    if data is None or data.empty:
+        return None
+
+    target = str(target_name).replace("_", "").replace(" ", "").casefold()
+    for column in data.columns:
+        normalized = str(column).replace("_", "").replace(" ", "").casefold()
+        if normalized == target:
+            return column
+    return None
+
+
+def _build_sla_metrics(current_df, previous_df):
+    """Build SLA operational metrics from the SLAStatus column."""
+    statuses = ["Before EDD", "On EDD", "After EDD", "In Transit", "Overdue"]
+
+    def status_counts(data):
+        column = _find_normalized_column(data, "slastatus")
+        if column is None:
+            return None, {status: 0 for status in statuses}
+
+        cleaned = (
+            data[column]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.casefold()
+        )
+        counts = {
+            status: int(cleaned.eq(status.casefold()).sum())
+            for status in statuses
+        }
+        return column, counts
+
+    current_col, current = status_counts(current_df)
+    previous_col, previous = status_counts(previous_df)
+
+    current_completed = (
+        current["Before EDD"] + current["On EDD"] +
+        current["After EDD"] + current["Overdue"]
+    )
+    previous_completed = (
+        previous["Before EDD"] + previous["On EDD"] +
+        previous["After EDD"] + previous["Overdue"]
+    )
+
+    current_on_time = (
+        (current["Before EDD"] + current["On EDD"]) / current_completed * 100
+        if current_completed else 0.0
+    )
+    previous_on_time = (
+        (previous["Before EDD"] + previous["On EDD"]) / previous_completed * 100
+        if previous_completed else 0.0
+    )
+
+    metrics = [
+        {
+            "label": "On-Time Delivery",
+            "icon": "🚚",
+            "current": current_on_time,
+            "previous": previous_on_time,
+            "is_percent": True,
+            "accent": "#2563eb",
+            "icon_bg": "#dbeafe",
+        },
+        {
+            "label": "Before EDD",
+            "icon": "⏱️",
+            "current": current["Before EDD"],
+            "previous": previous["Before EDD"],
+            "is_percent": False,
+            "accent": "#16a34a",
+            "icon_bg": "#dcfce7",
+        },
+        {
+            "label": "On EDD",
+            "icon": "✅",
+            "current": current["On EDD"],
+            "previous": previous["On EDD"],
+            "is_percent": False,
+            "accent": "#0f766e",
+            "icon_bg": "#ccfbf1",
+        },
+        {
+            "label": "After EDD",
+            "icon": "📅",
+            "current": current["After EDD"],
+            "previous": previous["After EDD"],
+            "is_percent": False,
+            "accent": "#f59e0b",
+            "icon_bg": "#fef3c7",
+        },
+        {
+            "label": "In Transit",
+            "icon": "📦",
+            "current": current["In Transit"],
+            "previous": previous["In Transit"],
+            "is_percent": False,
+            "accent": "#7c3aed",
+            "icon_bg": "#ede9fe",
+        },
+        {
+            "label": "Overdue",
+            "icon": "⚠️",
+            "current": current["Overdue"],
+            "previous": previous["Overdue"],
+            "is_percent": False,
+            "accent": "#dc2626",
+            "icon_bg": "#fee2e2",
+        },
+    ]
+
+    return current_col, previous_col, metrics
+
+
+def _render_operational_highlights(current_df, previous_df):
+    """Render the SLAStatus operational-highlights panel."""
+    current_col, previous_col, metrics = _build_sla_metrics(current_df, previous_df)
+
+    with st.container(border=True):
+        st.markdown(
+            "<div style='font-size:15px;font-weight:950;color:#0f2744;margin:1px 0 8px 2px;'>"
+            "Operational Highlights</div>",
+            unsafe_allow_html=True,
+        )
+
+        if current_col is None:
+            st.info("Operational Highlights cannot be displayed because the SLAStatus column is missing.")
+            return
+
+        rows = []
+        for metric in metrics:
+            current = float(metric["current"] or 0)
+            previous = float(metric["previous"] or 0)
+
+            if metric["is_percent"]:
+                change = current - previous
+                current_text = f"{current:.2f}%"
+                previous_text = f"{previous:.2f}%"
+                change_text = f"{abs(change):.2f} pp"
+            else:
+                change = ((current - previous) / previous * 100) if previous else 0.0
+                current_text = f"{int(current):,}"
+                previous_text = f"{int(previous):,}"
+                change_text = f"{abs(change):.2f}%" if previous else "N/A"
+
+            # For delay/pending metrics, a reduction is good. For on-time metrics, an increase is good.
+            lower_is_better = metric["label"] in {"After EDD", "In Transit", "Overdue"}
+            is_good = change <= 0 if lower_is_better else change >= 0
+            arrow = "▲" if change >= 0 else "▼"
+            change_color = "#16a34a" if is_good else "#dc2626"
+
+            rows.append(
+                f'<div style="display:grid;grid-template-columns:42px minmax(145px,1.4fr) '
+                f'minmax(85px,.65fr) minmax(105px,.9fr) minmax(88px,.7fr);'
+                f'align-items:center;gap:10px;padding:9px 5px;border-bottom:1px solid #edf2f7;">'
+                f'<div style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;'
+                f'justify-content:center;background:{metric["icon_bg"]};color:{metric["accent"]};'
+                f'font-size:17px;border:1px solid {metric["accent"]}33;">{metric["icon"]}</div>'
+                f'<div style="font-size:12px;font-weight:850;color:#243b53;">{metric["label"]}</div>'
+                f'<div style="font-size:14px;font-weight:950;color:#102a43;">{current_text}</div>'
+                f'<div style="font-size:10px;color:#64748b;">vs LY: <b>{previous_text}</b></div>'
+                f'<div style="font-size:11px;font-weight:900;color:{change_color};text-align:right;">'
+                f'{arrow} {change_text}</div></div>'
+            )
+
+        note = "" if previous_col is not None else (
+            "<div style='font-size:9px;color:#94a3b8;margin-top:6px;'>"
+            "Previous-year SLAStatus data is unavailable; LY values are shown as zero.</div>"
+        )
+        st.markdown(
+            "<div style='padding:0 4px;'>" + "".join(rows) + note + "</div>",
+            unsafe_allow_html=True,
+        )
+
 def show_overview():
     """Compact overview dashboard page."""
 
@@ -3333,6 +3510,11 @@ def show_overview():
                     max_bottom,
                     "#ef4444"
                 )
+
+    compact_spacer()
+
+    # SLAStatus-based operational insights, shown directly after branch rankings.
+    _render_operational_highlights(df, prev_df)
 
     compact_spacer()
 
