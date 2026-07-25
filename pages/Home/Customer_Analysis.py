@@ -287,6 +287,28 @@ def apply_dashboard_style() -> None:
         }
         div[data-testid="stTabs"] [data-baseweb="tab-list"] {
             gap: 0.35rem !important;
+            background: #ffffff !important;
+            border-bottom: 1px solid #dbe3ec !important;
+            padding: 0 0.15rem !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"] {
+            background: #ffffff !important;
+            background-image: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            color: #475569 !important;
+            box-shadow: none !important;
+            font-weight: 650 !important;
+            padding: 0.55rem 0.80rem !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] {
+            background: #ffffff !important;
+            background-image: none !important;
+            color: #1d4ed8 !important;
+            border-bottom: 3px solid #2563eb !important;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+            background-color: transparent !important;
         }
         h1, h2, h3, h4, h5, h6 {
             margin-top: 0.10rem !important;
@@ -899,29 +921,103 @@ def render_overview_tab(
     divisor, unit = get_revenue_conversion(conversion_type)
     v1, v2, v3 = st.columns(3, gap="small")
 
+    def render_cy_py_customer_chart(
+        source_df: pd.DataFrame,
+        title: str,
+        sort_column: str,
+        ascending: bool,
+        empty_message: str,
+        table_columns: list[str],
+    ) -> None:
+        st.markdown(f"<div class='section-header'>{title}</div>", unsafe_allow_html=True)
+        if source_df.empty:
+            st.info(empty_message)
+            return
+
+        chart_df = source_df.copy().sort_values(sort_column, ascending=ascending)
+        chart_df["CY Revenue"] = chart_df["revenue"] / divisor
+        chart_df["PY Revenue"] = chart_df["prev_revenue"] / divisor
+
+        long_df = chart_df.melt(
+            id_vars=[name_col, "growth_%"],
+            value_vars=["PY Revenue", "CY Revenue"],
+            var_name="Period",
+            value_name="Revenue Display",
+        )
+        fig = px.bar(
+            long_df,
+            x="Revenue Display",
+            y=name_col,
+            color="Period",
+            orientation="h",
+            barmode="group",
+            text="Revenue Display",
+            custom_data=["growth_%"],
+            category_orders={name_col: chart_df[name_col].tolist()},
+        )
+        fig.update_traces(
+            texttemplate=f"%{{text:.2f}} {unit}",
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate=(
+                f"%{{y}}<br>%{{fullData.name}}: %{{x:.2f}} {unit}"
+                "<br>Growth: %{customdata[0]:.1f}%<extra></extra>"
+            ),
+        )
+        fig.update_layout(
+            height=320,
+            margin=dict(l=5, r=35, t=5, b=20),
+            xaxis_title=f"Revenue ({unit})",
+            yaxis_title="",
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            legend_title_text="",
+            legend=dict(orientation="h", y=1.02, x=0),
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+        detail_df = chart_df[table_columns].copy()
+        detail_df["CY Revenue"] = chart_df["revenue"] / divisor
+        detail_df["PY Revenue"] = chart_df["prev_revenue"] / divisor
+        detail_df = detail_df.rename(columns={
+            name_col: customer_label,
+            "growth_%": "Growth %",
+            "shipments": "CY Shipments",
+            "prev_shipments": "PY Shipments",
+        })
+        with st.expander("View detailed CY / PY figures"):
+            st.dataframe(
+                detail_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "CY Revenue": st.column_config.NumberColumn(format=f"%.2f {unit}"),
+                    "PY Revenue": st.column_config.NumberColumn(format=f"%.2f {unit}"),
+                    "Growth %": st.column_config.NumberColumn(format="%.1f%%"),
+                },
+            )
+
     with v1:
         with st.container(border=True):
-            st.markdown(f"<div class='section-header'>Top Growing {customer_label}s</div>", unsafe_allow_html=True)
-            if top_growing.empty:
-                st.info("No growing customers for selected filters.")
-            else:
-                chart_df = top_growing.sort_values("growth_%", ascending=True)
-                fig = px.bar(chart_df, x="growth_%", y=name_col, orientation="h", text="growth_%")
-                fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-                fig.update_layout(height=310, margin=dict(l=5, r=30, t=5, b=15), xaxis_title="Growth %", yaxis_title="", plot_bgcolor="rgba(0,0,0,0)")
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            render_cy_py_customer_chart(
+                top_growing,
+                f"Top Growing {customer_label}s",
+                "growth_%",
+                True,
+                "No growing customers for selected filters.",
+                [name_col, "growth_%", "shipments", "prev_shipments"],
+            )
 
     with v2:
         with st.container(border=True):
-            st.markdown(f"<div class='section-header'>Top De-growing {customer_label}s</div>", unsafe_allow_html=True)
-            if top_degrowing.empty:
-                st.info("No de-growing customers for selected filters.")
-            else:
-                chart_df = top_degrowing.sort_values("growth_%", ascending=False)
-                fig = px.bar(chart_df, x="growth_%", y=name_col, orientation="h", text="growth_%")
-                fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-                fig.update_layout(height=310, margin=dict(l=5, r=30, t=5, b=15), xaxis_title="Drop %", yaxis_title="", plot_bgcolor="rgba(0,0,0,0)")
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            render_cy_py_customer_chart(
+                top_degrowing,
+                f"Top De-growing {customer_label}s",
+                "growth_%",
+                False,
+                "No de-growing customers for selected filters.",
+                [name_col, "growth_%", "shipments", "prev_shipments"],
+            )
 
     with v3:
         with st.container(border=True):
@@ -929,12 +1025,68 @@ def render_overview_tab(
             if lost_summary.empty:
                 st.info("No lost customers for selected filters.")
             else:
-                lost_summary["Lost Revenue Display"] = lost_summary["lost_revenue"] / divisor
-                chart_df = lost_summary.sort_values("lost_revenue", ascending=True)
-                fig = px.bar(chart_df, x="Lost Revenue Display", y=name_col, orientation="h", text="Lost Revenue Display")
-                fig.update_traces(texttemplate=f"%{{text:.2f}} {unit}", textposition="outside")
-                fig.update_layout(height=310, margin=dict(l=5, r=30, t=5, b=15), xaxis_title=f"Lost Revenue ({unit})", yaxis_title="", plot_bgcolor="rgba(0,0,0,0)")
+                chart_df = lost_summary.copy().sort_values("lost_revenue", ascending=True)
+                chart_df["prev_revenue"] = chart_df["lost_revenue"]
+                chart_df["revenue"] = 0.0
+                chart_df["growth_%"] = -100.0
+                chart_df["PY Revenue"] = chart_df["prev_revenue"] / divisor
+                chart_df["CY Revenue"] = 0.0
+
+                long_df = chart_df.melt(
+                    id_vars=[name_col, "growth_%"],
+                    value_vars=["PY Revenue", "CY Revenue"],
+                    var_name="Period",
+                    value_name="Revenue Display",
+                )
+                fig = px.bar(
+                    long_df,
+                    x="Revenue Display",
+                    y=name_col,
+                    color="Period",
+                    orientation="h",
+                    barmode="group",
+                    text="Revenue Display",
+                    custom_data=["growth_%"],
+                    category_orders={name_col: chart_df[name_col].tolist()},
+                )
+                fig.update_traces(
+                    texttemplate=f"%{{text:.2f}} {unit}",
+                    textposition="outside",
+                    cliponaxis=False,
+                    hovertemplate=(
+                        f"%{{y}}<br>%{{fullData.name}}: %{{x:.2f}} {unit}"
+                        "<br>Growth: %{customdata[0]:.1f}%<extra></extra>"
+                    ),
+                )
+                fig.update_layout(
+                    height=320,
+                    margin=dict(l=5, r=35, t=5, b=20),
+                    xaxis_title=f"Revenue ({unit})",
+                    yaxis_title="",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    legend_title_text="",
+                    legend=dict(orientation="h", y=1.02, x=0),
+                )
                 st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+                detail_df = chart_df[[name_col, "last_CN_month", "PY Revenue", "CY Revenue", "growth_%"]].copy()
+                detail_df = detail_df.rename(columns={
+                    name_col: customer_label,
+                    "last_CN_month": "Last CN Month",
+                    "growth_%": "Growth %",
+                })
+                with st.expander("View detailed CY / PY figures"):
+                    st.dataframe(
+                        detail_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "CY Revenue": st.column_config.NumberColumn(format=f"%.2f {unit}"),
+                            "PY Revenue": st.column_config.NumberColumn(format=f"%.2f {unit}"),
+                            "Growth %": st.column_config.NumberColumn(format="%.1f%%"),
+                        },
+                    )
 
 
 def render_growth_tab(growth_df: pd.DataFrame, name_col: str, customer_label: str, conversion_type: str) -> None:
