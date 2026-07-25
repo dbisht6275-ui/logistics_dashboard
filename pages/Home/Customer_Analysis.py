@@ -598,21 +598,41 @@ def render_dashboard_header():
     return export_placeholder
 
 
-def render_main_filters():
-    # ---- FY takes 55%, View Type takes 45% ----
-    f1, f2 = st.columns([1.2, 1])
-    with f1:
-        fin_year = st.selectbox("Financial Year", FINANCIAL_YEARS)
-    with f2:
+def render_filter_row_start():
+    """Create the complete single-row filter layout and render FY/View Type first.
+
+    The remaining column objects are reused after the selected FY/View Type data is loaded,
+    allowing every dashboard filter to stay on one visual row without changing any logic.
+    """
+    filter_columns = st.columns(
+        [1.10, 1.00, 0.82, 0.92, 1.00, 0.72, 0.82, 0.92, 1.25, 0.82],
+        gap="small",
+    )
+
+    with filter_columns[0]:
+        fin_year = st.selectbox(
+            "Financial Year",
+            FINANCIAL_YEARS,
+            key="customer_financial_year",
+        )
+
+    with filter_columns[1]:
         view_type = st.selectbox(
             "View Type",
             ["origin", "destination"],
             format_func=lambda x: "Origin" if x == "origin" else "Destination",
+            key="customer_view_type",
         )
-    return fin_year, view_type
+
+    return filter_columns, fin_year, view_type
 
 
-def render_data_filters(df: pd.DataFrame, customer_label: str, customer_name_col: str):
+def render_data_filters(
+    df: pd.DataFrame,
+    customer_label: str,
+    customer_name_col: str,
+    filter_columns,
+):
     data_scope    = st.session_state.get("data_scope", {})
     locked_zone   = data_scope.get("zone")
     locked_circle = data_scope.get("circle")
@@ -628,11 +648,9 @@ def render_data_filters(df: pd.DataFrame, customer_label: str, customer_name_col
         if not row.empty:
             locked_zone = row["Zone"].iloc[0]
 
-    # Same filter sequence used in Overview: geography -> period -> load -> customer -> conversion.
-    f1, f2, f3, f4, f5, f6, f7, f8 = st.columns(
-        [1, 1, 1, .85, .95, 1, 1.35, .9],
-        gap="small",
-    )
+    # Financial Year and View Type occupy the first two columns.
+    # These eight columns complete the same single filter row.
+    f1, f2, f3, f4, f5, f6, f7, f8 = filter_columns[2:]
 
     with f1:
         if locked_zone:
@@ -1112,7 +1130,7 @@ def show_CustomerAnalysis() -> None:
     apply_dashboard_style()
     export_placeholder = render_dashboard_header()
 
-    fin_year, view_type = render_main_filters()
+    filter_columns, fin_year, view_type = render_filter_row_start()
     if fin_year == "Select FY":
         st.info("Please select a Financial Year to continue.")
         return
@@ -1152,7 +1170,10 @@ def show_CustomerAnalysis() -> None:
         return
 
     zone, circle, branch, quarter, month, load_type, customer, conversion_type = render_data_filters(
-        df, customer_label, name_col
+        df,
+        customer_label,
+        name_col,
+        filter_columns,
     )
 
     df      = apply_filters(df,      zone, circle, branch, quarter, month, load_type, customer, name_col)
