@@ -54,6 +54,26 @@ def _prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _get_latest_loaded_at(engine, view_type: str):
+    """
+    Get the latest LoadedAt timestamp for a given view_type.
+    Separate function to avoid subquery in main query.
+    """
+    query = text("""
+        SELECT MAX(LoadedAt) as LatestLoadedAt
+        FROM dbo.RevenueDataCache
+        WHERE ViewType = :view_type
+    """)
+    
+    with engine.connect() as conn:
+        result = pd.read_sql(query, conn, params={"view_type": view_type.strip().upper()})
+    
+    if result.empty or pd.isna(result['LatestLoadedAt'].iloc[0]):
+        return None
+    
+    return result['LatestLoadedAt'].iloc[0]
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def load_booking_data(
     start_date,
@@ -62,45 +82,39 @@ def load_booking_data(
 ):
     """
     Load one period of booking/revenue data from RevenueDataCache.
-
-    The function signature remains the same as the previous stored
-    procedure-based version.
+    
+    OPTIMIZED: Pre-calculates latest LoadedAt separately to avoid
+    subquery on every row. Removes string functions for index usage.
     """
 
     engine = get_engine()
-
-    query = text(
-        """
-        SELECT
-            C.*
+    view_type_clean = str(view_type).strip().upper()
+    
+    # Get latest LoadedAt first
+    latest_loaded = _get_latest_loaded_at(engine, view_type_clean)
+    
+    if latest_loaded is None:
+        return pd.DataFrame()
+    
+    # Simple query with index-friendly conditions
+    query = text("""
+        SELECT C.*
         FROM dbo.RevenueDataCache AS C
-        WHERE UPPER(LTRIM(RTRIM(C.ViewType))) = :view_type
+        WHERE C.ViewType = :view_type
           AND C.grdt >= CAST(:start_date AS date)
-          AND C.grdt < DATEADD(
-                DAY,
-                1,
-                CAST(:end_date AS date)
-              )
-          AND C.LoadedAt = (
-                SELECT MAX(C2.LoadedAt)
-                FROM dbo.RevenueDataCache AS C2
-                WHERE UPPER(LTRIM(RTRIM(C2.ViewType))) = :view_type
-              )
-        """
-    )
+          AND C.grdt < DATEADD(DAY, 1, CAST(:end_date AS date))
+          AND C.LoadedAt = :latest_dt
+    """)
 
     params = {
+        "view_type": view_type_clean,
         "start_date": start_date,
         "end_date": end_date,
-        "view_type": str(view_type).strip().upper(),
+        "latest_dt": latest_loaded,
     }
 
     with engine.connect() as conn:
-        df = pd.read_sql(
-            query,
-            conn,
-            params=params,
-        )
+        df = pd.read_sql(query, conn, params=params)
 
     return _prepare_dataframe(df)
 
@@ -116,83 +130,62 @@ def load_booking_data_pair(
     """
     Load current-period and previous-period data in one database query.
 
-    Instead of:
-    - executing the stored procedure twice; or
-    - opening two database connections;
-
-    this function performs one query against RevenueDataCache and then
-    separates the current and previous periods in pandas.
+    OPTIMIZED: Pre-calculates latest LoadedAt separately to avoid
+    subquery. Removes string functions for index usage.
 
     Returns:
         current_df, prev_df
     """
 
     engine = get_engine()
+    view_type_clean = str(view_type).strip().upper()
+    
+    # Get latest LoadedAt first
+    latest_loaded = _get_latest_loaded_at(engine, view_type_clean)
+    
+    if latest_loaded is None:
+        empty_df = pd.DataFrame()
+        return empty_df, empty_df
 
-    query = text(
-        """
+    query = text("""
         SELECT
             C.*,
             CASE
                 WHEN C.grdt >= CAST(:start_date AS date)
-                 AND C.grdt < DATEADD(
-                        DAY,
-                        1,
-                        CAST(:end_date AS date)
-                     )
+                 AND C.grdt < DATEADD(DAY, 1, CAST(:end_date AS date))
                 THEN 'CURRENT'
 
                 WHEN C.grdt >= CAST(:prev_start AS date)
-                 AND C.grdt < DATEADD(
-                        DAY,
-                        1,
-                        CAST(:prev_end AS date)
-                     )
+                 AND C.grdt < DATEADD(DAY, 1, CAST(:prev_end AS date))
                 THEN 'PREVIOUS'
             END AS __PERIOD
         FROM dbo.RevenueDataCache AS C
-        WHERE UPPER(LTRIM(RTRIM(C.ViewType))) = :view_type
+        WHERE C.ViewType = :view_type
           AND (
                 (
                     C.grdt >= CAST(:start_date AS date)
-                    AND C.grdt < DATEADD(
-                        DAY,
-                        1,
-                        CAST(:end_date AS date)
-                    )
+                    AND C.grdt < DATEADD(DAY, 1, CAST(:end_date AS date))
                 )
                 OR
                 (
                     C.grdt >= CAST(:prev_start AS date)
-                    AND C.grdt < DATEADD(
-                        DAY,
-                        1,
-                        CAST(:prev_end AS date)
-                    )
+                    AND C.grdt < DATEADD(DAY, 1, CAST(:prev_end AS date))
                 )
               )
-          AND C.LoadedAt = (
-                SELECT MAX(C2.LoadedAt)
-                FROM dbo.RevenueDataCache AS C2
-                WHERE UPPER(LTRIM(RTRIM(C2.ViewType))) = :view_type
-              )
-        """
-    )
+          AND C.LoadedAt = :latest_dt
+    """)
 
     params = {
         "start_date": start_date,
         "end_date": end_date,
         "prev_start": prev_start,
         "prev_end": prev_end,
-        "view_type": str(view_type).strip().upper(),
+        "view_type": view_type_clean,
+        "latest_dt": latest_loaded,
     }
 
     with engine.connect() as conn:
-        combined_df = pd.read_sql(
-            query,
-            conn,
-            params=params,
-        )
+        combined_df = pd.read_sql(query, conn, params=params)
 
     combined_df = _prepare_dataframe(combined_df)
 
