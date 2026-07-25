@@ -507,16 +507,19 @@ REPORTS_VISIBLE = {dept: reports for dept, reports in REPORTS_VISIBLE.items() if
 
 
 # =========================
-# Resolve logged-in user's display name
+# Resolve logged-in employee name
 # =========================
-# NOTE: login.py isn't available to check exactly which session_state key it
-# sets for the user's name. This tries the common ones in order, and falls
-# back to "Employee {id}" if none are present, so nothing breaks either way.
-# If your login.py stores it under a different key, add that key to this list.
-_username_keys = ["username", "full_name", "name", "user_name", "employee_name", "display_name"]
-display_name = next(
-    (st.session_state[k] for k in _username_keys if st.session_state.get(k)),
-    f"Employee {st.session_state.get('employee_id', '')}"
+# login.py saves the employee name under the "employee_name" key.
+# Keep a safe fallback so the dashboard still works for older sessions.
+if "employee_name" not in st.session_state:
+    st.session_state["employee_name"] = st.session_state.get(
+        "username",
+        f"Employee {st.session_state.get('employee_id', '')}",
+    )
+
+display_name = st.session_state.get("employee_name") or st.session_state.get(
+    "username",
+    f"Employee {st.session_state.get('employee_id', '')}",
 )
 
 # Initials for the avatar badge (e.g. "Rahul Sharma" -> "RS", "Rahul" -> "R")
