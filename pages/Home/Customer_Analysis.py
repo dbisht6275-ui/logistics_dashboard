@@ -11,52 +11,106 @@ def apply_dashboard_style() -> None:
     st.markdown(
         """
         <style>
-        /* ---------- KPI Card ---------- */
+        /* ---------- Page spacing ---------- */
+        .block-container {
+            padding-top: 1.15rem !important;
+            padding-bottom: 2rem !important;
+        }
+
+        /* ---------- Dashboard Heading ---------- */
+        .dashboard-header {
+            margin: 0 0 1rem 0;
+            padding: 0;
+        }
+        .dashboard-title {
+            margin: 0;
+            color: #0f172a;
+            font-size: 30px;
+            font-weight: 800;
+            line-height: 1.15;
+            letter-spacing: -0.4px;
+        }
+        .dashboard-subtitle {
+            margin-top: 6px;
+            color: #64748b;
+            font-size: 14px;
+            font-weight: 400;
+        }
+
+        /* ---------- Gradient KPI Cards ---------- */
         .kpi-card {
-            background: #ffffff;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 14px 16px;
-            min-height: 110px;
+            border: 1px solid rgba(255,255,255,0.20);
+            border-radius: 14px;
+            padding: 16px 17px;
+            min-height: 118px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            box-shadow: 0 8px 20px rgba(15,23,42,0.14);
             position: relative;
             overflow: hidden;
+            color: #ffffff;
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 26px rgba(15,23,42,0.18);
+        }
+        .kpi-card::before {
+            content: "";
+            position: absolute;
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            right: -28px;
+            top: -34px;
+            background: rgba(255,255,255,0.12);
+        }
+        .kpi-card::after {
+            content: "";
+            position: absolute;
+            width: 62px;
+            height: 62px;
+            border-radius: 50%;
+            right: 18px;
+            bottom: -34px;
+            background: rgba(255,255,255,0.08);
         }
         .kpi-title {
-            font-size: 12px;
-            font-weight: 600;
-            color: #64748b;
+            font-size: 11px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.88);
             text-transform: uppercase;
-            letter-spacing: 0.4px;
-            margin-bottom: 6px;
+            letter-spacing: 0.45px;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 2;
+            padding-right: 28px;
         }
         .kpi-value {
             font-size: 22px;
-            font-weight: 700;
-            color: #1e293b;
+            font-weight: 800;
+            color: #ffffff;
             line-height: 1.2;
+            position: relative;
+            z-index: 2;
+            white-space: nowrap;
         }
         .kpi-delta {
             font-size: 11px;
-            color: #94a3b8;
-            margin-top: 4px;
+            color: rgba(255,255,255,0.82);
+            margin-top: 6px;
+            position: relative;
+            z-index: 2;
         }
         .kpi-icon {
             position: absolute;
-            top: 12px;
-            right: 14px;
+            top: 14px;
+            right: 15px;
             font-size: 22px;
-            opacity: 0.9;      /* emoji ko clear dikhane ke liye */
-        }
-        .kpi-accent {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            height: 3px;
-            width: 100%;
+            opacity: 0.96;
+            z-index: 3;
+            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.12));
         }
 
         /* ---------- Section Headers ---------- */
@@ -248,11 +302,10 @@ def apply_filters(
 # =====================================================
 # KPI Card  (accent bar color)
 # =====================================================
-def kpi_card(title: str, value: str, delta: str, icon: str, color: str) -> None:
+def kpi_card(title: str, value: str, delta: str, icon: str, gradient: str) -> None:
     st.markdown(
         f"""
-        <div class="kpi-card">
-            <div class="kpi-accent" style="background:{color};"></div>
+        <div class="kpi-card" style="background:{gradient};">
             <div class="kpi-icon">{icon}</div>
             <div class="kpi-title">{title}</div>
             <div class="kpi-value">{value}</div>
@@ -386,6 +439,20 @@ def add_customer_segments(customer_summary: pd.DataFrame) -> pd.DataFrame:
 # =====================================================
 # UI Sections
 # =====================================================
+def render_dashboard_header() -> None:
+    st.markdown(
+        """
+        <div class="dashboard-header">
+            <h1 class="dashboard-title">Customer Analysis</h1>
+            <div class="dashboard-subtitle">
+                Analyze customer acquisition, retention, revenue and branch performance.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_main_filters():
     # ---- FY takes 55%, View Type takes 45% ----
     f1, f2 = st.columns([1.2, 1])
@@ -487,55 +554,57 @@ def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> Non
             f"{metrics['active_customers']:,}",
             format_delta(metrics["active_growth"]),
             "👥",
-            GREEN if metrics["active_growth"] >= 0 else RED,
+            "linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)" if metrics["active_growth"] >= 0
+            else "linear-gradient(135deg, #b91c1c 0%, #ef4444 100%)",
         ),
         (
             f"New {customer_label}s",
             f"{metrics['new_customers']:,}",
             "Current FY vs Previous FY",
             "🆕",
-            GREEN,
+            "linear-gradient(135deg, #047857 0%, #22c55e 100%)",
         ),
         (
             f"Lost {customer_label}s",
             f"{metrics['lost_customers']:,}",
             "Previous FY not active now",
             "❌",
-            RED,
+            "linear-gradient(135deg, #b91c1c 0%, #f43f5e 100%)",
         ),
         (
             "Reactivated Customers",
             f"{metrics['reactivated_customers']:,}",
             "Returned after inactive FY",
             "🔄",
-            BLUE,
+            "linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%)",
         ),
         (
             f"At Risk {customer_label}s",
             f"{metrics['at_risk_customers']:,}",
             "Revenue dropped above 25%",
             "⚠️",
-            ORANGE,
+            "linear-gradient(135deg, #c2410c 0%, #f59e0b 100%)",
         ),
         (
             "Total Revenue",
             money_display(metrics["total_revenue"], conversion_type),
             format_delta(metrics["revenue_growth"]),
             "₹",
-            PURPLE if metrics["revenue_growth"] >= 0 else RED,
+            "linear-gradient(135deg, #6d28d9 0%, #a855f7 100%)" if metrics["revenue_growth"] >= 0
+            else "linear-gradient(135deg, #b91c1c 0%, #ef4444 100%)",
         ),
         (
             "Current Yield",
             f"₹{metrics['current_yield']:.2f} /Kg",
             "Revenue / Chg Wt",
             "⚡",
-            PURPLE,
+            "linear-gradient(135deg, #7e22ce 0%, #ec4899 100%)",
         ),
     ]
 
-    for col, (title, value, delta, icon, color) in zip(cols, cards):
+    for col, (title, value, delta, icon, gradient) in zip(cols, cards):
         with col:
-            kpi_card(title, value, delta, icon, color)
+            kpi_card(title, value, delta, icon, gradient)
 
 
 
@@ -897,6 +966,7 @@ def render_drilldown_tab(df: pd.DataFrame, name_col: str, customer_label: str, c
 # =====================================================
 def show_CustomerAnalysis() -> None:
     apply_dashboard_style()
+    render_dashboard_header()
 
     fin_year, view_type = render_main_filters()
     if fin_year == "Select FY":
