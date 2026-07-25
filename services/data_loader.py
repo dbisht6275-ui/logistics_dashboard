@@ -3,7 +3,7 @@ import pandas as pd
 from sqlalchemy import text
 from concurrent.futures import ThreadPoolExecutor
 from services.database import get_engine
-
+=======dbo.RevenueDataForPythonDashboard====
 
 @st.cache_data(ttl=1800)
 def load_booking_data(start_date, end_date, view_type="origin"):
@@ -11,11 +11,11 @@ def load_booking_data(start_date, end_date, view_type="origin"):
     engine = get_engine()
 
     query = text("""
-        EXEC dbo.RevenueDataForPythonDashboard
+        EXEC dbo.GetRevenueDataFromCache
             @StartDate=:start_date,
             @EndDate=:end_date,
             @ViewType=:view_type
-    """)
+    """) 
 
     with engine.connect() as conn:
         df = pd.read_sql(
