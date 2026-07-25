@@ -1061,6 +1061,88 @@ def build_weight_yoy_trend(current_df, previous_df, trend_type, date_col, fy_sta
 
     return trend_df
 
+def add_revenue_forecast(yoy_df, trend_type, selected_quarter="All", selected_month="All"):
+    """
+    Add forecast revenue only for the current ongoing financial month.
+
+    Logic:
+    - Forecast is shown only in Monthly view.
+    - Forecast is shown only for the current calendar month, e.g. July.
+    - Future months like Aug-Mar are removed from the chart.
+    - Formula: current month actual revenue till today / days passed * total days in month.
+    """
+    from datetime import datetime
+
+    result = yoy_df.copy()
+
+    if result.empty or "Revenue Cr" not in result.columns:
+        result["Forecast Revenue Cr"] = None
+        return result
+
+    result["Revenue Cr"] = pd.to_numeric(result["Revenue Cr"], errors="coerce")
+    if "Prev Revenue Cr" in result.columns:
+        result["Prev Revenue Cr"] = pd.to_numeric(result["Prev Revenue Cr"], errors="coerce")
+
+    # Default: no forecast bar anywhere
+    result["Forecast Revenue Cr"] = None
+
+    # Forecast only monthly chart. No forecast for Daily/Weekly/Quarterly.
+    if trend_type != "Monthly":
+        return result
+
+    today = datetime.today()
+
+    # Convert calendar month into your FY month number: Apr=1, May=2 ... Mar=12
+    current_fin_month = ((today.month - 4) % 12) + 1
+    current_month_name = MONTH_ORDER[current_fin_month - 1]
+
+    month_to_quarter = {MONTH_ORDER[i]: QUARTER_MAP[i + 1] for i in range(len(MONTH_ORDER))}
+    current_quarter = month_to_quarter.get(current_month_name)
+
+    # Remove future months from Monthly chart when Month filter is All.
+    # Example in July: show Apr, May, Jun, Jul only. Hide Aug-Mar completely.
+    if selected_month == "All":
+        if selected_quarter == "All":
+            allowed_months = MONTH_ORDER[:current_fin_month]
+        elif selected_quarter == current_quarter:
+            allowed_months = [
+                m for m in MONTH_ORDER
+                if month_to_quarter.get(m) == selected_quarter
+                and MONTH_ORDER.index(m) <= MONTH_ORDER.index(current_month_name)
+            ]
+        else:
+            allowed_months = [m for m in MONTH_ORDER if month_to_quarter.get(m) == selected_quarter]
+
+        result = result[result["Period"].astype(str).isin(allowed_months)].copy()
+
+    # Respect filters: if user selected a different month/quarter, do not show forecast.
+    if selected_month != "All" and selected_month != current_month_name:
+        return result
+
+    if selected_quarter != "All" and selected_quarter != current_quarter:
+        return result
+
+    # Find current month actual revenue till today
+    current_rows = result["Period"].astype(str).eq(current_month_name)
+    if not current_rows.any():
+        return result
+
+    current_value = result.loc[current_rows, "Revenue Cr"].iloc[0]
+
+    if pd.isna(current_value) or current_value <= 0:
+        return result
+
+    days_elapsed = max(today.day, 1)
+    total_days = calendar.monthrange(today.year, today.month)[1]
+
+    forecast_value = round((current_value / days_elapsed) * total_days, 2)
+
+    # Forecast bar only for current ongoing month
+    result.loc[current_rows, "Forecast Revenue Cr"] = forecast_value
+
+    return result
+
+
 def create_card(title, value, color, icon, growth_value=0.0):
     """Render a compact KPI card without Markdown parsing the HTML as code."""
     positive = growth_value >= 0
@@ -1936,6 +2018,14 @@ def show_overview():
                     if revenue_col in yoy_df.columns:
                         yoy_df[revenue_col] = yoy_df[revenue_col] * 100
 
+            # Add forecast only for the current ongoing month and remove future blank months
+            yoy_df = add_revenue_forecast(
+                yoy_df,
+                trend_type,
+                selected_quarter=quarter,
+                selected_month=month
+            )
+
             # Revenue trend in the same visual format as Weight Trend
             fig_yoy = go.Figure()
 
@@ -1969,10 +2059,28 @@ def show_overview():
                 )
             )
 
+            forecast_df = yoy_df[yoy_df["Forecast Revenue Cr"].notna()].copy()
+            if not forecast_df.empty:
+                fig_yoy.add_trace(
+                    go.Bar(
+                        x=forecast_df["Period"],
+                        y=forecast_df["Forecast Revenue Cr"],
+                        name="Forecast",
+                        marker=dict(color="#f97316", line=dict(color="#c2410c", width=1.3)),
+                        text=forecast_df["Forecast Revenue Cr"],
+                        texttemplate="%{text:.2f}",
+                        textposition="outside",
+                        textfont=dict(size=12, color="#ea580c", family="Arial Black"),
+                        cliponaxis=False,
+                        hovertemplate=f"<b>%{{x}}</b><br>Forecast Revenue: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
+                    )
+                )
+
             yoy_max = pd.concat(
                 [
                     pd.to_numeric(yoy_df["Revenue Cr"], errors="coerce"),
                     pd.to_numeric(yoy_df["Prev Revenue Cr"], errors="coerce"),
+                    pd.to_numeric(yoy_df["Forecast Revenue Cr"], errors="coerce"),
                 ],
                 ignore_index=True,
             ).max()
@@ -1987,6 +2095,7 @@ def show_overview():
                         bar_top = max(
                             r["Revenue Cr"] if pd.notna(r["Revenue Cr"]) else 0,
                             r["Prev Revenue Cr"] if pd.notna(r["Prev Revenue Cr"]) else 0,
+                            r["Forecast Revenue Cr"] if pd.notna(r["Forecast Revenue Cr"]) else 0,
                         )
                         growth_gap = 0.24 if trend_type == "Monthly" else 0.16
                         fig_yoy.add_annotation(
@@ -3555,12 +3664,17 @@ def show_overview():
             revenue_per_day = revenue_value / active_days if active_days else 0.0
 
             if active_days < 30:
+                # The location has not completed 30 days, so it is too early
+                # to judge its performance.
                 performance = "New - Monitoring"
-            elif avg_monthly >= 1000000:
+            elif avg_monthly > 500000:
+                # Average monthly revenue is more than Rs. 5 lakh.
                 performance = "Strong"
-            elif avg_monthly >= 500000:
-                performance = "Developing"
+            elif avg_monthly > 100000:
+                # Average monthly revenue is more than Rs. 1 lakh and up to Rs. 5 lakh.
+                performance = "Progressing"
             else:
+                # Average monthly revenue is Rs. 1 lakh or below after 30 active days.
                 performance = "Needs Attention"
 
             revenue_rows.append({
@@ -3584,7 +3698,11 @@ def show_overview():
     total_new_revenue = opened_revenue_df.get(f"Revenue ({revenue_unit})", pd.Series(dtype=float)).sum()
     total_new_gr = opened_revenue_df.get("GR Count", pd.Series(dtype=float)).sum()
     avg_new_monthly = opened_revenue_df.get(f"Avg Monthly Revenue ({revenue_unit})", pd.Series(dtype=float)).sum()
-    productive_count = int(opened_revenue_df.get("Performance", pd.Series(dtype=str)).isin(["Strong", "Developing"]).sum())
+    productive_count = int(
+        opened_revenue_df.get("Performance", pd.Series(dtype=str))
+        .isin(["Strong", "Progressing"])
+        .sum()
+    )
 
     # Collapse/expand control for the complete Branch/Agency Network Changes section.
     network_toggle_key = "show_branch_agency_network_changes"
@@ -3623,6 +3741,27 @@ def show_overview():
             if opened_revenue_df.empty:
                 st.info("No newly opened branch/agency records are available for the selected period.")
             else:
+                with st.expander("ℹ️ How is location performance calculated?", expanded=False):
+                    st.markdown(
+                        """
+                        **New - Monitoring**  
+                        The branch or agency has been active for less than 30 days.
+                        It is too early to judge its performance, so the location is being monitored.
+
+                        **Strong**  
+                        Average monthly revenue is more than **₹5 lakh**.
+
+                        **Progressing**  
+                        Average monthly revenue is more than **₹1 lakh and up to ₹5 lakh**.
+
+                        **Needs Attention**  
+                        Average monthly revenue is **₹1 lakh or below** after the location has completed 30 active days.
+
+                        **Average Monthly Revenue Formula**  
+                        `Total revenue generated since Active Date ÷ approximate active months`
+                        """
+                    )
+
                 st.dataframe(
                     opened_revenue_df.sort_values(f"Revenue ({revenue_unit})", ascending=False),
                     width="stretch",
@@ -3637,7 +3776,10 @@ def show_overview():
                 )
                 st.caption(
                     f"Combined average monthly revenue of new locations: {avg_new_monthly:,.2f} {revenue_unit}. "
-                    "Performance bands: Strong ≥ ₹10 lakh/month; Developing ≥ ₹5 lakh/month; below this Needs Attention."
+                    "Performance criteria: Strong > ₹5 lakh/month; "
+                    "Progressing > ₹1 lakh and up to ₹5 lakh/month; "
+                    "Needs Attention ≤ ₹1 lakh/month. "
+                    "Locations active for less than 30 days are shown as New - Monitoring."
                 )
 
             with st.expander(f"🔒 View Closed Branch Details ({closed_branches})"):
