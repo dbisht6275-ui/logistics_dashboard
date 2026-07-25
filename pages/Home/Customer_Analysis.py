@@ -105,9 +105,9 @@ def apply_dashboard_style() -> None:
         }
         .kpi-icon {
             position: absolute;
-            top: 14px;
-            right: 15px;
-            font-size: 22px;
+            top: 10px;
+            right: 12px;
+            font-size: 19px;
             opacity: 0.96;
             z-index: 3;
             filter: drop-shadow(0 2px 3px rgba(0,0,0,0.12));
@@ -239,20 +239,24 @@ def apply_dashboard_style() -> None:
 
         /* ---------- Compact KPI row ---------- */
         .kpi-card {
-            min-height: 104px !important;
-            padding: 12px 14px !important;
-            border-radius: 13px !important;
-            box-shadow: 0 5px 14px rgba(15,23,42,0.13) !important;
+            min-height: 92px !important;
+            padding: 9px 12px !important;
+            border-radius: 12px !important;
+            box-shadow: 0 4px 12px rgba(15,23,42,0.12) !important;
         }
         .kpi-title {
-            margin-bottom: 5px !important;
-            font-size: 10px !important;
+            margin-bottom: 3px !important;
+            font-size: 9.5px !important;
+            line-height: 1.15 !important;
         }
         .kpi-value {
-            font-size: 20px !important;
+            font-size: 18px !important;
+            line-height: 1.12 !important;
         }
         .kpi-delta {
-            margin-top: 4px !important;
+            margin-top: 3px !important;
+            font-size: 9.5px !important;
+            line-height: 1.15 !important;
             font-size: 10px !important;
         }
         .kpi-icon {
@@ -1092,25 +1096,28 @@ def render_zone_summary_table(
     customer_label: str,
     conversion_type: str,
 ) -> None:
-    """Visual zone performance summary.
-
-    Bubble position compares revenue and active customers, bubble size represents
-    new customers, and colour represents revenue growth versus previous year.
-    """
+    """Zone comparison visual with both current-year and previous-year figures."""
     current_zone = df.groupby("Zone", as_index=False).agg(
         Active_Customers=(code_col, "nunique"),
         Revenue=("Revenue", "sum"),
     )
     prev_zone = prev_df.groupby("Zone", as_index=False).agg(
+        Prev_Customers=(code_col, "nunique"),
         Prev_Revenue=("Revenue", "sum"),
     )
-    new_df = df[~df[code_col].isin(prev_df[code_col].dropna().unique())]
-    new_zone = new_df.groupby("Zone", as_index=False).agg(New_Customers=(code_col, "nunique"))
+
+    current_codes = set(df[code_col].dropna().unique())
+    previous_codes = set(prev_df[code_col].dropna().unique())
+    new_df = df[df[code_col].isin(current_codes - previous_codes)]
+    lost_df = prev_df[prev_df[code_col].isin(previous_codes - current_codes)]
+    new_zone = new_df.groupby("Zone", as_index=False).agg(New=(code_col, "nunique"))
+    lost_zone = lost_df.groupby("Zone", as_index=False).agg(Lost=(code_col, "nunique"))
 
     summary = (
         current_zone
-        .merge(prev_zone, on="Zone", how="left")
+        .merge(prev_zone, on="Zone", how="outer")
         .merge(new_zone, on="Zone", how="left")
+        .merge(lost_zone, on="Zone", how="left")
         .fillna(0)
     )
     if summary.empty:
@@ -1118,46 +1125,79 @@ def render_zone_summary_table(
         return
 
     divisor, unit = get_revenue_conversion(conversion_type)
-    summary["Revenue Display"] = summary["Revenue"] / divisor
+    cy_col = f"CY Revenue ({unit})"
+    py_col = f"PY Revenue ({unit})"
+    summary[cy_col] = (summary["Revenue"] / divisor).round(2)
+    summary[py_col] = (summary["Prev_Revenue"] / divisor).round(2)
     summary["Growth %"] = summary.apply(
-        lambda r: growth_percentage(r["Revenue"], r["Prev_Revenue"]), axis=1
+        lambda row: growth_percentage(row["Revenue"], row["Prev_Revenue"]), axis=1
     )
-    summary["Bubble Size"] = summary["New_Customers"].clip(lower=1)
+    summary = summary.sort_values("Revenue", ascending=True)
 
+    chart_df = summary[["Zone", cy_col, py_col]].melt(
+        id_vars="Zone",
+        var_name="Period",
+        value_name="Revenue Display",
+    )
     st.markdown(
-        f"<div class='section-header'>Zone Performance</div>",
+        f"<div class='section-header'>Zone Revenue: CY vs PY</div>",
         unsafe_allow_html=True,
     )
-    fig = px.scatter(
-        summary,
+    fig = px.bar(
+        chart_df,
         x="Revenue Display",
-        y="Active_Customers",
-        size="Bubble Size",
-        color="Growth %",
-        text="Zone",
-        hover_name="Zone",
-        hover_data={
-            "Revenue Display": ":.2f",
-            "Active_Customers": ":,.0f",
-            "New_Customers": ":,.0f",
-            "Growth %": ":.1f",
-            "Bubble Size": False,
-        },
-        color_continuous_scale="RdYlGn",
-        color_continuous_midpoint=0,
-        size_max=42,
+        y="Zone",
+        color="Period",
+        barmode="group",
+        orientation="h",
+        text="Revenue Display",
+        category_orders={"Period": [py_col, cy_col]},
     )
-    fig.update_traces(textposition="top center", marker=dict(line=dict(width=1, color="white")))
+    fig.update_traces(
+        texttemplate="%{text:.2f}",
+        textposition="outside",
+        cliponaxis=False,
+    )
     fig.update_layout(
-        height=330,
-        margin=dict(l=5, r=5, t=12, b=5),
+        height=310,
+        margin=dict(l=5, r=30, t=8, b=5),
         xaxis_title=f"Revenue ({unit})",
-        yaxis_title=f"Active {customer_label}s",
-        coloraxis_colorbar=dict(title="Growth %", thickness=10, len=0.70),
+        yaxis_title="",
+        legend_title_text="",
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    table_df = summary.rename(columns={
+        "Active_Customers": f"Active {customer_label}s CY",
+        "Prev_Customers": f"Active {customer_label}s PY",
+    })[[
+        "Zone",
+        f"Active {customer_label}s CY",
+        f"Active {customer_label}s PY",
+        "New",
+        "Lost",
+        cy_col,
+        py_col,
+        "Growth %",
+    ]].sort_values(cy_col, ascending=False)
+
+    with st.expander("View zone figures (CY and PY)", expanded=False):
+        st.dataframe(
+            table_df.style.format({
+                f"Active {customer_label}s CY": "{:,.0f}",
+                f"Active {customer_label}s PY": "{:,.0f}",
+                "New": "{:,.0f}",
+                "Lost": "{:,.0f}",
+                cy_col: "{:,.2f}",
+                py_col: "{:,.2f}",
+                "Growth %": "{:.1f}%",
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def render_branch_summary_table(
@@ -1167,18 +1207,23 @@ def render_branch_summary_table(
     customer_label: str,
     conversion_type: str,
 ) -> None:
-    """Top-10 branch revenue visual with growth-based colours."""
+    """Top branches comparison visual retaining current-year and previous-year figures."""
     current = df.groupby("Branch", as_index=False).agg(
         Revenue=("Revenue", "sum"),
         Customers=(code_col, "nunique"),
     )
-    previous = prev_df.groupby("Branch", as_index=False).agg(PrevRevenue=("Revenue", "sum"))
-    new_df = df[~df[code_col].isin(prev_df[code_col].dropna().unique())]
+    previous = prev_df.groupby("Branch", as_index=False).agg(
+        PrevRevenue=("Revenue", "sum"),
+        PrevCustomers=(code_col, "nunique"),
+    )
+    current_codes = set(df[code_col].dropna().unique())
+    previous_codes = set(prev_df[code_col].dropna().unique())
+    new_df = df[df[code_col].isin(current_codes - previous_codes)]
     new_branch = new_df.groupby("Branch", as_index=False).agg(NewCustomers=(code_col, "nunique"))
 
     summary = (
         current
-        .merge(previous, on="Branch", how="left")
+        .merge(previous, on="Branch", how="outer")
         .merge(new_branch, on="Branch", how="left")
         .fillna(0)
     )
@@ -1187,40 +1232,78 @@ def render_branch_summary_table(
         return
 
     divisor, unit = get_revenue_conversion(conversion_type)
-    summary["Revenue Display"] = summary["Revenue"] / divisor
+    cy_col = f"CY Revenue ({unit})"
+    py_col = f"PY Revenue ({unit})"
+    summary[cy_col] = (summary["Revenue"] / divisor).round(2)
+    summary[py_col] = (summary["PrevRevenue"] / divisor).round(2)
     summary["Growth %"] = summary.apply(
-        lambda r: growth_percentage(r["Revenue"], r["PrevRevenue"]), axis=1
+        lambda row: growth_percentage(row["Revenue"], row["PrevRevenue"]), axis=1
     )
     summary = summary.nlargest(10, "Revenue").sort_values("Revenue", ascending=True)
 
-    st.markdown("<div class='section-header'>Top 10 Branch Performance</div>", unsafe_allow_html=True)
+    chart_df = summary[["Branch", cy_col, py_col]].melt(
+        id_vars="Branch",
+        var_name="Period",
+        value_name="Revenue Display",
+    )
+    st.markdown(
+        "<div class='section-header'>Top 10 Branches: CY vs PY</div>",
+        unsafe_allow_html=True,
+    )
     fig = px.bar(
-        summary,
+        chart_df,
         x="Revenue Display",
         y="Branch",
+        color="Period",
+        barmode="group",
         orientation="h",
-        color="Growth %",
         text="Revenue Display",
-        hover_data={
-            "Revenue Display": ":.2f",
-            "Customers": ":,.0f",
-            "NewCustomers": ":,.0f",
-            "Growth %": ":.1f",
-        },
-        color_continuous_scale="RdYlGn",
-        color_continuous_midpoint=0,
+        category_orders={"Period": [py_col, cy_col]},
     )
-    fig.update_traces(texttemplate=f"%{{text:.2f}} {unit}", textposition="outside", cliponaxis=False)
+    fig.update_traces(
+        texttemplate="%{text:.2f}",
+        textposition="outside",
+        cliponaxis=False,
+    )
     fig.update_layout(
-        height=330,
-        margin=dict(l=5, r=30, t=12, b=5),
+        height=310,
+        margin=dict(l=5, r=30, t=8, b=5),
         xaxis_title=f"Revenue ({unit})",
         yaxis_title="",
-        coloraxis_colorbar=dict(title="Growth %", thickness=10, len=0.70),
+        legend_title_text="",
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    table_df = summary.rename(columns={
+        "Customers": f"{customer_label}s CY",
+        "PrevCustomers": f"{customer_label}s PY",
+        "NewCustomers": f"New {customer_label}s",
+    })[[
+        "Branch",
+        cy_col,
+        py_col,
+        f"{customer_label}s CY",
+        f"{customer_label}s PY",
+        f"New {customer_label}s",
+        "Growth %",
+    ]].sort_values(cy_col, ascending=False)
+
+    with st.expander("View branch figures (CY and PY)", expanded=False):
+        st.dataframe(
+            table_df.style.format({
+                cy_col: "{:,.2f}",
+                py_col: "{:,.2f}",
+                f"{customer_label}s CY": "{:,.0f}",
+                f"{customer_label}s PY": "{:,.0f}",
+                f"New {customer_label}s": "{:,.0f}",
+                "Growth %": "{:.1f}%",
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def render_drilldown_tab(df: pd.DataFrame, name_col: str, customer_label: str, conversion_type: str) -> None:
@@ -1394,7 +1477,7 @@ def show_CustomerAnalysis() -> None:
     # --- KPIs ---
     render_kpis(metrics, customer_label, conversion_type)
 
-    # --- Visual insight row: Zone | Revenue Bridge | Branch ---
+    # --- Visual insight row: Zone CY/PY | Revenue Bridge | Branch CY/PY ---
     c1, c2, c3 = st.columns([1, 1, 1], gap="small", vertical_alignment="top")
     with c1:
         with st.container(border=True):
