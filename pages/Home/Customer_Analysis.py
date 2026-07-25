@@ -143,6 +143,11 @@ FINANCIAL_YEARS = [
     "2020-2021",
 ]
 
+MONTH_ORDER = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
+MONTH_MAP = {1: "Apr", 2: "May", 3: "Jun", 4: "Jul", 5: "Aug", 6: "Sep", 7: "Oct", 8: "Nov", 9: "Dec", 10: "Jan", 11: "Feb", 12: "Mar"}
+QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
+QUARTER_MAP = {1: "Q1", 2: "Q1", 3: "Q1", 4: "Q2", 5: "Q2", 6: "Q2", 7: "Q3", 8: "Q3", 9: "Q3", 10: "Q4", 11: "Q4", 12: "Q4"}
+
 # =====================================================
 # Helper Functions
 # =====================================================
@@ -184,8 +189,14 @@ def clean_booking_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def money_cr(value: float) -> str:
-    return f"Rs.{value / 10_000_000:.2f} Cr"
+def get_revenue_conversion(conversion_type: str):
+    """Display-only conversion. All business calculations remain in rupees."""
+    return (100_000, "Lac") if conversion_type == "Lac" else (10_000_000, "Cr")
+
+
+def money_display(value: float, conversion_type: str) -> str:
+    divisor, unit = get_revenue_conversion(conversion_type)
+    return f"Rs.{value / divisor:.2f} {unit}"
 
 
 def growth_percentage(current: float, previous: float) -> float:
@@ -216,6 +227,8 @@ def apply_filters(
     zone: str,
     circle: str,
     branch: str,
+    quarter: str,
+    month: str,
     load_type: str,
     customer: str,
     customer_name_col: str,
@@ -224,6 +237,8 @@ def apply_filters(
     if zone      != "All" and "Zone"     in filtered.columns: filtered = filtered[filtered["Zone"]     == zone]
     if circle    != "All" and "Circle"   in filtered.columns: filtered = filtered[filtered["Circle"]   == circle]
     if branch    != "All" and "Branch"   in filtered.columns: filtered = filtered[filtered["Branch"]   == branch]
+    if quarter   != "All" and "Quarter"  in filtered.columns: filtered = filtered[filtered["Quarter"]  == quarter]
+    if month     != "All" and "Month"    in filtered.columns: filtered = filtered[filtered["Month"]    == month]
     if load_type != "All" and "LoadType" in filtered.columns: filtered = filtered[filtered["LoadType"] == load_type]
     if customer  != "All" and customer_name_col in filtered.columns:
         filtered = filtered[filtered[customer_name_col] == customer]
@@ -317,7 +332,7 @@ def build_customer_summary(
     return summary
 
 
-def build_monthly_summary(df: pd.DataFrame, code_col: str) -> pd.DataFrame:
+def build_monthly_summary(df: pd.DataFrame, code_col: str, conversion_type: str) -> pd.DataFrame:
     monthly = (
         df.groupby("FIN_MONTH", as_index=False)
         .agg(
@@ -327,7 +342,9 @@ def build_monthly_summary(df: pd.DataFrame, code_col: str) -> pd.DataFrame:
         )
         .sort_values("FIN_MONTH")
     )
-    monthly["Revenue Cr"] = (monthly["revenue"] / 10_000_000).round(2)
+    divisor, unit = get_revenue_conversion(conversion_type)
+    monthly["Revenue Display"] = (monthly["revenue"] / divisor).round(2)
+    monthly["Revenue Unit"] = unit
     return monthly
 
 
@@ -341,7 +358,6 @@ def build_service_summary(df: pd.DataFrame, code_col: str, name_col: str) -> pd.
             revenue=("Revenue", "sum"),
         )
     )
-    service["Revenue Cr"]     = (service["revenue"] / 10_000_000).round(2)
     service["avg_delay_days"] = service["avg_delay_days"].round(2)
     return service
 
@@ -385,7 +401,7 @@ def render_main_filters():
 
 
 def render_data_filters(df: pd.DataFrame, customer_label: str, customer_name_col: str):
-    data_scope   = st.session_state.get("data_scope", {})
+    data_scope    = st.session_state.get("data_scope", {})
     locked_zone   = data_scope.get("zone")
     locked_circle = data_scope.get("circle")
     locked_branch = data_scope.get("branch")
@@ -400,58 +416,69 @@ def render_data_filters(df: pd.DataFrame, customer_label: str, customer_name_col
         if not row.empty:
             locked_zone = row["Zone"].iloc[0]
 
-    # Zone | Circle | Branch | LoadType | Consignor | [Export]
-    # Equal weight columns; export gets slightly more for button
-    f1, f2, f3, f4, f5, f6 = st.columns([1, 1, 1, 1, 1.4, 1.1])
+    # Same filter sequence used in Overview: geography -> period -> load -> customer -> conversion.
+    f1, f2, f3, f4, f5, f6, f7, f8, f9 = st.columns([1, 1, 1, .85, .95, 1, 1.35, .9, 1.05])
 
     with f1:
         if locked_zone:
             zone = locked_zone
-            st.selectbox("Zone", [zone], disabled=True)
+            st.selectbox("Zone", [zone], disabled=True, key="customer_zone_locked")
         else:
             zone_list = ["All"] + (sorted(df["Zone"].dropna().unique()) if "Zone" in df.columns else [])
-            zone = st.selectbox("Zone", zone_list)
+            zone = st.selectbox("Zone", zone_list, key="customer_zone")
     zone_df = df if zone == "All" else df[df["Zone"] == zone]
 
     with f2:
         if locked_circle:
             circle = locked_circle
-            st.selectbox("Circle", [circle], disabled=True)
+            st.selectbox("Circle", [circle], disabled=True, key="customer_circle_locked")
         else:
             circle_list = ["All"] + (sorted(zone_df["Circle"].dropna().unique()) if "Circle" in zone_df.columns else [])
-            circle = st.selectbox("Circle", circle_list)
+            circle = st.selectbox("Circle", circle_list, key="customer_circle")
     circle_df = zone_df if circle == "All" else zone_df[zone_df["Circle"] == circle]
 
     with f3:
         if locked_branch:
             branch = locked_branch
-            st.selectbox("Branch", [branch], disabled=True)
+            st.selectbox("Branch", [branch], disabled=True, key="customer_branch_locked")
         else:
             branch_list = ["All"] + (sorted(circle_df["Branch"].dropna().unique()) if "Branch" in circle_df.columns else [])
-            branch = st.selectbox("Branch", branch_list)
+            branch = st.selectbox("Branch", branch_list, key="customer_branch")
     branch_df = circle_df if branch == "All" else circle_df[circle_df["Branch"] == branch]
 
     with f4:
-        loadtype_list = ["All"] + (sorted(branch_df["LoadType"].dropna().unique()) if "LoadType" in branch_df.columns else [])
-        load_type = st.selectbox("Load Type", loadtype_list)
-    loadtype_df = branch_df if load_type == "All" else branch_df[branch_df["LoadType"] == load_type]
+        available_quarters = [q for q in QUARTER_ORDER if q in branch_df["Quarter"].dropna().unique().tolist()]
+        quarter = st.selectbox("Quarter", ["All"] + available_quarters, key="customer_quarter")
+    quarter_df = branch_df if quarter == "All" else branch_df[branch_df["Quarter"] == quarter]
 
     with f5:
-        customer_list = ["All"] + (sorted(loadtype_df[customer_name_col].dropna().unique()) if customer_name_col in loadtype_df.columns else [])
-        customer = st.selectbox(customer_label, customer_list)
+        available_months = [m for m in MONTH_ORDER if m in quarter_df["Month"].dropna().unique().tolist()]
+        month = st.selectbox("Month", ["All"] + available_months, key="customer_month")
+    month_df = quarter_df if month == "All" else quarter_df[quarter_df["Month"] == month]
 
     with f6:
-        # Small vertical nudge so button aligns with selectboxes
+        loadtype_list = ["All"] + (sorted(month_df["LoadType"].dropna().unique()) if "LoadType" in month_df.columns else [])
+        load_type = st.selectbox("Load Type", loadtype_list, key="customer_loadtype")
+    loadtype_df = month_df if load_type == "All" else month_df[month_df["LoadType"] == load_type]
+
+    with f7:
+        customer_list = ["All"] + (sorted(loadtype_df[customer_name_col].dropna().unique()) if customer_name_col in loadtype_df.columns else [])
+        customer = st.selectbox(customer_label, customer_list, key="customer_name_filter")
+
+    with f8:
+        conversion_type = st.selectbox("Conversion", ["Crore", "Lac"], key="customer_conversion_type")
+
+    with f9:
         st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
         export_placeholder = st.empty()
 
-    return zone, circle, branch, load_type, customer, export_placeholder
+    return zone, circle, branch, quarter, month, load_type, customer, conversion_type, export_placeholder
 
 
 # =====================================================
 # KPI Row  — 7 equal columns
 # =====================================================
-def render_kpis(metrics: dict, customer_label: str) -> None:
+def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> None:
     cols = st.columns(7)
 
     cards = [
@@ -492,7 +519,7 @@ def render_kpis(metrics: dict, customer_label: str) -> None:
         ),
         (
             "Total Revenue",
-            money_cr(metrics["total_revenue"]),
+            money_display(metrics["total_revenue"], conversion_type),
             format_delta(metrics["revenue_growth"]),
             "₹",
             PURPLE if metrics["revenue_growth"] >= 0 else RED,
@@ -523,17 +550,19 @@ def render_overview_tab(
     customer_label: str,
     prev_df,
     lost_customer_codes,
+    conversion_type: str,
 ) -> None:
     # --- Three equal chart columns ---
     c1, c2, c3 = st.columns(3)
 
     with c1:
+        _, revenue_unit = get_revenue_conversion(conversion_type)
         fig = px.bar(
-            monthly, x="FIN_MONTH", y="Revenue Cr",
-            text="Revenue Cr", title="Month-wise Revenue (Cr)",
+            monthly, x="FIN_MONTH", y="Revenue Display",
+            text="Revenue Display", title=f"Month-wise Revenue ({revenue_unit})",
         )
-        fig.update_traces(texttemplate="Rs.%{text:.2f} Cr", textposition="outside")
-        fig.update_yaxes(title="Revenue Cr")
+        fig.update_traces(texttemplate=f"Rs.%{{text:.2f}} {revenue_unit}", textposition="outside")
+        fig.update_yaxes(title=f"Revenue ({revenue_unit})")
         fig.update_layout(height=350, margin=dict(t=50, b=30))
         st.plotly_chart(fig, use_container_width=True)
 
@@ -571,7 +600,7 @@ def render_overview_tab(
         segment_df["Contribution %"] = (segment_df["revenue"] / total_seg_rev * 100).round(1)
         segment_df["Percentage"]     = segment_df["Contribution %"].round(0).astype(int)
         segment_df["Legend Label"]   = segment_df.apply(
-            lambda r: f"{r['segment']:<10} {r['Contribution %']:.1f}% ({money_cr(r['revenue'])})", axis=1
+            lambda r: f"{r['segment']:<10} {r['Contribution %']:.1f}% ({money_display(r['revenue'], conversion_type)})", axis=1
         )
         segment_df["segment"] = pd.Categorical(segment_df["segment"], categories=segment_order, ordered=True)
         segment_df = segment_df.sort_values("segment")
@@ -589,7 +618,7 @@ def render_overview_tab(
             height=350,
             margin=dict(t=50, b=10),
             annotations=[dict(
-                text=f"Total<br>{money_cr(total_seg_rev)}",
+                text=f"Total<br>{money_display(total_seg_rev, conversion_type)}",
                 x=0.5, y=0.5, font_size=13, showarrow=False
             )],
             legend=dict(orientation="v", y=0.95, yanchor="top", x=1.02, xanchor="left", font=dict(size=11)),
@@ -605,8 +634,12 @@ def render_overview_tab(
         (customer_summary["prev_revenue"] > 0) &
         (customer_summary["revenue"] > customer_summary["prev_revenue"])
     ].copy()
-    top_growing["Revenue Cr"]       = (top_growing["revenue"]      / 10_000_000).round(2)
-    top_growing["PY Revenue (Cr)"]  = (top_growing["prev_revenue"] / 10_000_000).round(2)
+    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
+    current_revenue_col = f"Revenue ({revenue_unit})"
+    previous_revenue_col = f"PY Revenue ({revenue_unit})"
+    lost_revenue_col = f"Lost Revenue ({revenue_unit})"
+    top_growing[current_revenue_col] = (top_growing["revenue"] / revenue_divisor).round(2)
+    top_growing[previous_revenue_col] = (top_growing["prev_revenue"] / revenue_divisor).round(2)
     top_growing["Growth % vs PY"]   = top_growing["growth_%"].round(1)
     top_growing = top_growing.sort_values("Growth % vs PY", ascending=False).head(10)
 
@@ -615,8 +648,8 @@ def render_overview_tab(
         (customer_summary["revenue"] < customer_summary["prev_revenue"]) &
         (customer_summary["revenue"] > 0)
     ].copy()
-    top_degrowing["Revenue Cr"]      = (top_degrowing["revenue"]      / 10_000_000).round(2)
-    top_degrowing["PY Revenue (Cr)"] = (top_degrowing["prev_revenue"] / 10_000_000).round(2)
+    top_degrowing[current_revenue_col] = (top_degrowing["revenue"] / revenue_divisor).round(2)
+    top_degrowing[previous_revenue_col] = (top_degrowing["prev_revenue"] / revenue_divisor).round(2)
     top_degrowing["Drop % vs PY"]    = top_degrowing["growth_%"].round(1)
     top_degrowing = top_degrowing.sort_values("Drop % vs PY", ascending=True).head(10)
 
@@ -626,26 +659,26 @@ def render_overview_tab(
         .agg(lost_revenue=("Revenue", "sum"), last_CN_month=("FIN_MONTH", "max"))
     )
     # FIX: was /100 — corrected to /10_000_000
-    lost_summary["Lost Revenue Cr"] = (lost_summary["lost_revenue"] / 10_000_000).round(2)
+    lost_summary[lost_revenue_col] = (lost_summary["lost_revenue"] / revenue_divisor).round(2)
     top_lost = lost_summary.sort_values("lost_revenue", ascending=False).head(10)
 
     t1, t2, t3 = st.columns(3)
     with t1:
         st.markdown(f"<div class='section-header'>Top 10 Growing {customer_label}s</div>", unsafe_allow_html=True)
         st.dataframe(
-            top_growing[[name_col, "Revenue Cr", "PY Revenue (Cr)", "Growth % vs PY"]],
+            top_growing[[name_col, current_revenue_col, previous_revenue_col, "Growth % vs PY"]],
             use_container_width=True, hide_index=True,
         )
     with t2:
         st.markdown(f"<div class='section-header'>Top 10 De-growing {customer_label}s</div>", unsafe_allow_html=True)
         st.dataframe(
-            top_degrowing[[name_col, "Revenue Cr", "PY Revenue (Cr)", "Drop % vs PY"]],
+            top_degrowing[[name_col, current_revenue_col, previous_revenue_col, "Drop % vs PY"]],
             use_container_width=True, hide_index=True,
         )
     with t3:
         st.markdown(f"<div class='section-header'>Top 10 Lost {customer_label}s</div>", unsafe_allow_html=True)
         st.dataframe(
-            top_lost[[name_col, "Lost Revenue Cr", "last_CN_month"]],
+            top_lost[[name_col, lost_revenue_col, "last_CN_month"]],
             use_container_width=True, hide_index=True,
         )
 
@@ -653,14 +686,17 @@ def render_overview_tab(
 # =====================================================
 # Growth Tab
 # =====================================================
-def render_growth_tab(growth_df: pd.DataFrame, name_col: str, customer_label: str) -> None:
+def render_growth_tab(growth_df: pd.DataFrame, name_col: str, customer_label: str, conversion_type: str) -> None:
     st.subheader(f"{customer_label} Growth / Degrowth")
     display_df = growth_df.copy()
-    display_df["Revenue Cr"]          = (display_df["revenue"]      / 10_000_000).round(2)
-    display_df["Previous Revenue Cr"] = (display_df["prev_revenue"] / 10_000_000).round(2)
+    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
+    revenue_col = f"Revenue ({revenue_unit})"
+    previous_col = f"Previous Revenue ({revenue_unit})"
+    display_df[revenue_col] = (display_df["revenue"] / revenue_divisor).round(2)
+    display_df[previous_col] = (display_df["prev_revenue"] / revenue_divisor).round(2)
     st.dataframe(
         display_df[[
-            name_col, "Revenue Cr", "Previous Revenue Cr", "growth_%",
+            name_col, revenue_col, previous_col, "growth_%",
             "Customer Status", "shipments", "actual_weight", "charge_weight",
             "avg_delay", "max_delay",
         ]].sort_values("growth_%", ascending=True),
@@ -671,10 +707,13 @@ def render_growth_tab(growth_df: pd.DataFrame, name_col: str, customer_label: st
 # =====================================================
 # Service Tab
 # =====================================================
-def render_service_tab(service_df: pd.DataFrame, customer_label: str) -> None:
+def render_service_tab(service_df: pd.DataFrame, customer_label: str, conversion_type: str) -> None:
     st.subheader(f"{customer_label} Service Performance")
+    display_df = service_df.copy()
+    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
+    display_df[f"Revenue ({revenue_unit})"] = (display_df["revenue"] / revenue_divisor).round(2)
     st.dataframe(
-        service_df.sort_values("avg_delay_days", ascending=False),
+        display_df.sort_values("avg_delay_days", ascending=False),
         use_container_width=True, hide_index=True,
     )
 
@@ -682,7 +721,7 @@ def render_service_tab(service_df: pd.DataFrame, customer_label: str) -> None:
 # =====================================================
 # Revenue Bridge
 # =====================================================
-def render_revenue_bridge(metrics: dict, customer_label: str) -> None:
+def render_revenue_bridge(metrics: dict, customer_label: str, conversion_type: str) -> None:
     bridge_df = pd.DataFrame({
         "Metric": [
             "Revenue PY",
@@ -699,15 +738,16 @@ def render_revenue_bridge(metrics: dict, customer_label: str) -> None:
             metrics["total_revenue"],
         ],
     })
+    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
     fig = px.bar(
         bridge_df,
         x="Metric",
-        y=bridge_df["Value"] / 10_000_000,
-        text=(bridge_df["Value"] / 10_000_000).round(2),
+        y=bridge_df["Value"] / revenue_divisor,
+        text=(bridge_df["Value"] / revenue_divisor).round(2),
         title="Revenue Bridge",
     )
-    fig.update_traces(texttemplate="Rs. %{text:.2f} Cr", textposition="outside")
-    fig.update_yaxes(title="Revenue Cr")
+    fig.update_traces(texttemplate=f"Rs. %{{text:.2f}} {revenue_unit}", textposition="outside")
+    fig.update_yaxes(title=f"Revenue ({revenue_unit})")
     fig.update_xaxes(title="")
     fig.update_layout(height=370, margin=dict(t=50, b=30))
     st.plotly_chart(fig, use_container_width=True)
@@ -721,6 +761,7 @@ def render_zone_summary_table(
     prev_df: pd.DataFrame,
     code_col: str,
     customer_label: str,
+    conversion_type: str,
 ) -> None:
     current_zone = df.groupby("Zone", as_index=False).agg(
         Active_Customers=(code_col, "nunique"),
@@ -742,19 +783,21 @@ def render_zone_summary_table(
         .merge(lost_zone,  on="Zone", how="left")
         .fillna(0)
     )
-    zone_summary["Revenue (Cr)"] = (zone_summary["Revenue"] / 10_000_000).round(2)
+    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
+    revenue_col = f"Revenue ({revenue_unit})"
+    zone_summary[revenue_col] = (zone_summary["Revenue"] / revenue_divisor).round(2)
     zone_summary["Growth %"]     = zone_summary.apply(
         lambda r: growth_percentage(r["Revenue"], r["Prev_Revenue"]), axis=1
     )
     zone_summary = zone_summary.rename(columns={"Active_Customers": f"Active {customer_label}s"})
 
-    display_df = zone_summary[["Zone", f"Active {customer_label}s", "New", "Lost", "Revenue (Cr)", "Growth %"]].copy()
+    display_df = zone_summary[["Zone", f"Active {customer_label}s", "New", "Lost", revenue_col, "Growth %"]].copy()
     total_row = {
         "Zone":                       "Total",
         f"Active {customer_label}s":  int(display_df[f"Active {customer_label}s"].sum()),
         "New":                        int(display_df["New"].sum()),
         "Lost":                       int(display_df["Lost"].sum()),
-        "Revenue (Cr)":               round(display_df["Revenue (Cr)"].sum(), 2),
+        revenue_col:                   round(display_df[revenue_col].sum(), 2),
         "Growth %":                   growth_percentage(zone_summary["Revenue"].sum(), zone_summary["Prev_Revenue"].sum()),
     }
     display_df = pd.concat([display_df, pd.DataFrame([total_row])], ignore_index=True)
@@ -765,7 +808,7 @@ def render_zone_summary_table(
             f"Active {customer_label}s": "{:,.0f}",
             "New":          "{:,.0f}",
             "Lost":         "{:,.0f}",
-            "Revenue (Cr)": "{:,.2f}",
+            revenue_col:   "{:,.2f}",
             "Growth %":     "{:.1f}%",
         }),
         use_container_width=True,
@@ -781,6 +824,7 @@ def render_branch_summary_table(
     prev_df: pd.DataFrame,
     code_col: str,
     customer_label: str,
+    conversion_type: str,
 ) -> None:
     current    = df.groupby("Branch", as_index=False).agg(Revenue=("Revenue", "sum"), Customers=(code_col, "nunique"))
     previous   = prev_df.groupby("Branch", as_index=False).agg(PrevRevenue=("Revenue", "sum"))
@@ -793,7 +837,9 @@ def render_branch_summary_table(
         .merge(new_branch, on="Branch", how="left")
         .fillna(0)
     )
-    summary["Revenue (Cr)"] = (summary["Revenue"] / 10_000_000).round(2)
+    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
+    revenue_col = f"Revenue ({revenue_unit})"
+    summary[revenue_col] = (summary["Revenue"] / revenue_divisor).round(2)
     summary["Growth %"]     = summary.apply(lambda r: growth_percentage(r["Revenue"], r["PrevRevenue"]), axis=1)
     summary = summary.sort_values("Revenue", ascending=False).head(10)
     summary = summary.rename(columns={
@@ -803,10 +849,10 @@ def render_branch_summary_table(
 
     st.markdown("<div class='section-header'>Top 10 Branch Performance</div>", unsafe_allow_html=True)
     styled = (
-        summary[["Branch", "Revenue (Cr)", customer_label + "s", f"New {customer_label}s", "Growth %"]]
+        summary[["Branch", revenue_col, customer_label + "s", f"New {customer_label}s", "Growth %"]]
         .style
         .format({
-            "Revenue (Cr)":             "{:.2f}",
+            revenue_col:                 "{:.2f}",
             customer_label + "s":       "{:,.0f}",
             f"New {customer_label}s":   "{:,.0f}",
             "Growth %":                 "{:.1f}%",
@@ -823,7 +869,7 @@ def render_branch_summary_table(
 # =====================================================
 # Drilldown Tab
 # =====================================================
-def render_drilldown_tab(df: pd.DataFrame, name_col: str, customer_label: str) -> None:
+def render_drilldown_tab(df: pd.DataFrame, name_col: str, customer_label: str, conversion_type: str) -> None:
     st.subheader(f"{customer_label} Drill Down")
     customers = sorted(df[name_col].dropna().unique())
     if not customers:
@@ -840,7 +886,7 @@ def render_drilldown_tab(df: pd.DataFrame, name_col: str, customer_label: str) -
 
     d1, d2, d3, d4 = st.columns(4)
     d1.metric("Total Shipments",        f"{total_shipments:,.0f}")
-    d2.metric("Revenue",                money_cr(total_revenue))
+    d2.metric("Revenue",                money_display(total_revenue, conversion_type))
     d3.metric("Charge Weight",          f"{total_weight:,.0f}")
     d4.metric("Avg Revenue / Shipment", f"Rs.{avg_revenue_per_shipment:,.0f}")
     st.dataframe(customer_df, use_container_width=True, hide_index=True)
@@ -877,6 +923,11 @@ def show_CustomerAnalysis() -> None:
         st.warning("No customer data found.")
         return
 
+    # Display/filter helper columns. FIN_MONTH remains the source of truth.
+    for period_df in (df, prev_df, old_df):
+        period_df["Month"] = period_df["FIN_MONTH"].map(MONTH_MAP)
+        period_df["Quarter"] = period_df["FIN_MONTH"].map(QUARTER_MAP)
+
     required_cols = [code_col, name_col, "Zone", "Branch", "FIN_MONTH",
                      "Revenue", "ShipmentCount", "ActualWeight", "ChargeWeight",
                      "AvgDelayDays", "MaxDelayDays"]
@@ -886,13 +937,13 @@ def show_CustomerAnalysis() -> None:
         st.write("Available columns:", list(df.columns))
         return
 
-    zone, circle, branch, load_type, customer, export_placeholder = render_data_filters(
+    zone, circle, branch, quarter, month, load_type, customer, conversion_type, export_placeholder = render_data_filters(
         df, customer_label, name_col
     )
 
-    df      = apply_filters(df,      zone, circle, branch, load_type, customer, name_col)
-    prev_df = apply_filters(prev_df, zone, circle, branch, load_type, customer, name_col)
-    old_df  = apply_filters(old_df,  zone, circle, branch, load_type, customer, name_col)
+    df      = apply_filters(df,      zone, circle, branch, quarter, month, load_type, customer, name_col)
+    prev_df = apply_filters(prev_df, zone, circle, branch, quarter, month, load_type, customer, name_col)
+    old_df  = apply_filters(old_df,  zone, circle, branch, quarter, month, load_type, customer, name_col)
 
     if df.empty:
         st.warning("No data found for selected filters.")
@@ -917,13 +968,14 @@ def show_CustomerAnalysis() -> None:
     prev_revenue          = prev_df["Revenue"].sum()
 
     customer_summary = build_customer_summary(df, prev_df, code_col, name_col)
-    monthly          = build_monthly_summary(df, code_col)
+    monthly          = build_monthly_summary(df, code_col, conversion_type)
     service_df       = build_service_summary(df, code_col, name_col)
 
     reactivated_df = customer_summary[customer_summary[code_col].isin(reactivated_customer_codes)].copy()
     if not reactivated_df.empty:
-        reactivated_df["Revenue Cr"]          = (reactivated_df["revenue"]      / 10_000_000).round(2)
-        reactivated_df["Previous Revenue Cr"] = (reactivated_df["prev_revenue"] / 10_000_000).round(2)
+        revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
+        reactivated_df[f"Revenue ({revenue_unit})"] = (reactivated_df["revenue"] / revenue_divisor).round(2)
+        reactivated_df[f"Previous Revenue ({revenue_unit})"] = (reactivated_df["prev_revenue"] / revenue_divisor).round(2)
 
     growth_df = customer_summary.copy()
     growth_df["Customer Status"] = "Existing"
@@ -979,7 +1031,7 @@ def show_CustomerAnalysis() -> None:
         )
 
     # --- KPIs ---
-    render_kpis(metrics, customer_label)
+    render_kpis(metrics, customer_label, conversion_type)
 
     st.divider()
 
@@ -987,11 +1039,11 @@ def show_CustomerAnalysis() -> None:
     # Equal width [1, 1, 1] so all three sections align perfectly
     c1, c2, c3 = st.columns([1, 1, 1])
     with c1:
-        render_zone_summary_table(df, prev_df, code_col, customer_label)
+        render_zone_summary_table(df, prev_df, code_col, customer_label, conversion_type)
     with c2:
-        render_revenue_bridge(metrics, customer_label)
+        render_revenue_bridge(metrics, customer_label, conversion_type)
     with c3:
-        render_branch_summary_table(df, prev_df, code_col, customer_label)
+        render_branch_summary_table(df, prev_df, code_col, customer_label, conversion_type)
 
     st.divider()
 
@@ -1003,10 +1055,10 @@ def show_CustomerAnalysis() -> None:
         f"{customer_label} Drill Down",
     ])
     with tab1:
-        render_overview_tab(customer_summary, monthly, code_col, name_col, customer_label, prev_df, lost_customer_codes)
+        render_overview_tab(customer_summary, monthly, code_col, name_col, customer_label, prev_df, lost_customer_codes, conversion_type)
     with tab2:
-        render_growth_tab(growth_df, name_col, customer_label)
+        render_growth_tab(growth_df, name_col, customer_label, conversion_type)
     with tab3:
-        render_service_tab(service_df, customer_label)
+        render_service_tab(service_df, customer_label, conversion_type)
     with tab4:
-        render_drilldown_tab(df, name_col, customer_label)
+        render_drilldown_tab(df, name_col, customer_label, conversion_type)
