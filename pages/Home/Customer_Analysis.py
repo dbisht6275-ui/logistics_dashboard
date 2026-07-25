@@ -170,7 +170,138 @@ def apply_dashboard_style() -> None:
         .glideDataEditor {
             font-size: 11px !important;
         }
-        </style>
+        
+
+        /* ---------- Compact layout overrides: aligned with Overview ---------- */
+        .block-container {
+            max-width: 100% !important;
+            padding: 0.35rem 0.75rem 0.75rem !important;
+        }
+        .block-container > div:first-child {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+        }
+        div[data-testid="stVerticalBlock"] {
+            gap: 0.35rem !important;
+        }
+        div[data-testid="stHorizontalBlock"] {
+            gap: 0.50rem !important;
+            align-items: flex-start !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            min-width: 0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius: 11px !important;
+            box-shadow: 0 3px 10px rgba(15,42,67,0.07) !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding: 0.55rem 0.65rem !important;
+        }
+
+        /* ---------- Compact heading card ---------- */
+        .dashboard-header {
+            margin: 0 !important;
+            padding: 2px 0 3px 4px !important;
+        }
+        .dashboard-title {
+            margin: 0 !important;
+            color: #102a43 !important;
+            font-size: 19px !important;
+            font-weight: 850 !important;
+            line-height: 1.15 !important;
+            letter-spacing: -0.3px !important;
+        }
+        .dashboard-subtitle {
+            margin-top: 2px !important;
+            color: #64748b !important;
+            font-size: 11px !important;
+            font-weight: 400 !important;
+        }
+
+        /* ---------- Compact filters and controls ---------- */
+        div[data-testid="stSelectbox"] {
+            padding: 2px 3px 4px !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            overflow: visible !important;
+        }
+        div[data-baseweb="select"] > div {
+            min-height: 34px !important;
+        }
+        .stDownloadButton > button {
+            min-height: 34px !important;
+            border-radius: 9px !important;
+            font-size: 12px !important;
+            font-weight: 750 !important;
+            white-space: nowrap !important;
+        }
+
+        /* ---------- Compact KPI row ---------- */
+        .kpi-card {
+            min-height: 104px !important;
+            padding: 12px 14px !important;
+            border-radius: 13px !important;
+            box-shadow: 0 5px 14px rgba(15,23,42,0.13) !important;
+        }
+        .kpi-title {
+            margin-bottom: 5px !important;
+            font-size: 10px !important;
+        }
+        .kpi-value {
+            font-size: 20px !important;
+        }
+        .kpi-delta {
+            margin-top: 4px !important;
+            font-size: 10px !important;
+        }
+        .kpi-icon {
+            top: 11px !important;
+            right: 12px !important;
+            font-size: 20px !important;
+        }
+
+        /* ---------- Compact insight sections ---------- */
+        hr {
+            margin-top: 0.35rem !important;
+            margin-bottom: 0.35rem !important;
+        }
+        .section-header {
+            margin-top: 0 !important;
+            margin-bottom: 0.25rem !important;
+        }
+        [data-testid="stDataFrame"] {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+        [data-testid="stPlotlyChart"] {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+        div[data-testid="stTabs"] {
+            margin-top: 0 !important;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+            gap: 0.35rem !important;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            margin-top: 0.10rem !important;
+            margin-bottom: 0.25rem !important;
+        }
+
+        @media (max-width: 1500px) {
+            .block-container {
+                padding-left: 0.45rem !important;
+                padding-right: 0.45rem !important;
+            }
+            div[data-testid="stHorizontalBlock"] {
+                gap: 0.35rem !important;
+            }
+            .dashboard-title {
+                font-size: 18px !important;
+            }
+        }
+</style>
         """,
         unsafe_allow_html=True,
     )
@@ -439,18 +570,32 @@ def add_customer_segments(customer_summary: pd.DataFrame) -> pd.DataFrame:
 # =====================================================
 # UI Sections
 # =====================================================
-def render_dashboard_header() -> None:
-    st.markdown(
-        """
-        <div class="dashboard-header">
-            <h1 class="dashboard-title">Customer Analysis</h1>
-            <div class="dashboard-subtitle">
-                Analyze customer acquisition, retention, revenue and branch performance.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+def render_dashboard_header():
+    """Render the compact Overview-style heading and return the export placeholder."""
+    with st.container(border=True):
+        header_left, header_right = st.columns(
+            [7, 1],
+            gap="small",
+            vertical_alignment="center",
+        )
+
+        with header_left:
+            st.markdown(
+                """
+                <div class="dashboard-header">
+                    <div class="dashboard-title">Customer Analysis</div>
+                    <div class="dashboard-subtitle">
+                        Analyze customer acquisition, retention, revenue and branch performance.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        with header_right:
+            export_placeholder = st.empty()
+
+    return export_placeholder
 
 
 def render_main_filters():
@@ -484,7 +629,10 @@ def render_data_filters(df: pd.DataFrame, customer_label: str, customer_name_col
             locked_zone = row["Zone"].iloc[0]
 
     # Same filter sequence used in Overview: geography -> period -> load -> customer -> conversion.
-    f1, f2, f3, f4, f5, f6, f7, f8, f9 = st.columns([1, 1, 1, .85, .95, 1, 1.35, .9, 1.05])
+    f1, f2, f3, f4, f5, f6, f7, f8 = st.columns(
+        [1, 1, 1, .85, .95, 1, 1.35, .9],
+        gap="small",
+    )
 
     with f1:
         if locked_zone:
@@ -535,11 +683,7 @@ def render_data_filters(df: pd.DataFrame, customer_label: str, customer_name_col
     with f8:
         conversion_type = st.selectbox("Conversion", ["Crore", "Lac"], key="customer_conversion_type")
 
-    with f9:
-        st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
-        export_placeholder = st.empty()
-
-    return zone, circle, branch, quarter, month, load_type, customer, conversion_type, export_placeholder
+    return zone, circle, branch, quarter, month, load_type, customer, conversion_type
 
 
 # =====================================================
@@ -966,7 +1110,7 @@ def render_drilldown_tab(df: pd.DataFrame, name_col: str, customer_label: str, c
 # =====================================================
 def show_CustomerAnalysis() -> None:
     apply_dashboard_style()
-    render_dashboard_header()
+    export_placeholder = render_dashboard_header()
 
     fin_year, view_type = render_main_filters()
     if fin_year == "Select FY":
@@ -1007,7 +1151,7 @@ def show_CustomerAnalysis() -> None:
         st.write("Available columns:", list(df.columns))
         return
 
-    zone, circle, branch, quarter, month, load_type, customer, conversion_type, export_placeholder = render_data_filters(
+    zone, circle, branch, quarter, month, load_type, customer, conversion_type = render_data_filters(
         df, customer_label, name_col
     )
 
@@ -1098,6 +1242,9 @@ def show_CustomerAnalysis() -> None:
             data=excel_file,
             file_name=f"customer_analysis_{view_type}_{fin_year}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="customer_analysis_export_excel",
+            help="Download the filtered customer analysis data.",
+            use_container_width=True,
         )
 
     # --- KPIs ---
