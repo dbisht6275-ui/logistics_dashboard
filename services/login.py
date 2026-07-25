@@ -11,47 +11,46 @@ from services.roles import (
 
 def check_login(username: str, password: str):
     """
-    Validate the username and password from USERMAST.
+    Validate username and password from USERMAST.
 
     Login behaviour:
     - Username is case-insensitive.
     - Password is case-insensitive.
     - Leading and trailing spaces are ignored.
-    - Expired users are not allowed to log in.
+    - Expired users are not allowed.
     - Employee name is retrieved from EMPLOYEEMAST.
 
     Returns:
         tuple:
-            (True, employee_id, employee_name) when login is successful.
+            (True, employee_id, employee_name) when login succeeds.
             (False, None, None) when login fails.
     """
 
     try:
-        # Remove accidental spaces from entered credentials.
         clean_username = username.strip()
         clean_password = password.strip()
 
-        # Create database engine.
         engine = get_engine()
 
         with engine.connect() as conn:
             result = conn.execute(
                 text(
                     """
-                    SELECT
+                    SELECT TOP 1
                         U.USERNAME,
                         U.EMPLOYEEID,
                         EMP.EMPNAME AS EMPLOYEE_NAME
                     FROM USERMAST U
                     INNER JOIN EMPLOYEEMAST EMP
                         ON EMP.EMPLOYEEID = U.EMPLOYEEID
-                    WHERE LOWER(TRIM(U.USERNAME)) = LOWER(TRIM(:username))
-                      AND LOWER(TRIM(U.PASSWORD)) = LOWER(TRIM(:password))
+                    WHERE LOWER(LTRIM(RTRIM(U.USERNAME))) =
+                          LOWER(LTRIM(RTRIM(:username)))
+                      AND LOWER(LTRIM(RTRIM(U.PASSWORD))) =
+                          LOWER(LTRIM(RTRIM(:password)))
                       AND (
                             U.EXPIRED IS NULL
-                            OR LOWER(TRIM(U.EXPIRED)) <> 'y'
+                            OR LOWER(LTRIM(RTRIM(U.EXPIRED))) <> 'y'
                           )
-                    LIMIT 1
                     """
                 ),
                 {
@@ -60,7 +59,6 @@ def check_login(username: str, password: str):
                 },
             )
 
-            # mappings() allows column names to be used.
             row = result.mappings().first()
 
         if row:
@@ -81,19 +79,16 @@ def login_page():
     Display the Streamlit login page and authenticate the user.
     """
 
-    # CSS styling for the complete login page.
     st.markdown(
         dedent(
             """
             <style>
-                /* Main Streamlit page container */
                 .main .block-container {
                     max-width: 900px;
                     padding-top: 40px;
                     padding-bottom: 40px;
                 }
 
-                /* Login heading card */
                 .login-card {
                     width: 100%;
                     background: white;
@@ -106,7 +101,6 @@ def login_page():
                     box-sizing: border-box;
                 }
 
-                /* Main login heading */
                 .login-title {
                     font-size: 30px;
                     font-weight: 600;
@@ -115,19 +109,16 @@ def login_page():
                     line-height: 1.25;
                 }
 
-                /* Login subtitle */
                 .login-subtitle {
                     color: #6b7280;
                     font-size: 15px;
                     margin-top: 6px;
                 }
 
-                /* Input field styling */
                 div[data-baseweb="input"] > div {
                     border-radius: 10px;
                 }
 
-                /* Login button styling */
                 div.stButton > button {
                     width: 100%;
                     background: linear-gradient(
@@ -142,7 +133,6 @@ def login_page():
                     font-weight: 600;
                 }
 
-                /* Login button hover styling */
                 div.stButton > button:hover {
                     color: white;
                     border: none;
@@ -153,7 +143,6 @@ def login_page():
                     );
                 }
 
-                /* Login button active styling */
                 div.stButton > button:active {
                     color: white;
                     border: none;
@@ -164,12 +153,9 @@ def login_page():
         unsafe_allow_html=True,
     )
 
-    # Create a centred login section.
     left_col, login_col, right_col = st.columns([3, 2, 3])
 
     with login_col:
-
-        # Login heading card.
         st.markdown(
             dedent(
                 """
@@ -187,19 +173,16 @@ def login_page():
             unsafe_allow_html=True,
         )
 
-        # Use a form so pressing Enter also submits the login.
         with st.form(
             key="login_form",
             clear_on_submit=False,
         ):
-            # Username input.
             username = st.text_input(
                 label="Username",
                 placeholder="Enter your username",
                 key="login_username",
             )
 
-            # Password input.
             password = st.text_input(
                 label="Password",
                 type="password",
@@ -207,20 +190,16 @@ def login_page():
                 key="login_password",
             )
 
-            # Login button.
             login_clicked = st.form_submit_button(
                 label="Login",
                 use_container_width=True,
             )
 
         if login_clicked:
-
-            # Check whether both fields contain a value.
             if not username.strip() or not password.strip():
                 st.warning("Please enter username and password.")
                 return
 
-            # Check credentials against the database.
             success, employee_id, employee_name = check_login(
                 username=username,
                 password=password,
@@ -228,14 +207,12 @@ def login_page():
 
             if success:
                 try:
-                    # Retrieve employee role and data access rights.
                     role = get_role_for_employee(employee_id)
 
                     data_scope = get_data_scope_for_employee(
                         employee_id
                     )
 
-                    # Save authenticated user information.
                     st.session_state["logged_in"] = True
                     st.session_state["employee_id"] = employee_id
                     st.session_state["employee_name"] = (
@@ -247,11 +224,9 @@ def login_page():
                     st.session_state["data_scope"] = data_scope
                     st.session_state["username"] = username.strip()
 
-                    # Reload the application after login.
                     st.rerun()
 
                 except Exception as e:
-                    # Clear login state if role or scope loading fails.
                     st.session_state["logged_in"] = False
 
                     st.error(
@@ -263,8 +238,5 @@ def login_page():
                 st.error("Invalid username or password.")
 
 
-# Direct execution support.
-# Run using:
-# streamlit run login.py
 if __name__ == "__main__":
     login_page()
