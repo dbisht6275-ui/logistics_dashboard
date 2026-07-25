@@ -3556,10 +3556,10 @@ def show_overview():
 
             if active_days < 30:
                 performance = "New - Monitoring"
-            elif avg_monthly >= 1000000:
+            elif avg_monthly >= 5000000:
                 performance = "Strong"
-            elif avg_monthly >= 500000:
-                performance = "Developing"
+            elif avg_monthly >= 100000:
+                performance = "Progressing"
             else:
                 performance = "Needs Attention"
 
