@@ -289,6 +289,24 @@ def apply_dashboard_style() -> None:
             margin-bottom: 0.25rem !important;
         }
 
+        /* ---------- Prevent KPI / insight overlap ---------- */
+        .kpi-row-spacer {
+            height: 14px;
+            width: 100%;
+            clear: both;
+        }
+        .insight-section-spacer {
+            height: 6px;
+            width: 100%;
+            clear: both;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stPlotlyChart"] {
+            overflow: hidden !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] .section-header {
+            margin-bottom: 0.10rem !important;
+        }
+
         @media (max-width: 1500px) {
             .block-container {
                 padding-left: 0.45rem !important;
@@ -708,7 +726,7 @@ def render_data_filters(
 # KPI Row  — 7 equal columns
 # =====================================================
 def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> None:
-    cols = st.columns(7)
+    cols = st.columns(7, gap="small")
 
     cards = [
         (
@@ -731,7 +749,7 @@ def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> Non
             f"{metrics['lost_customers']:,}",
             "Previous FY not active now",
             "❌",
-            "linear-gradient(135deg, #b91c1c 0%, #f43f5e 100%)",
+            "linear-gradient(135deg, #be123c 0%, #f43f5e 100%)",
         ),
         (
             "Reactivated Customers",
@@ -768,11 +786,10 @@ def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> Non
         with col:
             kpi_card(title, value, delta, icon, gradient)
 
+    # Explicit spacer prevents the next insight row from touching KPI cards.
+    st.markdown("<div class='kpi-row-spacer'></div>", unsafe_allow_html=True)
 
 
-# =====================================================
-# Overview Tab
-# =====================================================
 def render_overview_tab(
     customer_summary: pd.DataFrame,
     monthly: pd.DataFrame,
@@ -784,174 +801,251 @@ def render_overview_tab(
     conversion_type: str,
 ) -> None:
     # --- Three equal chart columns ---
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3 = st.columns(3, gap="small")
 
     with c1:
-        _, revenue_unit = get_revenue_conversion(conversion_type)
-        fig = px.bar(
-            monthly, x="FIN_MONTH", y="Revenue Display",
-            text="Revenue Display", title=f"Month-wise Revenue ({revenue_unit})",
-        )
-        fig.update_traces(texttemplate=f"Rs.%{{text:.2f}} {revenue_unit}", textposition="outside")
-        fig.update_yaxes(title=f"Revenue ({revenue_unit})")
-        fig.update_layout(height=350, margin=dict(t=50, b=30))
-        st.plotly_chart(fig, use_container_width=True)
+        with st.container(border=True):
+            _, revenue_unit = get_revenue_conversion(conversion_type)
+            fig = px.bar(
+                monthly, x="FIN_MONTH", y="Revenue Display",
+                text="Revenue Display", title=f"Month-wise Revenue ({revenue_unit})",
+            )
+            fig.update_traces(texttemplate=f"Rs.%{{text:.2f}} {revenue_unit}", textposition="outside")
+            fig.update_yaxes(title=f"Revenue ({revenue_unit})")
+            fig.update_layout(height=330, margin=dict(t=45, b=20), plot_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     with c2:
-        revenue_rank = customer_summary.sort_values("revenue", ascending=False)
-        total_revenue = revenue_rank["revenue"].sum()
-        rows = []
-        for lbl, top_n in [("Top 10", 10), ("Top 20", 20), ("Top 50", 50), ("Top 100", 100)]:
-            top_rev = revenue_rank.head(top_n)["revenue"].sum()
-            pct     = (top_rev / total_revenue * 100) if total_revenue else 0
-            rows.append({"Customer Group": lbl, "% of Total Revenue": round(pct, 1)})
-        concentration_df = pd.DataFrame(rows)
-        fig = px.bar(
-            concentration_df,
-            x="% of Total Revenue", y="Customer Group",
-            orientation="h", text="% of Total Revenue",
-            title="Revenue Concentration",
-        )
-        fig.update_traces(texttemplate="%{text}%", textposition="outside")
-        fig.update_layout(xaxis_title="% of Total Revenue", yaxis_title="", height=350, margin=dict(t=50, b=30))
-        st.plotly_chart(fig, use_container_width=True)
+        with st.container(border=True):
+            revenue_rank = customer_summary.sort_values("revenue", ascending=False)
+            total_revenue = revenue_rank["revenue"].sum()
+            rows = []
+            for lbl, top_n in [("Top 10", 10), ("Top 20", 20), ("Top 50", 50), ("Top 100", 100)]:
+                top_rev = revenue_rank.head(top_n)["revenue"].sum()
+                pct = (top_rev / total_revenue * 100) if total_revenue else 0
+                rows.append({"Customer Group": lbl, "% of Total Revenue": round(pct, 1)})
+            concentration_df = pd.DataFrame(rows)
+            fig = px.bar(
+                concentration_df,
+                x="% of Total Revenue", y="Customer Group",
+                orientation="h", text="% of Total Revenue",
+                title="Revenue Concentration",
+            )
+            fig.update_traces(texttemplate="%{text}%", textposition="outside")
+            fig.update_layout(
+                xaxis_title="% of Total Revenue", yaxis_title="",
+                height=330, margin=dict(t=45, b=20), plot_bgcolor="rgba(0,0,0,0)"
+            )
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     with c3:
-        segmented      = add_customer_segments(customer_summary)
-        segment_order  = ["Champions", "Loyal", "Potential", "At Risk", "Lost"]
-        segment_colors = {
-            "Champions": "#14946b",
-            "Loyal":     "#0f6ec7",
-            "Potential": "#5ab0e8",
-            "At Risk":   "#f59e0b",
-            "Lost":      "#ef4444",
-        }
-        segment_df = segmented.groupby("segment", as_index=False).agg(revenue=("revenue", "sum"))
-        total_seg_rev = segment_df["revenue"].sum()
-        segment_df["Contribution %"] = (segment_df["revenue"] / total_seg_rev * 100).round(1)
-        segment_df["Percentage"]     = segment_df["Contribution %"].round(0).astype(int)
-        segment_df["Legend Label"]   = segment_df.apply(
-            lambda r: f"{r['segment']:<10} {r['Contribution %']:.1f}% ({money_display(r['revenue'], conversion_type)})", axis=1
-        )
-        segment_df["segment"] = pd.Categorical(segment_df["segment"], categories=segment_order, ordered=True)
-        segment_df = segment_df.sort_values("segment")
+        with st.container(border=True):
+            segmented = add_customer_segments(customer_summary)
+            segment_order = ["Champions", "Loyal", "Potential", "At Risk", "Lost"]
+            segment_colors = {
+                "Champions": "#14946b", "Loyal": "#0f6ec7", "Potential": "#5ab0e8",
+                "At Risk": "#f59e0b", "Lost": "#ef4444",
+            }
+            segment_df = segmented.groupby("segment", as_index=False).agg(revenue=("revenue", "sum"))
+            total_seg_rev = segment_df["revenue"].sum()
+            segment_df["Contribution %"] = (segment_df["revenue"] / total_seg_rev * 100).round(1) if total_seg_rev else 0
+            segment_df["Legend Label"] = segment_df.apply(
+                lambda r: f"{r['segment']} {r['Contribution %']:.1f}%", axis=1
+            )
+            segment_df["segment"] = pd.Categorical(segment_df["segment"], categories=segment_order, ordered=True)
+            segment_df = segment_df.sort_values("segment")
+            fig = px.pie(
+                segment_df, names="Legend Label", values="revenue", hole=0.55,
+                title=f"{customer_label} Segmentation", color="segment",
+                color_discrete_map=segment_colors,
+            )
+            fig.update_traces(textinfo="percent", textposition="inside")
+            fig.update_layout(
+                height=330, margin=dict(t=45, b=5),
+                annotations=[dict(
+                    text=f"Total<br>{money_display(total_seg_rev, conversion_type)}",
+                    x=0.5, y=0.5, font_size=12, showarrow=False,
+                )],
+                legend=dict(orientation="v", y=0.95, yanchor="top", x=1.0, xanchor="left", font=dict(size=10)),
+                legend_title_text="",
+            )
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-        fig = px.pie(
-            segment_df, names="Legend Label", values="revenue",
-            hole=0.55, title=f"{customer_label} Segmentation",
-            color="segment", color_discrete_map=segment_colors,
-        )
-        fig.update_traces(
-            text=segment_df["Percentage"].astype(str) + "%",
-            textinfo="text", textposition="inside",
-        )
-        fig.update_layout(
-            height=350,
-            margin=dict(t=50, b=10),
-            annotations=[dict(
-                text=f"Total<br>{money_display(total_seg_rev, conversion_type)}",
-                x=0.5, y=0.5, font_size=13, showarrow=False
-            )],
-            legend=dict(orientation="v", y=0.95, yanchor="top", x=1.02, xanchor="left", font=dict(size=11)),
-            legend_title_text="",
-        )
-        st.plotly_chart(fig, use_container_width=True)
+    st.markdown("<div class='insight-section-spacer'></div>", unsafe_allow_html=True)
 
-    st.divider()
-
-    # --- Growing / De-growing / Lost tables — equal 3 columns ---
-    # FIX: was /10_000_00 (10 lakh) — corrected to /10_000_000 (1 crore)
+    # --- Replace three large tables with three compact horizontal visuals ---
     top_growing = customer_summary[
         (customer_summary["prev_revenue"] > 0) &
         (customer_summary["revenue"] > customer_summary["prev_revenue"])
-    ].copy()
-    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
-    current_revenue_col = f"Revenue ({revenue_unit})"
-    previous_revenue_col = f"PY Revenue ({revenue_unit})"
-    lost_revenue_col = f"Lost Revenue ({revenue_unit})"
-    top_growing[current_revenue_col] = (top_growing["revenue"] / revenue_divisor).round(2)
-    top_growing[previous_revenue_col] = (top_growing["prev_revenue"] / revenue_divisor).round(2)
-    top_growing["Growth % vs PY"]   = top_growing["growth_%"].round(1)
-    top_growing = top_growing.sort_values("Growth % vs PY", ascending=False).head(10)
+    ].copy().nlargest(10, "growth_%")
 
     top_degrowing = customer_summary[
         (customer_summary["prev_revenue"] > 0) &
         (customer_summary["revenue"] < customer_summary["prev_revenue"]) &
         (customer_summary["revenue"] > 0)
-    ].copy()
-    top_degrowing[current_revenue_col] = (top_degrowing["revenue"] / revenue_divisor).round(2)
-    top_degrowing[previous_revenue_col] = (top_degrowing["prev_revenue"] / revenue_divisor).round(2)
-    top_degrowing["Drop % vs PY"]    = top_degrowing["growth_%"].round(1)
-    top_degrowing = top_degrowing.sort_values("Drop % vs PY", ascending=True).head(10)
+    ].copy().nsmallest(10, "growth_%")
 
     lost_summary = (
         prev_df[prev_df[code_col].isin(lost_customer_codes)]
         .groupby([code_col, name_col], as_index=False)
         .agg(lost_revenue=("Revenue", "sum"), last_CN_month=("FIN_MONTH", "max"))
+        .nlargest(10, "lost_revenue")
     )
-    # FIX: was /100 — corrected to /10_000_000
-    lost_summary[lost_revenue_col] = (lost_summary["lost_revenue"] / revenue_divisor).round(2)
-    top_lost = lost_summary.sort_values("lost_revenue", ascending=False).head(10)
 
-    t1, t2, t3 = st.columns(3)
-    with t1:
-        st.markdown(f"<div class='section-header'>Top 10 Growing {customer_label}s</div>", unsafe_allow_html=True)
-        st.dataframe(
-            top_growing[[name_col, current_revenue_col, previous_revenue_col, "Growth % vs PY"]],
-            use_container_width=True, hide_index=True,
-        )
-    with t2:
-        st.markdown(f"<div class='section-header'>Top 10 De-growing {customer_label}s</div>", unsafe_allow_html=True)
-        st.dataframe(
-            top_degrowing[[name_col, current_revenue_col, previous_revenue_col, "Drop % vs PY"]],
-            use_container_width=True, hide_index=True,
-        )
-    with t3:
-        st.markdown(f"<div class='section-header'>Top 10 Lost {customer_label}s</div>", unsafe_allow_html=True)
-        st.dataframe(
-            top_lost[[name_col, lost_revenue_col, "last_CN_month"]],
-            use_container_width=True, hide_index=True,
-        )
+    divisor, unit = get_revenue_conversion(conversion_type)
+    v1, v2, v3 = st.columns(3, gap="small")
+
+    with v1:
+        with st.container(border=True):
+            st.markdown(f"<div class='section-header'>Top Growing {customer_label}s</div>", unsafe_allow_html=True)
+            if top_growing.empty:
+                st.info("No growing customers for selected filters.")
+            else:
+                chart_df = top_growing.sort_values("growth_%", ascending=True)
+                fig = px.bar(chart_df, x="growth_%", y=name_col, orientation="h", text="growth_%")
+                fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+                fig.update_layout(height=310, margin=dict(l=5, r=30, t=5, b=15), xaxis_title="Growth %", yaxis_title="", plot_bgcolor="rgba(0,0,0,0)")
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    with v2:
+        with st.container(border=True):
+            st.markdown(f"<div class='section-header'>Top De-growing {customer_label}s</div>", unsafe_allow_html=True)
+            if top_degrowing.empty:
+                st.info("No de-growing customers for selected filters.")
+            else:
+                chart_df = top_degrowing.sort_values("growth_%", ascending=False)
+                fig = px.bar(chart_df, x="growth_%", y=name_col, orientation="h", text="growth_%")
+                fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+                fig.update_layout(height=310, margin=dict(l=5, r=30, t=5, b=15), xaxis_title="Drop %", yaxis_title="", plot_bgcolor="rgba(0,0,0,0)")
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    with v3:
+        with st.container(border=True):
+            st.markdown(f"<div class='section-header'>Top Lost {customer_label}s</div>", unsafe_allow_html=True)
+            if lost_summary.empty:
+                st.info("No lost customers for selected filters.")
+            else:
+                lost_summary["Lost Revenue Display"] = lost_summary["lost_revenue"] / divisor
+                chart_df = lost_summary.sort_values("lost_revenue", ascending=True)
+                fig = px.bar(chart_df, x="Lost Revenue Display", y=name_col, orientation="h", text="Lost Revenue Display")
+                fig.update_traces(texttemplate=f"%{{text:.2f}} {unit}", textposition="outside")
+                fig.update_layout(height=310, margin=dict(l=5, r=30, t=5, b=15), xaxis_title=f"Lost Revenue ({unit})", yaxis_title="", plot_bgcolor="rgba(0,0,0,0)")
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-# =====================================================
-# Growth Tab
-# =====================================================
 def render_growth_tab(growth_df: pd.DataFrame, name_col: str, customer_label: str, conversion_type: str) -> None:
-    st.subheader(f"{customer_label} Growth / Degrowth")
+    st.markdown(f"<div class='section-header'>{customer_label} Growth / Degrowth</div>", unsafe_allow_html=True)
+    if growth_df.empty:
+        st.info("No growth data available.")
+        return
+
     display_df = growth_df.copy()
-    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
-    revenue_col = f"Revenue ({revenue_unit})"
-    previous_col = f"Previous Revenue ({revenue_unit})"
-    display_df[revenue_col] = (display_df["revenue"] / revenue_divisor).round(2)
-    display_df[previous_col] = (display_df["prev_revenue"] / revenue_divisor).round(2)
-    st.dataframe(
-        display_df[[
-            name_col, revenue_col, previous_col, "growth_%",
-            "Customer Status", "shipments", "actual_weight", "charge_weight",
-            "avg_delay", "max_delay",
-        ]].sort_values("growth_%", ascending=True),
-        use_container_width=True, hide_index=True,
+    divisor, unit = get_revenue_conversion(conversion_type)
+    display_df["Revenue Display"] = display_df["revenue"] / divisor
+    display_df["Previous Revenue Display"] = display_df["prev_revenue"] / divisor
+    display_df["Bubble Size"] = display_df["shipments"].clip(lower=1)
+
+    fig = px.scatter(
+        display_df,
+        x="Previous Revenue Display",
+        y="Revenue Display",
+        size="Bubble Size",
+        color="Customer Status",
+        hover_name=name_col,
+        hover_data={"growth_%": ":.1f", "shipments": ":,.0f", "Bubble Size": False},
+        size_max=34,
+        title="Current Revenue vs Previous Revenue",
     )
+    max_value = max(display_df["Revenue Display"].max(), display_df["Previous Revenue Display"].max(), 1)
+    fig.add_shape(type="line", x0=0, y0=0, x1=max_value, y1=max_value, line=dict(dash="dash", color="#64748b"))
+    fig.update_layout(
+        height=430, margin=dict(t=45, b=25),
+        xaxis_title=f"Previous Revenue ({unit})", yaxis_title=f"Current Revenue ({unit})",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    with st.expander("View detailed growth table"):
+        revenue_col = f"Revenue ({unit})"
+        previous_col = f"Previous Revenue ({unit})"
+        display_df[revenue_col] = display_df["Revenue Display"].round(2)
+        display_df[previous_col] = display_df["Previous Revenue Display"].round(2)
+        st.dataframe(
+            display_df[[
+                name_col, revenue_col, previous_col, "growth_%", "Customer Status",
+                "shipments", "actual_weight", "charge_weight", "avg_delay", "max_delay",
+            ]].sort_values("growth_%", ascending=True),
+            use_container_width=True, hide_index=True,
+        )
 
 
-# =====================================================
-# Service Tab
-# =====================================================
 def render_service_tab(service_df: pd.DataFrame, customer_label: str, conversion_type: str) -> None:
-    st.subheader(f"{customer_label} Service Performance")
+    st.markdown(f"<div class='section-header'>{customer_label} Service Performance</div>", unsafe_allow_html=True)
+    if service_df.empty:
+        st.info("No service performance data available.")
+        return
+
     display_df = service_df.copy()
-    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
-    display_df[f"Revenue ({revenue_unit})"] = (display_df["revenue"] / revenue_divisor).round(2)
-    st.dataframe(
-        display_df.sort_values("avg_delay_days", ascending=False),
-        use_container_width=True, hide_index=True,
-    )
+    divisor, unit = get_revenue_conversion(conversion_type)
+    display_df["Revenue Display"] = display_df["revenue"] / divisor
+    shipment_col = "shipments" if "shipments" in display_df.columns else None
+    name_candidates = [c for c in display_df.columns if c not in {
+        "revenue", "Revenue Display", "avg_delay_days", "max_delay_days",
+        "shipments", "actual_weight", "charge_weight"
+    }]
+    hover_name = name_candidates[0] if name_candidates else None
+    display_df["Bubble Size"] = display_df[shipment_col].clip(lower=1) if shipment_col else 1
+
+    left, right = st.columns([1.35, 1], gap="small")
+    with left:
+        with st.container(border=True):
+            fig = px.scatter(
+                display_df,
+                x="avg_delay_days",
+                y="Revenue Display",
+                size="Bubble Size",
+                color="max_delay_days",
+                hover_name=hover_name,
+                hover_data={"Bubble Size": False},
+                color_continuous_scale="YlOrRd",
+                size_max=38,
+                title="Revenue vs Average Delay",
+            )
+            fig.update_layout(
+                height=390, margin=dict(t=45, b=25),
+                xaxis_title="Average Delay (Days)", yaxis_title=f"Revenue ({unit})",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    with right:
+        with st.container(border=True):
+            delayed = display_df.nlargest(12, "avg_delay_days").sort_values("avg_delay_days")
+            y_col = hover_name if hover_name else delayed.index.astype(str)
+            if hover_name is None:
+                delayed = delayed.assign(Customer=delayed.index.astype(str))
+                y_col = "Customer"
+            fig = px.bar(
+                delayed, x="avg_delay_days", y=y_col, orientation="h",
+                text="avg_delay_days", title="Highest Average Delay",
+            )
+            fig.update_traces(texttemplate="%{text:.1f} d", textposition="outside")
+            fig.update_layout(
+                height=390, margin=dict(l=5, r=25, t=45, b=25),
+                xaxis_title="Average Delay (Days)", yaxis_title="",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    with st.expander("View detailed service table"):
+        display_df[f"Revenue ({unit})"] = display_df["Revenue Display"].round(2)
+        st.dataframe(
+            display_df.drop(columns=["Revenue Display", "Bubble Size"], errors="ignore")
+            .sort_values("avg_delay_days", ascending=False),
+            use_container_width=True, hide_index=True,
+        )
 
 
-# =====================================================
-# Revenue Bridge
-# =====================================================
 def render_revenue_bridge(metrics: dict, customer_label: str, conversion_type: str) -> None:
     bridge_df = pd.DataFrame({
         "Metric": [
@@ -975,13 +1069,17 @@ def render_revenue_bridge(metrics: dict, customer_label: str, conversion_type: s
         x="Metric",
         y=bridge_df["Value"] / revenue_divisor,
         text=(bridge_df["Value"] / revenue_divisor).round(2),
-        title="Revenue Bridge",
     )
     fig.update_traces(texttemplate=f"Rs. %{{text:.2f}} {revenue_unit}", textposition="outside")
     fig.update_yaxes(title=f"Revenue ({revenue_unit})")
     fig.update_xaxes(title="")
-    fig.update_layout(height=370, margin=dict(t=50, b=30))
-    st.plotly_chart(fig, use_container_width=True)
+    fig.update_layout(
+        height=330,
+        margin=dict(l=5, r=5, t=12, b=5),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 # =====================================================
@@ -994,62 +1092,74 @@ def render_zone_summary_table(
     customer_label: str,
     conversion_type: str,
 ) -> None:
+    """Visual zone performance summary.
+
+    Bubble position compares revenue and active customers, bubble size represents
+    new customers, and colour represents revenue growth versus previous year.
+    """
     current_zone = df.groupby("Zone", as_index=False).agg(
         Active_Customers=(code_col, "nunique"),
         Revenue=("Revenue", "sum"),
     )
     prev_zone = prev_df.groupby("Zone", as_index=False).agg(
-        Prev_Customers=(code_col, "nunique"),
         Prev_Revenue=("Revenue", "sum"),
     )
-    new_df   = df[~df[code_col].isin(prev_df[code_col].dropna().unique())]
-    lost_df  = prev_df[~prev_df[code_col].isin(df[code_col].dropna().unique())]
-    new_zone  = new_df.groupby("Zone",  as_index=False).agg(New=(code_col,  "nunique"))
-    lost_zone = lost_df.groupby("Zone", as_index=False).agg(Lost=(code_col, "nunique"))
+    new_df = df[~df[code_col].isin(prev_df[code_col].dropna().unique())]
+    new_zone = new_df.groupby("Zone", as_index=False).agg(New_Customers=(code_col, "nunique"))
 
-    zone_summary = (
+    summary = (
         current_zone
-        .merge(prev_zone,  on="Zone", how="left")
-        .merge(new_zone,   on="Zone", how="left")
-        .merge(lost_zone,  on="Zone", how="left")
+        .merge(prev_zone, on="Zone", how="left")
+        .merge(new_zone, on="Zone", how="left")
         .fillna(0)
     )
-    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
-    revenue_col = f"Revenue ({revenue_unit})"
-    zone_summary[revenue_col] = (zone_summary["Revenue"] / revenue_divisor).round(2)
-    zone_summary["Growth %"]     = zone_summary.apply(
+    if summary.empty:
+        st.info("No zone performance data available.")
+        return
+
+    divisor, unit = get_revenue_conversion(conversion_type)
+    summary["Revenue Display"] = summary["Revenue"] / divisor
+    summary["Growth %"] = summary.apply(
         lambda r: growth_percentage(r["Revenue"], r["Prev_Revenue"]), axis=1
     )
-    zone_summary = zone_summary.rename(columns={"Active_Customers": f"Active {customer_label}s"})
+    summary["Bubble Size"] = summary["New_Customers"].clip(lower=1)
 
-    display_df = zone_summary[["Zone", f"Active {customer_label}s", "New", "Lost", revenue_col, "Growth %"]].copy()
-    total_row = {
-        "Zone":                       "Total",
-        f"Active {customer_label}s":  int(display_df[f"Active {customer_label}s"].sum()),
-        "New":                        int(display_df["New"].sum()),
-        "Lost":                       int(display_df["Lost"].sum()),
-        revenue_col:                   round(display_df[revenue_col].sum(), 2),
-        "Growth %":                   growth_percentage(zone_summary["Revenue"].sum(), zone_summary["Prev_Revenue"].sum()),
-    }
-    display_df = pd.concat([display_df, pd.DataFrame([total_row])], ignore_index=True)
-
-    st.markdown(f"<div class='section-header'>Zone-wise {customer_label} Summary</div>", unsafe_allow_html=True)
-    st.dataframe(
-        display_df.style.format({
-            f"Active {customer_label}s": "{:,.0f}",
-            "New":          "{:,.0f}",
-            "Lost":         "{:,.0f}",
-            revenue_col:   "{:,.2f}",
-            "Growth %":     "{:.1f}%",
-        }),
-        use_container_width=True,
-        hide_index=True,
+    st.markdown(
+        f"<div class='section-header'>Zone Performance</div>",
+        unsafe_allow_html=True,
     )
+    fig = px.scatter(
+        summary,
+        x="Revenue Display",
+        y="Active_Customers",
+        size="Bubble Size",
+        color="Growth %",
+        text="Zone",
+        hover_name="Zone",
+        hover_data={
+            "Revenue Display": ":.2f",
+            "Active_Customers": ":,.0f",
+            "New_Customers": ":,.0f",
+            "Growth %": ":.1f",
+            "Bubble Size": False,
+        },
+        color_continuous_scale="RdYlGn",
+        color_continuous_midpoint=0,
+        size_max=42,
+    )
+    fig.update_traces(textposition="top center", marker=dict(line=dict(width=1, color="white")))
+    fig.update_layout(
+        height=330,
+        margin=dict(l=5, r=5, t=12, b=5),
+        xaxis_title=f"Revenue ({unit})",
+        yaxis_title=f"Active {customer_label}s",
+        coloraxis_colorbar=dict(title="Growth %", thickness=10, len=0.70),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-# =====================================================
-# Branch Summary Table
-# =====================================================
 def render_branch_summary_table(
     df: pd.DataFrame,
     prev_df: pd.DataFrame,
@@ -1057,49 +1167,62 @@ def render_branch_summary_table(
     customer_label: str,
     conversion_type: str,
 ) -> None:
-    current    = df.groupby("Branch", as_index=False).agg(Revenue=("Revenue", "sum"), Customers=(code_col, "nunique"))
-    previous   = prev_df.groupby("Branch", as_index=False).agg(PrevRevenue=("Revenue", "sum"))
-    new_df     = df[~df[code_col].isin(prev_df[code_col].unique())]
+    """Top-10 branch revenue visual with growth-based colours."""
+    current = df.groupby("Branch", as_index=False).agg(
+        Revenue=("Revenue", "sum"),
+        Customers=(code_col, "nunique"),
+    )
+    previous = prev_df.groupby("Branch", as_index=False).agg(PrevRevenue=("Revenue", "sum"))
+    new_df = df[~df[code_col].isin(prev_df[code_col].dropna().unique())]
     new_branch = new_df.groupby("Branch", as_index=False).agg(NewCustomers=(code_col, "nunique"))
 
     summary = (
         current
-        .merge(previous,   on="Branch", how="left")
+        .merge(previous, on="Branch", how="left")
         .merge(new_branch, on="Branch", how="left")
         .fillna(0)
     )
-    revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
-    revenue_col = f"Revenue ({revenue_unit})"
-    summary[revenue_col] = (summary["Revenue"] / revenue_divisor).round(2)
-    summary["Growth %"]     = summary.apply(lambda r: growth_percentage(r["Revenue"], r["PrevRevenue"]), axis=1)
-    summary = summary.sort_values("Revenue", ascending=False).head(10)
-    summary = summary.rename(columns={
-        "Customers":    customer_label + "s",
-        "NewCustomers": f"New {customer_label}s",
-    })
+    if summary.empty:
+        st.info("No branch performance data available.")
+        return
+
+    divisor, unit = get_revenue_conversion(conversion_type)
+    summary["Revenue Display"] = summary["Revenue"] / divisor
+    summary["Growth %"] = summary.apply(
+        lambda r: growth_percentage(r["Revenue"], r["PrevRevenue"]), axis=1
+    )
+    summary = summary.nlargest(10, "Revenue").sort_values("Revenue", ascending=True)
 
     st.markdown("<div class='section-header'>Top 10 Branch Performance</div>", unsafe_allow_html=True)
-    styled = (
-        summary[["Branch", revenue_col, customer_label + "s", f"New {customer_label}s", "Growth %"]]
-        .style
-        .format({
-            revenue_col:                 "{:.2f}",
-            customer_label + "s":       "{:,.0f}",
-            f"New {customer_label}s":   "{:,.0f}",
-            "Growth %":                 "{:.1f}%",
-        })
-        .set_properties(**{"text-align": "center"})
-        .set_table_styles([{
-            "selector": "th",
-            "props": [("text-align", "center"), ("font-weight", "bold"), ("background-color", "#F8FAFC")],
-        }])
+    fig = px.bar(
+        summary,
+        x="Revenue Display",
+        y="Branch",
+        orientation="h",
+        color="Growth %",
+        text="Revenue Display",
+        hover_data={
+            "Revenue Display": ":.2f",
+            "Customers": ":,.0f",
+            "NewCustomers": ":,.0f",
+            "Growth %": ":.1f",
+        },
+        color_continuous_scale="RdYlGn",
+        color_continuous_midpoint=0,
     )
-    st.dataframe(styled, use_container_width=True, hide_index=True)
+    fig.update_traces(texttemplate=f"%{{text:.2f}} {unit}", textposition="outside", cliponaxis=False)
+    fig.update_layout(
+        height=330,
+        margin=dict(l=5, r=30, t=12, b=5),
+        xaxis_title=f"Revenue ({unit})",
+        yaxis_title="",
+        coloraxis_colorbar=dict(title="Growth %", thickness=10, len=0.70),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-# =====================================================
-# Drilldown Tab
-# =====================================================
 def render_drilldown_tab(df: pd.DataFrame, name_col: str, customer_label: str, conversion_type: str) -> None:
     st.subheader(f"{customer_label} Drill Down")
     customers = sorted(df[name_col].dropna().unique())
@@ -1271,19 +1394,20 @@ def show_CustomerAnalysis() -> None:
     # --- KPIs ---
     render_kpis(metrics, customer_label, conversion_type)
 
-    st.divider()
-
-    # --- Main 3-column layout: Zone | Revenue Bridge | Branch ---
-    # Equal width [1, 1, 1] so all three sections align perfectly
-    c1, c2, c3 = st.columns([1, 1, 1])
+    # --- Visual insight row: Zone | Revenue Bridge | Branch ---
+    c1, c2, c3 = st.columns([1, 1, 1], gap="small", vertical_alignment="top")
     with c1:
-        render_zone_summary_table(df, prev_df, code_col, customer_label, conversion_type)
+        with st.container(border=True):
+            render_zone_summary_table(df, prev_df, code_col, customer_label, conversion_type)
     with c2:
-        render_revenue_bridge(metrics, customer_label, conversion_type)
+        with st.container(border=True):
+            st.markdown("<div class='section-header'>Revenue Bridge</div>", unsafe_allow_html=True)
+            render_revenue_bridge(metrics, customer_label, conversion_type)
     with c3:
-        render_branch_summary_table(df, prev_df, code_col, customer_label, conversion_type)
+        with st.container(border=True):
+            render_branch_summary_table(df, prev_df, code_col, customer_label, conversion_type)
 
-    st.divider()
+    st.markdown("<div class='insight-section-spacer'></div>", unsafe_allow_html=True)
 
     # --- Tabs ---
     tab1, tab2, tab3, tab4 = st.tabs([
