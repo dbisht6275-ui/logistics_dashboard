@@ -157,19 +157,10 @@ def login_page():
 
     with login_col:
         st.markdown(
-            dedent(
-                """
-                <div class="login-card">
-                    <div class="login-title">
-                        Dashboard Login
-                    </div>
-
-                    <div class="login-subtitle">
-                        Secure login to continue
-                    </div>
-                </div>
-                """
-            ),
+            '<div class="login-card">'
+            '<div class="login-title">Dashboard Login</div>'
+            '<div class="login-subtitle">Secure login to continue</div>'
+            '</div>',
             unsafe_allow_html=True,
         )
 
