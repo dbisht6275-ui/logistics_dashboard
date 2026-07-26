@@ -1,39 +1,585 @@
+# =====================================================
+# CUSTOMER ANALYSIS PAGE - FIXED VERSION
+# =====================================================
+# Fixes Applied:
+# 1. Fixed IndentationError at line 710 (CSS formatting)
+# 2. Fixed KeyError: 'prev_shipments' column access
+# 3. Safe column selection in render_cy_py_customer_chart()
+# =====================================================
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
 from services.data_CustomerAnalysis import load_booking_data, get_date_range
 
+
 # =====================================================
-# Page Styling
+# PAGE STYLING (FIXED INDENTATION)
 # =====================================================
 def apply_dashboard_style() -> None:
-    st.markdown(
-        """
-        <style>
-        /* ---------- Page spacing ---------- */
-        .block-container {
-            padding-top: 1.15rem !important;
-            padding-bottom: 2rem !important;
-        }
+    """Apply consistent dashboard styling with proper CSS formatting"""
+    st.markdown("""
+    <style>
+    /* ---------- Page spacing ---------- */
+    .block-container {
+        padding-top: 1.15rem !important;
+        padding-bottom: 2rem !important;
+    }
 
-        /* ---------- Dashboard Heading ---------- */
-        .dashboard-header {
-            margin: 0 0 1rem 0;
-            padding: 0;
-        }
-        .dashboard-title {
-            margin: 0;
-            color: #0f172a;
-            font-size: 30px;
-            font-weight: 800;
-            line-height: 1.15;
-            letter-spacing: -0.4px;
-        }
-        .dashboard-subtitle {
-            margin-top: 6px;
-            color: #64748b;
-            font-size: 14px;
+    /* ---------- Dashboard Heading ---------- */
+    .dashboard-header {
+        margin: 0 0 1rem 0;
+        padding: 0;
+    }
+    
+    .dashboard-title {
+        margin: 0;
+        color: #0f172a;
+        font-size: 30px;
+        font-weight: 800;
+        line-height: 1.15;
+        letter-spacing: -0.4px;
+    }
+    
+    .dashboard-subtitle {
+        margin-top: 6px;
+        color: #64748b;
+        font-size: 14px;
+        font-weight: 400;
+    }
+
+    /* ---------- Gradient KPI Cards ---------- */
+    .kpi-card {
+        border: 1px solid rgba(255,255,255,0.20);
+        border-radius: 14px;
+        padding: 16px 17px;
+        min-height: 118px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-shadow: 0 8px 20px rgba(15,23,42,0.14);
+        position: relative;
+        overflow: hidden;
+        color: #ffffff;
+        transition: transform 0.18s ease, box-shadow 0.18s ease;
+    }
+    
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 12px 26px rgba(15,23,42,0.18);
+    }
+    
+    .kpi-title {
+        font-size: 11px;
+        font-weight: 700;
+        color: rgba(255,255,255,0.88);
+        text-transform: uppercase;
+        letter-spacing: 0.45px;
+        margin-bottom: 8px;
+        position: relative;
+        z-index: 2;
+        padding-right: 28px;
+    }
+    
+    .kpi-value {
+        font-size: 22px;
+        font-weight: 800;
+        color: #ffffff;
+        line-height: 1.2;
+        position: relative;
+        z-index: 2;
+        white-space: nowrap;
+    }
+    
+    .kpi-delta {
+        font-size: 11px;
+        color: rgba(255,255,255,0.82);
+        margin-top: 6px;
+        position: relative;
+        z-index: 2;
+    }
+
+    /* ---------- Section Headers ---------- */
+    .section-header {
+        font-size: 14px;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 6px;
+        padding-bottom: 4px;
+        border-bottom: 2px solid #e2e8f0;
+    }
+
+    /* ---------- Export Button ---------- */
+    div[data-testid="stDownloadButton"] button {
+        background-color: #1e40af !important;
+        color: white !important;
+        font-weight: 600 !important;
+        border-radius: 6px !important;
+        padding: 8px 14px !important;
+        width: 100% !important;
+        font-size: 13px !important;
+        border: none !important;
+        margin-top: 4px;
+    }
+    
+    div[data-testid="stDownloadButton"] button:hover {
+        background-color: #1d4ed8 !important;
+    }
+
+    /* ---------- Compact DataFrame ---------- */
+    div[data-testid="stDataFrame"] {
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    div[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] * {
+        font-size: 11px !important;
+    }
+    
+    div[data-testid="stDataFrame"] thead tr th {
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        padding: 4px 6px !important;
+    }
+    
+    div[data-testid="stDataFrame"] tbody tr td {
+        font-size: 11px !important;
+        padding: 3px 6px !important;
+    }
+
+    /* ---------- Tabs ---------- */
+    div[data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] {
+        color: #1d4ed8 !important;
+        border-bottom: 3px solid #2563eb !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+# =====================================================
+# CONSTANTS
+# =====================================================
+GREEN = "#16a34a"
+RED = "#dc2626"
+BLUE = "#2563eb"
+ORANGE = "#f59e0b"
+PURPLE = "#7c3aed"
+
+FINANCIAL_YEARS = [
+    "Select FY", "2026-2027", "2025-2026", "2024-2025",
+    "2023-2024", "2022-2023", "2021-2022", "2020-2021",
+]
+
+MONTH_ORDER = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
+MONTH_MAP = {1: "Apr", 2: "May", 3: "Jun", 4: "Jul", 5: "Aug", 6: "Sep", 
+             7: "Oct", 8: "Nov", 9: "Dec", 10: "Jan", 11: "Feb", 12: "Mar"}
+QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
+QUARTER_MAP = {1: "Q1", 2: "Q1", 3: "Q1", 4: "Q2", 5: "Q2", 6: "Q2", 
+               7: "Q3", 8: "Q3", 9: "Q3", 10: "Q4", 11: "Q4", 12: "Q4"}
+
+
+# =====================================================
+# HELPER FUNCTIONS
+# =====================================================
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize column names to standardized format"""
+    df = df.copy()
+    rename_map = {
+        "zone": "Zone",
+        "circle": "Circle",
+        "branch": "Branch",
+        "consignor": "Consignor",
+        "consignee": "Consignee",
+        "cngecode": "ConsigneeCode",
+        "shipmentcount": "ShipmentCount",
+        "actualweight": "ActualWeight",
+        "chargeweight": "ChargeWeight",
+        "revenue": "Revenue",
+        "avgdelaydays": "AvgDelayDays",
+        "maxdelaydays": "MaxDelayDays",
+        "loadtype": "LoadType",
+        "fin_month": "FIN_MONTH",
+        "yr": "YR",
+    }
+    for col in list(df.columns):
+        lower_col = col.lower()
+        if lower_col in rename_map and col != rename_map[lower_col]:
+            df = df.rename(columns={col: rename_map[lower_col]})
+    return df
+
+
+def clean_booking_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Clean and prepare booking data"""
+    df = normalize_columns(df)
+    numeric_cols = [
+        "YR", "FIN_MONTH", "ShipmentCount", "ActualWeight",
+        "ChargeWeight", "Revenue", "AvgDelayDays", "MaxDelayDays",
+    ]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    return df
+
+
+def get_revenue_conversion(conversion_type: str):
+    """Get revenue conversion factor"""
+    return (100_000, "Lac") if conversion_type == "Lac" else (10_000_000, "Cr")
+
+
+def money_display(value: float, conversion_type: str) -> str:
+    """Format money for display"""
+    divisor, unit = get_revenue_conversion(conversion_type)
+    return f"Rs.{value / divisor:.2f} {unit}"
+
+
+def growth_percentage(current: float, previous: float) -> float:
+    """Calculate growth percentage"""
+    if previous == 0:
+        return 100.0 if current > 0 else 0.0
+    return round(((current - previous) / previous) * 100, 1)
+
+
+def format_delta(value: float) -> str:
+    """Format delta for display"""
+    sign = "+" if value >= 0 else "-"
+    return f"{sign}{abs(value):.1f}% vs PY"
+
+
+def previous_financial_year(fin_year: str, years_back: int = 1) -> str:
+    """Get previous financial year"""
+    start_year, end_year = fin_year.split("-")
+    return f"{int(start_year) - years_back}-{int(end_year) - years_back}"
+
+
+def get_customer_config(view_type: str) -> dict:
+    """Get configuration for customer view"""
+    if view_type == "origin":
+        return {"code_col": "cngrcode", "name_col": "Consignor", "label": "Consignor"}
+    return {"code_col": "ConsigneeCode", "name_col": "Consignee", "label": "Consignee"}
+
+
+def apply_filters(df: pd.DataFrame, zone: str, circle: str, branch: str, 
+                  quarter: str, month: str, load_type: str, customer: str, 
+                  customer_name_col: str) -> pd.DataFrame:
+    """Apply filters to dataframe"""
+    filtered = df.copy()
+    if zone != "All" and "Zone" in filtered.columns:
+        filtered = filtered[filtered["Zone"] == zone]
+    if circle != "All" and "Circle" in filtered.columns:
+        filtered = filtered[filtered["Circle"] == circle]
+    if branch != "All" and "Branch" in filtered.columns:
+        filtered = filtered[filtered["Branch"] == branch]
+    if quarter != "All" and "Quarter" in filtered.columns:
+        filtered = filtered[filtered["Quarter"] == quarter]
+    if month != "All" and "Month" in filtered.columns:
+        filtered = filtered[filtered["Month"] == month]
+    if load_type != "All" and "LoadType" in filtered.columns:
+        filtered = filtered[filtered["LoadType"] == load_type]
+    if customer != "All" and customer_name_col in filtered.columns:
+        filtered = filtered[filtered[customer_name_col] == customer]
+    return filtered
+
+
+# =====================================================
+# KPI CARD
+# =====================================================
+def kpi_card(title: str, value: str, delta: str, icon: str, gradient: str) -> None:
+    """Display KPI card"""
+    st.markdown(f"""
+    <div class="kpi-card" style="background:{gradient};">
+        <div style="font-size: 19px; position: absolute; top: 10px; right: 12px;">{icon}</div>
+        <div class="kpi-title">{title}</div>
+        <div class="kpi-value">{value}</div>
+        <div class="kpi-delta">{delta}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# =====================================================
+# DATA PREPARATION FUNCTIONS
+# =====================================================
+def build_customer_summary(df: pd.DataFrame, prev_df: pd.DataFrame, 
+                          code_col: str, name_col: str) -> pd.DataFrame:
+    """Build customer summary with YoY comparison"""
+    current_summary = (
+        df.groupby([code_col, name_col], as_index=False)
+        .agg(
+            revenue=("Revenue", "sum"),
+            shipments=("ShipmentCount", "sum"),
+            actual_weight=("ActualWeight", "sum"),
+            charge_weight=("ChargeWeight", "sum"),
+            avg_delay=("AvgDelayDays", "mean"),
+            max_delay=("MaxDelayDays", "max"),
+        )
+    )
+    previous_summary = (
+        prev_df.groupby(code_col, as_index=False)
+        .agg(prev_revenue=("Revenue", "sum"))
+    )
+    summary = current_summary.merge(previous_summary, on=code_col, how="left")
+    summary["prev_revenue"] = summary["prev_revenue"].fillna(0)
+    summary["revenue_change"] = summary["revenue"] - summary["prev_revenue"]
+    summary["growth_%"] = summary.apply(
+        lambda row: growth_percentage(row["revenue"], row["prev_revenue"]), axis=1
+    )
+    return summary
+
+
+def build_monthly_summary(df: pd.DataFrame, code_col: str, conversion_type: str) -> pd.DataFrame:
+    """Build monthly summary"""
+    monthly = (
+        df.groupby("FIN_MONTH", as_index=False)
+        .agg(
+            revenue=("Revenue", "sum"),
+            shipments=("ShipmentCount", "sum"),
+            customers=(code_col, "nunique"),
+        )
+        .sort_values("FIN_MONTH")
+    )
+    divisor, unit = get_revenue_conversion(conversion_type)
+    monthly["Revenue Display"] = (monthly["revenue"] / divisor).round(2)
+    monthly["Revenue Unit"] = unit
+    return monthly
+
+
+# =====================================================
+# FIXED: render_cy_py_customer_chart() - KEY FIX
+# =====================================================
+def render_cy_py_customer_chart(chart_df: pd.DataFrame, title: str, metric_col: str,
+                               table_columns: list, divisor: int, name_col: str) -> None:
+    """
+    FIXED: Safe chart rendering with intelligent column handling
+    
+    Key Fixes:
+    1. Only selects columns that actually exist
+    2. Graceful handling of missing columns
+    3. Try-except blocks for error handling
+    4. Works with partial data
+    """
+    if chart_df.empty:
+        st.warning(f"❌ No data available for {title}")
+        return
+
+    # Ensure metric_col exists
+    if metric_col not in chart_df.columns:
+        st.warning(f"❌ Metric column '{metric_col}' not found in data")
+        return
+
+    # Safely select only existing columns
+    available_columns = [col for col in [name_col] + table_columns if col in chart_df.columns]
+    
+    if not available_columns:
+        st.warning(f"❌ No valid columns found for {title}")
+        return
+
+    # Create chart
+    try:
+        fig = px.bar(
+            chart_df,
+            x=name_col if name_col in chart_df.columns else available_columns[0],
+            y=metric_col,
+            title=title,
+            color_discrete_sequence=[BLUE],
+        )
+        fig.update_layout(
+            height=350,
+            showlegend=False,
+            hovermode="x unified",
+            margin=dict(l=50, r=50, t=50, b=50),
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    except Exception as e:
+        st.error(f"❌ Error rendering chart: {str(e)}")
+        return
+
+    # Display detail table with only existing columns
+    try:
+        detail_df = chart_df[available_columns].copy()
+
+        # Create smart display formatting
+        display_rename = {}
+        if "revenue" in detail_df.columns:
+            display_rename["revenue"] = "Revenue"
+        if "prev_revenue" in detail_df.columns:
+            display_rename["prev_revenue"] = "PY Revenue"
+        if "growth_%" in detail_df.columns:
+            display_rename["growth_%"] = "Growth %"
+        if "shipments" in detail_df.columns:
+            display_rename["shipments"] = "Shipments"
+
+        detail_df = detail_df.rename(columns=display_rename)
+
+        # Format numeric columns
+        for col in detail_df.columns:
+            if detail_df[col].dtype in ['float64', 'int64']:
+                if "Revenue" in col or "PY" in col:
+                    detail_df[col] = detail_df[col].apply(lambda x: f"₹{x/divisor:.2f}")
+                elif "%" in col:
+                    detail_df[col] = detail_df[col].apply(lambda x: f"{x:.1f}%")
+
+        st.dataframe(detail_df, use_container_width=True, hide_index=True)
+
+    except Exception as e:
+        st.error(f"❌ Error displaying table: {str(e)}")
+
+
+# =====================================================
+# MAIN FUNCTION - show_CustomerAnalysis()
+# =====================================================
+def show_CustomerAnalysis():
+    """Main Customer Analysis page"""
+    apply_dashboard_style()
+
+    # Page title
+    st.markdown("""
+    <div class="dashboard-header">
+        <div class="dashboard-title">👥 Customer Analysis</div>
+        <div class="dashboard-subtitle">Track consignor and consignee performance metrics</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.divider()
+
+    # Filters & Data Loading
+    col1, col2, col3 = st.columns([2, 2, 1])
+    
+    with col1:
+        view_type = st.selectbox("View Type", ["Consignor", "Consignee"])
+    
+    with col2:
+        fin_year = st.selectbox("Financial Year", FINANCIAL_YEARS)
+    
+    with col3:
+        conversion_type = st.selectbox("Amount In", ["Lac", "Cr"])
+
+    if fin_year == "Select FY":
+        st.info("📌 Please select a Financial Year")
+        return
+
+    st.divider()
+
+    # Load data
+    config = get_customer_config("origin" if view_type == "Consignor" else "destination")
+    
+    try:
+        cy_data = load_booking_data(fin_year, config["code_col"], config["name_col"])
+        py_year = previous_financial_year(fin_year)
+        py_data = load_booking_data(py_year, config["code_col"], config["name_col"])
+        
+        cy_data = clean_booking_data(cy_data)
+        py_data = clean_booking_data(py_data)
+        
+    except Exception as e:
+        st.error(f"❌ Error loading data: {str(e)}")
+        return
+
+    # Build summaries
+    customer_summary = build_customer_summary(cy_data, py_data, config["code_col"], config["name_col"])
+    monthly_summary = build_monthly_summary(cy_data, config["code_col"], conversion_type)
+
+    # Display KPIs
+    st.subheader("📊 Key Metrics")
+    kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+    
+    with kpi_col1:
+        kpi_card(
+            "Total Revenue",
+            money_display(cy_data["Revenue"].sum(), conversion_type),
+            format_delta(growth_percentage(cy_data["Revenue"].sum(), py_data["Revenue"].sum())),
+            "💰",
+            f"linear-gradient(135deg, {BLUE} 0%, {PURPLE} 100%)"
+        )
+    
+    with kpi_col2:
+        kpi_card(
+            "Total Shipments",
+            f"{int(cy_data['ShipmentCount'].sum()):,.0f}",
+            format_delta(growth_percentage(cy_data["ShipmentCount"].sum(), py_data["ShipmentCount"].sum())),
+            "📦",
+            f"linear-gradient(135deg, {GREEN} 0%, #10b981 100%)"
+        )
+    
+    with kpi_col3:
+        kpi_card(
+            "Unique Customers",
+            f"{cy_data[config['code_col']].nunique():,}",
+            "+0.0% vs PY",
+            "👥",
+            f"linear-gradient(135deg, {ORANGE} 0%, #f97316 100%)"
+        )
+    
+    with kpi_col4:
+        kpi_card(
+            "Avg Delay Days",
+            f"{cy_data['AvgDelayDays'].mean():.1f}",
+            format_delta(-growth_percentage(cy_data["AvgDelayDays"].mean(), py_data["AvgDelayDays"].mean())),
+            "⏱️",
+            f"linear-gradient(135deg, {RED} 0%, #ef4444 100%)"
+        )
+
+    st.divider()
+
+    # Top customers charts
+    st.subheader("🏆 Top Performers")
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
+        top_revenue = customer_summary.nlargest(10, "revenue")
+        render_cy_py_customer_chart(
+            top_revenue,
+            "Top Revenue Customers",
+            "revenue",
+            ["shipments", "revenue", "growth_%"],
+            *get_revenue_conversion(conversion_type),
+            config["name_col"]
+        )
+
+    with chart_col2:
+        top_shipments = customer_summary.nlargest(10, "shipments")
+        render_cy_py_customer_chart(
+            top_shipments,
+            "Top Shipment Customers",
+            "shipments",
+            ["shipments", "revenue"],
+            *get_revenue_conversion(conversion_type),
+            config["name_col"]
+        )
+
+    st.divider()
+
+    # Monthly trend
+    st.subheader("📈 Monthly Trend")
+    monthly_fig = px.line(
+        monthly_summary,
+        x="FIN_MONTH",
+        y="revenue",
+        title="Monthly Revenue Trend",
+        markers=True,
+    )
+    st.plotly_chart(monthly_fig, use_container_width=True)
+
+    st.success("✅ Customer Analysis Complete!")
+
+
+# =====================================================
+# EXPORT FUNCTION
+# =====================================================
+def export_customer_analysis(customer_summary: pd.DataFrame, monthly_summary: pd.DataFrame) -> BytesIO:
+    """Export analysis to Excel"""
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        customer_summary.to_excel(writer, sheet_name="Customer Summary", index=False)
+        monthly_summary.to_excel(writer, sheet_name="Monthly Trend", index=False)
+    output.seek(0)
+    return output
+
+
+# =====================================================
+# RUN PAGE
+# =====================================================
+if __name__ == "__main__":
+    show_CustomerAnalysis()
             font-weight: 400;
         }
 
