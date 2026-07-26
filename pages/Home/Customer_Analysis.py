@@ -590,6 +590,679 @@ def build_service_summary(df: pd.DataFrame, code_col: str, name_col: str) -> pd.
     return service
 
 
+# =====================================================
+# FIXED: render_cy_py_customer_chart() - Safe Column Selection
+# =====================================================
+def render_cy_py_customer_chart(
+    chart_df: pd.DataFrame,
+    title: str,
+    metric_col: str,
+    table_columns: list,
+    divisor: int,
+    name_col: str,
+) -> None:
+    """
+    Safe rendering function - only selects columns that exist in dataframe
+    """
+    if chart_df.empty:
+        st.warning(f"No data available for {title}")
+        return
+
+    # Define base columns that should always exist
+    base_display_columns = [name_col]
+    
+    # Safely add table columns (only those that exist)
+    safe_table_columns = [col for col in table_columns if col in chart_df.columns]
+    
+    # Get all display columns
+    display_columns = base_display_columns + safe_table_columns
+    display_columns = [col for col in display_columns if col in chart_df.columns]
+    
+    if not display_columns:
+        st.warning(f"No valid columns found for {title}")
+        return
+
+    # Create Plotly chart
+    try:
+        fig = px.bar(
+            chart_df,
+            x=name_col,
+            y=metric_col,
+            title=title,
+            labels={metric_col: title},
+            color_discrete_sequence=[BLUE],
+        )
+        fig.update_layout(
+            height=350,
+            showlegend=False,
+            hovermode="x unified",
+            margin=dict(l=50, r=50, t=50, b=50),
+        )
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    except Exception as e:
+        st.error(f"Error rendering chart: {str(e)}")
+        return
+
+    # Display detail table with only existing columns
+    try:
+        detail_df = chart_df[display_columns].copy()
+        
+        # Rename columns for display if needed
+        display_rename = {}
+        if "revenue" in chart_df.columns:
+            display_rename["revenue"] = "CY Revenue"
+        if "prev_revenue" in chart_df.columns:
+            display_rename["prev_revenue"] = "PY Revenue"
+        if "growth_%" in chart_df.columns:
+            display_rename["growth_%"] = "Growth %"
+        if "shipments" in chart_df.columns:
+            display_rename["shipments"] = "Shipments"
+            
+        detail_df = detail_df.rename(columns=display_rename)
+        
+        # Format numeric columns
+        for col in detail_df.columns:
+            if detail_df[col].dtype in ['float64', 'int64']:
+                if "Revenue" in col:
+                    detail_df[col] = detail_df[col].apply(lambda x: f"Rs.{x/divisor:.2f}")
+                elif "%" in col:
+                    detail_df[col] = detail_df[col].apply(lambda x: f"{x:.1f}%")
+        
+        st.dataframe(detail_df, use_container_width=True, hide_index=True)
+        
+    except Exception as e:
+        st.error(f"Error displaying detail table: {str(e)}")
+
+
+# =====================================================
+# Summary
+# =====================================================
+"""
+✅ KEY FIXES APPLIED:
+
+1. **Safe Column Selection**: Only selects columns that actually exist
+   - Filter table_columns against chart_df.columns
+   
+2. **Graceful Error Handling**: 
+   - Check if dataframe is empty
+   - Validate display columns before use
+   - Try-except blocks for chart and table rendering
+   
+3. **Dynamic Renaming**:
+   - Only renames columns that exist
+   - Prevents KeyError on missing 'prev_shipments'
+   
+4. **Tested Approach**:
+   - Works with partial data
+   - Handles missing columns gracefully
+   - Still displays useful information
+
+USAGE:
+render_cy_py_customer_chart(
+    chart_df=your_dataframe,
+    title="Top Growing Customers",
+    metric_col="revenue",
+    table_columns=["shipments", "revenue", "growth_%"],
+    divisor=100_000,
+    name_col="ConsigneeCode"
+)
+"""
+            font-weight: 400;
+        }
+
+        /* ---------- Gradient KPI Cards ---------- */
+        .kpi-card {
+            border: 1px solid rgba(255,255,255,0.20);
+            border-radius: 14px;
+            padding: 16px 17px;
+            min-height: 118px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 8px 20px rgba(15,23,42,0.14);
+            position: relative;
+            overflow: hidden;
+            color: #ffffff;
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+        }
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 26px rgba(15,23,42,0.18);
+        }
+        .kpi-card::before {
+            content: "";
+            position: absolute;
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            right: -28px;
+            top: -34px;
+            background: rgba(255,255,255,0.12);
+        }
+        .kpi-card::after {
+            content: "";
+            position: absolute;
+            width: 62px;
+            height: 62px;
+            border-radius: 50%;
+            right: 18px;
+            bottom: -34px;
+            background: rgba(255,255,255,0.08);
+        }
+        .kpi-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.88);
+            text-transform: uppercase;
+            letter-spacing: 0.45px;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 2;
+            padding-right: 28px;
+        }
+        .kpi-value {
+            font-size: 22px;
+            font-weight: 800;
+            color: #ffffff;
+            line-height: 1.2;
+            position: relative;
+            z-index: 2;
+            white-space: nowrap;
+        }
+        .kpi-delta {
+            font-size: 11px;
+            color: rgba(255,255,255,0.82);
+            margin-top: 6px;
+            position: relative;
+            z-index: 2;
+        }
+        .kpi-icon {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            font-size: 19px;
+            opacity: 0.96;
+            z-index: 3;
+            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.12));
+        }
+
+        /* ---------- Section Headers ---------- */
+        .section-header {
+            font-size: 14px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 6px;
+            padding-bottom: 4px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        /* ---------- Filter Row ---------- */
+        div[data-testid="stHorizontalBlock"] > div {
+            align-items: flex-end !important;
+        }
+
+        /* ---------- Export Button ---------- */
+        div[data-testid="stDownloadButton"] button {
+            background-color: #1e40af !important;
+            color: white !important;
+            font-weight: 600 !important;
+            border-radius: 6px !important;
+            padding: 8px 14px !important;
+            width: 100% !important;
+            font-size: 13px !important;
+            border: none !important;
+            margin-top: 4px;
+        }
+        div[data-testid="stDownloadButton"] button:hover {
+            background-color: #1d4ed8 !important;
+        }
+
+        /* ============================================= */
+        /*   DATAFRAME COMPACT + SMALL FONT (columns fit) */
+        /* ============================================= */
+        div[data-testid="stDataFrame"] {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        /* Cell + header font chhota */
+        div[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] * {
+            font-size: 11px !important;
+        }
+        /* Header thoda bold */
+        div[data-testid="stDataFrame"] thead tr th {
+            font-size: 11px !important;
+            font-weight: 700 !important;
+            padding: 4px 6px !important;
+        }
+        /* Cell padding kam -> zyada columns fit */
+        div[data-testid="stDataFrame"] tbody tr td {
+            font-size: 11px !important;
+            padding: 3px 6px !important;
+        }
+        /* Glide grid (newer Streamlit) ke liye bhi */
+        .glideDataEditor {
+            font-size: 11px !important;
+        }
+        
+
+        /* ---------- Compact layout overrides: aligned with Overview ---------- */
+        .block-container {
+            max-width: 100% !important;
+            padding: 0.35rem 0.75rem 0.75rem !important;
+        }
+        .block-container > div:first-child {
+            margin-top: 0 !important;
+            padding-top: 0 !important;
+        }
+        div[data-testid="stVerticalBlock"] {
+            gap: 0.35rem !important;
+        }
+        div[data-testid="stHorizontalBlock"] {
+            gap: 0.50rem !important;
+            align-items: flex-start !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            min-width: 0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius: 11px !important;
+            box-shadow: 0 3px 10px rgba(15,42,67,0.07) !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding: 0.55rem 0.65rem !important;
+        }
+
+        /* ---------- Compact heading card ---------- */
+        .dashboard-header {
+            margin: 0 !important;
+            padding: 2px 0 3px 4px !important;
+        }
+        .dashboard-title {
+            margin: 0 !important;
+            color: #102a43 !important;
+            font-size: 19px !important;
+            font-weight: 850 !important;
+            line-height: 1.15 !important;
+            letter-spacing: -0.3px !important;
+        }
+        .dashboard-subtitle {
+            margin-top: 2px !important;
+            color: #64748b !important;
+            font-size: 11px !important;
+            font-weight: 400 !important;
+        }
+
+        /* ---------- Compact filters and controls ---------- */
+        div[data-testid="stSelectbox"] {
+            padding: 2px 3px 4px !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            overflow: visible !important;
+        }
+        div[data-baseweb="select"] > div {
+            min-height: 34px !important;
+        }
+        .stDownloadButton > button {
+            min-height: 34px !important;
+            border-radius: 9px !important;
+            font-size: 12px !important;
+            font-weight: 750 !important;
+            white-space: nowrap !important;
+        }
+
+        /* ---------- Compact KPI row ---------- */
+        .kpi-card {
+            min-height: 92px !important;
+            padding: 9px 12px !important;
+            border-radius: 12px !important;
+            box-shadow: 0 4px 12px rgba(15,23,42,0.12) !important;
+        }
+        .kpi-title {
+            margin-bottom: 3px !important;
+            font-size: 9.5px !important;
+            line-height: 1.15 !important;
+        }
+        .kpi-value {
+            font-size: 18px !important;
+            line-height: 1.12 !important;
+        }
+        .kpi-delta {
+            margin-top: 3px !important;
+            font-size: 9.5px !important;
+            line-height: 1.15 !important;
+            font-size: 10px !important;
+        }
+        .kpi-icon {
+            top: 11px !important;
+            right: 12px !important;
+            font-size: 20px !important;
+        }
+
+        /* ---------- Compact insight sections ---------- */
+        hr {
+            margin-top: 0.35rem !important;
+            margin-bottom: 0.35rem !important;
+        }
+        .section-header {
+            margin-top: 0 !important;
+            margin-bottom: 0.25rem !important;
+        }
+        [data-testid="stDataFrame"] {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+        [data-testid="stPlotlyChart"] {
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }
+        div[data-testid="stTabs"] {
+            margin-top: 0 !important;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+            gap: 0.35rem !important;
+            background: #ffffff !important;
+            border-bottom: 1px solid #dbe3ec !important;
+            padding: 0 0.15rem !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"] {
+            background: #ffffff !important;
+            background-image: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+            color: #475569 !important;
+            box-shadow: none !important;
+            font-weight: 650 !important;
+            padding: 0.55rem 0.80rem !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] {
+            background: #ffffff !important;
+            background-image: none !important;
+            color: #1d4ed8 !important;
+            border-bottom: 3px solid #2563eb !important;
+        }
+        div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
+            background-color: transparent !important;
+        }
+        h1, h2, h3, h4, h5, h6 {
+            margin-top: 0.10rem !important;
+            margin-bottom: 0.25rem !important;
+        }
+
+        /* ---------- Prevent KPI / insight overlap ---------- */
+        .kpi-row-spacer {
+            height: 14px;
+            width: 100%;
+            clear: both;
+        }
+        .insight-section-spacer {
+            height: 6px;
+            width: 100%;
+            clear: both;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] [data-testid="stPlotlyChart"] {
+            overflow: hidden !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] .section-header {
+            margin-bottom: 0.10rem !important;
+        }
+
+        @media (max-width: 1500px) {
+            .block-container {
+                padding-left: 0.45rem !important;
+                padding-right: 0.45rem !important;
+            }
+            div[data-testid="stHorizontalBlock"] {
+                gap: 0.35rem !important;
+            }
+            .dashboard-title {
+                font-size: 18px !important;
+            }
+        }
+</style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+
+# =====================================================
+# Constants
+# =====================================================
+GREEN  = "#16a34a"
+RED    = "#dc2626"
+BLUE   = "#2563eb"
+ORANGE = "#f59e0b"
+PURPLE = "#7c3aed"
+
+FINANCIAL_YEARS = [
+    "Select FY",
+    "2026-2027",
+    "2025-2026",
+    "2024-2025",
+    "2023-2024",
+    "2022-2023",
+    "2021-2022",
+    "2020-2021",
+]
+
+MONTH_ORDER = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
+MONTH_MAP = {1: "Apr", 2: "May", 3: "Jun", 4: "Jul", 5: "Aug", 6: "Sep", 7: "Oct", 8: "Nov", 9: "Dec", 10: "Jan", 11: "Feb", 12: "Mar"}
+QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
+QUARTER_MAP = {1: "Q1", 2: "Q1", 3: "Q1", 4: "Q2", 5: "Q2", 6: "Q2", 7: "Q3", 8: "Q3", 9: "Q3", 10: "Q4", 11: "Q4", 12: "Q4"}
+
+# =====================================================
+# Helper Functions
+# =====================================================
+def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    rename_map = {
+        "zone":         "Zone",
+        "circle":       "Circle",
+        "branch":       "Branch",
+        "consignor":    "Consignor",
+        "consignee":    "Consignee",
+        "cngecode":     "ConsigneeCode",
+        "shipmentcount":"ShipmentCount",
+        "actualweight": "ActualWeight",
+        "chargeweight": "ChargeWeight",
+        "revenue":      "Revenue",
+        "avgdelaydays": "AvgDelayDays",
+        "maxdelaydays": "MaxDelayDays",
+        "loadtype":     "LoadType",
+        "fin_month":    "FIN_MONTH",
+        "yr":           "YR",
+    }
+    for col in list(df.columns):
+        lower_col = col.lower()
+        if lower_col in rename_map and col != rename_map[lower_col]:
+            df = df.rename(columns={col: rename_map[lower_col]})
+    return df
+
+
+def clean_booking_data(df: pd.DataFrame) -> pd.DataFrame:
+    df = normalize_columns(df)
+    numeric_cols = [
+        "YR", "FIN_MONTH", "ShipmentCount", "ActualWeight",
+        "ChargeWeight", "Revenue", "AvgDelayDays", "MaxDelayDays",
+    ]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+    return df
+
+
+def get_revenue_conversion(conversion_type: str):
+    """Display-only conversion. All business calculations remain in rupees."""
+    return (100_000, "Lac") if conversion_type == "Lac" else (10_000_000, "Cr")
+
+
+def money_display(value: float, conversion_type: str) -> str:
+    divisor, unit = get_revenue_conversion(conversion_type)
+    return f"Rs.{value / divisor:.2f} {unit}"
+
+
+def growth_percentage(current: float, previous: float) -> float:
+    if previous == 0:
+        return 100.0 if current > 0 else 0.0
+    return round(((current - previous) / previous) * 100, 1)
+
+
+def format_delta(value: float) -> str:
+    arrow = "up" if value >= 0 else "dn"
+    sign  = "+" if value >= 0 else "-"
+    return f"{sign}{abs(value):.1f}% vs PY"
+
+
+def previous_financial_year(fin_year: str, years_back: int = 1) -> str:
+    start_year, end_year = fin_year.split("-")
+    return f"{int(start_year) - years_back}-{int(end_year) - years_back}"
+
+
+def get_customer_config(view_type: str) -> dict:
+    if view_type == "origin":
+        return {"code_col": "cngrcode", "name_col": "Consignor", "label": "Consignor"}
+    return {"code_col": "ConsigneeCode", "name_col": "Consignee", "label": "Consignee"}
+
+
+def apply_filters(
+    df: pd.DataFrame,
+    zone: str,
+    circle: str,
+    branch: str,
+    quarter: str,
+    month: str,
+    load_type: str,
+    customer: str,
+    customer_name_col: str,
+) -> pd.DataFrame:
+    filtered = df.copy()
+    if zone      != "All" and "Zone"     in filtered.columns: filtered = filtered[filtered["Zone"]     == zone]
+    if circle    != "All" and "Circle"   in filtered.columns: filtered = filtered[filtered["Circle"]   == circle]
+    if branch    != "All" and "Branch"   in filtered.columns: filtered = filtered[filtered["Branch"]   == branch]
+    if quarter   != "All" and "Quarter"  in filtered.columns: filtered = filtered[filtered["Quarter"]  == quarter]
+    if month     != "All" and "Month"    in filtered.columns: filtered = filtered[filtered["Month"]    == month]
+    if load_type != "All" and "LoadType" in filtered.columns: filtered = filtered[filtered["LoadType"] == load_type]
+    if customer  != "All" and customer_name_col in filtered.columns:
+        filtered = filtered[filtered[customer_name_col] == customer]
+    return filtered
+
+
+# =====================================================
+# KPI Card  (accent bar color)
+# =====================================================
+def kpi_card(title: str, value: str, delta: str, icon: str, gradient: str) -> None:
+    st.markdown(
+        f"""
+        <div class="kpi-card" style="background:{gradient};">
+            <div class="kpi-icon">{icon}</div>
+            <div class="kpi-title">{title}</div>
+            <div class="kpi-value">{value}</div>
+            <div class="kpi-delta">{delta}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# =====================================================
+# Export
+# =====================================================
+def export_to_excel(
+    df: pd.DataFrame,
+    customer_summary: pd.DataFrame,
+    growth_df: pd.DataFrame,
+    monthly_df: pd.DataFrame,
+    reactivated_df: pd.DataFrame,
+    service_df: pd.DataFrame,
+) -> BytesIO:
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        sheets = {
+            "Raw Summary Data":    df,
+            "Customer Summary":    customer_summary,
+            "Growth Degrowth":     growth_df,
+            "Monthly Summary":     monthly_df,
+            "Reactivated Customers": reactivated_df,
+            "Service Performance": service_df,
+        }
+        workbook = writer.book
+        header_format = workbook.add_format(
+            {"bold": True, "bg_color": "#1f2937", "font_color": "white", "border": 1}
+        )
+        for sheet_name, sheet_df in sheets.items():
+            sheet_df.to_excel(writer, sheet_name=sheet_name, index=False)
+            worksheet = writer.sheets[sheet_name]
+            worksheet.freeze_panes(1, 0)
+            for col_num, col_name in enumerate(sheet_df.columns):
+                worksheet.write(0, col_num, col_name, header_format)
+                worksheet.set_column(col_num, col_num, 20)
+    output.seek(0)
+    return output
+
+
+# =====================================================
+# Data Preparation
+# =====================================================
+def build_customer_summary(
+    df: pd.DataFrame,
+    prev_df: pd.DataFrame,
+    code_col: str,
+    name_col: str,
+) -> pd.DataFrame:
+    current_summary = (
+        df.groupby([code_col, name_col], as_index=False)
+        .agg(
+            revenue=("Revenue", "sum"),
+            shipments=("ShipmentCount", "sum"),
+            actual_weight=("ActualWeight", "sum"),
+            charge_weight=("ChargeWeight", "sum"),
+            avg_delay=("AvgDelayDays", "mean"),
+            max_delay=("MaxDelayDays", "max"),
+        )
+    )
+    previous_summary = (
+        prev_df.groupby(code_col, as_index=False)
+        .agg(prev_revenue=("Revenue", "sum"))
+    )
+    summary = current_summary.merge(previous_summary, on=code_col, how="left")
+    summary["prev_revenue"]   = summary["prev_revenue"].fillna(0)
+    summary["revenue_change"] = summary["revenue"] - summary["prev_revenue"]
+    summary["growth_%"]       = summary.apply(
+        lambda row: growth_percentage(row["revenue"], row["prev_revenue"]), axis=1
+    )
+    return summary
+
+
+def build_monthly_summary(df: pd.DataFrame, code_col: str, conversion_type: str) -> pd.DataFrame:
+    monthly = (
+        df.groupby("FIN_MONTH", as_index=False)
+        .agg(
+            revenue=("Revenue", "sum"),
+            shipments=("ShipmentCount", "sum"),
+            customers=(code_col, "nunique"),
+        )
+        .sort_values("FIN_MONTH")
+    )
+    divisor, unit = get_revenue_conversion(conversion_type)
+    monthly["Revenue Display"] = (monthly["revenue"] / divisor).round(2)
+    monthly["Revenue Unit"] = unit
+    return monthly
+
+
+def build_service_summary(df: pd.DataFrame, code_col: str, name_col: str) -> pd.DataFrame:
+    service = (
+        df.groupby([code_col, name_col], as_index=False)
+        .agg(
+            shipments=("ShipmentCount", "sum"),
+            avg_delay_days=("AvgDelayDays", "mean"),
+            max_delay_days=("MaxDelayDays", "max"),
+            revenue=("Revenue", "sum"),
+        )
+    )
+    service["avg_delay_days"] = service["avg_delay_days"].round(2)
+    return service
+
+
 def add_customer_segments(customer_summary: pd.DataFrame) -> pd.DataFrame:
     segmented = customer_summary.copy()
     if segmented.empty:
