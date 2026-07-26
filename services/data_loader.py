@@ -45,7 +45,7 @@ def load_booking_data_pair(start_date, end_date, prev_start, prev_end, view_type
     def _fetch(s, e):
         engine = get_engine()
         query = text("""
-            EXEC dbo.RevenueDataForPythonDashboard
+            EXEC dbo.GetRevenueDataFromCache
                 @StartDate=:start_date,
                 @EndDate=:end_date,
                 @ViewType=:view_type
