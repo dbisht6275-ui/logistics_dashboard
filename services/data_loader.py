@@ -1,19 +1,15 @@
 import time
 from typing import Tuple
-
 import pandas as pd
 import streamlit as st
 from sqlalchemy import text
-
 from services.database import get_engine
-
 
 # The SQL cache table is refreshed once every morning.  A longer Streamlit
 # cache is safe because the cache key also contains MAX(LoadedAt), so the
 # dashboard automatically reloads when the morning refresh creates new data.
 DATA_CACHE_TTL_SECONDS = 24 * 60 * 60
 VERSION_CACHE_TTL_SECONDS = 300
-
 
 @st.cache_data(ttl=VERSION_CACHE_TTL_SECONDS, show_spinner=False)
 def get_revenue_cache_version():
