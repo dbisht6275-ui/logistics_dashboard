@@ -3428,6 +3428,7 @@ def show_overview():
     # irrespective of whether the dashboard display unit is Lac or Crore.
     business_slab_options = [
         "All",
+        "₹0–5 Lac",
         "₹5–10 Lac",
         "₹10–15 Lac",
         "₹15–25 Lac",
@@ -3442,6 +3443,7 @@ def show_overview():
 
     slab_ranges = {
         "All": (None, None),
+        "₹0–5 Lac": (0, 500000),
         "₹5–10 Lac": (500000, 1000000),
         "₹10–15 Lac": (1000000, 1500000),
         "₹15–25 Lac": (1500000, 2500000),
