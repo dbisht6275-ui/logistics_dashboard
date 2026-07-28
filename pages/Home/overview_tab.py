@@ -514,25 +514,25 @@ def _inject_overview_css():
                 font-size: 11px;
                 margin-top: 2px;
             }
-            /* Active FY/View/Quarter/Unit chips: centred and attached to KPI row */
+            /* Active FY/View/Quarter/Unit chips: left aligned with clear gap above KPI row */
             div[data-testid="stElementContainer"]:has(.filter-summary) {
                 position: relative !important;
                 z-index: 5 !important;
-                margin-bottom: -6px !important;
+                margin-bottom: 8px !important;
             }
             .filter-summary {
                 display: flex;
                 flex-wrap: wrap;
-                justify-content: center;
-                align-items: flex-end;
+                justify-content: flex-start;
+                align-items: center;
                 width: 100%;
                 gap: 9px;
-                margin: 0 auto;
+                margin: 0;
                 padding: 0;
                 line-height: 1;
                 position: relative;
                 z-index: 5;
-                transform: translateY(1px);
+                transform: none;
             }
             .filter-chip {
                 display: inline-flex;
