@@ -3018,8 +3018,8 @@ def show_overview():
         with party_layout_col:
             with st.container(border=True):
                 st.markdown(
-                    "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 8px 2px;'>Top 10 Customers by Business</div>"
-                    f"<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
+                    "<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top 10 Customers by Business</div>"
+                    f"<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>"
                     f"Customer basis: {party_label} | Current FY revenue, share and YoY movement."
                     "</div>",
                     unsafe_allow_html=True,
@@ -3080,7 +3080,7 @@ def show_overview():
                         }}
                         .customer-insight-table th {{
                             padding:7px 6px; background:#f8fafc;
-                            color:#64748b; font-size:10px; font-weight:400;
+                            color:#64748b; font-size:12px; font-weight:400;
                             text-align:left; border-bottom:1px solid #e2e8f0;
                             white-space:nowrap;
                         }}
@@ -3246,8 +3246,8 @@ def show_overview():
         with route_layout_col:
             with st.container(border=True):
                 st.markdown(
-                    f"<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 8px 2px;'>Top 10 Routes by Business</div>"
-                    "<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
+                    f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top 10 Routes by Business</div>"
+                    "<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>"
                     + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
                     + " | Current FY revenue, share and YoY movement.</div>",
                     unsafe_allow_html=True,
@@ -3304,7 +3304,7 @@ def show_overview():
                         }}
                         .route-insight-table th {{
                             padding:7px 6px; background:#f8fafc;
-                            color:#64748b; font-size:10px; font-weight:400;
+                            color:#64748b; font-size:12px; font-weight:400;
                             text-align:left; border-bottom:1px solid #e2e8f0;
                             white-space:nowrap;
                         }}
