@@ -292,8 +292,10 @@ def _inject_overview_css():
                 padding: 2px 7px;
                 border: 1px solid;
                 border-radius: 999px;
+                font-family: "Segoe UI", Arial, sans-serif;
                 font-size: 9px;
-                font-weight: 900;
+                font-weight: 400;
+                letter-spacing: 0;
                 box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 3px rgba(15,23,42,.10);
             }
 
