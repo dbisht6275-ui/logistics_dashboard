@@ -241,10 +241,16 @@ def _inject_overview_css():
             .kpi-3d-head {
                 position: relative;
                 z-index: 1;
-                display: flex;
-                justify-content: space-between;
+                display: grid;
+                grid-template-columns: 27px minmax(0, 1fr) 27px;
                 align-items: center;
                 gap: 6px;
+            }
+
+            .kpi-3d-head::before {
+                content: "";
+                width: 27px;
+                height: 27px;
             }
 
             .kpi-3d-title {
@@ -253,6 +259,10 @@ def _inject_overview_css():
                 font-family: "Segoe UI", Arial, sans-serif;
                 font-weight: 400;
                 letter-spacing: .15px;
+                text-align: center;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
                 text-shadow: 0 1px 0 rgba(255,255,255,.95);
             }
 
@@ -443,7 +453,7 @@ def _inject_overview_css():
             div[data-testid="stVerticalBlockBorderWrapper"] {border-radius:11px!important;box-shadow:0 3px 10px rgba(15,42,67,.07)!important;}
             div[data-testid="stVerticalBlockBorderWrapper"] > div {padding:.55rem .65rem!important;}
             .executive-title {font-size:19px;}
-            .filter-summary {margin:3px 0 6px;gap:4px;}
+            .filter-summary {margin:0;gap:7px;}
             .filter-field-label {
                 margin: 0 0 4px 2px !important;
                 min-height: 18px;
@@ -504,23 +514,41 @@ def _inject_overview_css():
                 font-size: 11px;
                 margin-top: 2px;
             }
+            /* Active FY/View/Quarter/Unit chips: centred and attached to KPI row */
+            div[data-testid="stElementContainer"]:has(.filter-summary) {
+                position: relative !important;
+                z-index: 5 !important;
+                margin-bottom: -6px !important;
+            }
             .filter-summary {
                 display: flex;
                 flex-wrap: wrap;
-                gap: 5px;
-                margin: 5px 0 10px 0;
+                justify-content: center;
+                align-items: flex-end;
+                width: 100%;
+                gap: 9px;
+                margin: 0 auto;
+                padding: 0;
+                line-height: 1;
+                position: relative;
+                z-index: 5;
+                transform: translateY(1px);
             }
             .filter-chip {
                 display: inline-flex;
                 align-items: center;
-                padding: 3px 8px;
-                border: 1px solid #cbdcf3;
+                justify-content: center;
+                min-height: 28px;
+                padding: 6px 13px;
+                border: 1px solid #b8d1f2;
                 border-radius: 999px;
                 background: #f5f9ff;
                 color: #31557d;
-                font-size: 9px;
-                font-weight: 750;
+                font-size: 11px;
+                font-weight: 500;
+                line-height: 1;
                 box-shadow: inset 0 1px 0 #ffffff;
+                white-space: nowrap;
             }
 
             /* Cleaner card hierarchy: subtle depth, no oversized floating effect */
@@ -3396,7 +3424,46 @@ def show_overview():
         .reset_index()
     )
 
-    top10_df = branch_summary.sort_values("Business", ascending=False).head(10).copy()
+    # Top-branch business slab selector. Thresholds always remain in rupees,
+    # irrespective of whether the dashboard display unit is Lac or Crore.
+    business_slab_options = [
+        "All",
+        "₹5–10 Lac",
+        "₹10–15 Lac",
+        "₹15–25 Lac",
+        "₹25–50 Lac",
+        "₹50 Lac & Above",
+    ]
+
+    selected_business_slab = st.session_state.get(
+        "top_branch_business_slab",
+        "All",
+    )
+
+    slab_ranges = {
+        "All": (None, None),
+        "₹5–10 Lac": (500000, 1000000),
+        "₹10–15 Lac": (1000000, 1500000),
+        "₹15–25 Lac": (1500000, 2500000),
+        "₹25–50 Lac": (2500000, 5000000),
+        "₹50 Lac & Above": (5000000, None),
+    }
+
+    slab_min, slab_max = slab_ranges[selected_business_slab]
+    top_branch_pool = branch_summary.copy()
+
+    if slab_min is not None:
+        top_branch_pool = top_branch_pool[top_branch_pool["Business"] >= slab_min]
+    if slab_max is not None:
+        # Upper limit is exclusive so one branch cannot fall into two slabs.
+        top_branch_pool = top_branch_pool[top_branch_pool["Business"] < slab_max]
+
+    top10_df = (
+        top_branch_pool
+        .sort_values("Business", ascending=False)
+        .head(10)
+        .copy()
+    )
     top10_df["Business Cr"] = (top10_df["Business"] / revenue_divisor).round(2)
 
     bottom10_df = branch_summary[branch_summary["Business"] >= 1000000].copy()
@@ -3408,18 +3475,56 @@ def show_overview():
 
     with b1:
         with st.container(border=True):
-            st.markdown("<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Branches by Business</div>", unsafe_allow_html=True)
+            st.markdown(
+                "<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
+                "Top 10 Branches by Business</div>",
+                unsafe_allow_html=True,
+            )
 
-            max_top = top10_df["Business Cr"].max() if not top10_df.empty else 1
+            selected_business_slab = st.segmented_control(
+                "Branch business slab",
+                business_slab_options,
+                default=selected_business_slab,
+                key="top_branch_business_slab",
+                label_visibility="collapsed",
+                width="stretch",
+            ) or "All"
 
-            for i, row in top10_df.reset_index(drop=True).iterrows():
-                mini_rank_card(
-                    i + 1,
-                    row["branch"],
-                    row["Business Cr"],
-                    max_top,
-                    "#22c55e"
+            # Recalculate immediately from the selected button value because the
+            # widget is rendered inside this card.
+            slab_min, slab_max = slab_ranges[selected_business_slab]
+            top_branch_pool = branch_summary.copy()
+            if slab_min is not None:
+                top_branch_pool = top_branch_pool[top_branch_pool["Business"] >= slab_min]
+            if slab_max is not None:
+                top_branch_pool = top_branch_pool[top_branch_pool["Business"] < slab_max]
+
+            top10_df = (
+                top_branch_pool
+                .sort_values("Business", ascending=False)
+                .head(10)
+                .copy()
+            )
+            top10_df["Business Cr"] = (
+                top10_df["Business"] / revenue_divisor
+            ).round(2)
+
+            if top10_df.empty:
+                st.info(f"No branch falls in the {selected_business_slab} business slab.")
+            else:
+                st.caption(
+                    f"Showing {len(top10_df)} highest branches in {selected_business_slab}"
                 )
+                max_top = top10_df["Business Cr"].max()
+
+                for i, row in top10_df.reset_index(drop=True).iterrows():
+                    mini_rank_card(
+                        i + 1,
+                        row["branch"],
+                        row["Business Cr"],
+                        max_top,
+                        "#22c55e",
+                    )
 
     with b2:
         with st.container(border=True):
