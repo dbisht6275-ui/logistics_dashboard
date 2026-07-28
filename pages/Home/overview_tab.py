@@ -3018,7 +3018,7 @@ def show_overview():
         with party_layout_col:
             with st.container(border=True):
                 st.markdown(
-                    "<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top 10 Customers by Business</div>"
+                    "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 8px 2px;'>Top 10 Customers by Business</div>"
                     f"<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
                     f"Customer basis: {party_label} | Current FY revenue, share and YoY movement."
                     "</div>",
@@ -3246,7 +3246,7 @@ def show_overview():
         with route_layout_col:
             with st.container(border=True):
                 st.markdown(
-                    f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top 10 Routes by Business</div>"
+                    f"<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 8px 2px;'>Top 10 Routes by Business</div>"
                     "<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
                     + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
                     + " | Current FY revenue, share and YoY movement.</div>",
