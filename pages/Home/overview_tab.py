@@ -1306,7 +1306,7 @@ def _render_operational_highlights(current_df, previous_df):
 
     with st.container(border=True):
         st.markdown(
-            "<div style='font-size:14px;font-weight:950;color:#0f2744;margin:1px 0 7px 2px;'>"
+            "<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
             "Operational Highlights</div>",
             unsafe_allow_html=True,
         )
@@ -1369,8 +1369,8 @@ def show_overview():
             st.markdown(
                 """
                 <div style="padding:2px 0 3px 4px;">
-                    <div class="executive-title">Revenue Overview</div>
-                    <div class="executive-subtitle">Executive view of revenue, shipments, load mix, geography and branch performance</div>
+                    <div class="executive-title">Business Overview</div>
+                    <div class="executive-subtitle">Executive view of business, shipments, load mix, geography and branch performance</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -3017,7 +3017,7 @@ def show_overview():
         with party_layout_col:
             with st.container(border=True):
                 st.markdown(
-                    "###### Top 10 Customers by Revenue"
+                    "<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Customers by Revenue</div>"
                     f"<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
                     f"Customer basis: {party_label} | Current FY revenue, share and YoY movement."
                     "</div>",
@@ -3245,7 +3245,7 @@ def show_overview():
         with route_layout_col:
             with st.container(border=True):
                 st.markdown(
-                    f"###### Top 10 Routes by Revenue"
+                    f"<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Routes by Revenue</div>"
                     "<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
                     + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
                     + " | Current FY revenue, share and YoY movement.</div>",
@@ -3407,7 +3407,7 @@ def show_overview():
 
     with b1:
         with st.container(border=True):
-            st.markdown("###### Top 10 Branches by Revenue")
+            st.markdown("<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Branches by Revenue</div>", unsafe_allow_html=True)
 
             max_top = top10_df["Revenue Cr"].max() if not top10_df.empty else 1
 
@@ -3422,7 +3422,7 @@ def show_overview():
 
     with b2:
         with st.container(border=True):
-            st.markdown("###### Bottom 10 Branches by Revenue")
+            st.markdown("<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Bottom 10 Branches by Revenue</div>", unsafe_allow_html=True)
 
             max_bottom = bottom10_df["Revenue Cr"].max() if not bottom10_df.empty else 1
 
