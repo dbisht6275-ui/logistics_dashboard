@@ -1079,7 +1079,7 @@ def create_card(title, value, color, icon, growth_value=0.0):
     """Render a compact KPI card without Markdown parsing the HTML as code."""
     positive = growth_value >= 0
     growth_color = "#15803d" if positive else "#dc2626"
-    growth_bg = "#ecfdf3" if positive else "#fff1f2"
+    growth_bg = "#ffffff"
     growth_border = "#86efac" if positive else "#fda4af"
     growth_text = growth_label(growth_value)
 
