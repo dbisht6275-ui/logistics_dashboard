@@ -1,218 +1,77 @@
-from __future__ import annotations
-
-import time
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
-from typing import Tuple
-
-import pandas as pd
 import streamlit as st
+import pandas as pd
 from sqlalchemy import text
-
+from concurrent.futures import ThreadPoolExecutor
 from services.database import get_engine
 
-
-CACHE_FOLDER = Path("data_cache/revenue")
-CACHE_FOLDER.mkdir(parents=True, exist_ok=True)
-
-MEMORY_CACHE_TTL = 24 * 60 * 60
-
-
-def _normalise_view_type(view_type: str) -> str:
-    value = str(view_type or "origin").strip().upper()
-
-    if value not in {"ORIGIN", "DESTINATION"}:
-        raise ValueError("View type must be ORIGIN or DESTINATION.")
-
-    return value
-
-
-def _cache_file(
-    start_date,
-    end_date,
-    view_type,
-    cache_version,
-) -> Path:
-
-    view = _normalise_view_type(view_type)
-
-    version = (
-        pd.Timestamp(cache_version).strftime("%Y%m%d_%H%M%S")
-        if cache_version
-        else "unknown"
-    )
-
-    return CACHE_FOLDER / (
-        f"revenue_{view}_{start_date}_{end_date}_{version}.parquet"
-    )
-
-
-@st.cache_data(ttl=300, show_spinner=False)
-def get_revenue_cache_version() -> str:
-    engine = get_engine()
-
-    query = text("""
-        SELECT MAX(LoadedAt)
-        FROM dbo.RevenueDataCache
-    """)
-
-    with engine.connect() as conn:
-        value = conn.execute(query).scalar()
-
-    if value is None:
-        return "NO_VERSION"
-
-    return pd.Timestamp(value).isoformat()
-
-
-def _fetch_from_sql(
-    start_date,
-    end_date,
-    view_type,
-) -> pd.DataFrame:
+@st.cache_data(ttl=1800)
+def load_booking_data(start_date, end_date, view_type="origin"):
 
     engine = get_engine()
 
     query = text("""
         EXEC dbo.GetRevenueDataFromCache
-            @StartDate = :start_date,
-            @EndDate   = :end_date,
-            @ViewType  = :view_type
-    """)
-
-    started = time.perf_counter()
+            @StartDate=:start_date,
+            @EndDate=:end_date,
+            @ViewType=:view_type
+    """) 
 
     with engine.connect() as conn:
-        df = pd.read_sql_query(
+        df = pd.read_sql(
             query,
             conn,
             params={
                 "start_date": start_date,
                 "end_date": end_date,
-                "view_type": _normalise_view_type(view_type),
-            },
+                "view_type": view_type.upper()
+            }
         )
-
-    elapsed = time.perf_counter() - started
-
-    print(
-        f"SQL revenue load: "
-        f"{start_date} to {end_date}, "
-        f"rows={len(df):,}, "
-        f"time={elapsed:.2f} seconds"
-    )
 
     return df
 
 
-def _load_period(
-    start_date,
-    end_date,
-    view_type,
-    cache_version,
-) -> pd.DataFrame:
+@st.cache_data(ttl=1800)
+def load_booking_data_pair(start_date, end_date, prev_start, prev_end, view_type="origin"):
+    """
+    Fetches the current-period data AND the previous-year (LY) data
+    AT THE SAME TIME using two threads, instead of one after another.
 
-    path = _cache_file(
-        start_date,
-        end_date,
-        view_type,
-        cache_version,
-    )
+    Since these are two independent DB round-trips (each opens its own
+    connection from the pool), running them in parallel roughly halves
+    the total wait time compared to calling load_booking_data() twice
+    back-to-back.
+    """
 
-    if path.exists():
-        started = time.perf_counter()
-
-        df = pd.read_parquet(path)
-
-        print(
-            f"Parquet revenue load: "
-            f"{path.name}, "
-            f"rows={len(df):,}, "
-            f"time={time.perf_counter() - started:.2f} seconds"
-        )
-
-        return df
-
-    df = _fetch_from_sql(
-        start_date,
-        end_date,
-        view_type,
-    )
-
-    temporary_path = path.with_suffix(".tmp.parquet")
-
-    df.to_parquet(
-        temporary_path,
-        engine="pyarrow",
-        compression="snappy",
-        index=False,
-    )
-
-    temporary_path.replace(path)
-
-    return df
-
-
-@st.cache_data(
-    ttl=MEMORY_CACHE_TTL,
-    show_spinner=False,
-    max_entries=16,
-)
-def load_booking_data_pair(
-    start_date,
-    end_date,
-    prev_start,
-    prev_end,
-    view_type="origin",
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-
-    cache_version = get_revenue_cache_version()
-    view_type = _normalise_view_type(view_type)
+    def _fetch(s, e):
+        engine = get_engine()
+        query = text("""
+            EXEC dbo.GetRevenueDataFromCache
+                @StartDate=:start_date,
+                @EndDate=:end_date,
+                @ViewType=:view_type
+        """)
+        with engine.connect() as conn:
+            return pd.read_sql(
+                query,
+                conn,
+                params={
+                    "start_date": s,
+                    "end_date": e,
+                    "view_type": view_type.upper()
+                }
+            )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-
-        current_future = executor.submit(
-            _load_period,
-            start_date,
-            end_date,
-            view_type,
-            cache_version,
-        )
-
-        previous_future = executor.submit(
-            _load_period,
-            prev_start,
-            prev_end,
-            view_type,
-            cache_version,
-        )
+        current_future = executor.submit(_fetch, start_date, end_date)
+        prev_future = executor.submit(_fetch, prev_start, prev_end)
 
         current_df = current_future.result()
-        previous_df = previous_future.result()
+        prev_df = prev_future.result()
 
-    return current_df, previous_df
+    return current_df, prev_df
 
 
-@st.cache_data(
-    ttl=MEMORY_CACHE_TTL,
-    show_spinner=False,
-    max_entries=16,
-)
-def load_booking_data(
-    start_date,
-    end_date,
-    view_type="origin",
-):
-
-    cache_version = get_revenue_cache_version()
-
-    return _load_period(
-        start_date,
-        end_date,
-        view_type,
-        cache_version,
-    )
-
+# -------- DATE RANGE FUNCTION --------
 
 def get_date_range(fin_year):
     start_year = int(fin_year.split("-")[0])
@@ -220,5 +79,5 @@ def get_date_range(fin_year):
 
     return (
         f"{start_year}-04-01",
-        f"{end_year}-03-31",
+        f"{end_year}-03-31"
     )
