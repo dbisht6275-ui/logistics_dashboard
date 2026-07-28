@@ -241,10 +241,16 @@ def _inject_overview_css():
             .kpi-3d-head {
                 position: relative;
                 z-index: 1;
-                display: flex;
-                justify-content: space-between;
+                display: grid;
+                grid-template-columns: 27px minmax(0, 1fr) 27px;
                 align-items: center;
                 gap: 6px;
+            }
+
+            .kpi-3d-head::before {
+                content: "";
+                width: 27px;
+                height: 27px;
             }
 
             .kpi-3d-title {
@@ -253,6 +259,10 @@ def _inject_overview_css():
                 font-family: "Segoe UI", Arial, sans-serif;
                 font-weight: 400;
                 letter-spacing: .15px;
+                text-align: center;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
                 text-shadow: 0 1px 0 rgba(255,255,255,.95);
             }
 
@@ -443,7 +453,7 @@ def _inject_overview_css():
             div[data-testid="stVerticalBlockBorderWrapper"] {border-radius:11px!important;box-shadow:0 3px 10px rgba(15,42,67,.07)!important;}
             div[data-testid="stVerticalBlockBorderWrapper"] > div {padding:.55rem .65rem!important;}
             .executive-title {font-size:19px;}
-            .filter-summary {margin:3px 0 6px;gap:4px;}
+            .filter-summary {margin:0;gap:7px;}
             .filter-field-label {
                 margin: 0 0 4px 2px !important;
                 min-height: 18px;
@@ -504,23 +514,41 @@ def _inject_overview_css():
                 font-size: 11px;
                 margin-top: 2px;
             }
+            /* Active FY/View/Quarter/Unit chips: centred and attached to KPI row */
+            div[data-testid="stElementContainer"]:has(.filter-summary) {
+                position: relative !important;
+                z-index: 5 !important;
+                margin-bottom: -6px !important;
+            }
             .filter-summary {
                 display: flex;
                 flex-wrap: wrap;
-                gap: 5px;
-                margin: 5px 0 10px 0;
+                justify-content: center;
+                align-items: flex-end;
+                width: 100%;
+                gap: 9px;
+                margin: 0 auto;
+                padding: 0;
+                line-height: 1;
+                position: relative;
+                z-index: 5;
+                transform: translateY(1px);
             }
             .filter-chip {
                 display: inline-flex;
                 align-items: center;
-                padding: 3px 8px;
-                border: 1px solid #cbdcf3;
+                justify-content: center;
+                min-height: 28px;
+                padding: 6px 13px;
+                border: 1px solid #b8d1f2;
                 border-radius: 999px;
                 background: #f5f9ff;
                 color: #31557d;
-                font-size: 9px;
-                font-weight: 750;
+                font-size: 11px;
+                font-weight: 500;
+                line-height: 1;
                 box-shadow: inset 0 1px 0 #ffffff;
+                white-space: nowrap;
             }
 
             /* Cleaner card hierarchy: subtle depth, no oversized floating effect */
