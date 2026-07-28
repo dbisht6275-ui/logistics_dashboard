@@ -3018,7 +3018,7 @@ def show_overview():
         with party_layout_col:
             with st.container(border=True):
                 st.markdown(
-                    "<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Customers by Business</div>"
+                    "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 8px 2px;'>Top 10 Customers by Business</div>"
                     f"<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
                     f"Customer basis: {party_label} | Current FY revenue, share and YoY movement."
                     "</div>",
@@ -3076,16 +3076,16 @@ def show_overview():
                         }}
                         .customer-insight-table {{
                             width:100%; border-collapse:collapse;
-                            table-layout:fixed; font-size:10px; color:#334155;
+                            table-layout:fixed; font-size:12px; color:#334155;
                         }}
                         .customer-insight-table th {{
                             padding:7px 6px; background:#f8fafc;
-                            color:#64748b; font-size:9px; font-weight:400;
+                            color:#64748b; font-size:10px; font-weight:400;
                             text-align:left; border-bottom:1px solid #e2e8f0;
                             white-space:nowrap;
                         }}
                         .customer-insight-table td {{
-                            padding:6px; border-bottom:1px solid #edf2f7;
+                            padding:8px 6px; border-bottom:1px solid #edf2f7;
                             vertical-align:middle;
                         }}
                         .customer-insight-table tr:last-child td {{border-bottom:0;}}
@@ -3103,18 +3103,18 @@ def show_overview():
                         .cust-revenue {{width:32%;}}
                         .cust-value {{font-weight:400; color:#0f172a; margin-bottom:3px;}}
                         .cust-bar-track {{
-                            width:100%; height:4px; border-radius:999px;
+                            width:100%; height:5px; border-radius:999px;
                             background:#e8eef8; overflow:hidden;
                         }}
                         .cust-bar-fill {{
-                            height:4px; border-radius:999px;
+                            height:5px; border-radius:999px;
                             background:linear-gradient(90deg,#60a5fa,#2563eb);
                         }}
                         .cust-share {{width:12%; text-align:right; font-weight:400; color:#475569;}}
                         .cust-yoy {{width:14%; text-align:right;}}
                         .cust-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:9px; font-weight:400;
+                            font-size:11px; font-weight:400;
                         }}
                         .cust-growth.up {{color:#16a34a;}}
                         .cust-growth.down {{color:#dc2626;}}
@@ -3246,7 +3246,7 @@ def show_overview():
         with route_layout_col:
             with st.container(border=True):
                 st.markdown(
-                    f"<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Routes by Business</div>"
+                    f"<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 8px 2px;'>Top 10 Routes by Business</div>"
                     "<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
                     + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
                     + " | Current FY revenue, share and YoY movement.</div>",
@@ -3300,16 +3300,16 @@ def show_overview():
                         }}
                         .route-insight-table {{
                             width:100%; border-collapse:collapse;
-                            table-layout:fixed; font-size:10px; color:#334155;
+                            table-layout:fixed; font-size:12px; color:#334155;
                         }}
                         .route-insight-table th {{
                             padding:7px 6px; background:#f8fafc;
-                            color:#64748b; font-size:9px; font-weight:400;
+                            color:#64748b; font-size:10px; font-weight:400;
                             text-align:left; border-bottom:1px solid #e2e8f0;
                             white-space:nowrap;
                         }}
                         .route-insight-table td {{
-                            padding:6px; border-bottom:1px solid #edf2f7;
+                            padding:8px 6px; border-bottom:1px solid #edf2f7;
                             vertical-align:middle;
                         }}
                         .route-insight-table tr:last-child td {{border-bottom:0;}}
@@ -3327,18 +3327,18 @@ def show_overview():
                         .route-revenue {{width:32%;}}
                         .route-value {{font-weight:400; color:#0f172a; margin-bottom:3px;}}
                         .route-bar-track {{
-                            width:100%; height:4px; border-radius:999px;
+                            width:100%; height:5px; border-radius:999px;
                             background:#e8eef8; overflow:hidden;
                         }}
                         .route-bar-fill {{
-                            height:4px; border-radius:999px;
+                            height:5px; border-radius:999px;
                             background:linear-gradient(90deg,#2dd4bf,#0f766e);
                         }}
                         .route-share {{width:12%; text-align:right; font-weight:400; color:#475569;}}
                         .route-yoy {{width:14%; text-align:right;}}
                         .route-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:9px; font-weight:400;
+                            font-size:11px; font-weight:400;
                         }}
                         .route-growth.up {{color:#16a34a;}}
                         .route-growth.down {{color:#dc2626;}}
