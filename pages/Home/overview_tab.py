@@ -3466,12 +3466,8 @@ def show_overview():
     )
     top10_df["Business Cr"] = (top10_df["Business"] / revenue_divisor).round(2)
 
-    bottom10_df = branch_summary[branch_summary["Business"] >= 1000000].copy()
-    bottom10_df = bottom10_df.sort_values("Business", ascending=True).head(10)
-    bottom10_df["Business Cr"] = (bottom10_df["Business"] / revenue_divisor).round(2)
-
-    # Keep Top Branches, Bottom Branches and Operational Highlights in one fitted row.
-    b1, b2, b3 = st.columns([1, 1, 1.08], gap="small")
+    # Keep only Top Branches and Operational Highlights in one balanced row.
+    b1, b2 = st.columns([1.15, 1], gap="small")
 
     with b1:
         with st.container(border=True):
@@ -3527,21 +3523,6 @@ def show_overview():
                     )
 
     with b2:
-        with st.container(border=True):
-            st.markdown("<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Bottom 10 Branches by Business</div>", unsafe_allow_html=True)
-
-            max_bottom = bottom10_df["Business Cr"].max() if not bottom10_df.empty else 1
-
-            for i, row in bottom10_df.reset_index(drop=True).iterrows():
-                mini_rank_card(
-                    i + 1,
-                    row["branch"],
-                    row["Business Cr"],
-                    max_bottom,
-                    "#ef4444"
-                )
-
-    with b3:
         _render_operational_highlights(df, prev_df)
 
     compact_spacer()
