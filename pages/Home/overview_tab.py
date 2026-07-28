@@ -219,6 +219,7 @@ def _inject_overview_css():
             }
 
             .kpi-3d-topline {
+                display: none !important;
                 position: absolute;
                 left: 0;
                 right: 0;
@@ -248,7 +249,7 @@ def _inject_overview_css():
 
             .kpi-3d-title {
                 color: var(--kpi-accent);
-                font-size: 10px;
+                font-size: 11px;
                 font-family: "Segoe UI", Arial, sans-serif;
                 font-weight: 400;
                 letter-spacing: .15px;
@@ -571,7 +572,7 @@ def _inject_overview_css():
                 background: #fbfdff;
             }
 
-            /* Compact export button in the Revenue Overview header */
+            /* Compact export button in the Business Overview header */
             div[data-testid="stDownloadButton"] > button {
                 min-height: 34px !important;
                 width: auto !important;
@@ -883,7 +884,7 @@ def build_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, pre
     """
     Build a Period-wise Current-FY vs LY revenue comparison dataframe for a chosen granularity.
     trend_type: 'Daily' | 'Weekly' | 'Monthly' | 'Quarterly'
-    Returns columns: Period, Revenue Cr, Prev Revenue Cr, Growth %, Growth Label
+    Returns columns: Period, Business Cr, Prev Business Cr, Growth %, Growth Label
     """
     required = [c for c in [date_col, "REVENUE", "FIN_MONTH"] if c in current_df.columns]
     cur = current_df[required].copy()
@@ -962,16 +963,16 @@ def build_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, pre
         else:
             prev_trend = pd.DataFrame(columns=["Key", "PREV_REVENUE"])
 
-    trend_df["Revenue Cr"] = (trend_df["REVENUE"] / 10000000).round(2)
+    trend_df["Business Cr"] = (trend_df["REVENUE"] / 10000000).round(2)
 
     if not prev_trend.empty:
-        prev_trend["Prev Revenue Cr"] = (prev_trend["PREV_REVENUE"] / 10000000).round(2)
-        trend_df = trend_df.merge(prev_trend[["Key", "Prev Revenue Cr"]], on="Key", how="left")
+        prev_trend["Prev Business Cr"] = (prev_trend["PREV_REVENUE"] / 10000000).round(2)
+        trend_df = trend_df.merge(prev_trend[["Key", "Prev Business Cr"]], on="Key", how="left")
     else:
-        trend_df["Prev Revenue Cr"] = None
+        trend_df["Prev Business Cr"] = None
 
     trend_df["Growth %"] = trend_df.apply(
-        lambda r: pct_growth(r["Revenue Cr"], r["Prev Revenue Cr"]) if pd.notna(r["Prev Revenue Cr"]) else None,
+        lambda r: pct_growth(r["Business Cr"], r["Prev Business Cr"]) if pd.notna(r["Prev Business Cr"]) else None,
         axis=1
     )
     trend_df["Growth Label"] = trend_df["Growth %"].apply(lambda x: growth_label(x) if pd.notna(x) else "N/A")
@@ -1360,7 +1361,7 @@ def show_overview():
 
     _inject_overview_css()
 
-    # Revenue Overview header card with the CSV export button inside it.
+    # Business Overview header card with the CSV export button inside it.
     # The placeholder is filled after all filters have been applied.
     with st.container(border=True):
         header_left, header_right = st.columns([7, 1], gap="small", vertical_alignment="center")
@@ -1656,13 +1657,13 @@ def show_overview():
     k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     with k1:
-        create_card("Revenue", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth)
+        create_card("Business", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth)
 
     with k2:
-        create_card("FTL Revenue", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth)
+        create_card("FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth)
 
     with k3:
-        create_card("LTL Revenue", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth)
+        create_card("LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth)
 
     with k4:
         create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth)
@@ -1729,7 +1730,7 @@ def show_overview():
 
                     with target_input_cols[0]:
                         revenue_target_cr = st.number_input(
-                            f"Revenue Target ({revenue_unit})",
+                            f"Business Target ({revenue_unit})",
                             min_value=0.0,
                             value=st.session_state.get(f"target_revenue_{fy}", 0.0),
                             step=0.10,
@@ -1771,7 +1772,7 @@ def show_overview():
                 st.markdown(
                     "<div style='font-size:10px;color:#64748b;margin:2px 0 7px 0;'>"
                     "Excel columns required: <b>zone, circle, branch, month, ltl, ftl, total</b>. "
-                    "Revenue values must be entered in the selected conversion unit. Use <b>All</b> where a target applies to the complete hierarchy."
+                    "Business values must be entered in the selected conversion unit. Use <b>All</b> where a target applies to the complete hierarchy."
                     "</div>",
                     unsafe_allow_html=True,
                 )
@@ -1887,17 +1888,17 @@ def show_overview():
             target_cols = st.columns(5 if target_source == "Manual Entry" else 3)
             with target_cols[0]:
                 create_target_card(
-                    "Revenue", revenue / 10000000, revenue_target_cr,
+                    "Business", revenue / 10000000, revenue_target_cr,
                     unit=f" {revenue_unit}", decimals=2, icon="💰",
                 )
             with target_cols[1]:
                 create_target_card(
-                    "FTL Revenue", ftl / 10000000, ftl_target_cr,
+                    "FTL Business", ftl / 10000000, ftl_target_cr,
                     unit=f" {revenue_unit}", decimals=2, icon="🚛",
                 )
             with target_cols[2]:
                 create_target_card(
-                    "LTL Revenue", ltl / 10000000, ltl_target_cr,
+                    "LTL Business", ltl / 10000000, ltl_target_cr,
                     unit=f" {revenue_unit}", decimals=2, icon="🚚",
                 )
             if target_source == "Manual Entry":
@@ -1922,7 +1923,7 @@ def show_overview():
         .reset_index()
     )
 
-    monthly["Revenue Cr"] = (monthly["REVENUE"] / revenue_divisor).round(2)
+    monthly["Business Cr"] = (monthly["REVENUE"] / revenue_divisor).round(2)
 
     monthly["Month"] = pd.Categorical(
         monthly["Month"],
@@ -1935,7 +1936,7 @@ def show_overview():
     ftl_pct = (ftl / revenue * 100) if revenue else 0
     ltl_pct = (ltl / revenue * 100) if revenue else 0
 
-    # Revenue trend and load type charts
+    # Business trend and load type charts
     row1, row2 = st.columns([1.35, 0.65])
 
     with row1:
@@ -1945,7 +1946,7 @@ def show_overview():
             with title_col:
                 _trend_badge_color = "#166534" if revenue_growth >= 0 else "#dc2626"
                 st.markdown(
-                    f"###### Revenue Trend "
+                    f"###### Business Trend "
                     f"<span style='font-size:11px;font-weight:700;color:{_trend_badge_color};'>"
                     f"({growth_label(revenue_growth)} vs LY)</span>",
                     unsafe_allow_html=True
@@ -1953,7 +1954,7 @@ def show_overview():
 
             with filter_col:
                 trend_type = st.segmented_control(
-                    "Revenue trend period",
+                    "Business trend period",
                     ["Daily", "Weekly", "Monthly", "Quarterly"],
                     default="Monthly",
                     label_visibility="collapsed",
@@ -1970,47 +1971,47 @@ def show_overview():
             # build_yoy_trend retains its original Crore calculation. Convert only
             # the returned display columns when Lac is selected.
             if conversion_type == "Lac":
-                for revenue_col in ["Revenue Cr", "Prev Revenue Cr"]:
+                for revenue_col in ["Business Cr", "Prev Business Cr"]:
                     if revenue_col in yoy_df.columns:
                         yoy_df[revenue_col] = yoy_df[revenue_col] * 100
 
-            # Revenue trend in the same visual format as Weight Trend
+            # Business trend in the same visual format as Weight Trend
             fig_yoy = go.Figure()
 
             fig_yoy.add_trace(
                 go.Bar(
                     x=yoy_df["Period"],
-                    y=yoy_df["Prev Revenue Cr"],
+                    y=yoy_df["Prev Business Cr"],
                     name=f"LY ({prev_fy})",
                     marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.3)),
-                    text=yoy_df["Prev Revenue Cr"],
+                    text=yoy_df["Prev Business Cr"],
                     texttemplate="%{text:.2f}",
                     textposition="outside",
                     textfont=dict(size=12, color="#475569", family="Arial Black"),
                     cliponaxis=False,
-                    hovertemplate=f"<b>%{{x}}</b><br>LY Revenue: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
+                    hovertemplate=f"<b>%{{x}}</b><br>LY Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
                 )
             )
 
             fig_yoy.add_trace(
                 go.Bar(
                     x=yoy_df["Period"],
-                    y=yoy_df["Revenue Cr"],
+                    y=yoy_df["Business Cr"],
                     name=f"Current ({fy})",
                     marker=dict(color="#2563eb", line=dict(color="#1e3a8a", width=1.3)),
-                    text=yoy_df["Revenue Cr"],
+                    text=yoy_df["Business Cr"],
                     texttemplate="%{text:.2f}",
                     textposition="outside",
                     textfont=dict(size=12, color="#1d4ed8", family="Arial Black"),
                     cliponaxis=False,
-                    hovertemplate=f"<b>%{{x}}</b><br>Current Revenue: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
+                    hovertemplate=f"<b>%{{x}}</b><br>Current Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
                 )
             )
 
             yoy_max = pd.concat(
                 [
-                    pd.to_numeric(yoy_df["Revenue Cr"], errors="coerce"),
-                    pd.to_numeric(yoy_df["Prev Revenue Cr"], errors="coerce"),
+                    pd.to_numeric(yoy_df["Business Cr"], errors="coerce"),
+                    pd.to_numeric(yoy_df["Prev Business Cr"], errors="coerce"),
                 ],
                 ignore_index=True,
             ).max()
@@ -2023,8 +2024,8 @@ def show_overview():
                         growth_value = r["Growth %"] if pd.notna(r["Growth %"]) else 0
                         label_color = "#166534" if growth_value >= 0 else "#dc2626"
                         bar_top = max(
-                            r["Revenue Cr"] if pd.notna(r["Revenue Cr"]) else 0,
-                            r["Prev Revenue Cr"] if pd.notna(r["Prev Revenue Cr"]) else 0,
+                            r["Business Cr"] if pd.notna(r["Business Cr"]) else 0,
+                            r["Prev Business Cr"] if pd.notna(r["Prev Business Cr"]) else 0,
                         )
                         growth_gap = 0.24 if trend_type == "Monthly" else 0.16
                         fig_yoy.add_annotation(
@@ -2050,7 +2051,7 @@ def show_overview():
                 ),
                 font=dict(size=11),
                 xaxis_title="",
-                yaxis_title=f"Revenue ({revenue_unit})",
+                yaxis_title=f"Business ({revenue_unit})",
                 yaxis_range=[0, yoy_max * (1.48 if trend_type == "Monthly" else 1.35)],
                 bargap=0.22,
                 bargroupgap=0.08,
@@ -2063,7 +2064,7 @@ def show_overview():
 
     with row2:
         with st.container(border=True):
-            st.markdown("###### Revenue by Load Type")
+            st.markdown("###### Business by Load Type")
 
             # Donut chart for FTL/LTL revenue share
             fig_load = go.Figure(
@@ -2081,7 +2082,7 @@ def show_overview():
                             line=dict(color="#ffffff", width=3),
                         ),
                         textfont=dict(size=10, color="white"),
-                        hovertemplate="<b>%{label}</b><br>Revenue: ₹%{value:,.0f}<br>Share: %{percent}<extra></extra>",
+                        hovertemplate="<b>%{label}</b><br>Business: ₹%{value:,.0f}<br>Share: %{percent}<extra></extra>",
                     )
                 ]
             )
@@ -2115,8 +2116,8 @@ def show_overview():
                 unsafe_allow_html=True,
             )
 
-        # Revenue by Company is intentionally placed below Load Type
-        # inside the same right-side column as the Revenue Trend chart.
+        # Business by Company is intentionally placed below Load Type
+        # inside the same right-side column as the Business Trend chart.
         company_df = (
             df.groupby("compname", dropna=False)["REVENUE"]
             .sum()
@@ -2124,23 +2125,23 @@ def show_overview():
             .rename(columns={"compname": "Company"})
         )
         company_df["Company"] = company_df["Company"].fillna("Unknown").astype(str)
-        company_df["Revenue Cr"] = company_df["REVENUE"] / revenue_divisor
-        company_total = company_df["Revenue Cr"].sum()
+        company_df["Business Cr"] = company_df["REVENUE"] / revenue_divisor
+        company_total = company_df["Business Cr"].sum()
         company_df["Contribution %"] = (
-            company_df["Revenue Cr"] / company_total * 100 if company_total else 0
+            company_df["Business Cr"] / company_total * 100 if company_total else 0
         )
-        company_df = company_df.sort_values("Revenue Cr", ascending=False).reset_index(drop=True)
+        company_df = company_df.sort_values("Business Cr", ascending=False).reset_index(drop=True)
 
         # Keep the compact donut readable: show the five largest companies and
         # combine the remaining companies under Others.
         if len(company_df) > 6:
             top_company_df = company_df.head(5).copy()
-            others_revenue = company_df.iloc[5:]["Revenue Cr"].sum()
+            others_revenue = company_df.iloc[5:]["Business Cr"].sum()
             others_row = pd.DataFrame(
                 {
                     "Company": ["Others"],
                     "REVENUE": [others_revenue * revenue_divisor],
-                    "Revenue Cr": [others_revenue],
+                    "Business Cr": [others_revenue],
                     "Contribution %": [
                         (others_revenue / company_total * 100) if company_total else 0
                     ],
@@ -2151,7 +2152,7 @@ def show_overview():
             company_chart_df = company_df.copy()
 
         with st.container(border=True):
-            st.markdown("###### Revenue by Company")
+            st.markdown("###### Business by Company")
 
             if company_chart_df.empty or company_total <= 0:
                 st.info("No company revenue is available for the selected filters.")
@@ -2164,7 +2165,7 @@ def show_overview():
                 # Define chart inputs explicitly to prevent NameError after deployment.
                 company_labels = company_chart_df["Company"].astype(str).tolist()
                 company_values = pd.to_numeric(
-                    company_chart_df["Revenue Cr"], errors="coerce"
+                    company_chart_df["Business Cr"], errors="coerce"
                 ).fillna(0).tolist()
 
                 fig_company = go.Figure(
@@ -2182,7 +2183,7 @@ def show_overview():
                             textfont=dict(size=9, color="white", family="Arial Black"),
                             hovertemplate=(
                                 "<b>%{label}</b><br>"
-                                "Revenue: ₹%{value:.2f} {revenue_unit}<br>"
+                                "Business: ₹%{value:.2f} {revenue_unit}<br>"
                                 "Contribution: %{customdata[0]:.1f}%"
                                 "<extra></extra>"
                             ),
@@ -2250,7 +2251,7 @@ def show_overview():
         .reset_index()
     )
 
-    zone_df["Revenue Cr"] = (zone_df["REVENUE"] / revenue_divisor).round(2)
+    zone_df["Business Cr"] = (zone_df["REVENUE"] / revenue_divisor).round(2)
     zone_df["zone_short"] = zone_df["zone"].replace({
         "NORTH ZONE": "North",
         "WEST ZONE": "West",
@@ -2260,7 +2261,7 @@ def show_overview():
         "NEPAL ZONE": "Nepal"
     })
 
-    zone_df = zone_df.sort_values("Revenue Cr", ascending=False)
+    zone_df = zone_df.sort_values("Business Cr", ascending=False)
 
     # Zone colors
     zone_colors = {
@@ -2285,21 +2286,21 @@ def show_overview():
             .reset_index()
         )
 
-        zone_country_rev["Revenue Cr"] = (
+        zone_country_rev["Business Cr"] = (
             zone_country_rev["REVENUE"] / revenue_divisor
         ).round(2)
 
         matrix_df = zone_country_rev.pivot(
             index="zone",
             columns="COUNTRY",
-            values="Revenue Cr"
+            values="Business Cr"
         ).fillna(0)
 
         matrix_df["Total"] = matrix_df.sum(axis=1)
         matrix_df = matrix_df.sort_values("Total", ascending=False)
 
     # =====================================================
-    # Weight Trend and Revenue by Zone in one aligned row
+    # Weight Trend and Business by Zone in one aligned row
     # =====================================================
     weight_zone_left, weight_zone_right = st.columns([1.55, 1], gap="small")
     aligned_chart_height = ALIGNED_CHART_HEIGHT
@@ -2429,25 +2430,25 @@ def show_overview():
 
     with weight_zone_right:
         with st.container(border=True):
-            st.markdown("###### Revenue by Zone")
+            st.markdown("###### Business by Zone")
 
             # Preserve the existing zone aggregation and filters; only the
             # presentation is changed to match the executive-dashboard design.
-            total_zone_revenue = zone_df["Revenue Cr"].sum()
+            total_zone_revenue = zone_df["Business Cr"].sum()
             zone_donut_df = zone_df.copy()
             zone_donut_df["Percentage"] = (
-                zone_donut_df["Revenue Cr"] / total_zone_revenue * 100
+                zone_donut_df["Business Cr"] / total_zone_revenue * 100
                 if total_zone_revenue > 0 else 0
             ).round(1)
             zone_donut_df = zone_donut_df.sort_values(
-                "Revenue Cr", ascending=False
+                "Business Cr", ascending=False
             ).reset_index(drop=True)
 
             if zone_donut_df.empty or total_zone_revenue <= 0:
                 st.info("No zone revenue is available for the selected filters.")
             else:
                 zone_labels = zone_donut_df["zone_short"].astype(str).tolist()
-                zone_values = zone_donut_df["Revenue Cr"].tolist()
+                zone_values = zone_donut_df["Business Cr"].tolist()
                 zone_percentages = zone_donut_df["Percentage"].tolist()
                 zone_color_list = [
                     zone_colors.get(zone_name, "#2563eb")
@@ -2478,7 +2479,7 @@ def show_overview():
                             customdata=zone_percentages,
                             textinfo="none",
                             hovertemplate=(
-                                "<b>%{label}</b><br>Revenue: ₹%{value:.2f} {revenue_unit}"
+                                "<b>%{label}</b><br>Business: ₹%{value:.2f} {revenue_unit}"
                                 "<br>Contribution: %{customdata:.1f}%<extra></extra>"
                             ),
                         )
@@ -2517,7 +2518,7 @@ def show_overview():
                             f"<span style='font-size:14px;color:#0f172a'><b>"
                             f"{escape(str(row['zone_short']))}</b></span>"
                             f"<br><span style='font-size:12px;color:#334155'>"
-                            f"₹{row['Revenue Cr']:.2f} {revenue_unit} &nbsp; "
+                            f"₹{row['Business Cr']:.2f} {revenue_unit} &nbsp; "
                             f"<span style='color:{color};font-weight:700'>"
                             f"({row['Percentage']:.1f}%)</span></span>"
                         ),
@@ -2571,7 +2572,7 @@ def show_overview():
 
         with zone_table_col:
             with st.container(border=True):
-                st.markdown("###### Zone vs Country Revenue (%)")
+                st.markdown("###### Zone vs Country Business (%)")
 
                 matrix_display = matrix_df.reset_index().reset_index(drop=True)
 
@@ -2611,7 +2612,7 @@ def show_overview():
                 )
 
                 # Render as HTML so the percentage part can have its own colour.
-                # Revenue remains dark while contribution % is highlighted in blue.
+                # Business remains dark while contribution % is highlighted in blue.
                 table_headers = "".join(
                     f"<th>{str(col)}</th>" for col in matrix_display.columns
                 )
@@ -2700,27 +2701,27 @@ def show_overview():
         # Prepare Month-on-Month analysis for the right-hand column.
         monthly_chart = monthly.copy()
         monthly_chart["Growth %"] = (
-            monthly_chart["Revenue Cr"].pct_change().mul(100).round(2)
+            monthly_chart["Business Cr"].pct_change().mul(100).round(2)
         )
         monthly_chart = monthly_chart.dropna(subset=["Month"]).copy()
         monthly_chart["Month"] = monthly_chart["Month"].astype(str)
 
         with mom_chart_col:
             with st.container(border=True):
-                st.markdown("###### Month on Month Revenue & Growth")
+                st.markdown("###### Month on Month Business & Growth")
     
                 fig_mom = go.Figure()
                 fig_mom.add_trace(
                     go.Bar(
                         x=monthly_chart["Month"],
-                        y=monthly_chart["Revenue Cr"],
-                        name="Revenue",
+                        y=monthly_chart["Business Cr"],
+                        name="Business",
                         marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
-                        text=monthly_chart["Revenue Cr"],
+                        text=monthly_chart["Business Cr"],
                         texttemplate=f"₹%{{text:.2f}} {revenue_unit}",
                         textposition="outside",
                         cliponaxis=False,
-                        hovertemplate=f"<b>%{{x}}</b><br>Revenue: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
+                        hovertemplate=f"<b>%{{x}}</b><br>Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
                     )
                 )
     
@@ -2747,7 +2748,7 @@ def show_overview():
                     )
                 )
     
-                revenue_max = pd.to_numeric(monthly_chart["Revenue Cr"], errors="coerce").max()
+                revenue_max = pd.to_numeric(monthly_chart["Business Cr"], errors="coerce").max()
                 revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
                 growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
                 growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
@@ -2760,7 +2761,7 @@ def show_overview():
                     legend=dict(orientation="h", y=1.10, x=0),
                     bargap=0.35,
                     yaxis=dict(
-                        title=f"Revenue ({revenue_unit})",
+                        title=f"Business ({revenue_unit})",
                         range=[0, revenue_max * 1.30],
                         showgrid=False,
                         zeroline=False,
@@ -2794,26 +2795,26 @@ def show_overview():
     current_zone_insights = (
         df.groupby("zone", dropna=False)["REVENUE"]
         .sum()
-        .reset_index(name="Current Revenue")
+        .reset_index(name="Current Business")
     )
     if prev_df is not None and not prev_df.empty:
         previous_zone_insights = (
             prev_df.groupby("zone", dropna=False)["REVENUE"]
             .sum()
-            .reset_index(name="Previous Revenue")
+            .reset_index(name="Previous Business")
         )
         zone_insights = current_zone_insights.merge(
             previous_zone_insights, on="zone", how="outer"
         ).fillna(0)
     else:
         zone_insights = current_zone_insights.copy()
-        zone_insights["Previous Revenue"] = 0
+        zone_insights["Previous Business"] = 0
 
     zone_insights["Variance"] = (
-        zone_insights["Current Revenue"] - zone_insights["Previous Revenue"]
+        zone_insights["Current Business"] - zone_insights["Previous Business"]
     )
     zone_insights["Growth %"] = zone_insights.apply(
-        lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"]),
+        lambda row: pct_growth(row["Current Business"], row["Previous Business"]),
         axis=1,
     )
 
@@ -2894,19 +2895,19 @@ def show_overview():
     current_branch_insights = (
         df.groupby("branch", dropna=False)["REVENUE"]
         .sum()
-        .reset_index(name="Current Revenue")
+        .reset_index(name="Current Business")
     )
     if prev_df is not None and not prev_df.empty:
         previous_branch_insights = (
             prev_df.groupby("branch", dropna=False)["REVENUE"]
             .sum()
-            .reset_index(name="Previous Revenue")
+            .reset_index(name="Previous Business")
         )
         branch_yoy_insights = current_branch_insights.merge(
             previous_branch_insights, on="branch", how="outer"
         ).fillna(0)
         branch_yoy_insights["Growth %"] = branch_yoy_insights.apply(
-            lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"]),
+            lambda row: pct_growth(row["Current Business"], row["Previous Business"]),
             axis=1,
         )
         branch_decline_count = int(
@@ -2917,7 +2918,7 @@ def show_overview():
 
     key_insight_messages = [
         (
-            f"Revenue is {revenue_direction} by {abs(overall_insight_growth):.1f}% vs LY, "
+            f"Business is {revenue_direction} by {abs(overall_insight_growth):.1f}% vs LY, "
             f"driven by strong performance in {driver_text}."
         ),
         load_growth_text,
@@ -2975,7 +2976,7 @@ def show_overview():
             .query("_party != ''")
             .groupby("_party", dropna=False)["REVENUE"]
             .sum()
-            .reset_index(name="Current Revenue")
+            .reset_index(name="Current Business")
         )
 
         # Same-period last-year revenue for the same customer field.
@@ -2987,29 +2988,29 @@ def show_overview():
                 .query("_party != ''")
                 .groupby("_party", dropna=False)["REVENUE"]
                 .sum()
-                .reset_index(name="Previous Revenue")
+                .reset_index(name="Previous Business")
             )
         else:
-            previous_party = pd.DataFrame(columns=["_party", "Previous Revenue"])
+            previous_party = pd.DataFrame(columns=["_party", "Previous Business"])
 
         customer_insights = current_party.merge(
             previous_party, on="_party", how="left"
-        ).fillna({"Previous Revenue": 0})
-        customer_insights["Revenue Cr"] = (
-            customer_insights["Current Revenue"] / revenue_divisor
+        ).fillna({"Previous Business": 0})
+        customer_insights["Business Cr"] = (
+            customer_insights["Current Business"] / revenue_divisor
         ).round(2)
-        customer_total_revenue = customer_insights["Current Revenue"].sum()
+        customer_total_revenue = customer_insights["Current Business"].sum()
         customer_insights["Share %"] = (
-            customer_insights["Current Revenue"] / customer_total_revenue * 100
+            customer_insights["Current Business"] / customer_total_revenue * 100
             if customer_total_revenue > 0 else 0
         )
         customer_insights["Growth %"] = customer_insights.apply(
-            lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"])
-            if row["Previous Revenue"] > 0 else None,
+            lambda row: pct_growth(row["Current Business"], row["Previous Business"])
+            if row["Previous Business"] > 0 else None,
             axis=1,
         )
         customer_insights = (
-            customer_insights.sort_values("Current Revenue", ascending=False)
+            customer_insights.sort_values("Current Business", ascending=False)
             .head(10)
             .reset_index(drop=True)
         )
@@ -3017,7 +3018,7 @@ def show_overview():
         with party_layout_col:
             with st.container(border=True):
                 st.markdown(
-                    "<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Customers by Revenue</div>"
+                    "<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Customers by Business</div>"
                     f"<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
                     f"Customer basis: {party_label} | Current FY revenue, share and YoY movement."
                     "</div>",
@@ -3028,12 +3029,12 @@ def show_overview():
                     st.info("No customer revenue is available for the selected filters.")
                 else:
                     max_customer_revenue = max(
-                        customer_insights["Revenue Cr"].max(), 1
+                        customer_insights["Business Cr"].max(), 1
                     )
                     customer_rows = []
 
                     for idx, row in customer_insights.iterrows():
-                        revenue_cr = float(row["Revenue Cr"] or 0)
+                        revenue_cr = float(row["Business Cr"] or 0)
                         share_pct = float(row["Share %"] or 0)
                         bar_width = min((revenue_cr / max_customer_revenue) * 100, 100)
                         growth = row["Growth %"]
@@ -3079,7 +3080,7 @@ def show_overview():
                         }}
                         .customer-insight-table th {{
                             padding:7px 6px; background:#f8fafc;
-                            color:#64748b; font-size:9px; font-weight:800;
+                            color:#64748b; font-size:9px; font-weight:400;
                             text-align:left; border-bottom:1px solid #e2e8f0;
                             white-space:nowrap;
                         }}
@@ -3092,15 +3093,15 @@ def show_overview():
                         /* Narrow rank column removes the unnecessary gap before Customer Name. */
                         .cust-rank {{
                             width:4%; padding-left:2px !important; padding-right:2px !important;
-                            text-align:center; font-weight:800; color:#64748b;
+                            text-align:center; font-weight:400; color:#64748b;
                         }}
                         .cust-name {{
                             width:38%; padding-left:3px !important;
-                            font-weight:750; color:#1e293b;
+                            font-weight:400; color:#1e293b;
                             white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
                         }}
                         .cust-revenue {{width:32%;}}
-                        .cust-value {{font-weight:850; color:#0f172a; margin-bottom:3px;}}
+                        .cust-value {{font-weight:400; color:#0f172a; margin-bottom:3px;}}
                         .cust-bar-track {{
                             width:100%; height:4px; border-radius:999px;
                             background:#e8eef8; overflow:hidden;
@@ -3109,11 +3110,11 @@ def show_overview():
                             height:4px; border-radius:999px;
                             background:linear-gradient(90deg,#60a5fa,#2563eb);
                         }}
-                        .cust-share {{width:12%; text-align:right; font-weight:800; color:#475569;}}
+                        .cust-share {{width:12%; text-align:right; font-weight:400; color:#475569;}}
                         .cust-yoy {{width:14%; text-align:right;}}
                         .cust-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:9px; font-weight:900;
+                            font-size:9px; font-weight:400;
                         }}
                         .cust-growth.up {{color:#16a34a;}}
                         .cust-growth.down {{color:#dc2626;}}
@@ -3133,7 +3134,7 @@ def show_overview():
                                 <tr>
                                     <th style="text-align:center;">#</th>
                                     <th>Customer Name</th>
-                                    <th>Revenue ({revenue_unit})</th>
+                                    <th>Business ({revenue_unit})</th>
                                     <th style="text-align:right;">% Share</th>
                                     <th style="text-align:right;">vs LY</th>
                                 </tr>
@@ -3200,7 +3201,7 @@ def show_overview():
             current_route_data[current_route_data["_route"] != "Unknown"]
             .groupby("_route", dropna=False)["REVENUE"]
             .sum()
-            .reset_index(name="Current Revenue")
+            .reset_index(name="Current Business")
         )
 
         if prev_route_col:
@@ -3212,32 +3213,32 @@ def show_overview():
                 previous_route_data[previous_route_data["_route"] != "Unknown"]
                 .groupby("_route", dropna=False)["REVENUE"]
                 .sum()
-                .reset_index(name="Previous Revenue")
+                .reset_index(name="Previous Business")
             )
         else:
-            previous_routes = pd.DataFrame(columns=["_route", "Previous Revenue"])
+            previous_routes = pd.DataFrame(columns=["_route", "Previous Business"])
 
         route_yoy = current_routes.merge(
             previous_routes,
             on="_route",
             how="left",
-        ).fillna({"Previous Revenue": 0})
+        ).fillna({"Previous Business": 0})
 
-        route_yoy["Revenue Cr"] = (route_yoy["Current Revenue"] / revenue_divisor).round(2)
-        route_total_revenue = route_yoy["Current Revenue"].sum()
+        route_yoy["Business Cr"] = (route_yoy["Current Business"] / revenue_divisor).round(2)
+        route_total_revenue = route_yoy["Current Business"].sum()
         route_yoy["Share %"] = (
-            route_yoy["Current Revenue"] / route_total_revenue * 100
+            route_yoy["Current Business"] / route_total_revenue * 100
             if route_total_revenue > 0 else 0
         )
         route_yoy["Growth %"] = route_yoy.apply(
-            lambda row: pct_growth(row["Current Revenue"], row["Previous Revenue"])
-            if row["Previous Revenue"] > 0 else None,
+            lambda row: pct_growth(row["Current Business"], row["Previous Business"])
+            if row["Previous Business"] > 0 else None,
             axis=1,
         )
 
         # Preserve the existing Top-7 ranking business rule.
         route_yoy = (
-            route_yoy.sort_values("Current Revenue", ascending=False)
+            route_yoy.sort_values("Current Business", ascending=False)
             .head(10)
             .reset_index(drop=True)
         )
@@ -3245,7 +3246,7 @@ def show_overview():
         with route_layout_col:
             with st.container(border=True):
                 st.markdown(
-                    f"<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Routes by Revenue</div>"
+                    f"<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Routes by Business</div>"
                     "<div style='font-size:10px;color:#64748b;margin-top:-4px;'>"
                     + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
                     + " | Current FY revenue, share and YoY movement.</div>",
@@ -3255,11 +3256,11 @@ def show_overview():
                 if route_yoy.empty:
                     st.info("No route data is available for the selected filters.")
                 else:
-                    max_route_revenue = max(route_yoy["Revenue Cr"].max(), 1)
+                    max_route_revenue = max(route_yoy["Business Cr"].max(), 1)
                     route_rows = []
 
                     for idx, row in route_yoy.iterrows():
-                        revenue_cr = float(row["Revenue Cr"] or 0)
+                        revenue_cr = float(row["Business Cr"] or 0)
                         share_pct = float(row["Share %"] or 0)
                         bar_width = min((revenue_cr / max_route_revenue) * 100, 100)
                         growth = row["Growth %"]
@@ -3303,7 +3304,7 @@ def show_overview():
                         }}
                         .route-insight-table th {{
                             padding:7px 6px; background:#f8fafc;
-                            color:#64748b; font-size:9px; font-weight:800;
+                            color:#64748b; font-size:9px; font-weight:400;
                             text-align:left; border-bottom:1px solid #e2e8f0;
                             white-space:nowrap;
                         }}
@@ -3316,15 +3317,15 @@ def show_overview():
                         /* Narrow rank column removes the unnecessary gap before Route. */
                         .route-rank {{
                             width:4%; padding-left:2px !important; padding-right:2px !important;
-                            text-align:center; font-weight:800; color:#64748b;
+                            text-align:center; font-weight:400; color:#64748b;
                         }}
                         .route-name {{
                             width:38%; padding-left:3px !important;
-                            font-weight:750; color:#1e293b;
+                            font-weight:400; color:#1e293b;
                             white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
                         }}
                         .route-revenue {{width:32%;}}
-                        .route-value {{font-weight:850; color:#0f172a; margin-bottom:3px;}}
+                        .route-value {{font-weight:400; color:#0f172a; margin-bottom:3px;}}
                         .route-bar-track {{
                             width:100%; height:4px; border-radius:999px;
                             background:#e8eef8; overflow:hidden;
@@ -3333,11 +3334,11 @@ def show_overview():
                             height:4px; border-radius:999px;
                             background:linear-gradient(90deg,#2dd4bf,#0f766e);
                         }}
-                        .route-share {{width:12%; text-align:right; font-weight:800; color:#475569;}}
+                        .route-share {{width:12%; text-align:right; font-weight:400; color:#475569;}}
                         .route-yoy {{width:14%; text-align:right;}}
                         .route-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:9px; font-weight:900;
+                            font-size:9px; font-weight:400;
                         }}
                         .route-growth.up {{color:#16a34a;}}
                         .route-growth.down {{color:#dc2626;}}
@@ -3357,7 +3358,7 @@ def show_overview():
                                 <tr>
                                     <th style="text-align:center;">#</th>
                                     <th>Route</th>
-                                    <th>Revenue ({revenue_unit})</th>
+                                    <th>Business ({revenue_unit})</th>
                                     <th style="text-align:right;">% Share</th>
                                     <th style="text-align:right;">vs LY</th>
                                 </tr>
@@ -3386,7 +3387,7 @@ def show_overview():
     branch_summary = (
         df.groupby("branch")
         .agg(
-            Revenue=("REVENUE", "sum"),
+            Business=("REVENUE", "sum"),
             GR_Count=("grno", "count"),
             Weight=("aweight", "sum"),
             FTL=("REVENUE", lambda x: x[df.loc[x.index, "LOADTYPE"] == "FTL"].sum()),
@@ -3395,42 +3396,42 @@ def show_overview():
         .reset_index()
     )
 
-    top10_df = branch_summary.sort_values("Revenue", ascending=False).head(10).copy()
-    top10_df["Revenue Cr"] = (top10_df["Revenue"] / revenue_divisor).round(2)
+    top10_df = branch_summary.sort_values("Business", ascending=False).head(10).copy()
+    top10_df["Business Cr"] = (top10_df["Business"] / revenue_divisor).round(2)
 
-    bottom10_df = branch_summary[branch_summary["Revenue"] >= 1000000].copy()
-    bottom10_df = bottom10_df.sort_values("Revenue", ascending=True).head(10)
-    bottom10_df["Revenue Cr"] = (bottom10_df["Revenue"] / revenue_divisor).round(2)
+    bottom10_df = branch_summary[branch_summary["Business"] >= 1000000].copy()
+    bottom10_df = bottom10_df.sort_values("Business", ascending=True).head(10)
+    bottom10_df["Business Cr"] = (bottom10_df["Business"] / revenue_divisor).round(2)
 
     # Keep Top Branches, Bottom Branches and Operational Highlights in one fitted row.
     b1, b2, b3 = st.columns([1, 1, 1.08], gap="small")
 
     with b1:
         with st.container(border=True):
-            st.markdown("<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Branches by Revenue</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Top 10 Branches by Business</div>", unsafe_allow_html=True)
 
-            max_top = top10_df["Revenue Cr"].max() if not top10_df.empty else 1
+            max_top = top10_df["Business Cr"].max() if not top10_df.empty else 1
 
             for i, row in top10_df.reset_index(drop=True).iterrows():
                 mini_rank_card(
                     i + 1,
                     row["branch"],
-                    row["Revenue Cr"],
+                    row["Business Cr"],
                     max_top,
                     "#22c55e"
                 )
 
     with b2:
         with st.container(border=True):
-            st.markdown("<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Bottom 10 Branches by Revenue</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Bottom 10 Branches by Business</div>", unsafe_allow_html=True)
 
-            max_bottom = bottom10_df["Revenue Cr"].max() if not bottom10_df.empty else 1
+            max_bottom = bottom10_df["Business Cr"].max() if not bottom10_df.empty else 1
 
             for i, row in bottom10_df.reset_index(drop=True).iterrows():
                 mini_rank_card(
                     i + 1,
                     row["branch"],
-                    row["Revenue Cr"],
+                    row["Business Cr"],
                     max_bottom,
                     "#ef4444"
                 )
@@ -3450,7 +3451,7 @@ def show_overview():
             unsafe_allow_html=True,
         )
         insight_icons = ["📈", "🚛", "🎯", "🌐", "⚠️"]
-        insight_titles = ["Revenue movement", "Load mix", "Revenue concentration", "Zone watch", "Branch watch"]
+        insight_titles = ["Business movement", "Load mix", "Business concentration", "Zone watch", "Branch watch"]
         insight_gradients = [
             ("#eaf3ff", "#dbeafe", "#2563eb"),
             ("#ecfeff", "#ccfbf1", "#0f766e"),
@@ -3654,19 +3655,19 @@ def show_overview():
                     "Active Days": active_days,
                     "GR Count": gr_count,
                     "Weight MT": round(weight_mt, 1),
-                    f"Revenue ({revenue_unit})": round(revenue_value / revenue_divisor, 2),
-                    f"Avg Monthly Revenue ({revenue_unit})": round(avg_monthly / revenue_divisor, 2),
-                    "Revenue / Day": round(revenue_per_day, 0),
+                    f"Business ({revenue_unit})": round(revenue_value / revenue_divisor, 2),
+                    f"Avg Monthly Business ({revenue_unit})": round(avg_monthly / revenue_divisor, 2),
+                    "Business / Day": round(revenue_per_day, 0),
                     "Performance": performance,
                 })
 
         opened_revenue_df = pd.DataFrame(revenue_rows)
         total_new_revenue = opened_revenue_df.get(
-            f"Revenue ({revenue_unit})", pd.Series(dtype=float)
+            f"Business ({revenue_unit})", pd.Series(dtype=float)
         ).sum()
         total_new_gr = opened_revenue_df.get("GR Count", pd.Series(dtype=float)).sum()
         avg_new_monthly = opened_revenue_df.get(
-            f"Avg Monthly Revenue ({revenue_unit})", pd.Series(dtype=float)
+            f"Avg Monthly Business ({revenue_unit})", pd.Series(dtype=float)
         ).sum()
         productive_count = int(
             opened_revenue_df.get("Performance", pd.Series(dtype=str))
@@ -3679,7 +3680,7 @@ def show_overview():
                 f"<div style='font-size:16px;font-weight:950;color:#0f2744;'>"
                 f"🏢 Branch/Agency Network Changes ({period_label})</div>"
                 "<div style='font-size:10px;color:#64748b;margin:2px 0 9px;'>"
-                "Revenue is calculated from each location's Active Date up to the selected period end."
+                "Business is calculated from each location's Active Date up to the selected period end."
                 "</div>",
                 unsafe_allow_html=True,
             )
@@ -3687,7 +3688,7 @@ def show_overview():
             n1.metric("Opened", f"{opened_branches:,}")
             n2.metric("Closed", f"{closed_branches:,}")
             n3.metric("Net Increase", f"{net_increase:+,}")
-            n4.metric(f"New Revenue ({revenue_unit})", f"{total_new_revenue:,.2f}")
+            n4.metric(f"New Business ({revenue_unit})", f"{total_new_revenue:,.2f}")
             n5.metric("New-Branch GR", f"{int(total_new_gr):,}")
             n6.metric("Productive Locations", f"{productive_count}/{opened_branches}")
 
@@ -3696,15 +3697,15 @@ def show_overview():
             else:
                 st.dataframe(
                     opened_revenue_df.sort_values(
-                        f"Revenue ({revenue_unit})", ascending=False
+                        f"Business ({revenue_unit})", ascending=False
                     ),
                     width="stretch",
                     hide_index=True,
                     column_config={
                         "Active Date": st.column_config.DateColumn(format="DD-MMM-YYYY"),
-                        f"Revenue ({revenue_unit})": st.column_config.NumberColumn(format="%.2f"),
-                        f"Avg Monthly Revenue ({revenue_unit})": st.column_config.NumberColumn(format="%.2f"),
-                        "Revenue / Day": st.column_config.NumberColumn(format="₹ %.0f"),
+                        f"Business ({revenue_unit})": st.column_config.NumberColumn(format="%.2f"),
+                        f"Avg Monthly Business ({revenue_unit})": st.column_config.NumberColumn(format="%.2f"),
+                        "Business / Day": st.column_config.NumberColumn(format="₹ %.0f"),
                         "Weight MT": st.column_config.NumberColumn(format="%.1f"),
                     },
                 )
