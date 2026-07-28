@@ -249,7 +249,8 @@ def _inject_overview_css():
             .kpi-3d-title {
                 color: var(--kpi-accent);
                 font-size: 10px;
-                font-weight: 900;
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-weight: 400;
                 letter-spacing: .15px;
                 text-shadow: 0 1px 0 rgba(255,255,255,.95);
             }
@@ -334,7 +335,8 @@ def _inject_overview_css():
                 margin: 0 0 5px 3px;
                 color: #243b53;
                 font-size: 10px;
-                font-weight: 900;
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-weight: 400;
                 letter-spacing: .12px;
                 white-space: nowrap;
             }
@@ -620,7 +622,8 @@ def _inject_overview_css():
                 line-height: 22px !important;
                 color: #243b53 !important;
                 font-size: 10px !important;
-                font-weight: 850 !important;
+                font-family: "Segoe UI", Arial, sans-serif !important;
+                font-weight: 400 !important;
                 white-space: nowrap !important;
                 overflow: hidden !important;
                 text-overflow: ellipsis !important;
