@@ -1198,14 +1198,14 @@ def mini_rank_card(rank, name, value, max_value, color):
     html = f"""
     <div style="margin-bottom:7px;padding:5px 6px;border:1px solid #e5ebf2;border-radius:9px;background:#fbfdff;">
         <div style="display:flex;align-items:center;gap:7px;">
-            <div style="width:22px;text-align:center;font-size:12px;font-weight:400;color:#486581;">{medal}</div>
-            <div style="font-size:10px;font-weight:400;color:#243b53;min-width:102px;max-width:102px;
+            <div style="width:22px;text-align:center;font-size:14px;font-weight:400;color:#486581;">{medal}</div>
+            <div style="font-size:12px;font-weight:400;color:#243b53;min-width:102px;max-width:102px;
                         white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{name}</div>
             <div style="flex:1;height:8px;background:#e8eef5;border-radius:999px;overflow:hidden;
                         box-shadow:inset 0 1px 2px rgba(15,23,42,.12);">
                 <div style="width:{pct}%;height:8px;background:{color};border-radius:999px;"></div>
             </div>
-            <div style="font-size:10px;font-weight:400;color:#102a43;min-width:53px;text-align:right;">₹{value:.2f}</div>
+            <div style="font-size:12px;font-weight:400;color:#102a43;min-width:53px;text-align:right;">₹{value:.2f}</div>
         </div>
     </div>
     """
@@ -1335,7 +1335,7 @@ def _render_operational_highlights(current_df, previous_df):
 
     with st.container(border=True):
         st.markdown(
-            "<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
+            "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
             "Operational Highlights</div>",
             unsafe_allow_html=True,
         )
@@ -1369,18 +1369,18 @@ def _render_operational_highlights(current_df, previous_df):
                 f'<div style="display:grid;grid-template-columns:30px minmax(88px,1fr) minmax(64px,.72fr) minmax(62px,.65fr);'
                 f'align-items:center;gap:6px;padding:7px 2px;border-bottom:1px solid #edf2f7;">'
                 f'<div style="width:27px;height:27px;border-radius:50%;display:flex;align-items:center;'
-                f'justify-content:center;background:{metric["icon_bg"]};font-size:13px;'
+                f'justify-content:center;background:{metric["icon_bg"]};font-size:15px;'
                 f'border:1px solid {metric["accent"]}33;">{metric["icon"]}</div>'
-                f'<div style="font-size:10px;font-weight:400;color:#243b53;line-height:1.15;">{metric["label"]}</div>'
+                f'<div style="font-size:12px;font-weight:400;color:#243b53;line-height:1.15;">{metric["label"]}</div>'
                 f'<div style="line-height:1.1;">'
-                f'<div style="font-size:12px;font-weight:400;color:#102a43;">{current_text}</div>'
-                f'<div style="font-size:8px;color:#64748b;">LY {previous_text}</div></div>'
-                f'<div style="font-size:9px;font-weight:400;color:{change_color};text-align:right;white-space:nowrap;">'
+                f'<div style="font-size:14px;font-weight:400;color:#102a43;">{current_text}</div>'
+                f'<div style="font-size:10px;color:#64748b;">LY {previous_text}</div></div>'
+                f'<div style="font-size:11px;font-weight:400;color:{change_color};text-align:right;white-space:nowrap;">'
                 f'{arrow} {change_text}</div></div>'
             )
 
         note = "" if previous_col is not None else (
-            "<div style='font-size:8px;color:#94a3b8;margin-top:5px;'>LY SLAStatus unavailable.</div>"
+            "<div style='font-size:10px;color:#94a3b8;margin-top:5px;'>LY SLAStatus unavailable.</div>"
         )
         st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
 
@@ -3472,7 +3472,7 @@ def show_overview():
     with b1:
         with st.container(border=True):
             st.markdown(
-                "<div style='font-size:14px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
+                "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
                 "Top 10 Branches by Business</div>",
                 unsafe_allow_html=True,
             )
