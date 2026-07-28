@@ -880,11 +880,17 @@ def build_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, pre
     trend_type: 'Daily' | 'Weekly' | 'Monthly' | 'Quarterly'
     Returns columns: Period, Revenue Cr, Prev Revenue Cr, Growth %, Growth Label
     """
-    cur = current_df.copy()
-    prev = previous_df.copy() if previous_df is not None and not previous_df.empty else pd.DataFrame()
+    required = [c for c in [date_col, "REVENUE", "FIN_MONTH"] if c in current_df.columns]
+    cur = current_df[required].copy()
+    prev = (
+        previous_df[[c for c in [date_col, "REVENUE", "FIN_MONTH"] if c in previous_df.columns]].copy()
+        if previous_df is not None and not previous_df.empty
+        else pd.DataFrame()
+    )
 
-    cur[date_col] = pd.to_datetime(cur[date_col], errors="coerce")
-    if not prev.empty and date_col in prev.columns:
+    if date_col in cur.columns and not pd.api.types.is_datetime64_any_dtype(cur[date_col]):
+        cur[date_col] = pd.to_datetime(cur[date_col], errors="coerce")
+    if not prev.empty and date_col in prev.columns and not pd.api.types.is_datetime64_any_dtype(prev[date_col]):
         prev[date_col] = pd.to_datetime(prev[date_col], errors="coerce")
 
     fy_start_ts = pd.to_datetime(fy_start) if fy_start else None
@@ -971,11 +977,17 @@ def build_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, pre
 
 def build_weight_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, prev_fy_start, month_map):
     """Build Current-FY vs LY weight trend in MT for Daily/Weekly/Monthly/Quarterly views."""
-    cur = current_df.copy()
-    prev = previous_df.copy() if previous_df is not None and not previous_df.empty else pd.DataFrame()
+    required = [c for c in [date_col, "aweight", "FIN_MONTH"] if c in current_df.columns]
+    cur = current_df[required].copy()
+    prev = (
+        previous_df[[c for c in [date_col, "aweight", "FIN_MONTH"] if c in previous_df.columns]].copy()
+        if previous_df is not None and not previous_df.empty
+        else pd.DataFrame()
+    )
 
-    cur[date_col] = pd.to_datetime(cur[date_col], errors="coerce")
-    if not prev.empty and date_col in prev.columns:
+    if date_col in cur.columns and not pd.api.types.is_datetime64_any_dtype(cur[date_col]):
+        cur[date_col] = pd.to_datetime(cur[date_col], errors="coerce")
+    if not prev.empty and date_col in prev.columns and not pd.api.types.is_datetime64_any_dtype(prev[date_col]):
         prev[date_col] = pd.to_datetime(prev[date_col], errors="coerce")
 
     fy_start_ts = pd.to_datetime(fy_start) if fy_start else None
@@ -1392,6 +1404,14 @@ def show_overview():
     with st.spinner("Loading data..."):
         df, prev_df = load_booking_data_pair(start_date, end_date, prev_start, prev_end, view_type.lower())
 
+    # Convert frequently used date columns once. Trend/SLA/network sections reuse them.
+    for _date_col in ["grdt", "deliverydt", "expecteddeliverydt", "lastdespdt"]:
+        if _date_col in df.columns and not pd.api.types.is_datetime64_any_dtype(df[_date_col]):
+            df[_date_col] = pd.to_datetime(df[_date_col], errors="coerce")
+        if prev_df is not None and not prev_df.empty and _date_col in prev_df.columns \
+                and not pd.api.types.is_datetime64_any_dtype(prev_df[_date_col]):
+            prev_df[_date_col] = pd.to_datetime(prev_df[_date_col], errors="coerce")
+
     station_df = load_stationmast_data(start_date, end_date)
     if "FIN_MONTH" not in station_df.columns:
         def get_fin_month(date_str):
@@ -1527,20 +1547,33 @@ def show_overview():
         st.warning("No data found for selected filters")
         return
 
-    # Export exactly the rows currently visible under the selected filters.
-    export_df = df.copy()
-    export_csv = export_df.to_csv(index=False).encode("utf-8-sig")
+    # Do not serialize lakhs of rows on every rerun. Prepare CSV only on request.
     safe_view = str(view_type).strip().lower().replace(" ", "_")
     safe_fy = str(fy).strip().replace("/", "-").replace(" ", "_")
-    export_placeholder.download_button(
-        label="⬇ Export CSV",
-        data=export_csv,
-        file_name=f"revenue_overview_{safe_view}_{safe_fy}.csv",
-        mime="text/csv",
-        key="overview_export_csv",
-        help="Download the revenue overview data after applying the selected filters.",
-        width="content",
-    )
+    export_key = f"overview_export_ready_{safe_view}_{safe_fy}"
+
+    with export_placeholder:
+        if not st.session_state.get(export_key, False):
+            if st.button(
+                "⬇ Prepare CSV",
+                key=f"prepare_{export_key}",
+                help="Prepare the currently filtered rows for download.",
+                width="content",
+            ):
+                st.session_state[export_key] = True
+                st.rerun()
+        else:
+            export_csv = df.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                label="⬇ Download CSV",
+                data=export_csv,
+                file_name=f"revenue_overview_{safe_view}_{safe_fy}.csv",
+                mime="text/csv",
+                key=f"download_{export_key}",
+                help="Download the revenue overview data after applying the selected filters.",
+                width="content",
+                on_click=lambda: st.session_state.update({export_key: False}),
+            )
 
     active_filter_items = [
         ("FY", fy), ("View", view_type), ("Company", company), ("Zone", zone), ("Circle", circle),
@@ -3486,107 +3519,8 @@ def show_overview():
     )
 
     # =====================================================
-    # Branch/Agency Network Changes with revenue from Active Date
+    # Branch/Agency Network Changes (lazy calculation)
     # =====================================================
-    filtered_station_df = station_df.copy()
-
-    if "FIN_MONTH" in filtered_station_df.columns and filtered_station_df["FIN_MONTH"].notna().any():
-        if month != "All":
-            fin_month_for_month = [k for k, v in month_map.items() if v == month]
-            if fin_month_for_month:
-                filtered_station_df = filtered_station_df[filtered_station_df["FIN_MONTH"].isin(fin_month_for_month)]
-        elif quarter != "All":
-            quarter_fin_months = [k for k, v in QUARTER_MAP.items() if v == quarter]
-            filtered_station_df = filtered_station_df[filtered_station_df["FIN_MONTH"].isin(quarter_fin_months)]
-
-    opened_df = filtered_station_df[filtered_station_df["STATUS"].astype(str).str.upper().eq("OPENED")].copy()
-    closed_df = filtered_station_df[filtered_station_df["STATUS"].astype(str).str.upper().eq("CLOSED")].copy()
-
-    opened_branches = len(opened_df)
-    closed_branches = len(closed_df)
-    net_increase = opened_branches - closed_branches
-
-    period_label = f"{fy}"
-    if month != "All":
-        period_label = f"{month} {fy}"
-    elif quarter != "All":
-        period_label = f"{quarter} {fy}"
-
-    def _normalise_key(value):
-        return "".join(ch for ch in str(value).strip().casefold() if ch.isalnum())
-
-    # Revenue is counted only from each branch/agency's own Active Date.
-    booking_date_col = _find_normalized_column(df, "grdt")
-    booking_branch_col = _find_normalized_column(df, "branch")
-    revenue_rows = []
-
-    if not opened_df.empty:
-        opened_df["activedate"] = pd.to_datetime(opened_df["activedate"], errors="coerce")
-        booking_work = df.copy()
-        if booking_date_col:
-            booking_work[booking_date_col] = pd.to_datetime(booking_work[booking_date_col], errors="coerce")
-        if booking_branch_col:
-            booking_work["_branch_key"] = booking_work[booking_branch_col].map(_normalise_key)
-
-        analysis_end = pd.to_datetime(end_date)
-        today = pd.Timestamp.today().normalize()
-        analysis_end = min(analysis_end, today)
-
-        for _, station in opened_df.iterrows():
-            active_date = station.get("activedate")
-            branch_name = station.get("BRANCH", "")
-            branch_code = station.get("CODE", "")
-            keys = {_normalise_key(branch_name), _normalise_key(branch_code)} - {""}
-
-            matched = booking_work.iloc[0:0].copy()
-            if booking_branch_col and booking_date_col and pd.notna(active_date):
-                matched = booking_work[
-                    booking_work["_branch_key"].isin(keys)
-                    & booking_work[booking_date_col].ge(active_date)
-                    & booking_work[booking_date_col].le(analysis_end)
-                ].copy()
-
-            active_days = max((analysis_end - active_date.normalize()).days + 1, 0) if pd.notna(active_date) else 0
-            active_months = max(active_days / 30.44, 1) if active_days else 1
-            revenue_value = float(matched["REVENUE"].sum()) if "REVENUE" in matched.columns else 0.0
-            gr_count = int(matched["grno"].count()) if "grno" in matched.columns else len(matched)
-            weight_mt = float(matched["aweight"].sum() / 1000) if "aweight" in matched.columns else 0.0
-            avg_monthly = revenue_value / active_months if active_days else 0.0
-            revenue_per_day = revenue_value / active_days if active_days else 0.0
-
-            if active_days < 30:
-                performance = "New - Monitoring"
-            elif avg_monthly >= 5000000:
-                performance = "Strong"
-            elif avg_monthly >= 100000:
-                performance = "Progressing"
-            else:
-                performance = "Needs Attention"
-
-            revenue_rows.append({
-                "ZONE": station.get("ZONE", ""),
-                "TYPE": station.get("TYPE", ""),
-                "BRANCH": branch_name,
-                "CODE": branch_code,
-                "CITY": station.get("CITY", ""),
-                "STATE": station.get("STATE", ""),
-                "Active Date": active_date,
-                "Active Days": active_days,
-                "GR Count": gr_count,
-                "Weight MT": round(weight_mt, 1),
-                f"Revenue ({revenue_unit})": round(revenue_value / revenue_divisor, 2),
-                f"Avg Monthly Revenue ({revenue_unit})": round(avg_monthly / revenue_divisor, 2),
-                "Revenue / Day": round(revenue_per_day, 0),
-                "Performance": performance,
-            })
-
-    opened_revenue_df = pd.DataFrame(revenue_rows)
-    total_new_revenue = opened_revenue_df.get(f"Revenue ({revenue_unit})", pd.Series(dtype=float)).sum()
-    total_new_gr = opened_revenue_df.get("GR Count", pd.Series(dtype=float)).sum()
-    avg_new_monthly = opened_revenue_df.get(f"Avg Monthly Revenue ({revenue_unit})", pd.Series(dtype=float)).sum()
-    productive_count = int(opened_revenue_df.get("Performance", pd.Series(dtype=str)).isin(["Strong", "Developing"]).sum())
-
-    # Collapse/expand control for the complete Branch/Agency Network Changes section.
     network_toggle_key = "show_branch_agency_network_changes"
     if network_toggle_key not in st.session_state:
         st.session_state[network_toggle_key] = False
@@ -3605,11 +3539,143 @@ def show_overview():
         st.session_state[network_toggle_key] = not st.session_state[network_toggle_key]
         st.rerun()
 
+    # The former code calculated this section on every page rerun, even when hidden.
+    # All expensive copies, date filters and per-location calculations now run lazily.
     if st.session_state[network_toggle_key]:
+        filtered_station_df = station_df.copy()
+
+        if "FIN_MONTH" in filtered_station_df.columns and filtered_station_df["FIN_MONTH"].notna().any():
+            if month != "All":
+                fin_month_for_month = [k for k, v in month_map.items() if v == month]
+                if fin_month_for_month:
+                    filtered_station_df = filtered_station_df[
+                        filtered_station_df["FIN_MONTH"].isin(fin_month_for_month)
+                    ]
+            elif quarter != "All":
+                quarter_fin_months = [k for k, v in QUARTER_MAP.items() if v == quarter]
+                filtered_station_df = filtered_station_df[
+                    filtered_station_df["FIN_MONTH"].isin(quarter_fin_months)
+                ]
+
+        station_status = filtered_station_df["STATUS"].astype(str).str.upper()
+        opened_df = filtered_station_df[station_status.eq("OPENED")].copy()
+        closed_df = filtered_station_df[station_status.eq("CLOSED")].copy()
+
+        opened_branches = len(opened_df)
+        closed_branches = len(closed_df)
+        net_increase = opened_branches - closed_branches
+
+        period_label = f"{fy}"
+        if month != "All":
+            period_label = f"{month} {fy}"
+        elif quarter != "All":
+            period_label = f"{quarter} {fy}"
+
+        def _normalise_key(value):
+            return "".join(ch for ch in str(value).strip().casefold() if ch.isalnum())
+
+        booking_date_col = _find_normalized_column(df, "grdt")
+        booking_branch_col = _find_normalized_column(df, "branch")
+        revenue_rows = []
+
+        if not opened_df.empty and booking_date_col and booking_branch_col:
+            opened_df["activedate"] = pd.to_datetime(opened_df["activedate"], errors="coerce")
+
+            # Keep only columns required by this section; this is much cheaper than df.copy().
+            booking_columns = [
+                c for c in [booking_date_col, booking_branch_col, "REVENUE", "grno", "aweight"]
+                if c in df.columns
+            ]
+            booking_work = df[booking_columns].copy()
+            if not pd.api.types.is_datetime64_any_dtype(booking_work[booking_date_col]):
+                booking_work[booking_date_col] = pd.to_datetime(
+                    booking_work[booking_date_col], errors="coerce"
+                )
+            booking_work["_branch_key"] = booking_work[booking_branch_col].map(_normalise_key)
+
+            # Index by normalized branch key so each location does not rescan the full FY.
+            branch_groups = {
+                key: group
+                for key, group in booking_work.groupby("_branch_key", sort=False)
+                if key
+            }
+
+            analysis_end = min(pd.to_datetime(end_date), pd.Timestamp.today().normalize())
+
+            for station in opened_df.itertuples(index=False):
+                station_data = station._asdict()
+                active_date = station_data.get("activedate")
+                branch_name = station_data.get("BRANCH", "")
+                branch_code = station_data.get("CODE", "")
+                keys = {_normalise_key(branch_name), _normalise_key(branch_code)} - {""}
+
+                frames = [branch_groups[key] for key in keys if key in branch_groups]
+                if frames and pd.notna(active_date):
+                    matched = pd.concat(frames, ignore_index=False)
+                    matched = matched[
+                        matched[booking_date_col].between(active_date, analysis_end, inclusive="both")
+                    ]
+                else:
+                    matched = booking_work.iloc[0:0]
+
+                active_days = (
+                    max((analysis_end - active_date.normalize()).days + 1, 0)
+                    if pd.notna(active_date) else 0
+                )
+                active_months = max(active_days / 30.44, 1) if active_days else 1
+                revenue_value = float(matched["REVENUE"].sum()) if "REVENUE" in matched else 0.0
+                gr_count = int(matched["grno"].count()) if "grno" in matched else len(matched)
+                weight_mt = float(matched["aweight"].sum() / 1000) if "aweight" in matched else 0.0
+                avg_monthly = revenue_value / active_months if active_days else 0.0
+                revenue_per_day = revenue_value / active_days if active_days else 0.0
+
+                if active_days < 30:
+                    performance = "New - Monitoring"
+                elif avg_monthly >= 5000000:
+                    performance = "Strong"
+                elif avg_monthly >= 100000:
+                    performance = "Progressing"
+                else:
+                    performance = "Needs Attention"
+
+                revenue_rows.append({
+                    "ZONE": station_data.get("ZONE", ""),
+                    "TYPE": station_data.get("TYPE", ""),
+                    "BRANCH": branch_name,
+                    "CODE": branch_code,
+                    "CITY": station_data.get("CITY", ""),
+                    "STATE": station_data.get("STATE", ""),
+                    "Active Date": active_date,
+                    "Active Days": active_days,
+                    "GR Count": gr_count,
+                    "Weight MT": round(weight_mt, 1),
+                    f"Revenue ({revenue_unit})": round(revenue_value / revenue_divisor, 2),
+                    f"Avg Monthly Revenue ({revenue_unit})": round(avg_monthly / revenue_divisor, 2),
+                    "Revenue / Day": round(revenue_per_day, 0),
+                    "Performance": performance,
+                })
+
+        opened_revenue_df = pd.DataFrame(revenue_rows)
+        total_new_revenue = opened_revenue_df.get(
+            f"Revenue ({revenue_unit})", pd.Series(dtype=float)
+        ).sum()
+        total_new_gr = opened_revenue_df.get("GR Count", pd.Series(dtype=float)).sum()
+        avg_new_monthly = opened_revenue_df.get(
+            f"Avg Monthly Revenue ({revenue_unit})", pd.Series(dtype=float)
+        ).sum()
+        productive_count = int(
+            opened_revenue_df.get("Performance", pd.Series(dtype=str))
+            .isin(["Strong", "Progressing"])
+            .sum()
+        )
+
         with st.container(border=True):
             st.markdown(
-                f"<div style='font-size:16px;font-weight:950;color:#0f2744;'>🏢 Branch/Agency Network Changes ({period_label})</div>"
-                "<div style='font-size:10px;color:#64748b;margin:2px 0 9px;'>Revenue is calculated from each location's Active Date up to the selected period end.</div>",
+                f"<div style='font-size:16px;font-weight:950;color:#0f2744;'>"
+                f"🏢 Branch/Agency Network Changes ({period_label})</div>"
+                "<div style='font-size:10px;color:#64748b;margin:2px 0 9px;'>"
+                "Revenue is calculated from each location's Active Date up to the selected period end."
+                "</div>",
                 unsafe_allow_html=True,
             )
             n1, n2, n3, n4, n5, n6 = st.columns(6, gap="small")
@@ -3624,7 +3690,9 @@ def show_overview():
                 st.info("No newly opened branch/agency records are available for the selected period.")
             else:
                 st.dataframe(
-                    opened_revenue_df.sort_values(f"Revenue ({revenue_unit})", ascending=False),
+                    opened_revenue_df.sort_values(
+                        f"Revenue ({revenue_unit})", ascending=False
+                    ),
                     width="stretch",
                     hide_index=True,
                     column_config={
@@ -3636,8 +3704,10 @@ def show_overview():
                     },
                 )
                 st.caption(
-                    f"Combined average monthly revenue of new locations: {avg_new_monthly:,.2f} {revenue_unit}. "
-                    "Performance bands: Strong ≥ ₹10 lakh/month; Developing ≥ ₹5 lakh/month; below this Needs Attention."
+                    f"Combined average monthly revenue of new locations: "
+                    f"{avg_new_monthly:,.2f} {revenue_unit}. "
+                    "Performance bands: Strong ≥ ₹50 lakh/month; "
+                    "Progressing ≥ ₹1 lakh/month; below this Needs Attention."
                 )
 
             with st.expander(f"🔒 View Closed Branch Details ({closed_branches})"):
