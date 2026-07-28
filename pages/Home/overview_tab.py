@@ -242,15 +242,14 @@ def _inject_overview_css():
                 position: relative;
                 z-index: 1;
                 display: grid;
-                grid-template-columns: 27px minmax(0, 1fr) 27px;
+                grid-template-columns: minmax(0, 1fr) 27px;
                 align-items: center;
                 gap: 6px;
             }
 
             .kpi-3d-head::before {
-                content: "";
-                width: 27px;
-                height: 27px;
+                display: none;
+                content: none;
             }
 
             .kpi-3d-title {
@@ -259,7 +258,7 @@ def _inject_overview_css():
                 font-family: "Segoe UI", Arial, sans-serif;
                 font-weight: 400;
                 letter-spacing: .15px;
-                text-align: center;
+                text-align: left;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -514,11 +513,12 @@ def _inject_overview_css():
                 font-size: 11px;
                 margin-top: 2px;
             }
-            /* Active FY/View/Quarter/Unit chips: left aligned with clear gap above KPI row */
+            /* Active filter chips stay between the filter controls and KPI row, with breathing room */
             div[data-testid="stElementContainer"]:has(.filter-summary) {
                 position: relative !important;
                 z-index: 5 !important;
-                margin-bottom: 8px !important;
+                margin-top: 8px !important;
+                margin-bottom: 14px !important;
             }
             .filter-summary {
                 display: flex;
