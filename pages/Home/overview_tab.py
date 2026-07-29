@@ -3601,17 +3601,19 @@ def show_overview():
             """,
             unsafe_allow_html=True,
         )
-        insight_icons = ["📈", "🚛", "🎯", "🌐", "⚠️"]
-        insight_titles = ["Business movement", "Load mix", "Business concentration", "Zone watch", "Branch watch"]
+        # Business movement insight is intentionally hidden.
+        # Keep the remaining four insight cards in the same management panel.
+        insight_icons = ["🚛", "🎯", "🌐", "⚠️"]
+        insight_titles = ["Load mix", "Business concentration", "Zone watch", "Branch watch"]
         insight_gradients = [
-            ("#eaf3ff", "#dbeafe", "#2563eb"),
             ("#ecfeff", "#ccfbf1", "#0f766e"),
             ("#fff7ed", "#ffedd5", "#ea580c"),
             ("#f5f3ff", "#ede9fe", "#7c3aed"),
             ("#fff1f2", "#ffe4e6", "#dc2626"),
         ]
-        insight_cols = st.columns(5, gap="small")
-        for idx, (message, icon, title) in enumerate(zip(key_insight_messages, insight_icons, insight_titles)):
+        visible_insight_messages = key_insight_messages[1:]
+        insight_cols = st.columns(4, gap="small")
+        for idx, (message, icon, title) in enumerate(zip(visible_insight_messages, insight_icons, insight_titles)):
             start_color, end_color, accent_color = insight_gradients[idx]
             with insight_cols[idx]:
                 st.markdown(
