@@ -1214,22 +1214,29 @@ def mini_rank_card(rank, name, value, max_value, color, render=True):
     pct = min((value / max_value * 100), 100) if max_value else 0
     medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, str(rank))
 
-    html = f"""
-    <div style="margin-bottom:5px;padding:5px 7px;border:1px solid #e5ebf2;border-radius:9px;background:#fbfdff;">
-        <div style="display:grid;grid-template-columns:25px minmax(155px,190px) minmax(90px,1fr) 58px;align-items:center;gap:7px;">
-            <div style="text-align:center;font-size:13px;font-weight:400;color:#486581;">{medal}</div>
-            <div title="{escape(str(name))}" style="font-size:11px;font-weight:500;color:#243b53;
-                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{escape(str(name))}</div>
-            <div style="height:6px;background:#e8eef5;border-radius:999px;overflow:hidden;
-                        box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">
-                <div style="width:{pct}%;height:6px;background:{color};border-radius:999px;"></div>
-            </div>
-            <div style="font-size:11px;font-weight:500;color:#102a43;text-align:right;white-space:nowrap;">₹{value:.2f}</div>
-        </div>
-    </div>
-    """
+    # Keep the HTML on one logical line. Indented multiline HTML can be
+    # interpreted by Markdown as a code block when multiple rows are joined.
+    html = (
+        f'<div style="margin-bottom:5px;padding:5px 7px;border:1px solid #e5ebf2;'
+        f'border-radius:9px;background:#fbfdff;">'
+        f'<div style="display:grid;grid-template-columns:25px minmax(185px,230px) '
+        f'minmax(55px,.75fr) 58px;align-items:center;gap:7px;">'
+        f'<div style="text-align:center;font-size:13px;font-weight:400;color:#486581;">{medal}</div>'
+        f'<div title="{escape(str(name))}" style="font-size:11px;font-weight:500;color:#243b53;'
+        f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{escape(str(name))}</div>'
+        f'<div style="height:5px;background:#e8eef5;border-radius:999px;overflow:hidden;'
+        f'box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
+        f'<div style="width:{pct}%;height:5px;background:{color};border-radius:999px;"></div>'
+        f'</div>'
+        f'<div style="font-size:11px;font-weight:500;color:#102a43;text-align:right;'
+        f'white-space:nowrap;">₹{value:.2f}</div>'
+        f'</div></div>'
+    )
     if render:
-        st.markdown(html, unsafe_allow_html=True)
+        if hasattr(st, "html"):
+            st.html(html)
+        else:
+            st.markdown(html, unsafe_allow_html=True)
     return html
 
 
@@ -3576,13 +3583,16 @@ def show_overview():
                         )
                     )
 
-                st.markdown(
+                branch_scroll_html = (
                     '<div style="height:285px;overflow-y:auto;overflow-x:hidden;'
                     'padding:1px 5px 1px 0;scrollbar-gutter:stable;">'
                     + "".join(branch_rows_html)
-                    + '</div>',
-                    unsafe_allow_html=True,
+                    + '</div>'
                 )
+                if hasattr(st, "html"):
+                    st.html(branch_scroll_html)
+                else:
+                    st.markdown(branch_scroll_html, unsafe_allow_html=True)
 
     with b2:
         _render_operational_highlights(df, prev_df)
