@@ -2372,6 +2372,25 @@ def show_overview():
         matrix_df["Total"] = matrix_df.sum(axis=1)
         matrix_df = matrix_df.sort_values("Total", ascending=False)
 
+        # Build the matching last-year matrix for the Zone vs Country performance table.
+        if prev_df is not None and not prev_df.empty and {"zone", "COUNTRY", "REVENUE"}.issubset(prev_df.columns):
+            prev_zone_country_rev = (
+                prev_df.groupby(["zone", "COUNTRY"])["REVENUE"]
+                .sum()
+                .reset_index()
+            )
+            prev_zone_country_rev["Business Cr"] = (
+                prev_zone_country_rev["REVENUE"] / revenue_divisor
+            ).round(2)
+            prev_matrix_df = prev_zone_country_rev.pivot(
+                index="zone",
+                columns="COUNTRY",
+                values="Business Cr",
+            ).fillna(0)
+            prev_matrix_df["Total"] = prev_matrix_df.sum(axis=1)
+        else:
+            prev_matrix_df = pd.DataFrame()
+
     # =====================================================
     # Weight Trend and Business by Zone in one aligned row
     # =====================================================
@@ -2647,121 +2666,195 @@ def show_overview():
             with st.container(border=True):
                 st.markdown("###### Zone vs Country Business (%)")
 
-                matrix_display = matrix_df.reset_index().reset_index(drop=True)
+                # Keep countries as columns while presenting Current Year, Last Year
+                # and YoY performance in grouped headers, matching the reference style.
+                current_matrix = matrix_df.copy()
+                previous_matrix = prev_matrix_df.copy() if not prev_matrix_df.empty else pd.DataFrame()
 
-                matrix_display["zone"] = matrix_display["zone"].replace({
+                zone_name_map = {
                     "NORTH ZONE": "North",
                     "WEST ZONE": "West",
                     "SOUTH ZONE": "South",
                     "EAST ZONE": "East",
                     "NORTH EAST ZONE": "NE",
-                    "NEPAL ZONE": "Nepal"
-                })
+                    "NEPAL ZONE": "Nepal",
+                }
 
-                numeric_cols = matrix_display.columns[1:]
+                country_cols = sorted(
+                    set(col for col in current_matrix.columns if col != "Total")
+                    | set(col for col in previous_matrix.columns if col != "Total")
+                )
+                zone_order = list(current_matrix.index)
+                for zone_key in previous_matrix.index:
+                    if zone_key not in zone_order:
+                        zone_order.append(zone_key)
 
-                # The pivot already contains a Total column. Exclude it when calculating
-                # the grand total, otherwise every value is counted twice.
-                country_cols = [col for col in numeric_cols if col != "Total"]
-                grand_total = matrix_display[country_cols].to_numpy().sum() if country_cols else 0
+                current_matrix = current_matrix.reindex(index=zone_order, columns=country_cols + ["Total"], fill_value=0)
+                previous_matrix = previous_matrix.reindex(index=zone_order, columns=country_cols + ["Total"], fill_value=0)
 
-                # Show both revenue and contribution percentage in every cell.
-                matrix_value_display = matrix_display.copy()
-                for col in country_cols:
-                    matrix_value_display[col] = matrix_display[col].apply(
-                        lambda value: (
-                            f"₹{value:.2f} {revenue_unit} | {(value / grand_total * 100):.1f}%"
-                            if grand_total > 0
-                            else f"₹{value:.2f} {revenue_unit} | 0.0%"
-                        )
+                current_grand_total = float(current_matrix[country_cols].to_numpy().sum()) if country_cols else 0.0
+                previous_grand_total = float(previous_matrix[country_cols].to_numpy().sum()) if country_cols else 0.0
+
+                def _performance_cell(value, share, bar_color):
+                    bar_width = min(max(share, 0), 100)
+                    return (
+                        '<div class="perf-cell">'
+                        f'<span class="perf-value">₹{value:.2f}</span>'
+                        '<div class="perf-bar-track">'
+                        f'<div class="perf-bar-fill" style="width:{bar_width:.1f}%;background:{bar_color};"></div>'
+                        '</div>'
+                        f'<span class="perf-share">{share:.2f}%</span>'
+                        '</div>'
                     )
 
-                matrix_value_display["Total"] = matrix_display["Total"].apply(
-                    lambda value: (
-                        f"₹{value:.2f} {revenue_unit} | {(value / grand_total * 100):.1f}%"
-                        if grand_total > 0
-                        else f"₹{value:.2f} {revenue_unit} | 0.0%"
+                def _growth_cell(current_value, previous_value):
+                    change = current_value - previous_value
+                    growth = ((change / previous_value) * 100) if previous_value else (100.0 if current_value else 0.0)
+                    positive = growth >= 0
+                    growth_color = "#16a34a" if positive else "#dc2626"
+                    arrow = "▲" if positive else "▼"
+                    return (
+                        '<div class="yoy-cell">'
+                        f'<span class="change-value">{change:+.2f}</span>'
+                        f'<span class="growth-value" style="color:{growth_color};">{arrow} {abs(growth):.2f}%</span>'
+                        '</div>'
                     )
+
+                current_headers = ''.join(f'<th>{escape(str(country))}</th>' for country in country_cols)
+                previous_headers = ''.join(f'<th>{escape(str(country))}</th>' for country in country_cols)
+                yoy_headers = ''.join(f'<th>{escape(str(country))}</th>' for country in country_cols)
+
+                body_rows = []
+                for zone_key in zone_order:
+                    display_zone = zone_name_map.get(zone_key, str(zone_key).title())
+                    zone_color = zone_colors.get(zone_key, "#2563eb")
+                    current_cells = []
+                    previous_cells = []
+                    yoy_cells = []
+
+                    for country in country_cols:
+                        current_value = float(current_matrix.at[zone_key, country] or 0)
+                        previous_value = float(previous_matrix.at[zone_key, country] or 0)
+                        current_share = (current_value / current_grand_total * 100) if current_grand_total else 0.0
+                        previous_share = (previous_value / previous_grand_total * 100) if previous_grand_total else 0.0
+                        current_cells.append(f'<td>{_performance_cell(current_value, current_share, "#2563eb")}</td>')
+                        previous_cells.append(f'<td>{_performance_cell(previous_value, previous_share, "#0f766e")}</td>')
+                        yoy_cells.append(f'<td>{_growth_cell(current_value, previous_value)}</td>')
+
+                    body_rows.append(
+                        '<tr>'
+                        f'<td class="zone-name" style="border-left:4px solid {zone_color};">{escape(display_zone)}</td>'
+                        + ''.join(current_cells)
+                        + ''.join(previous_cells)
+                        + ''.join(yoy_cells)
+                        + '</tr>'
+                    )
+
+                current_total_cells = []
+                previous_total_cells = []
+                yoy_total_cells = []
+                for country in country_cols:
+                    current_value = float(current_matrix[country].sum())
+                    previous_value = float(previous_matrix[country].sum())
+                    current_share = (current_value / current_grand_total * 100) if current_grand_total else 0.0
+                    previous_share = (previous_value / previous_grand_total * 100) if previous_grand_total else 0.0
+                    current_total_cells.append(f'<td>{_performance_cell(current_value, current_share, "#2563eb")}</td>')
+                    previous_total_cells.append(f'<td>{_performance_cell(previous_value, previous_share, "#0f766e")}</td>')
+                    yoy_total_cells.append(f'<td>{_growth_cell(current_value, previous_value)}</td>')
+
+                total_row = (
+                    '<tr class="total-row"><td class="zone-name">TOTAL</td>'
+                    + ''.join(current_total_cells)
+                    + ''.join(previous_total_cells)
+                    + ''.join(yoy_total_cells)
+                    + '</tr>'
                 )
 
-                # Render as HTML so the percentage part can have its own colour.
-                # Business remains dark while contribution % is highlighted in blue.
-                table_headers = "".join(
-                    f"<th>{str(col)}</th>" for col in matrix_display.columns
-                )
-                table_rows = []
-                for _, row in matrix_display.iterrows():
-                    cells = [f"<td class='zone-name'>{row['zone']}</td>"]
-                    for col in matrix_display.columns[1:]:
-                        value = float(row[col]) if pd.notna(row[col]) else 0.0
-                        pct = (value / grand_total * 100) if grand_total > 0 else 0.0
-                        cells.append(
-                            "<td>"
-                            f"<span class='matrix-value'>₹{value:.2f} {revenue_unit}</span>"
-                            "<span class='matrix-separator'> | </span>"
-                            f"<span class='matrix-percent'>{pct:.1f}%</span>"
-                            "</td>"
-                        )
-                    table_rows.append(f"<tr>{''.join(cells)}</tr>")
-
-                # Let the table height follow its data rows. A maximum height is kept
-                # so longer matrices scroll instead of making the page excessively tall.
+                country_count = max(len(country_cols), 1)
                 matrix_html = f"""
                 <style>
                     .zone-country-wrap {{
-                        width: 100%;
-                        height: auto;
-                        max-height: 300px;
-                        overflow-x: auto;
-                        overflow-y: auto;
-                        border: 1px solid #e2e8f0;
-                        border-radius: 10px;
-                        background: #ffffff;
+                        width:100%;
+                        max-height:340px;
+                        overflow:auto;
+                        border:1px solid #dbe4ef;
+                        border-radius:10px;
+                        background:#ffffff;
                     }}
-                    .zone-country-table {{
-                        width: 100%;
-                        border-collapse: collapse;
-                        font-size: 12px;
-                        line-height: 1.35;
-                        color: #334155;
+                    .zone-country-performance {{
+                        width:max-content;
+                        min-width:100%;
+                        border-collapse:separate;
+                        border-spacing:0;
+                        font-family:"Segoe UI",Arial,sans-serif;
+                        font-size:11px;
+                        color:#334155;
                     }}
-                    .zone-country-table th {{
-                        position: sticky;
-                        top: 0;
-                        z-index: 1;
-                        padding: 11px 10px;
-                        font-size: 12px;
-                        text-align: center;
-                        white-space: nowrap;
-                        background: #eef6ff;
-                        color: #334155;
-                        font-weight: 700;
-                        border: 1px solid #dbe7f3;
+                    .zone-country-performance th,
+                    .zone-country-performance td {{
+                        min-width:142px;
+                        padding:8px 9px;
+                        border-right:1px solid #e2e8f0;
+                        border-bottom:1px solid #e2e8f0;
+                        background:#ffffff;
+                        white-space:nowrap;
                     }}
-                    .zone-country-table td {{
-                        padding: 10px;
-                        font-size: 12px;
-                        text-align: center;
-                        white-space: nowrap;
-                        background: #f8fbff;
-                        border: 1px solid #e2e8f0;
+                    .zone-country-performance .zone-head,
+                    .zone-country-performance .zone-name {{
+                        position:sticky;
+                        left:0;
+                        z-index:3;
+                        min-width:88px;
+                        text-align:left;
+                        font-weight:700;
+                        background:#f8fbff;
                     }}
-                    .zone-country-table .zone-name {{
-                        text-align: left;
-                        font-weight: 700;
-                        color: #334155;
+                    .zone-country-performance thead th {{
+                        position:sticky;
+                        top:0;
+                        z-index:4;
+                        text-align:center;
+                        font-weight:700;
                     }}
-                    .matrix-value {{ color: #475569; }}
-                    .matrix-separator {{ color: #94a3b8; }}
-                    .matrix-percent {{
-                        color: #2563eb;
-                        font-weight: 800;
+                    .zone-country-performance thead tr:first-child th {{ top:0; }}
+                    .zone-country-performance thead tr:nth-child(2) th {{ top:34px; }}
+                    .group-current {{background:#eaf2ff!important;color:#1d4ed8!important;}}
+                    .group-previous {{background:#e8f7f5!important;color:#0f766e!important;}}
+                    .group-yoy {{background:#f3eefe!important;color:#6d28d9!important;}}
+                    .country-current {{background:#f5f9ff!important;color:#334155!important;}}
+                    .country-previous {{background:#f2fbfa!important;color:#334155!important;}}
+                    .country-yoy {{background:#faf7ff!important;color:#334155!important;}}
+                    .perf-cell {{
+                        display:grid;
+                        grid-template-columns:55px 58px 45px;
+                        align-items:center;
+                        gap:6px;
                     }}
+                    .perf-value {{font-weight:600;color:#334155;text-align:right;}}
+                    .perf-bar-track {{height:7px;background:#e5edf6;border-radius:999px;overflow:hidden;}}
+                    .perf-bar-fill {{height:100%;border-radius:999px;}}
+                    .perf-share {{font-size:10px;color:#64748b;text-align:right;}}
+                    .yoy-cell {{display:flex;justify-content:space-between;align-items:center;gap:8px;}}
+                    .change-value {{color:#475569;font-weight:600;}}
+                    .growth-value {{font-weight:700;}}
+                    .total-row td {{background:#eef4ff!important;font-weight:700;}}
                 </style>
                 <div class="zone-country-wrap">
-                    <table class="zone-country-table">
-                        <thead><tr>{table_headers}</tr></thead>
-                        <tbody>{''.join(table_rows)}</tbody>
+                    <table class="zone-country-performance">
+                        <thead>
+                            <tr>
+                                <th class="zone-head" rowspan="2">Zone</th>
+                                <th class="group-current" colspan="{country_count}">CURRENT YEAR ({escape(str(fy))})</th>
+                                <th class="group-previous" colspan="{country_count}">LAST YEAR ({escape(str(prev_fy))})</th>
+                                <th class="group-yoy" colspan="{country_count}">YoY COMPARISON</th>
+                            </tr>
+                            <tr>
+                                {''.join(f'<th class="country-current">{escape(str(c))}</th>' for c in country_cols)}
+                                {''.join(f'<th class="country-previous">{escape(str(c))}</th>' for c in country_cols)}
+                                {''.join(f'<th class="country-yoy">{escape(str(c))}</th>' for c in country_cols)}
+                            </tr>
+                        </thead>
+                        <tbody>{''.join(body_rows)}{total_row}</tbody>
                     </table>
                 </div>
                 """
