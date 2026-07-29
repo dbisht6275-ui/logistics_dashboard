@@ -2655,131 +2655,186 @@ def show_overview():
 
         with zone_table_col:
             with st.container(border=True):
-                st.markdown("###### Zone vs Country Business (%)")
+                st.markdown("###### 📊 ZONE VS COUNTRY PERFORMANCE")
 
-                matrix_display = matrix_df.reset_index().reset_index(drop=True)
-
-                matrix_display["zone"] = matrix_display["zone"].replace({
-                    "NORTH ZONE": "North",
-                    "WEST ZONE": "West",
-                    "SOUTH ZONE": "South",
-                    "EAST ZONE": "East",
-                    "NORTH EAST ZONE": "NE",
-                    "NEPAL ZONE": "Nepal"
-                })
-
-                numeric_cols = matrix_display.columns[1:]
-
-                # The pivot already contains a Total column. Exclude it when calculating
-                # the grand total, otherwise every value is counted twice.
-                country_cols = [col for col in numeric_cols if col != "Total"]
-                grand_total = matrix_display[country_cols].to_numpy().sum() if country_cols else 0
-
-                # Show both revenue and contribution percentage in every cell.
-                matrix_value_display = matrix_display.copy()
-                for col in country_cols:
-                    matrix_value_display[col] = matrix_display[col].apply(
-                        lambda value: (
-                            f"₹{value:.2f} {revenue_unit} | {(value / grand_total * 100):.1f}%"
-                            if grand_total > 0
-                            else f"₹{value:.2f} {revenue_unit} | 0.0%"
-                        )
-                    )
-
-                matrix_value_display["Total"] = matrix_display["Total"].apply(
-                    lambda value: (
-                        f"₹{value:.2f} {revenue_unit} | {(value / grand_total * 100):.1f}%"
-                        if grand_total > 0
-                        else f"₹{value:.2f} {revenue_unit} | 0.0%"
-                    )
+                # Current-year Zone/Country business.
+                current_zc = (
+                    df.groupby(["zone", "COUNTRY"], dropna=False)["REVENUE"]
+                    .sum()
+                    .reset_index()
+                    .rename(columns={"REVENUE": "CY_REVENUE"})
                 )
 
-                # Render as HTML so the percentage part can have its own colour.
-                # Business remains dark while contribution % is highlighted in blue.
-                table_headers = "".join(
-                    f"<th>{str(col)}</th>" for col in matrix_display.columns
-                )
-                table_rows = []
-                for _, row in matrix_display.iterrows():
-                    cells = [f"<td class='zone-name'>{row['zone']}</td>"]
-                    for col in matrix_display.columns[1:]:
-                        value = float(row[col]) if pd.notna(row[col]) else 0.0
-                        pct = (value / grand_total * 100) if grand_total > 0 else 0.0
-                        cells.append(
-                            "<td>"
-                            f"<span class='matrix-value'>₹{value:.2f} {revenue_unit}</span>"
-                            "<span class='matrix-separator'> | </span>"
-                            f"<span class='matrix-percent'>{pct:.1f}%</span>"
-                            "</td>"
-                        )
-                    table_rows.append(f"<tr>{''.join(cells)}</tr>")
+                # Last-year Zone/Country business using the same active filters.
+                if prev_df is not None and not prev_df.empty and {"zone", "COUNTRY", "REVENUE"}.issubset(prev_df.columns):
+                    previous_zc = (
+                        prev_df.groupby(["zone", "COUNTRY"], dropna=False)["REVENUE"]
+                        .sum()
+                        .reset_index()
+                        .rename(columns={"REVENUE": "LY_REVENUE"})
+                    )
+                else:
+                    previous_zc = pd.DataFrame(columns=["zone", "COUNTRY", "LY_REVENUE"])
 
-                # Let the table height follow its data rows. A maximum height is kept
-                # so longer matrices scroll instead of making the page excessively tall.
-                matrix_html = f"""
+                zone_country_perf = current_zc.merge(
+                    previous_zc,
+                    on=["zone", "COUNTRY"],
+                    how="outer",
+                )
+                zone_country_perf["CY_REVENUE"] = pd.to_numeric(
+                    zone_country_perf["CY_REVENUE"], errors="coerce"
+                ).fillna(0)
+                zone_country_perf["LY_REVENUE"] = pd.to_numeric(
+                    zone_country_perf["LY_REVENUE"], errors="coerce"
+                ).fillna(0)
+                zone_country_perf["zone"] = zone_country_perf["zone"].fillna("Unknown").astype(str)
+                zone_country_perf["COUNTRY"] = zone_country_perf["COUNTRY"].fillna("Unknown").astype(str)
+
+                zone_country_perf["CY_VALUE"] = zone_country_perf["CY_REVENUE"] / revenue_divisor
+                zone_country_perf["LY_VALUE"] = zone_country_perf["LY_REVENUE"] / revenue_divisor
+                cy_total = float(zone_country_perf["CY_REVENUE"].sum())
+                ly_total = float(zone_country_perf["LY_REVENUE"].sum())
+                zone_country_perf["CY_SHARE"] = (
+                    zone_country_perf["CY_REVENUE"] / cy_total * 100 if cy_total else 0
+                )
+                zone_country_perf["LY_SHARE"] = (
+                    zone_country_perf["LY_REVENUE"] / ly_total * 100 if ly_total else 0
+                )
+                zone_country_perf["CHANGE"] = zone_country_perf["CY_VALUE"] - zone_country_perf["LY_VALUE"]
+                zone_country_perf["GROWTH"] = zone_country_perf.apply(
+                    lambda row: pct_growth(row["CY_REVENUE"], row["LY_REVENUE"]), axis=1
+                )
+
+                zone_names = {
+                    "NORTH ZONE": "North", "WEST ZONE": "West", "SOUTH ZONE": "South",
+                    "EAST ZONE": "East", "NORTH EAST ZONE": "NE", "NEPAL ZONE": "Nepal"
+                }
+                zone_country_perf["ZONE_LABEL"] = zone_country_perf["zone"].replace(zone_names)
+                zone_country_perf = zone_country_perf.sort_values(
+                    ["CY_REVENUE", "ZONE_LABEL", "COUNTRY"], ascending=[False, True, True]
+                )
+                zone_order = (
+                    zone_country_perf.groupby("ZONE_LABEL")["CY_REVENUE"]
+                    .sum().sort_values(ascending=False).index.tolist()
+                )
+                zone_country_perf["ZONE_LABEL"] = pd.Categorical(
+                    zone_country_perf["ZONE_LABEL"], categories=zone_order, ordered=True
+                )
+                zone_country_perf = zone_country_perf.sort_values(
+                    ["ZONE_LABEL", "CY_REVENUE"], ascending=[True, False]
+                )
+
+                country_flags = {
+                    "NEPAL": "🇳🇵", "INDIA": "🇮🇳", "DOMESTIC": "🇮🇳",
+                    "BANGLADESH": "🇧🇩", "BHUTAN": "🇧🇹", "CHINA": "🇨🇳"
+                }
+
+                body_rows = []
+                for zone_label, group in zone_country_perf.groupby("ZONE_LABEL", observed=True, sort=False):
+                    group = group.reset_index(drop=True)
+                    rowspan = len(group)
+                    for row_index, row in group.iterrows():
+                        growth = float(row["GROWTH"] or 0)
+                        growth_class = "growth-positive" if growth >= 0 else "growth-negative"
+                        growth_arrow = "▲" if growth >= 0 else "▼"
+                        flag = country_flags.get(str(row["COUNTRY"]).strip().upper(), "🌐")
+                        zone_cell = (
+                            f'<td class="zone-cell" rowspan="{rowspan}">{escape(str(zone_label))}</td>'
+                            if row_index == 0 else ""
+                        )
+                        body_rows.append(
+                            "<tr>"
+                            + zone_cell
+                            + f'<td class="country-cell"><span class="country-flag">{flag}</span>{escape(str(row["COUNTRY"]))}</td>'
+                            + f'<td class="number-cell">{row["CY_VALUE"]:,.2f}</td>'
+                            + f'<td class="share-cell"><span>{row["CY_SHARE"]:.2f}%</span><div class="share-track"><div class="share-fill cy-fill" style="width:{min(row["CY_SHARE"],100):.2f}%"></div></div></td>'
+                            + f'<td class="number-cell">{row["LY_VALUE"]:,.2f}</td>'
+                            + f'<td class="share-cell"><span>{row["LY_SHARE"]:.2f}%</span><div class="share-track"><div class="share-fill ly-fill" style="width:{min(row["LY_SHARE"],100):.2f}%"></div></div></td>'
+                            + f'<td class="number-cell">{row["CHANGE"]:+,.2f}</td>'
+                            + f'<td class="growth-cell {growth_class}">{growth_arrow} {abs(growth):.2f}%</td>'
+                            + "</tr>"
+                        )
+
+                total_change = (cy_total - ly_total) / revenue_divisor
+                total_growth = pct_growth(cy_total, ly_total)
+                total_growth_class = "growth-positive" if total_growth >= 0 else "growth-negative"
+                total_growth_arrow = "▲" if total_growth >= 0 else "▼"
+
+                performance_html = f"""
                 <style>
-                    .zone-country-wrap {{
-                        width: 100%;
-                        height: auto;
-                        max-height: 300px;
-                        overflow-x: auto;
-                        overflow-y: auto;
-                        border: 1px solid #e2e8f0;
-                        border-radius: 10px;
-                        background: #ffffff;
+                    .zc-performance-wrap {{
+                        width:100%; overflow:auto; border:1px solid #18375d; border-radius:10px;
+                        background:#061a33; box-shadow:0 8px 18px rgba(2,12,27,.20);
                     }}
-                    .zone-country-table {{
-                        width: 100%;
-                        border-collapse: collapse;
-                        font-size: 12px;
-                        line-height: 1.35;
-                        color: #334155;
+                    .zc-performance-table {{
+                        width:100%; min-width:790px; border-collapse:collapse;
+                        font-family:"Segoe UI",Arial,sans-serif; font-size:11px; color:#dbeafe;
                     }}
-                    .zone-country-table th {{
-                        position: sticky;
-                        top: 0;
-                        z-index: 1;
-                        padding: 11px 10px;
-                        font-size: 12px;
-                        text-align: center;
-                        white-space: nowrap;
-                        background: #eef6ff;
-                        color: #334155;
-                        font-weight: 700;
-                        border: 1px solid #dbe7f3;
+                    .zc-performance-table th, .zc-performance-table td {{
+                        border:1px solid #17365a; padding:8px 8px; vertical-align:middle;
                     }}
-                    .zone-country-table td {{
-                        padding: 10px;
-                        font-size: 12px;
-                        text-align: center;
-                        white-space: nowrap;
-                        background: #f8fbff;
-                        border: 1px solid #e2e8f0;
-                    }}
-                    .zone-country-table .zone-name {{
-                        text-align: left;
-                        font-weight: 700;
-                        color: #334155;
-                    }}
-                    .matrix-value {{ color: #475569; }}
-                    .matrix-separator {{ color: #94a3b8; }}
-                    .matrix-percent {{
-                        color: #2563eb;
-                        font-weight: 800;
-                    }}
+                    .zc-performance-table thead th {{ text-align:center; font-weight:600; }}
+                    .zc-performance-table .stub-head {{ background:#0b294b; color:#cbd5e1; }}
+                    .zc-performance-table .cy-head {{ background:#1456a0; color:#fff; }}
+                    .zc-performance-table .ly-head {{ background:#176f6b; color:#fff; }}
+                    .zc-performance-table .yoy-head {{ background:#45207b; color:#fff; }}
+                    .zc-performance-table .sub-head {{ font-size:10px; font-weight:500; }}
+                    .zc-performance-table tbody tr:nth-child(odd) td {{ background:#071f3b; }}
+                    .zc-performance-table tbody tr:nth-child(even) td {{ background:#082441; }}
+                    .zone-cell {{ color:#38bdf8; font-size:12px; font-weight:500; text-align:left; }}
+                    .country-cell {{ color:#e2e8f0; white-space:nowrap; }}
+                    .country-flag {{ display:inline-block; width:24px; font-size:15px; margin-right:5px; }}
+                    .number-cell {{ text-align:right; color:#dbeafe; white-space:nowrap; }}
+                    .share-cell {{ min-width:118px; color:#cbd5e1; white-space:nowrap; }}
+                    .share-cell > span {{ display:inline-block; min-width:46px; text-align:right; margin-right:6px; }}
+                    .share-track {{ display:inline-block; vertical-align:middle; width:58px; height:7px; border-radius:999px; background:#102f50; overflow:hidden; }}
+                    .share-fill {{ height:100%; border-radius:999px; }}
+                    .cy-fill {{ background:#1685ff; }}
+                    .ly-fill {{ background:#20a7a3; }}
+                    .growth-cell {{ text-align:right; white-space:nowrap; font-weight:600; }}
+                    .growth-positive {{ color:#22c55e; }}
+                    .growth-negative {{ color:#fb4d67; }}
+                    .total-row td {{ background:#0a2b52 !important; color:#fff; font-weight:600; }}
                 </style>
-                <div class="zone-country-wrap">
-                    <table class="zone-country-table">
-                        <thead><tr>{table_headers}</tr></thead>
-                        <tbody>{''.join(table_rows)}</tbody>
+                <div class="zc-performance-wrap">
+                    <table class="zc-performance-table">
+                        <thead>
+                            <tr>
+                                <th class="stub-head" rowspan="2">Zone</th>
+                                <th class="stub-head" rowspan="2">Country</th>
+                                <th class="cy-head" colspan="2">CURRENT YEAR ({escape(str(fy))})</th>
+                                <th class="ly-head" colspan="2">LAST YEAR ({escape(str(prev_fy))})</th>
+                                <th class="yoy-head" colspan="2">YoY COMPARISON</th>
+                            </tr>
+                            <tr>
+                                <th class="cy-head sub-head">Business ({escape(revenue_unit)})</th>
+                                <th class="cy-head sub-head">% Share</th>
+                                <th class="ly-head sub-head">Business ({escape(revenue_unit)})</th>
+                                <th class="ly-head sub-head">% Share</th>
+                                <th class="yoy-head sub-head">Change ({escape(revenue_unit)})</th>
+                                <th class="yoy-head sub-head">Growth %</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {''.join(body_rows)}
+                            <tr class="total-row">
+                                <td colspan="2">TOTAL</td>
+                                <td class="number-cell">{cy_total / revenue_divisor:,.2f}</td>
+                                <td class="number-cell">100.00%</td>
+                                <td class="number-cell">{ly_total / revenue_divisor:,.2f}</td>
+                                <td class="number-cell">100.00%</td>
+                                <td class="number-cell">{total_change:+,.2f}</td>
+                                <td class="growth-cell {total_growth_class}">{total_growth_arrow} {abs(total_growth):.2f}%</td>
+                            </tr>
+                        </tbody>
                     </table>
                 </div>
                 """
 
                 if hasattr(st, "html"):
-                    st.html(matrix_html)
+                    st.html(performance_html)
                 else:
-                    st.markdown(matrix_html, unsafe_allow_html=True)
+                    st.markdown(performance_html, unsafe_allow_html=True)
 
         # Prepare Month-on-Month analysis for the right-hand column.
         monthly_chart = monthly.copy()
