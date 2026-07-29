@@ -9,7 +9,7 @@ from services.branch_agency_mast import load_stationmast_data
 
 # Compact layout constants
 SPACER_HEIGHT = 4
-REVENUE_CHART_HEIGHT = 400
+REVENUE_CHART_HEIGHT = 310
 ALIGNED_CHART_HEIGHT = 310
 RANKING_CHART_HEIGHT = 330
 
@@ -2107,7 +2107,7 @@ def show_overview():
             fig_yoy.update_layout(
                 barmode="group",
                 height=REVENUE_CHART_HEIGHT,
-                margin=dict(l=2, r=2, t=30, b=2),
+                margin=dict(l=2, r=2, t=20, b=2),
                 plot_bgcolor="#f8fafc",
                 paper_bgcolor="rgba(0,0,0,0)",
                 legend=dict(
@@ -2124,11 +2124,15 @@ def show_overview():
                 bargap=0.22,
                 bargroupgap=0.08,
             )
-            apply_3d_chart_layout(fig_yoy, height=REVENUE_CHART_HEIGHT, margin=dict(l=8, r=8, t=34, b=8))
+            apply_3d_chart_layout(fig_yoy, height=REVENUE_CHART_HEIGHT, margin=dict(l=8, r=8, t=24, b=8))
             fig_yoy.update_xaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=11))
             fig_yoy.update_yaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=11), title_font=dict(size=12))
 
-            st.plotly_chart(fig_yoy, width="stretch")
+            st.plotly_chart(
+                fig_yoy,
+                width="stretch",
+                config={"displayModeBar": False, "responsive": True},
+            )
 
     with row2:
         # ==============================================================
