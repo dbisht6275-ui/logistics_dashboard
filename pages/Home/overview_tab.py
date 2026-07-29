@@ -2665,7 +2665,7 @@ def show_overview():
         with st.container(border=True):
             st.markdown(
                 "<div style='display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 8px 2px;'>"
-                "<div style='font-size:15px;font-weight:500;color:#0f2744;'>Zone vs Country Performance</div>"
+                "<div style='font-size:15px;font-weight:500;color:#0f2744;'>Zone-wise Country Business</div>"
                 "<div style='display:flex;gap:14px;flex-wrap:wrap;font-size:10px;'>"
                 "<span style='color:#1d4ed8;'>■ Current Year</span>"
                 "<span style='color:#0f766e;'>■ Last Year</span>"
