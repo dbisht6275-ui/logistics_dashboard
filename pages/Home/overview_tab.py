@@ -3668,7 +3668,37 @@ def show_overview():
                 if key
             }
 
-            analysis_end = min(pd.to_datetime(end_date), pd.Timestamp.today().normalize())
+            # Resolve the exact dashboard period. Active Days must be measured only
+            # inside the selected FY / quarter / month, not up to the full FY end.
+            fy_start_date = pd.to_datetime(start_date).normalize()
+            fy_end_date = pd.to_datetime(end_date).normalize()
+
+            selected_period_start = fy_start_date
+            selected_period_end = fy_end_date
+
+            if month != "All":
+                selected_fin_month = next(
+                    (fin_month for fin_month, month_name in month_map.items() if month_name == month),
+                    None,
+                )
+                if selected_fin_month is not None:
+                    selected_period_start = fy_start_date + pd.DateOffset(months=selected_fin_month - 1)
+                    selected_period_end = selected_period_start + pd.offsets.MonthEnd(1)
+            elif quarter != "All":
+                quarter_start_month = {
+                    "Q1": 1,
+                    "Q2": 4,
+                    "Q3": 7,
+                    "Q4": 10,
+                }.get(quarter, 1)
+                selected_period_start = fy_start_date + pd.DateOffset(months=quarter_start_month - 1)
+                selected_period_end = selected_period_start + pd.DateOffset(months=3) - pd.Timedelta(days=1)
+
+            selected_period_start = pd.to_datetime(selected_period_start).normalize()
+            selected_period_end = min(
+                pd.to_datetime(selected_period_end).normalize(),
+                pd.Timestamp.today().normalize(),
+            )
 
             for station in opened_df.itertuples(index=False):
                 station_data = station._asdict()
@@ -3678,17 +3708,28 @@ def show_overview():
                 keys = {_normalise_key(branch_name), _normalise_key(branch_code)} - {""}
 
                 frames = [branch_groups[key] for key in keys if key in branch_groups]
-                if frames and pd.notna(active_date):
+                if pd.notna(active_date):
+                    active_date = pd.to_datetime(active_date).normalize()
+                    effective_active_start = max(active_date, selected_period_start)
+                else:
+                    effective_active_start = pd.NaT
+
+                if frames and pd.notna(effective_active_start) and effective_active_start <= selected_period_end:
                     matched = pd.concat(frames, ignore_index=False)
                     matched = matched[
-                        matched[booking_date_col].between(active_date, analysis_end, inclusive="both")
+                        matched[booking_date_col].between(
+                            effective_active_start,
+                            selected_period_end,
+                            inclusive="both",
+                        )
                     ]
                 else:
                     matched = booking_work.iloc[0:0]
 
                 active_days = (
-                    max((analysis_end - active_date.normalize()).days + 1, 0)
-                    if pd.notna(active_date) else 0
+                    max((selected_period_end - effective_active_start).days + 1, 0)
+                    if pd.notna(effective_active_start) and effective_active_start <= selected_period_end
+                    else 0
                 )
                 active_months = max(active_days / 30.44, 1) if active_days else 1
                 revenue_value = float(matched["REVENUE"].sum()) if "REVENUE" in matched else 0.0
@@ -3742,7 +3783,7 @@ def show_overview():
                 f"<div style='font-size:16px;font-weight:950;color:#0f2744;'>"
                 f"🏢 Branch/Agency Network Changes ({period_label})</div>"
                 "<div style='font-size:10px;color:#64748b;margin:2px 0 9px;'>"
-                "Business is calculated from each location's Active Date up to the selected period end."
+                "Active Days and business are calculated only within the selected FY, quarter or month."
                 "</div>",
                 unsafe_allow_html=True,
             )
