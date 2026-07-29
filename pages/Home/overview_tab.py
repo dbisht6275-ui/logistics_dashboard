@@ -2177,10 +2177,8 @@ def show_overview():
                         font=dict(size=15, color="#0f172a", family="Arial Black"),
                     )
                 ],
-                # Keep the load-type panel compact so the company chart fits
-                # beneath it without making the right column taller than Business Trend.
-                height=178,
-                margin=dict(l=2, r=2, t=0, b=0),
+                height=220,
+                margin=dict(l=2, r=2, t=2, b=2),
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="rgba(0,0,0,0)",
                 showlegend=False,
@@ -2199,12 +2197,12 @@ def show_overview():
             ltl_arrow = "▲" if ltl_yoy >= 0 else "▼"
 
             load_type_summary_html = (
-                f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:-6px;margin-bottom:0;">'
-                f'<div style="border:1px solid #bfdbfe;border-radius:8px;padding:4px 5px;background:#eff6ff;text-align:center;">'
+                f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:-8px;margin-bottom:2px;">'
+                f'<div style="border:1px solid #bfdbfe;border-radius:10px;padding:6px 7px;background:#eff6ff;text-align:center;">'
                 f'<div style="font-size:10px;font-weight:800;color:#2563eb;">🚛 FTL ₹{ftl / revenue_divisor:.2f} {revenue_unit} · {ftl_share:.1f}%</div>'
                 f'<div style="font-size:9px;color:#64748b;margin-top:2px;">LY ₹{prev_ftl / revenue_divisor:.2f} · <span style="color:{ftl_growth_color};font-weight:800;">{ftl_arrow} {abs(ftl_yoy):.1f}%</span></div>'
                 f'</div>'
-                f'<div style="border:1px solid #99f6e4;border-radius:8px;padding:4px 5px;background:#f0fdfa;text-align:center;">'
+                f'<div style="border:1px solid #99f6e4;border-radius:10px;padding:6px 7px;background:#f0fdfa;text-align:center;">'
                 f'<div style="font-size:10px;font-weight:800;color:#0f766e;">🚚 LTL ₹{ltl / revenue_divisor:.2f} {revenue_unit} · {ltl_share:.1f}%</div>'
                 f'<div style="font-size:9px;color:#64748b;margin-top:2px;">LY ₹{prev_ltl / revenue_divisor:.2f} · <span style="color:{ltl_growth_color};font-weight:800;">{ltl_arrow} {abs(ltl_yoy):.1f}%</span></div>'
                 f'</div></div>'
@@ -2268,7 +2266,7 @@ def show_overview():
                             chart_df["Business Cr"], chart_df["Contribution %"]
                         )],
                         textposition="outside",
-                        textfont=dict(size=9, color="#334155"),
+                        textfont=dict(size=10, color="#334155"),
                         customdata=customdata,
                         hovertemplate=(
                             "<b>%{y}</b><br>"
@@ -2282,16 +2280,14 @@ def show_overview():
                     )
                 )
                 fig_company.update_layout(
-                    # Compact company chart: the complete right column remains
-                    # within the existing Business Trend height.
-                    height=max(112, 20 * len(chart_df) + 24),
-                    margin=dict(l=6, r=88, t=0, b=0),
+                    height=max(155, 24 * len(chart_df) + 32),
+                    margin=dict(l=10, r=105, t=2, b=2),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     showlegend=False,
-                    bargap=0.58,
-                    xaxis=dict(showgrid=False, showticklabels=False, zeroline=False, title="", fixedrange=True),
-                    yaxis=dict(showgrid=False, title="", tickfont=dict(size=8, color="#334155"), automargin=True, fixedrange=True),
+                    bargap=0.72,
+                    xaxis=dict(showgrid=False, showticklabels=False, zeroline=False, title=""),
+                    yaxis=dict(showgrid=False, title="", tickfont=dict(size=10, color="#334155")),
                 )
                 st.plotly_chart(
                     fig_company,
