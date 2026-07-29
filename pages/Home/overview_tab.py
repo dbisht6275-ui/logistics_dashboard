@@ -3421,8 +3421,11 @@ def show_overview():
             if branch_rank_df.empty:
                 st.info(f"No branch falls in the {selected_business_slab} business slab.")
             else:
-                st.caption(
-                    f"Showing {len(branch_rank_df)} branches in {selected_business_slab}. Scroll to view all."
+                st.markdown(
+                    f'<div style="color:#2563eb;font-size:12px;font-weight:500;margin:2px 0 7px 1px;">'
+                    f'Showing {len(branch_rank_df)} branches in {selected_business_slab}. Scroll to view all.'
+                    f'</div>',
+                    unsafe_allow_html=True,
                 )
                 max_top = branch_rank_df["Business Cr"].max()
 
