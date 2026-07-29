@@ -3469,9 +3469,22 @@ def show_overview():
             if branch_rank_df.empty:
                 st.info(f"No branch falls in the {selected_business_slab} business slab.")
             else:
+                total_branch_business = float(branch_summary["Business"].sum())
+                selected_branch_business = float(branch_rank_df["Business"].sum())
+                selected_business_share = (
+                    selected_branch_business / total_branch_business * 100
+                    if total_branch_business else 0.0
+                )
+                selected_business_display = format_revenue(
+                    selected_branch_business, conversion_type
+                )
+
                 st.markdown(
                     f'<div style="color:#2563eb;font-size:12px;font-weight:500;margin:2px 0 7px 1px;">'
-                    f'Showing {len(branch_rank_df)} branches in {selected_business_slab}. Scroll to view all.'
+                    f'Showing {len(branch_rank_df)} branches in {selected_business_slab}. '
+                    f'Selected business: ₹{selected_business_display} '
+                    f'({selected_business_share:.2f}% of total branch business). '
+                    f'Scroll to view all.'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
