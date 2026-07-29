@@ -529,12 +529,12 @@ def _inject_overview_css():
                 font-size: 11px;
                 margin-top: 2px;
             }
-            /* Active filter chips stay between the filter controls and KPI row, with breathing room */
+            /* Compact action/chip row between filters and KPI cards */
             div[data-testid="stElementContainer"]:has(.filter-summary) {
                 position: relative !important;
                 z-index: 5 !important;
-                margin-top: 8px !important;
-                margin-bottom: 14px !important;
+                margin-top: 0 !important;
+                margin-bottom: 7px !important;
             }
             .filter-summary {
                 display: flex;
@@ -542,7 +542,8 @@ def _inject_overview_css():
                 justify-content: flex-start;
                 align-items: center;
                 width: 100%;
-                gap: 9px;
+                min-height: 32px;
+                gap: 7px;
                 margin: 0;
                 padding: 0;
                 line-height: 1;
@@ -649,7 +650,7 @@ def _inject_overview_css():
                 flex-direction: column !important;
                 gap: 7px !important;
                 padding: 0 !important;
-                margin: 0 0 8px 0 !important;
+                margin: 0 0 2px 0 !important;
                 border: 0 !important;
                 background: transparent !important;
                 box-shadow: none !important;
@@ -734,7 +735,7 @@ def _inject_overview_css():
                 }
                 div[data-testid="stSelectbox"] {
                     gap: 6px !important;
-                    margin-bottom: 7px !important;
+                    margin-bottom: 2px !important;
                 }
                 div[data-testid="stSelectbox"] > label,
                 div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
@@ -1402,6 +1403,36 @@ def _render_operational_highlights(current_df, previous_df):
         )
         st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
 
+def _clear_overview_filters():
+    """Reset the top dashboard filters to their default values."""
+    filter_keys = [
+        "overview_view_type",
+        "overview_fy",
+        "overview_company",
+        "overview_zone",
+        "overview_zone_locked",
+        "overview_circle",
+        "overview_circle_locked",
+        "overview_branch",
+        "overview_branch_locked",
+        "overview_quarter",
+        "overview_month",
+        "overview_loadtype",
+        "overview_conversion_type",
+    ]
+
+    for key in filter_keys:
+        st.session_state.pop(key, None)
+
+    # Keep the dashboard immediately usable after clearing.
+    st.session_state["overview_fy"] = "2026-2027"
+
+    # Discard any prepared CSV state because the filter context has changed.
+    for key in list(st.session_state.keys()):
+        if str(key).startswith("overview_export_ready_"):
+            st.session_state.pop(key, None)
+
+
 def show_overview():
     """Compact overview dashboard page."""
 
@@ -1592,8 +1623,33 @@ def show_overview():
         )
     revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
 
-    # Separate filters from the summary chips/KPIs on every screen size.
-    compact_spacer(6)
+    # Keep the controls, active-filter chips and KPI row visually close without touching.
+    compact_spacer(0)
+
+    active_filter_items = [
+        ("FY", fy), ("View", view_type), ("Company", company), ("Zone", zone), ("Circle", circle),
+        ("Branch", branch), ("Quarter", quarter), ("Month", month), ("Load", loadtype), ("Unit", conversion_type),
+    ]
+    active_filter_html = "".join(
+        f'<span class="filter-chip">{label}: {value}</span>'
+        for label, value in active_filter_items
+        if value not in (None, "", "All")
+    )
+
+    clear_col, chips_col = st.columns([1.05, 8.95], gap="small", vertical_alignment="center")
+    with clear_col:
+        st.button(
+            "↺ Clear All",
+            key="overview_clear_all_filters",
+            help="Reset all dashboard filters to their default values.",
+            width="stretch",
+            on_click=_clear_overview_filters,
+        )
+    with chips_col:
+        if active_filter_html:
+            st.markdown(f'<div class="filter-summary">{active_filter_html}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="filter-summary"></div>', unsafe_allow_html=True)
 
     if df.empty:
         st.warning("No data found for selected filters")
@@ -1626,18 +1682,6 @@ def show_overview():
                 width="content",
                 on_click=lambda: st.session_state.update({export_key: False}),
             )
-
-    active_filter_items = [
-        ("FY", fy), ("View", view_type), ("Company", company), ("Zone", zone), ("Circle", circle),
-        ("Branch", branch), ("Quarter", quarter), ("Month", month), ("Load", loadtype), ("Unit", conversion_type),
-    ]
-    active_filter_html = "".join(
-        f'<span class="filter-chip">{label}: {value}</span>'
-        for label, value in active_filter_items
-        if value not in (None, "", "All")
-    )
-    if active_filter_html:
-        st.markdown(f'<div class="filter-summary">{active_filter_html}</div>', unsafe_allow_html=True)
 
     # =========================
     # Apply the same company/zone/circle/branch/quarter/month/loadtype filters to the LY data
