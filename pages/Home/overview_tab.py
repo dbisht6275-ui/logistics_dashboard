@@ -2655,143 +2655,73 @@ def show_overview():
 
         with zone_table_col:
             with st.container(border=True):
-                st.markdown("###### 📊 ZONE VS COUNTRY PERFORMANCE")
+                st.markdown("###### Zone vs Country Business (%)")
 
-                # Current-year Zone/Country business.
-                current_zc = (
-                    df.groupby(["zone", "COUNTRY"], dropna=False)["REVENUE"]
-                    .sum()
-                    .reset_index()
-                    .rename(columns={"REVENUE": "CY_REVENUE"})
-                )
+                matrix_display = matrix_df.reset_index().reset_index(drop=True)
 
-                # Last-year Zone/Country business using the same active filters.
-                if prev_df is not None and not prev_df.empty and {"zone", "COUNTRY", "REVENUE"}.issubset(prev_df.columns):
-                    previous_zc = (
-                        prev_df.groupby(["zone", "COUNTRY"], dropna=False)["REVENUE"]
-                        .sum()
-                        .reset_index()
-                        .rename(columns={"REVENUE": "LY_REVENUE"})
+                matrix_display["zone"] = matrix_display["zone"].replace({
+                    "NORTH ZONE": "North",
+                    "WEST ZONE": "West",
+                    "SOUTH ZONE": "South",
+                    "EAST ZONE": "East",
+                    "NORTH EAST ZONE": "NE",
+                    "NEPAL ZONE": "Nepal"
+                })
+
+                numeric_cols = matrix_display.columns[1:]
+
+                # The pivot already contains a Total column. Exclude it when calculating
+                # the grand total, otherwise every value is counted twice.
+                country_cols = [col for col in numeric_cols if col != "Total"]
+                grand_total = matrix_display[country_cols].to_numpy().sum() if country_cols else 0
+
+                # Show both revenue and contribution percentage in every cell.
+                matrix_value_display = matrix_display.copy()
+                for col in country_cols:
+                    matrix_value_display[col] = matrix_display[col].apply(
+                        lambda value: (
+                            f"₹{value:.2f} {revenue_unit} | {(value / grand_total * 100):.1f}%"
+                            if grand_total > 0
+                            else f"₹{value:.2f} {revenue_unit} | 0.0%"
+                        )
                     )
-                else:
-                    previous_zc = pd.DataFrame(columns=["zone", "COUNTRY", "LY_REVENUE"])
 
-                zone_country_perf = current_zc.merge(
-                    previous_zc,
-                    on=["zone", "COUNTRY"],
-                    how="outer",
-                )
-                zone_country_perf["CY_REVENUE"] = pd.to_numeric(
-                    zone_country_perf["CY_REVENUE"], errors="coerce"
-                ).fillna(0)
-                zone_country_perf["LY_REVENUE"] = pd.to_numeric(
-                    zone_country_perf["LY_REVENUE"], errors="coerce"
-                ).fillna(0)
-                zone_country_perf["zone"] = zone_country_perf["zone"].fillna("Unknown").astype(str)
-                zone_country_perf["COUNTRY"] = zone_country_perf["COUNTRY"].fillna("Unknown").astype(str)
-
-                zone_country_perf["CY_VALUE"] = zone_country_perf["CY_REVENUE"] / revenue_divisor
-                zone_country_perf["LY_VALUE"] = zone_country_perf["LY_REVENUE"] / revenue_divisor
-                cy_total = float(zone_country_perf["CY_REVENUE"].sum())
-                ly_total = float(zone_country_perf["LY_REVENUE"].sum())
-                zone_country_perf["CY_SHARE"] = (
-                    zone_country_perf["CY_REVENUE"] / cy_total * 100 if cy_total else 0
-                )
-                zone_country_perf["LY_SHARE"] = (
-                    zone_country_perf["LY_REVENUE"] / ly_total * 100 if ly_total else 0
-                )
-                zone_country_perf["CHANGE"] = zone_country_perf["CY_VALUE"] - zone_country_perf["LY_VALUE"]
-                zone_country_perf["GROWTH"] = zone_country_perf.apply(
-                    lambda row: pct_growth(row["CY_REVENUE"], row["LY_REVENUE"]), axis=1
+                matrix_value_display["Total"] = matrix_display["Total"].apply(
+                    lambda value: (
+                        f"₹{value:.2f} {revenue_unit} | {(value / grand_total * 100):.1f}%"
+                        if grand_total > 0
+                        else f"₹{value:.2f} {revenue_unit} | 0.0%"
+                    )
                 )
 
-                zone_names = {
-                    "NORTH ZONE": "North", "WEST ZONE": "West", "SOUTH ZONE": "South",
-                    "EAST ZONE": "East", "NORTH EAST ZONE": "NE", "NEPAL ZONE": "Nepal"
-                }
-                zone_country_perf["ZONE_LABEL"] = zone_country_perf["zone"].replace(zone_names)
-                zone_country_perf = zone_country_perf.sort_values(
-                    ["CY_REVENUE", "ZONE_LABEL", "COUNTRY"], ascending=[False, True, True]
-                )
-                zone_order = (
-                    zone_country_perf.groupby("ZONE_LABEL")["CY_REVENUE"]
-                    .sum().sort_values(ascending=False).index.tolist()
-                )
-                zone_country_perf["ZONE_LABEL"] = pd.Categorical(
-                    zone_country_perf["ZONE_LABEL"], categories=zone_order, ordered=True
-                )
-                zone_country_perf = zone_country_perf.sort_values(
-                    ["ZONE_LABEL", "CY_REVENUE"], ascending=[True, False]
-                )
-
-                # Keep the original Zone vs Country matrix visual and show PY below each CY value.
-                current_matrix = zone_country_perf.pivot_table(
-                    index="ZONE_LABEL",
-                    columns="COUNTRY",
-                    values="CY_VALUE",
-                    aggfunc="sum",
-                    fill_value=0,
-                )
-                previous_matrix = zone_country_perf.pivot_table(
-                    index="ZONE_LABEL",
-                    columns="COUNTRY",
-                    values="LY_VALUE",
-                    aggfunc="sum",
-                    fill_value=0,
-                )
-
-                all_countries = sorted(set(current_matrix.columns).union(previous_matrix.columns))
-                current_matrix = current_matrix.reindex(index=zone_order, columns=all_countries, fill_value=0)
-                previous_matrix = previous_matrix.reindex(index=zone_order, columns=all_countries, fill_value=0)
-
-                current_matrix["Total"] = current_matrix.sum(axis=1)
-                previous_matrix["Total"] = previous_matrix.sum(axis=1)
-
-                cy_grand_total = float(current_matrix[all_countries].to_numpy().sum()) if all_countries else 0.0
-
+                # Render as HTML so the percentage part can have its own colour.
+                # Business remains dark while contribution % is highlighted in blue.
                 table_headers = "".join(
-                    f"<th>{escape(str(col))}</th>"
-                    for col in ["Zone"] + all_countries + ["Total"]
+                    f"<th>{str(col)}</th>" for col in matrix_display.columns
                 )
-
                 table_rows = []
-                for zone_name in zone_order:
-                    cells = [f"<td class='zone-name'>{escape(str(zone_name))}</td>"]
-                    for col in all_countries + ["Total"]:
-                        cy_value = float(current_matrix.loc[zone_name, col]) if zone_name in current_matrix.index else 0.0
-                        py_value = float(previous_matrix.loc[zone_name, col]) if zone_name in previous_matrix.index else 0.0
-                        share = (cy_value / cy_grand_total * 100) if cy_grand_total > 0 else 0.0
+                for _, row in matrix_display.iterrows():
+                    cells = [f"<td class='zone-name'>{row['zone']}</td>"]
+                    for col in matrix_display.columns[1:]:
+                        value = float(row[col]) if pd.notna(row[col]) else 0.0
+                        pct = (value / grand_total * 100) if grand_total > 0 else 0.0
                         cells.append(
                             "<td>"
-                            f"<div class='matrix-value'>₹{cy_value:.2f} {revenue_unit}"
-                            f" <span class='matrix-separator'>|</span> "
-                            f"<span class='matrix-percent'>{share:.1f}%</span></div>"
-                            f"<div class='matrix-py'>PY: ₹{py_value:.2f} {revenue_unit}</div>"
+                            f"<span class='matrix-value'>₹{value:.2f} {revenue_unit}</span>"
+                            "<span class='matrix-separator'> | </span>"
+                            f"<span class='matrix-percent'>{pct:.1f}%</span>"
                             "</td>"
                         )
                     table_rows.append(f"<tr>{''.join(cells)}</tr>")
 
-                total_cells = ["<td class='zone-name total-label'>TOTAL</td>"]
-                for col in all_countries + ["Total"]:
-                    cy_value = float(current_matrix[col].sum())
-                    py_value = float(previous_matrix[col].sum())
-                    share = (cy_value / cy_grand_total * 100) if cy_grand_total > 0 else 0.0
-                    total_cells.append(
-                        "<td class='total-cell'>"
-                        f"<div class='matrix-value'>₹{cy_value:.2f} {revenue_unit}"
-                        f" <span class='matrix-separator'>|</span> "
-                        f"<span class='matrix-percent'>{share:.1f}%</span></div>"
-                        f"<div class='matrix-py'>PY: ₹{py_value:.2f} {revenue_unit}</div>"
-                        "</td>"
-                    )
-                table_rows.append(f"<tr>{''.join(total_cells)}</tr>")
-
+                # Let the table height follow its data rows. A maximum height is kept
+                # so longer matrices scroll instead of making the page excessively tall.
                 matrix_html = f"""
                 <style>
                     .zone-country-wrap {{
                         width: 100%;
                         height: auto;
-                        max-height: 320px;
+                        max-height: 300px;
                         overflow-x: auto;
                         overflow-y: auto;
                         border: 1px solid #e2e8f0;
@@ -2809,7 +2739,7 @@ def show_overview():
                         position: sticky;
                         top: 0;
                         z-index: 1;
-                        padding: 10px 9px;
+                        padding: 11px 10px;
                         font-size: 12px;
                         text-align: center;
                         white-space: nowrap;
@@ -2819,7 +2749,7 @@ def show_overview():
                         border: 1px solid #dbe7f3;
                     }}
                     .zone-country-table td {{
-                        padding: 8px 9px;
+                        padding: 10px;
                         font-size: 12px;
                         text-align: center;
                         white-space: nowrap;
@@ -2833,14 +2763,10 @@ def show_overview():
                     }}
                     .matrix-value {{ color: #475569; }}
                     .matrix-separator {{ color: #94a3b8; }}
-                    .matrix-percent {{ color: #2563eb; font-weight: 700; }}
-                    .matrix-py {{
-                        margin-top: 3px;
-                        color: #64748b;
-                        font-size: 10px;
-                        font-weight: 400;
+                    .matrix-percent {{
+                        color: #2563eb;
+                        font-weight: 800;
                     }}
-                    .total-cell, .total-label {{ background: #f1f5f9 !important; }}
                 </style>
                 <div class="zone-country-wrap">
                     <table class="zone-country-table">
