@@ -9,7 +9,7 @@ from services.branch_agency_mast import load_stationmast_data
 
 # Compact layout constants
 SPACER_HEIGHT = 4
-REVENUE_CHART_HEIGHT = 440
+REVENUE_CHART_HEIGHT = 400
 ALIGNED_CHART_HEIGHT = 310
 RANKING_CHART_HEIGHT = 330
 
@@ -2005,7 +2005,7 @@ def show_overview():
     ltl_pct = (ltl / revenue * 100) if revenue else 0
 
     # Business trend and load type charts
-    row1, row2 = st.columns([1.35, 0.65])
+    row1, row2 = st.columns([1.20, 0.80])
 
     with row1:
         with st.container(border=True):
@@ -2183,14 +2183,14 @@ def show_overview():
                             y=0.54,
                             text=f"<b>₹{load_total / revenue_divisor:.2f} {revenue_unit}</b>",
                             showarrow=False,
-                            font=dict(size=13, color="#0f172a", family="Arial Black"),
+                            font=dict(size=14, color="#0f172a", family="Arial"),
                         ),
                         dict(
                             x=0.5,
                             y=0.40,
                             text="Total Revenue",
                             showarrow=False,
-                            font=dict(size=8, color="#64748b"),
+                            font=dict(size=9, color="#64748b", family="Arial"),
                         ),
                     ],
                 )
@@ -2210,19 +2210,19 @@ def show_overview():
                     '<div style="display:flex;flex-direction:column;gap:12px;padding:3px 0;">'
                     '<div style="display:grid;grid-template-columns:10px minmax(30px,1fr) auto auto;align-items:center;gap:7px;">'
                     '<span style="width:8px;height:8px;border-radius:50%;background:#2563eb;display:inline-block;"></span>'
-                    '<span style="font-size:10px;font-weight:700;color:#334155;">FTL</span>'
-                    f'<span style="font-size:10px;font-weight:800;color:#0f172a;white-space:nowrap;">₹{ftl / revenue_divisor:.2f} {revenue_unit}</span>'
-                    f'<span style="font-size:10px;font-weight:800;color:#334155;white-space:nowrap;">{ftl_share:.1f}%</span>'
-                    f'<span style="grid-column:2/5;font-size:8px;color:#64748b;">LY ₹{prev_ftl / revenue_divisor:.2f} {revenue_unit} · '
-                    f'<b style="color:{ftl_growth_color};">{ftl_arrow} {abs(ftl_yoy):.1f}%</b></span>'
+                    '<span style="font-size:11px;font-weight:400;color:#334155;">FTL</span>'
+                    f'<span style="font-size:11px;font-weight:500;color:#0f172a;white-space:nowrap;">₹{ftl / revenue_divisor:.2f} {revenue_unit}</span>'
+                    f'<span style="font-size:11px;font-weight:500;color:#334155;white-space:nowrap;">{ftl_share:.1f}%</span>'
+                    f'<span style="grid-column:2/5;font-size:9px;color:#64748b;">LY ₹{prev_ftl / revenue_divisor:.2f} {revenue_unit} · '
+                    f'<span style="color:{ftl_growth_color};font-weight:500;">{ftl_arrow} {abs(ftl_yoy):.1f}%</span></span>'
                     '</div>'
                     '<div style="display:grid;grid-template-columns:10px minmax(30px,1fr) auto auto;align-items:center;gap:7px;">'
                     '<span style="width:8px;height:8px;border-radius:50%;background:#0f766e;display:inline-block;"></span>'
-                    '<span style="font-size:10px;font-weight:700;color:#334155;">LTL</span>'
-                    f'<span style="font-size:10px;font-weight:800;color:#0f172a;white-space:nowrap;">₹{ltl / revenue_divisor:.2f} {revenue_unit}</span>'
-                    f'<span style="font-size:10px;font-weight:800;color:#334155;white-space:nowrap;">{ltl_share:.1f}%</span>'
-                    f'<span style="grid-column:2/5;font-size:8px;color:#64748b;">LY ₹{prev_ltl / revenue_divisor:.2f} {revenue_unit} · '
-                    f'<b style="color:{ltl_growth_color};">{ltl_arrow} {abs(ltl_yoy):.1f}%</b></span>'
+                    '<span style="font-size:11px;font-weight:400;color:#334155;">LTL</span>'
+                    f'<span style="font-size:11px;font-weight:500;color:#0f172a;white-space:nowrap;">₹{ltl / revenue_divisor:.2f} {revenue_unit}</span>'
+                    f'<span style="font-size:11px;font-weight:500;color:#334155;white-space:nowrap;">{ltl_share:.1f}%</span>'
+                    f'<span style="grid-column:2/5;font-size:9px;color:#64748b;">LY ₹{prev_ltl / revenue_divisor:.2f} {revenue_unit} · '
+                    f'<span style="color:{ltl_growth_color};font-weight:500;">{ltl_arrow} {abs(ltl_yoy):.1f}%</span></span>'
                     '</div></div>'
                 )
                 if hasattr(st, "html"):
@@ -2290,13 +2290,13 @@ def show_overview():
                     company_rows.append(
                         f'<div title="{company_name} | LY ₹{py_value:.2f} {revenue_unit} | {growth_arrow} {abs(growth):.1f}%" '
                         f'style="display:grid;grid-template-columns:minmax(72px,94px) minmax(72px,1fr) auto auto;align-items:center;gap:7px;margin:7px 0;">'
-                        f'<div style="font-size:9px;font-weight:700;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{company_name}</div>'
-                        f'<div style="height:10px;background:#e8eef5;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
-                        f'<div style="height:10px;width:{width_pct:.2f}%;background:{color};border-radius:999px;"></div></div>'
-                        f'<div style="font-size:9px;font-weight:700;color:#334155;white-space:nowrap;">₹{value:.2f} {revenue_unit}</div>'
-                        f'<div style="font-size:9px;font-weight:700;color:#334155;min-width:38px;text-align:right;white-space:nowrap;">{share:.2f}%</div>'
-                        f'<div style="grid-column:2/5;margin-top:-5px;font-size:7.5px;color:#94a3b8;">LY ₹{py_value:.2f} {revenue_unit} · '
-                        f'<b style="color:{growth_color};">{growth_arrow} {abs(growth):.1f}%</b></div>'
+                        f'<div style="font-size:10px;font-weight:400;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{company_name}</div>'
+                        f'<div style="height:11px;background:#e8eef5;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
+                        f'<div style="height:11px;width:{width_pct:.2f}%;background:{color};border-radius:999px;"></div></div>'
+                        f'<div style="font-size:10px;font-weight:400;color:#334155;white-space:nowrap;">₹{value:.2f} {revenue_unit}</div>'
+                        f'<div style="font-size:10px;font-weight:400;color:#334155;min-width:42px;text-align:right;white-space:nowrap;">{share:.2f}%</div>'
+                        f'<div style="grid-column:2/5;margin-top:-5px;font-size:8.5px;color:#94a3b8;">LY ₹{py_value:.2f} {revenue_unit} · '
+                        f'<span style="color:{growth_color};font-weight:500;">{growth_arrow} {abs(growth):.1f}%</span></div>'
                         f'</div>'
                     )
 
