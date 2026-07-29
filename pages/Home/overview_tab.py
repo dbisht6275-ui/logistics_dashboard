@@ -3506,13 +3506,14 @@ def show_overview():
         # Upper limit is exclusive so one branch cannot fall into two slabs.
         top_branch_pool = top_branch_pool[top_branch_pool["Business"] < slab_max]
 
-    top10_df = (
+    branch_rank_df = (
         top_branch_pool
         .sort_values("Business", ascending=False)
-        .head(10)
         .copy()
     )
-    top10_df["Business Cr"] = (top10_df["Business"] / revenue_divisor).round(2)
+    branch_rank_df["Business Cr"] = (
+        branch_rank_df["Business"] / revenue_divisor
+    ).round(2)
 
     # Keep only Top Branches and Operational Highlights in one balanced row.
     b1, b2 = st.columns([1.15, 1], gap="small")
@@ -3521,7 +3522,7 @@ def show_overview():
         with st.container(border=True):
             st.markdown(
                 "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
-                "Top 10 Branches by Business</div>",
+                "All Branches by Business</div>",
                 unsafe_allow_html=True,
             )
 
@@ -3543,25 +3544,24 @@ def show_overview():
             if slab_max is not None:
                 top_branch_pool = top_branch_pool[top_branch_pool["Business"] < slab_max]
 
-            top10_df = (
+            branch_rank_df = (
                 top_branch_pool
                 .sort_values("Business", ascending=False)
-                .head(10)
                 .copy()
             )
-            top10_df["Business Cr"] = (
-                top10_df["Business"] / revenue_divisor
+            branch_rank_df["Business Cr"] = (
+                branch_rank_df["Business"] / revenue_divisor
             ).round(2)
 
-            if top10_df.empty:
+            if branch_rank_df.empty:
                 st.info(f"No branch falls in the {selected_business_slab} business slab.")
             else:
                 st.caption(
-                    f"Showing {len(top10_df)} highest branches in {selected_business_slab}"
+                    f"Showing all {len(branch_rank_df)} branches in {selected_business_slab}, ranked by business"
                 )
-                max_top = top10_df["Business Cr"].max()
+                max_top = branch_rank_df["Business Cr"].max()
 
-                for i, row in top10_df.reset_index(drop=True).iterrows():
+                for i, row in branch_rank_df.reset_index(drop=True).iterrows():
                     mini_rank_card(
                         i + 1,
                         row["branch"],
