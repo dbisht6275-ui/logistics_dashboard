@@ -2121,55 +2121,102 @@ def show_overview():
         with st.container(border=True):
             st.markdown("###### Business by Load Type")
 
-            # Donut chart for FTL/LTL revenue share
-            fig_load = go.Figure(
-                data=[
-                    go.Pie(
-                        labels=["FTL", "LTL"],
-                        values=[ftl, ltl],
-                        hole=0.64,
-                        textinfo="percent+label",
-                        pull=[0.018, 0.018],
-                        rotation=135,
-                        direction="clockwise",
-                        marker=dict(
-                            colors=["#2563eb", "#0f766e"],
-                            line=dict(color="#ffffff", width=3),
-                        ),
-                        textfont=dict(size=10, color="white"),
-                        hovertemplate="<b>%{label}</b><br>Business: ₹%{value:,.0f}<br>Share: %{percent}<extra></extra>",
-                    )
-                ]
-            )
+            # Image-style compact horizontal comparison for FTL and LTL.
+            # Existing revenue calculations and filters remain unchanged.
+            prev_ftl = prev_kpis["ftl"]
+            prev_ltl = prev_kpis["ltl"]
+            load_total = ftl + ltl
 
+            load_df = pd.DataFrame(
+                {
+                    "Load Type": ["FTL", "LTL"],
+                    "CY Revenue": [ftl, ltl],
+                    "LY Revenue": [prev_ftl, prev_ltl],
+                    "Icon": ["🚛", "🚚"],
+                    "Color": ["#2563eb", "#0f766e"],
+                }
+            )
+            load_df["Business"] = load_df["CY Revenue"] / revenue_divisor
+            load_df["LY Business"] = load_df["LY Revenue"] / revenue_divisor
+            load_df["Contribution %"] = (
+                load_df["CY Revenue"] / load_total * 100 if load_total else 0
+            )
+            load_df["Growth %"] = load_df.apply(
+                lambda row: pct_growth(row["CY Revenue"], row["LY Revenue"]), axis=1
+            )
+            load_chart_df = load_df.sort_values("Business", ascending=True).reset_index(drop=True)
+
+            fig_load = go.Figure()
+            fig_load.add_trace(
+                go.Bar(
+                    x=load_chart_df["Business"],
+                    y=load_chart_df["Load Type"],
+                    orientation="h",
+                    width=0.22,
+                    marker=dict(
+                        color=load_chart_df["Color"],
+                        line=dict(color=load_chart_df["Color"], width=0),
+                    ),
+                    text=[
+                        f"₹{value:.2f} {revenue_unit}   {share:.1f}%"
+                        for value, share in zip(
+                            load_chart_df["Business"],
+                            load_chart_df["Contribution %"],
+                        )
+                    ],
+                    textposition="outside",
+                    textfont=dict(size=10, color="#334155"),
+                    customdata=load_chart_df[["LY Business", "Growth %", "Contribution %"]].to_numpy(),
+                    hovertemplate=(
+                        "<b>%{y}</b><br>"
+                        f"Current: ₹%{{x:.2f}} {revenue_unit}<br>"
+                        f"LY: ₹%{{customdata[0]:.2f}} {revenue_unit}<br>"
+                        "Contribution: %{customdata[2]:.1f}%<br>"
+                        "YoY Growth: %{customdata[1]:.1f}%<extra></extra>"
+                    ),
+                    cliponaxis=False,
+                )
+            )
             fig_load.update_layout(
-                annotations=[
-                    dict(
-                        text=f"<b>₹{(ftl + ltl)/revenue_divisor:.2f} {revenue_unit}</b><br><b>Total</b>",
-                        x=0.5,
-                        y=0.5,
-                        showarrow=False,
-                        align="center",
-                        font=dict(size=16, color="#0f172a", family="Arial Black")
-                    )
-                ],
-                height=220,
-                margin=dict(l=2, r=2, t=2, b=2),
+                height=128,
+                margin=dict(l=8, r=105, t=0, b=0),
                 paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
                 showlegend=False,
+                bargap=0.72,
+                xaxis=dict(showgrid=False, showticklabels=False, zeroline=False, title=""),
+                yaxis=dict(showgrid=False, title="", tickfont=dict(size=11, color="#334155")),
             )
-            fig_load.update_traces(sort=False)
+            st.plotly_chart(
+                fig_load,
+                width="stretch",
+                config={"displayModeBar": False, "responsive": True},
+            )
 
-            st.plotly_chart(fig_load, width="stretch")
-            st.markdown(
-                f"""
-                <div style="display:flex;justify-content:center;gap:10px;margin-top:-10px;margin-bottom:2px;">
-                    <span style="font-size:9px;font-weight:800;color:#2563eb;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:3px 7px;">🚛 FTL ₹{ftl/revenue_divisor:.2f} {revenue_unit}</span>
-                    <span style="font-size:9px;font-weight:800;color:#0f766e;background:#f0fdfa;border:1px solid #99f6e4;border-radius:999px;padding:3px 7px;">🚚 LTL ₹{ltl/revenue_divisor:.2f} {revenue_unit}</span>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            top_load = load_df.sort_values("CY Revenue", ascending=False).iloc[0]
+            top_load_growth = float(top_load["Growth %"] or 0)
+            load_growth_color = "#16a34a" if top_load_growth >= 0 else "#dc2626"
+            load_growth_arrow = "▲" if top_load_growth >= 0 else "▼"
+
+            load_left, load_right = st.columns(2, gap="small")
+            with load_left:
+                st.markdown(
+                    f'''<div style="border:1px solid #dbe4ef;border-radius:10px;padding:8px 9px;background:#fbfdff;min-height:68px;">
+                    <div style="font-size:9px;color:#64748b;text-align:center;">Top Load Type</div>
+                    <div style="font-size:14px;font-weight:800;color:{top_load['Color']};text-align:center;margin-top:4px;">{top_load['Icon']} {top_load['Load Type']}</div>
+                    <div style="font-size:10px;color:#475569;text-align:center;margin-top:2px;">{top_load['Contribution %']:.1f}% of Total Revenue</div>
+                    </div>''',
+                    unsafe_allow_html=True,
+                )
+            with load_right:
+                st.markdown(
+                    f'''<div style="border:1px solid #dbe4ef;border-radius:10px;padding:8px 9px;background:#fbfdff;min-height:68px;">
+                    <div style="font-size:9px;color:#64748b;text-align:center;">YoY Growth</div>
+                    <div style="font-size:15px;font-weight:900;color:{load_growth_color};text-align:center;margin-top:4px;">{load_growth_arrow} {abs(top_load_growth):.1f}%</div>
+                    <div style="font-size:10px;color:#475569;text-align:center;margin-top:2px;">LY: ₹{top_load['LY Business']:.2f} {revenue_unit}</div>
+                    </div>''',
+                    unsafe_allow_html=True,
+                )
 
         # Business by Company is intentionally placed below Load Type
         # inside the same right-side column as the Business Trend chart.
