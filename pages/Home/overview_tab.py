@@ -1209,26 +1209,28 @@ def create_target_card(title, actual, target, unit="", decimals=2, icon="🎯"):
     st.markdown(html, unsafe_allow_html=True)
 
 
-def mini_rank_card(rank, name, value, max_value, color):
-    """Compact ranked branch row with medal treatment and contribution bar."""
+def mini_rank_card(rank, name, value, max_value, color, render=True):
+    """Build a compact ranked branch row with a wider name area and slimmer bar."""
     pct = min((value / max_value * 100), 100) if max_value else 0
     medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, str(rank))
 
     html = f"""
-    <div style="margin-bottom:7px;padding:5px 6px;border:1px solid #e5ebf2;border-radius:9px;background:#fbfdff;">
-        <div style="display:flex;align-items:center;gap:7px;">
-            <div style="width:22px;text-align:center;font-size:14px;font-weight:400;color:#486581;">{medal}</div>
-            <div style="font-size:12px;font-weight:400;color:#243b53;min-width:102px;max-width:102px;
-                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{name}</div>
-            <div style="flex:1;height:8px;background:#e8eef5;border-radius:999px;overflow:hidden;
-                        box-shadow:inset 0 1px 2px rgba(15,23,42,.12);">
-                <div style="width:{pct}%;height:8px;background:{color};border-radius:999px;"></div>
+    <div style="margin-bottom:5px;padding:5px 7px;border:1px solid #e5ebf2;border-radius:9px;background:#fbfdff;">
+        <div style="display:grid;grid-template-columns:25px minmax(155px,190px) minmax(90px,1fr) 58px;align-items:center;gap:7px;">
+            <div style="text-align:center;font-size:13px;font-weight:400;color:#486581;">{medal}</div>
+            <div title="{escape(str(name))}" style="font-size:11px;font-weight:500;color:#243b53;
+                        white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{escape(str(name))}</div>
+            <div style="height:6px;background:#e8eef5;border-radius:999px;overflow:hidden;
+                        box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">
+                <div style="width:{pct}%;height:6px;background:{color};border-radius:999px;"></div>
             </div>
-            <div style="font-size:12px;font-weight:400;color:#102a43;min-width:53px;text-align:right;">₹{value:.2f}</div>
+            <div style="font-size:11px;font-weight:500;color:#102a43;text-align:right;white-space:nowrap;">₹{value:.2f}</div>
         </div>
     </div>
     """
-    st.markdown(html, unsafe_allow_html=True)
+    if render:
+        st.markdown(html, unsafe_allow_html=True)
+    return html
 
 
 
@@ -3522,7 +3524,7 @@ def show_overview():
         with st.container(border=True):
             st.markdown(
                 "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
-                "All Branches by Business</div>",
+                "Branches by Business</div>",
                 unsafe_allow_html=True,
             )
 
@@ -3557,18 +3559,30 @@ def show_overview():
                 st.info(f"No branch falls in the {selected_business_slab} business slab.")
             else:
                 st.caption(
-                    f"Showing all {len(branch_rank_df)} branches in {selected_business_slab}, ranked by business"
+                    f"Showing {len(branch_rank_df)} branches in {selected_business_slab}. Scroll to view all."
                 )
                 max_top = branch_rank_df["Business Cr"].max()
 
+                branch_rows_html = []
                 for i, row in branch_rank_df.reset_index(drop=True).iterrows():
-                    mini_rank_card(
-                        i + 1,
-                        row["branch"],
-                        row["Business Cr"],
-                        max_top,
-                        "#22c55e",
+                    branch_rows_html.append(
+                        mini_rank_card(
+                            i + 1,
+                            row["branch"],
+                            row["Business Cr"],
+                            max_top,
+                            "#22c55e",
+                            render=False,
+                        )
                     )
+
+                st.markdown(
+                    '<div style="height:285px;overflow-y:auto;overflow-x:hidden;'
+                    'padding:1px 5px 1px 0;scrollbar-gutter:stable;">'
+                    + "".join(branch_rows_html)
+                    + '</div>',
+                    unsafe_allow_html=True,
+                )
 
     with b2:
         _render_operational_highlights(df, prev_df)
