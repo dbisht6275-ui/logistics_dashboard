@@ -296,6 +296,22 @@ def _inject_overview_css():
                 position: relative;
                 z-index: 1;
                 margin-top: 6px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 6px;
+            }
+
+            .kpi-3d-ly {
+                min-width: 0;
+                color: #64748b;
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-size: 9px;
+                font-weight: 600;
+                line-height: 1.1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
             .kpi-3d-growth {
@@ -1107,13 +1123,14 @@ def build_weight_yoy_trend(current_df, previous_df, trend_type, date_col, fy_sta
 
     return trend_df
 
-def create_card(title, value, color, icon, growth_value=0.0):
-    """Render a compact KPI card without Markdown parsing the HTML as code."""
+def create_card(title, value, color, icon, growth_value=0.0, previous_value=None):
+    """Render a compact KPI card with LY value and YoY growth."""
     positive = growth_value >= 0
     growth_color = "#15803d" if positive else "#dc2626"
     growth_bg = "#ffffff"
     growth_border = "#86efac" if positive else "#fda4af"
     growth_text = growth_label(growth_value)
+    previous_text = previous_value if previous_value is not None else "N/A"
 
     # Keep the complete HTML on one logical line. Blank lines or indented lines
     # inside st.markdown can be interpreted by Markdown as a fenced code block.
@@ -1127,9 +1144,10 @@ def create_card(title, value, color, icon, growth_value=0.0):
         f'</div>'
         f'<div class="kpi-3d-value">{value}</div>'
         f'<div class="kpi-3d-footer">'
+        f'<span class="kpi-3d-ly">LY: {previous_text}</span>'
         f'<span class="kpi-3d-growth" '
         f'style="background:{growth_bg};border-color:{growth_border};color:{growth_color};">'
-        f'{growth_text} vs LY'
+        f'{growth_text}'
         f'</span>'
         f'</div>'
         f'</div>'
@@ -1685,31 +1703,40 @@ def show_overview():
     k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     with k1:
-        create_card("Business", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth)
+        create_card("Business", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth,
+                    format_revenue(prev_kpis["revenue"], conversion_type))
 
     with k2:
-        create_card("FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth)
+        create_card("FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth,
+                    format_revenue(prev_kpis["ftl"], conversion_type))
 
     with k3:
-        create_card("LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth)
+        create_card("LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth,
+                    format_revenue(prev_kpis["ltl"], conversion_type))
 
     with k4:
-        create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth)
+        create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth,
+                    f"{int(prev_kpis['total_gr']):,}")
 
     with k5:
-        create_card("Delivered GR", f"{delivered_gr:,}", "#16a34a", "✅", delivered_growth)
+        create_card("Delivered GR", f"{delivered_gr:,}", "#16a34a", "✅", delivered_growth,
+                    f"{prev_delivered_gr:,}")
 
     with k6:
-        create_card("Total Weight (MT)", f"{aweight:,.0f}", "#2563eb", "⚓", weight_growth)
+        create_card("Total Weight (MT)", f"{aweight:,.0f}", "#2563eb", "⚓", weight_growth,
+                    f"{prev_kpis['aweight']:,.0f}")
 
     with k7:
-        create_card("Topay", format_revenue(topay, conversion_type), "#2563eb", "🧾", topay_growth)
+        create_card("Topay", format_revenue(topay, conversion_type), "#2563eb", "🧾", topay_growth,
+                    format_revenue(prev_kpis["topay"], conversion_type))
 
     with k8:
-        create_card("Paid", format_revenue(paid, conversion_type), "#2563eb", "🔗", paid_growth)
+        create_card("Paid", format_revenue(paid, conversion_type), "#2563eb", "🔗", paid_growth,
+                    format_revenue(prev_kpis["paid"], conversion_type))
 
     with k9:
-        create_card("T.B.B", format_revenue(tbb, conversion_type), "#2563eb", "🚚", tbb_growth)
+        create_card("T.B.B", format_revenue(tbb, conversion_type), "#2563eb", "🚚", tbb_growth,
+                    format_revenue(prev_kpis["tbb"], conversion_type))
 
     # =====================================================
     # Actual vs Target (shown only when user clicks the button)
@@ -2150,34 +2177,34 @@ def show_overview():
             df.groupby("compname", dropna=False)["REVENUE"]
             .sum()
             .reset_index()
-            .rename(columns={"compname": "Company"})
+            .rename(columns={"compname": "Company", "REVENUE": "CY Revenue"})
         )
         company_df["Company"] = company_df["Company"].fillna("Unknown").astype(str)
-        company_df["Business Cr"] = company_df["REVENUE"] / revenue_divisor
+
+        if prev_df is not None and not prev_df.empty and "compname" in prev_df.columns:
+            prev_company_df = (
+                prev_df.groupby("compname", dropna=False)["REVENUE"]
+                .sum()
+                .reset_index()
+                .rename(columns={"compname": "Company", "REVENUE": "PY Revenue"})
+            )
+            prev_company_df["Company"] = prev_company_df["Company"].fillna("Unknown").astype(str)
+        else:
+            prev_company_df = pd.DataFrame(columns=["Company", "PY Revenue"])
+
+        company_df = company_df.merge(prev_company_df, on="Company", how="left")
+        company_df["PY Revenue"] = pd.to_numeric(company_df["PY Revenue"], errors="coerce").fillna(0)
+        company_df["Business Cr"] = company_df["CY Revenue"] / revenue_divisor
+        company_df["PY Business Cr"] = company_df["PY Revenue"] / revenue_divisor
         company_total = company_df["Business Cr"].sum()
         company_df["Contribution %"] = (
             company_df["Business Cr"] / company_total * 100 if company_total else 0
         )
+        company_df["Growth %"] = company_df.apply(
+            lambda row: pct_growth(row["CY Revenue"], row["PY Revenue"]), axis=1
+        )
         company_df = company_df.sort_values("Business Cr", ascending=False).reset_index(drop=True)
-
-        # Keep the compact donut readable: show the five largest companies and
-        # combine the remaining companies under Others.
-        if len(company_df) > 6:
-            top_company_df = company_df.head(5).copy()
-            others_revenue = company_df.iloc[5:]["Business Cr"].sum()
-            others_row = pd.DataFrame(
-                {
-                    "Company": ["Others"],
-                    "REVENUE": [others_revenue * revenue_divisor],
-                    "Business Cr": [others_revenue],
-                    "Contribution %": [
-                        (others_revenue / company_total * 100) if company_total else 0
-                    ],
-                }
-            )
-            company_chart_df = pd.concat([top_company_df, others_row], ignore_index=True)
-        else:
-            company_chart_df = company_df.copy()
+        company_chart_df = company_df.head(6).copy()
 
         with st.container(border=True):
             st.markdown("###### Business by Company")
@@ -2185,85 +2212,74 @@ def show_overview():
             if company_chart_df.empty or company_total <= 0:
                 st.info("No company revenue is available for the selected filters.")
             else:
-                company_colors = [
-                    "#2563eb", "#16a34a", "#f59e0b",
-                    "#7c3aed", "#f97316", "#94a3b8",
-                ]
+                chart_df = company_chart_df.sort_values("Business Cr", ascending=True).copy()
+                bar_colors = ["#2563eb", "#0f9f8f", "#7c3aed", "#f59e0b", "#ec4899", "#64748b"]
+                chart_df["Bar Color"] = list(reversed(bar_colors[:len(chart_df)]))
+                customdata = chart_df[["Contribution %", "PY Business Cr", "Growth %"]].to_numpy()
 
-                # Define chart inputs explicitly to prevent NameError after deployment.
-                company_labels = company_chart_df["Company"].astype(str).tolist()
-                company_values = pd.to_numeric(
-                    company_chart_df["Business Cr"], errors="coerce"
-                ).fillna(0).tolist()
-
-                fig_company = go.Figure(
-                    data=[
-                        go.Pie(
-                            labels=company_labels,
-                            values=company_values,
-                            hole=0.64,
-                            sort=False,
-                            direction="clockwise",
-                            domain=dict(x=[0.06, 0.94], y=[0.18, 0.98]),
-                            customdata=company_chart_df[["Contribution %"]].to_numpy(),
-                            texttemplate="%{percent:.0%}",
-                            textposition="inside",
-                            textfont=dict(size=9, color="white", family="Arial Black"),
-                            hovertemplate=(
-                                "<b>%{label}</b><br>"
-                                "Business: ₹%{value:.2f} {revenue_unit}<br>"
-                                "Contribution: %{customdata[0]:.1f}%"
-                                "<extra></extra>"
-                            ),
-                            marker=dict(
-                                colors=company_colors[:len(company_chart_df)],
-                                line=dict(color="#ffffff", width=2),
-                            ),
-                        )
-                    ]
+                fig_company = go.Figure()
+                fig_company.add_trace(
+                    go.Bar(
+                        x=chart_df["Business Cr"],
+                        y=chart_df["Company"],
+                        orientation="h",
+                        marker=dict(color=chart_df["Bar Color"], line=dict(width=0)),
+                        text=[f"₹{v:.2f} {revenue_unit}   {p:.2f}%" for v, p in zip(
+                            chart_df["Business Cr"], chart_df["Contribution %"]
+                        )],
+                        textposition="outside",
+                        textfont=dict(size=10, color="#334155"),
+                        customdata=customdata,
+                        hovertemplate=(
+                            "<b>%{y}</b><br>"
+                            f"CY Revenue: ₹%{{x:.2f}} {revenue_unit}<br>"
+                            f"PY Revenue: ₹%{{customdata[1]:.2f}} {revenue_unit}<br>"
+                            "Share: %{customdata[0]:.2f}%<br>"
+                            "YoY Growth: %{customdata[2]:.2f}%<extra></extra>"
+                        ),
+                        cliponaxis=False,
+                    )
                 )
-
                 fig_company.update_layout(
-                    height=255,
-                    margin=dict(l=2, r=2, t=2, b=42),
+                    height=max(215, 42 * len(chart_df) + 45),
+                    margin=dict(l=10, r=105, t=4, b=5),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
-                    showlegend=True,
-                    legend=dict(
-                        orientation="h",
-                        yanchor="top",
-                        y=-0.03,
-                        xanchor="center",
-                        x=0.5,
-                        font=dict(size=8),
-                        itemclick="toggle",
-                        itemdoubleclick="toggleothers",
-                    ),
-                    annotations=[
-                        dict(
-                            text=(
-                                f"<b>₹{company_total:.2f} {revenue_unit}</b>"
-                                "<br><span style='font-size:10px'>Total</span>"
-                            ),
-                            x=0.5,
-                            y=0.58,
-                            showarrow=False,
-                            align="center",
-                            font=dict(size=15, color="#0f172a", family="Arial Black"),
-                        )
-                    ],
-                    uniformtext_minsize=8,
-                    uniformtext_mode="hide",
+                    showlegend=False,
+                    bargap=0.48,
+                    xaxis=dict(showgrid=False, showticklabels=False, zeroline=False, title=""),
+                    yaxis=dict(showgrid=False, title="", tickfont=dict(size=10, color="#334155")),
                 )
-
                 st.plotly_chart(
                     fig_company,
                     width="stretch",
-                    config={
-                        "displayModeBar": False,
-                        "responsive": True,
-                    },
+                    config={"displayModeBar": False, "responsive": True},
                 )
+
+                top_company = company_df.iloc[0]
+                top_growth = float(top_company["Growth %"] or 0)
+                growth_color = "#16a34a" if top_growth >= 0 else "#dc2626"
+                growth_arrow = "▲" if top_growth >= 0 else "▼"
+
+                insight_left, insight_right = st.columns(2, gap="small")
+                with insight_left:
+                    st.markdown(
+                        f'''<div style="border:1px solid #dbe4ef;border-radius:10px;padding:9px 10px;background:#fbfdff;min-height:74px;">
+                        <div style="font-size:9px;color:#64748b;text-align:center;">Top Company</div>
+                        <div style="font-size:14px;font-weight:800;color:#1d4ed8;text-align:center;margin-top:5px;">🏆 {escape(str(top_company['Company']))}</div>
+                        <div style="font-size:10px;color:#475569;text-align:center;margin-top:2px;">{top_company['Contribution %']:.2f}% of Total Revenue</div>
+                        </div>''',
+                        unsafe_allow_html=True,
+                    )
+                with insight_right:
+                    st.markdown(
+                        f'''<div style="border:1px solid #dbe4ef;border-radius:10px;padding:9px 10px;background:#fbfdff;min-height:74px;">
+                        <div style="font-size:9px;color:#64748b;text-align:center;">YoY Growth (Top Company)</div>
+                        <div style="font-size:15px;font-weight:900;color:{growth_color};text-align:center;margin-top:5px;">{growth_arrow} {abs(top_growth):.2f}%</div>
+                        <div style="font-size:10px;color:#475569;text-align:center;margin-top:2px;">vs LY: ₹{top_company['PY Business Cr']:.2f} {revenue_unit}</div>
+                        </div>''',
+                        unsafe_allow_html=True,
+                    )
 
     compact_spacer()
 
