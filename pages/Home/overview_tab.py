@@ -2238,15 +2238,16 @@ def show_overview():
                             "YoY Growth: %{customdata[2]:.2f}%<extra></extra>"
                         ),
                         cliponaxis=False,
+                        width=0.24,
                     )
                 )
                 fig_company.update_layout(
-                    height=max(215, 42 * len(chart_df) + 45),
-                    margin=dict(l=10, r=105, t=4, b=5),
+                    height=max(155, 24 * len(chart_df) + 32),
+                    margin=dict(l=10, r=105, t=2, b=2),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     showlegend=False,
-                    bargap=0.48,
+                    bargap=0.72,
                     xaxis=dict(showgrid=False, showticklabels=False, zeroline=False, title=""),
                     yaxis=dict(showgrid=False, title="", tickfont=dict(size=10, color="#334155")),
                 )
