@@ -2285,7 +2285,7 @@ def show_overview():
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     showlegend=False,
-                    bargap=0.72,
+                    bargap=0.50,
                     xaxis=dict(showgrid=False, showticklabels=False, zeroline=False, title=""),
                     yaxis=dict(showgrid=False, title="", tickfont=dict(size=10, color="#334155")),
                 )
