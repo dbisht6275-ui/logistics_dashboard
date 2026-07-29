@@ -447,7 +447,7 @@ section.main {
 # Used for routing below, and read by the User Management admin page so its
 # checkboxes always match what's actually available here.
 FULL_MENU_ITEMS = [
-    "🏠 Revenue Overview",
+    "🏠 Business Overview",
     "📊 Comparison",
     "📈 Outstanding Analysis",
     "👥 Customer Analysis",
@@ -679,7 +679,7 @@ with st.sidebar:
     )
 
 
-if menu == "🏠 Revenue Overview":
+if menu == "🏠 Business Overview":
     show_overview()
 
 elif menu == "📊 Comparison":
