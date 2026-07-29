@@ -2804,7 +2804,23 @@ def show_overview():
             <style>
                 .compact-zone-matrix-wrap {{width:100%;overflow:visible;border:1px solid #dbe4ef;border-radius:10px;background:#ffffff;}}
                 .compact-zone-matrix {{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-family:'Segoe UI',Arial,sans-serif;font-size:{dynamic_font};color:#243b53;}}
-                .compact-zone-matrix th,.compact-zone-matrix td {{padding:5px 3px;border-right:1px solid #e3eaf2;border-bottom:1px solid #e3eaf2;text-align:center;line-height:1.15;overflow:hidden;text-overflow:ellipsis;}}
+                .compact-zone-matrix th,.compact-zone-matrix td {{padding:5px 3px;border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;text-align:center;line-height:1.15;overflow:hidden;text-overflow:ellipsis;}}
+                /* Dark separators around every country group (CY / LY / YoY). */
+                .compact-zone-matrix .country-group {{border-left:2px solid #475569!important;border-right:2px solid #475569!important;}}
+                .compact-zone-matrix thead tr:nth-child(2) th:nth-child(3n+1) {{border-left:2px solid #475569!important;}}
+                .compact-zone-matrix thead tr:nth-child(2) th:nth-child(3n) {{border-right:2px solid #475569!important;}}
+                .compact-zone-matrix .zone-revenue-row td:nth-child(3n+3) {{border-left:2px solid #475569!important;}}
+                .compact-zone-matrix .zone-revenue-row td:nth-child(3n+2) {{border-right:2px solid #475569!important;}}
+                .compact-zone-matrix .zone-share-row td:nth-child(3n+2) {{border-left:2px solid #475569!important;}}
+                .compact-zone-matrix .zone-share-row td:nth-child(3n+1) {{border-right:2px solid #475569!important;}}
+                .compact-zone-matrix .grand-total-row:first-of-type td:nth-child(3n+3) {{border-left:2px solid #475569!important;}}
+                .compact-zone-matrix .grand-total-row:first-of-type td:nth-child(3n+2) {{border-right:2px solid #475569!important;}}
+                .compact-zone-matrix .grand-total-row:last-of-type td:nth-child(3n+2) {{border-left:2px solid #475569!important;}}
+                .compact-zone-matrix .grand-total-row:last-of-type td:nth-child(3n+1) {{border-right:2px solid #475569!important;}}
+                /* Dark horizontal border around each two-row zone block. */
+                .compact-zone-matrix .zone-revenue-row td {{border-top:2px solid #475569!important;}}
+                .compact-zone-matrix .zone-revenue-row .zone-name {{border-bottom:2px solid #475569!important;}}
+                .compact-zone-matrix .zone-share-row td {{border-bottom:2px solid #475569!important;}}
                 .compact-zone-matrix thead th {{font-weight:500;}}
                 .compact-zone-matrix .zone-head {{width:7%;background:#eef4fb;text-align:left;padding-left:8px;}}
                 .compact-zone-matrix .metric-head {{width:7%;background:#eef4fb;text-align:left;padding-left:7px;}}
