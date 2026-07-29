@@ -782,6 +782,30 @@ def _inject_overview_css():
                 font-weight: 850 !important;
             }
 
+
+            /* Branches by Business: selected slab button */
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked),
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
+                color: #ffffff !important;
+                background: #123f73 !important;
+                border-color: #123f73 !important;
+                box-shadow: inset 0 1px 2px rgba(0,0,0,.18) !important;
+                transform: none !important;
+            }
+
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked) p,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked) span,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"] p,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"] span {
+                color: #ffffff !important;
+            }
+
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked)::before,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"]::before {
+                background: #123f73 !important;
+                opacity: 1 !important;
+            }
+
         </style>
         """,
         unsafe_allow_html=True,
