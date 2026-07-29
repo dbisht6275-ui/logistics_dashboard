@@ -1403,6 +1403,36 @@ def _render_operational_highlights(current_df, previous_df):
         )
         st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
 
+def _clear_overview_filters():
+    """Reset the top dashboard filters to their default values."""
+    filter_keys = [
+        "overview_view_type",
+        "overview_fy",
+        "overview_company",
+        "overview_zone",
+        "overview_zone_locked",
+        "overview_circle",
+        "overview_circle_locked",
+        "overview_branch",
+        "overview_branch_locked",
+        "overview_quarter",
+        "overview_month",
+        "overview_loadtype",
+        "overview_conversion_type",
+    ]
+
+    for key in filter_keys:
+        st.session_state.pop(key, None)
+
+    # Keep the dashboard immediately usable after clearing.
+    st.session_state["overview_fy"] = "2026-2027"
+
+    # Discard any prepared CSV state because the filter context has changed.
+    for key in list(st.session_state.keys()):
+        if str(key).startswith("overview_export_ready_"):
+            st.session_state.pop(key, None)
+
+
 def show_overview():
     """Compact overview dashboard page."""
 
@@ -1606,10 +1636,20 @@ def show_overview():
         if value not in (None, "", "All")
     )
 
-    if active_filter_html:
-        st.markdown(f'<div class="filter-summary">{active_filter_html}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="filter-summary"></div>', unsafe_allow_html=True)
+    clear_col, chips_col = st.columns([1.05, 8.95], gap="small", vertical_alignment="center")
+    with clear_col:
+        st.button(
+            "↺ Clear All",
+            key="overview_clear_all_filters",
+            help="Reset all dashboard filters to their default values.",
+            width="stretch",
+            on_click=_clear_overview_filters,
+        )
+    with chips_col:
+        if active_filter_html:
+            st.markdown(f'<div class="filter-summary">{active_filter_html}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="filter-summary"></div>', unsafe_allow_html=True)
 
     if df.empty:
         st.warning("No data found for selected filters")
