@@ -2014,9 +2014,9 @@ def show_overview():
             with title_col:
                 _trend_badge_color = "#166534" if revenue_growth >= 0 else "#dc2626"
                 st.markdown(
-                    f"###### Business Trend "
+                    f"<div style='font-size:14px;font-weight:400;color:#0f172a;'>Business Trend "
                     f"<span style='font-size:11px;font-weight:700;color:{_trend_badge_color};'>"
-                    f"({growth_label(revenue_growth)} vs LY)</span>",
+                    f"({growth_label(revenue_growth)} vs LY)</span></div>",
                     unsafe_allow_html=True
                 )
 
@@ -2055,7 +2055,7 @@ def show_overview():
                     text=yoy_df["Prev Business Cr"],
                     texttemplate="%{text:.2f}",
                     textposition="outside",
-                    textfont=dict(size=12, color="#475569", family="Arial Black"),
+                    textfont=dict(size=12, color="#475569", family="Arial"),
                     cliponaxis=False,
                     hovertemplate=f"<b>%{{x}}</b><br>LY Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
                 )
@@ -2070,7 +2070,7 @@ def show_overview():
                     text=yoy_df["Business Cr"],
                     texttemplate="%{text:.2f}",
                     textposition="outside",
-                    textfont=dict(size=12, color="#1d4ed8", family="Arial Black"),
+                    textfont=dict(size=12, color="#1d4ed8", family="Arial"),
                     cliponaxis=False,
                     hovertemplate=f"<b>%{{x}}</b><br>Current Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
                 )
@@ -2101,7 +2101,7 @@ def show_overview():
                             y=bar_top + (yoy_max * growth_gap),
                             text=r["Growth Label"],
                             showarrow=False,
-                            font=dict(size=12, color=label_color, family="Arial Black"),
+                            font=dict(size=12, color=label_color, family="Arial"),
                         )
 
             fig_yoy.update_layout(
@@ -2117,7 +2117,7 @@ def show_overview():
                     x=0,
                     font=dict(size=11),
                 ),
-                font=dict(size=11),
+                font=dict(size=11, family="Arial"),
                 xaxis_title="",
                 yaxis_title=f"Business ({revenue_unit})",
                 yaxis_range=[0, yoy_max * (1.48 if trend_type == "Monthly" else 1.35)],
@@ -2429,9 +2429,9 @@ def show_overview():
 
             with weight_title_col:
                 st.markdown(
-                    f"###### Weight (MT) Trend "
+                    f"<div style='font-size:14px;font-weight:400;color:#0f172a;'>Weight (MT) Trend "
                     f"<span style='font-size:11px;font-weight:700;color:{_w_badge_color};'>"
-                    f"({growth_label(weight_growth_total)} vs LY)</span>",
+                    f"({growth_label(weight_growth_total)} vs LY)</span></div>",
                     unsafe_allow_html=True,
                 )
 
@@ -2446,7 +2446,7 @@ def show_overview():
                     text=weight_yoy_df["Prev Weight MT"],
                     texttemplate="%{text:.0f}",
                     textposition="outside",
-                    textfont=dict(size=12, color="#475569", family="Arial Black"),
+                    textfont=dict(size=12, color="#475569", family="Arial"),
                 )
             )
 
@@ -2459,7 +2459,7 @@ def show_overview():
                     text=weight_yoy_df["Weight MT"],
                     texttemplate="%{text:.0f}",
                     textposition="outside",
-                    textfont=dict(size=12, color="#0f766e", family="Arial Black"),
+                    textfont=dict(size=12, color="#0f766e", family="Arial"),
                 )
             )
 
@@ -2484,7 +2484,7 @@ def show_overview():
                             y=bar_top + (weight_max * growth_gap),
                             text=r["Growth Label"],
                             showarrow=False,
-                            font=dict(size=12, color=label_color, family="Arial Black"),
+                            font=dict(size=12, color=label_color, family="Arial"),
                         )
 
             fig_weight.update_layout(
@@ -2645,7 +2645,7 @@ def show_overview():
                             ),
                             showarrow=False,
                             align="center",
-                            font=dict(size=15, color="#0f172a", family="Arial Black"),
+                            font=dict(size=15, color="#0f172a", family="Arial"),
                         )
                     ],
                 )
@@ -2660,7 +2660,7 @@ def show_overview():
 
     # Keep Zone vs Country and Month-on-Month analysis on the same row.
     if view_type == "Origin":
-        zone_table_col, mom_chart_col = st.columns([1.05, 0.95], gap="small")
+        zone_table_col, mom_chart_col = st.columns([1.40, 0.60], gap="small")
 
         with zone_table_col:
             with st.container(border=True):
@@ -2775,7 +2775,7 @@ def show_overview():
                 <style>
                     .zone-country-wrap {{
                         width:100%;
-                        max-height:340px;
+                        max-height:390px;
                         overflow:auto;
                         border:1px solid #dbe4ef;
                         border-radius:10px;
@@ -2874,7 +2874,7 @@ def show_overview():
 
         with mom_chart_col:
             with st.container(border=True):
-                st.markdown("###### Month on Month Business & Growth")
+                st.markdown("<div style='font-size:13px;font-weight:400;color:#0f172a;margin-bottom:2px;'>Month on Month Business & Growth</div>", unsafe_allow_html=True)
     
                 fig_mom = go.Figure()
                 fig_mom.add_trace(
@@ -2920,8 +2920,8 @@ def show_overview():
                 growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
     
                 fig_mom.update_layout(
-                    height=300,
-                    margin=dict(l=10, r=10, t=35, b=10),
+                    height=235,
+                    margin=dict(l=8, r=8, t=28, b=6),
                     plot_bgcolor="#f8fafc",
                     paper_bgcolor="rgba(0,0,0,0)",
                     legend=dict(orientation="h", y=1.10, x=0),
@@ -2943,7 +2943,7 @@ def show_overview():
                     ),
                     xaxis=dict(showgrid=False, title=""),
                 )
-                apply_3d_chart_layout(fig_mom, height=300, margin=dict(l=10, r=10, t=38, b=10))
+                apply_3d_chart_layout(fig_mom, height=235, margin=dict(l=8, r=8, t=30, b=6))
                 fig_mom.update_xaxes(showline=False, zeroline=False)
                 fig_mom.update_yaxes(showline=False)
     
