@@ -2295,30 +2295,10 @@ def show_overview():
                     config={"displayModeBar": False, "responsive": True},
                 )
 
-                top_company = company_df.iloc[0]
-                top_growth = float(top_company["Growth %"] or 0)
-                growth_color = "#16a34a" if top_growth >= 0 else "#dc2626"
-                growth_arrow = "▲" if top_growth >= 0 else "▼"
-
-                insight_left, insight_right = st.columns(2, gap="small")
-                with insight_left:
-                    st.markdown(
-                        f'''<div style="border:1px solid #dbe4ef;border-radius:10px;padding:9px 10px;background:#fbfdff;min-height:74px;">
-                        <div style="font-size:9px;color:#64748b;text-align:center;">Top Company</div>
-                        <div style="font-size:14px;font-weight:800;color:#1d4ed8;text-align:center;margin-top:5px;">🏆 {escape(str(top_company['Company']))}</div>
-                        <div style="font-size:10px;color:#475569;text-align:center;margin-top:2px;">{top_company['Contribution %']:.2f}% of Total Revenue</div>
-                        </div>''',
-                        unsafe_allow_html=True,
-                    )
-                with insight_right:
-                    st.markdown(
-                        f'''<div style="border:1px solid #dbe4ef;border-radius:10px;padding:9px 10px;background:#fbfdff;min-height:74px;">
-                        <div style="font-size:9px;color:#64748b;text-align:center;">YoY Growth (Top Company)</div>
-                        <div style="font-size:15px;font-weight:900;color:{growth_color};text-align:center;margin-top:5px;">{growth_arrow} {abs(top_growth):.2f}%</div>
-                        <div style="font-size:10px;color:#475569;text-align:center;margin-top:2px;">vs LY: ₹{top_company['PY Business Cr']:.2f} {revenue_unit}</div>
-                        </div>''',
-                        unsafe_allow_html=True,
-                    )
+                # Keep the company section clean and executive-friendly.
+                # The chart already communicates the leading company, contribution,
+                # prior-year value and growth through labels and hover details, so the
+                # duplicate summary boxes below the chart are intentionally omitted.
 
     compact_spacer()
 
