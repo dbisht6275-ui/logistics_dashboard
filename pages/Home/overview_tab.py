@@ -2658,300 +2658,239 @@ def show_overview():
 
     compact_spacer()
 
-    # Keep Zone vs Country and Month-on-Month analysis on the same row.
+    # =====================================================
+    # Zone vs Country compact matrix (no internal scrolling)
+    # =====================================================
     if view_type == "Origin":
-        zone_table_col, mom_chart_col = st.columns([1.40, 0.60], gap="small")
+        with st.container(border=True):
+            st.markdown(
+                "<div style='display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 8px 2px;'>"
+                "<div style='font-size:15px;font-weight:500;color:#0f2744;'>Zone vs Country Performance</div>"
+                "<div style='display:flex;gap:14px;flex-wrap:wrap;font-size:10px;'>"
+                "<span style='color:#1d4ed8;'>■ Current Year</span>"
+                "<span style='color:#0f766e;'>■ Last Year</span>"
+                "<span style='color:#6d28d9;'>■ YoY Comparison</span>"
+                "</div></div>",
+                unsafe_allow_html=True,
+            )
 
-        with zone_table_col:
-            with st.container(border=True):
-                st.markdown("###### Zone vs Country Business (%)")
+            current_matrix = matrix_df.copy()
+            previous_matrix = prev_matrix_df.copy() if not prev_matrix_df.empty else pd.DataFrame()
 
-                # Keep countries as columns while presenting Current Year, Last Year
-                # and YoY performance in grouped headers, matching the reference style.
-                current_matrix = matrix_df.copy()
-                previous_matrix = prev_matrix_df.copy() if not prev_matrix_df.empty else pd.DataFrame()
+            zone_name_map = {
+                "NORTH ZONE": "North", "WEST ZONE": "West", "SOUTH ZONE": "South",
+                "EAST ZONE": "East", "NORTH EAST ZONE": "NE", "NEPAL ZONE": "Nepal",
+            }
 
-                zone_name_map = {
-                    "NORTH ZONE": "North",
-                    "WEST ZONE": "West",
-                    "SOUTH ZONE": "South",
-                    "EAST ZONE": "East",
-                    "NORTH EAST ZONE": "NE",
-                    "NEPAL ZONE": "Nepal",
-                }
+            country_cols = sorted(
+                set(col for col in current_matrix.columns if col != "Total")
+                | set(col for col in previous_matrix.columns if col != "Total")
+            )
+            zone_order = list(current_matrix.index)
+            for zone_key in previous_matrix.index:
+                if zone_key not in zone_order:
+                    zone_order.append(zone_key)
 
-                country_cols = sorted(
-                    set(col for col in current_matrix.columns if col != "Total")
-                    | set(col for col in previous_matrix.columns if col != "Total")
-                )
-                zone_order = list(current_matrix.index)
-                for zone_key in previous_matrix.index:
-                    if zone_key not in zone_order:
-                        zone_order.append(zone_key)
+            current_matrix = current_matrix.reindex(index=zone_order, columns=country_cols + ["Total"], fill_value=0)
+            previous_matrix = previous_matrix.reindex(index=zone_order, columns=country_cols + ["Total"], fill_value=0)
 
-                current_matrix = current_matrix.reindex(index=zone_order, columns=country_cols + ["Total"], fill_value=0)
-                previous_matrix = previous_matrix.reindex(index=zone_order, columns=country_cols + ["Total"], fill_value=0)
+            current_grand_total = float(current_matrix[country_cols].to_numpy().sum()) if country_cols else 0.0
+            previous_grand_total = float(previous_matrix[country_cols].to_numpy().sum()) if country_cols else 0.0
 
-                current_grand_total = float(current_matrix[country_cols].to_numpy().sum()) if country_cols else 0.0
-                previous_grand_total = float(previous_matrix[country_cols].to_numpy().sum()) if country_cols else 0.0
+            def _safe_growth(current_value, previous_value):
+                if previous_value:
+                    return ((current_value - previous_value) / previous_value) * 100
+                return 100.0 if current_value else 0.0
 
-                def _performance_cell(value, share, bar_color):
-                    bar_width = min(max(share, 0), 100)
-                    return (
-                        '<div class="perf-cell">'
-                        f'<span class="perf-value">₹{value:.2f}</span>'
-                        '<div class="perf-bar-track">'
-                        f'<div class="perf-bar-fill" style="width:{bar_width:.1f}%;background:{bar_color};"></div>'
-                        '</div>'
-                        f'<span class="perf-share">{share:.2f}%</span>'
-                        '</div>'
-                    )
+            def _growth_html(growth_value, suffix="%"):
+                positive = growth_value >= 0
+                color = "#16a34a" if positive else "#dc2626"
+                arrow = "▲" if positive else "▼"
+                return f'<span style="color:{color};font-weight:600;white-space:nowrap;">{arrow} {abs(growth_value):.2f}{suffix}</span>'
 
-                def _growth_cell(current_value, previous_value):
-                    change = current_value - previous_value
-                    growth = ((change / previous_value) * 100) if previous_value else (100.0 if current_value else 0.0)
-                    positive = growth >= 0
-                    growth_color = "#16a34a" if positive else "#dc2626"
-                    arrow = "▲" if positive else "▼"
-                    return (
-                        '<div class="yoy-cell">'
-                        f'<span class="change-value">{change:+.2f}</span>'
-                        f'<span class="growth-value" style="color:{growth_color};">{arrow} {abs(growth):.2f}%</span>'
-                        '</div>'
-                    )
+            header_groups = [f'<th class="country-group" colspan="3">{escape(str(country))}</th>' for country in country_cols]
+            header_groups.append('<th class="country-group total-group" colspan="3">TOTAL</th>')
+            sub_headers = ''.join(
+                '<th class="cy-head">CY</th><th class="ly-head">LY</th><th class="yoy-head">YoY %</th>'
+                for _ in range(len(country_cols) + 1)
+            )
 
-                current_headers = ''.join(f'<th>{escape(str(country))}</th>' for country in country_cols)
-                previous_headers = ''.join(f'<th>{escape(str(country))}</th>' for country in country_cols)
-                yoy_headers = ''.join(f'<th>{escape(str(country))}</th>' for country in country_cols)
+            body_rows = []
+            for zone_key in zone_order:
+                display_zone = zone_name_map.get(zone_key, str(zone_key).title())
+                zone_color = zone_colors.get(zone_key, "#2563eb")
+                revenue_cells, share_cells = [], []
 
-                body_rows = []
-                for zone_key in zone_order:
-                    display_zone = zone_name_map.get(zone_key, str(zone_key).title())
-                    zone_color = zone_colors.get(zone_key, "#2563eb")
-                    current_cells = []
-                    previous_cells = []
-                    yoy_cells = []
-
-                    for country in country_cols:
-                        current_value = float(current_matrix.at[zone_key, country] or 0)
-                        previous_value = float(previous_matrix.at[zone_key, country] or 0)
-                        current_share = (current_value / current_grand_total * 100) if current_grand_total else 0.0
-                        previous_share = (previous_value / previous_grand_total * 100) if previous_grand_total else 0.0
-                        current_cells.append(f'<td>{_performance_cell(current_value, current_share, "#2563eb")}</td>')
-                        previous_cells.append(f'<td>{_performance_cell(previous_value, previous_share, "#0f766e")}</td>')
-                        yoy_cells.append(f'<td>{_growth_cell(current_value, previous_value)}</td>')
-
-                    body_rows.append(
-                        '<tr>'
-                        f'<td class="zone-name" style="border-left:4px solid {zone_color};">{escape(display_zone)}</td>'
-                        + ''.join(current_cells)
-                        + ''.join(previous_cells)
-                        + ''.join(yoy_cells)
-                        + '</tr>'
-                    )
-
-                current_total_cells = []
-                previous_total_cells = []
-                yoy_total_cells = []
                 for country in country_cols:
-                    current_value = float(current_matrix[country].sum())
-                    previous_value = float(previous_matrix[country].sum())
-                    current_share = (current_value / current_grand_total * 100) if current_grand_total else 0.0
-                    previous_share = (previous_value / previous_grand_total * 100) if previous_grand_total else 0.0
-                    current_total_cells.append(f'<td>{_performance_cell(current_value, current_share, "#2563eb")}</td>')
-                    previous_total_cells.append(f'<td>{_performance_cell(previous_value, previous_share, "#0f766e")}</td>')
-                    yoy_total_cells.append(f'<td>{_growth_cell(current_value, previous_value)}</td>')
+                    cy = float(current_matrix.at[zone_key, country] or 0)
+                    ly = float(previous_matrix.at[zone_key, country] or 0)
+                    growth = _safe_growth(cy, ly)
+                    cy_share = (cy / current_grand_total * 100) if current_grand_total else 0.0
+                    ly_share = (ly / previous_grand_total * 100) if previous_grand_total else 0.0
+                    share_change = cy_share - ly_share
+                    revenue_cells.extend([
+                        f'<td class="num cy-cell">{cy:.2f}</td>',
+                        f'<td class="num ly-cell">{ly:.2f}</td>',
+                        f'<td class="num yoy-cell">{_growth_html(growth)}</td>',
+                    ])
+                    share_cells.extend([
+                        f'<td class="num cy-share">{cy_share:.2f}%</td>',
+                        f'<td class="num ly-share">{ly_share:.2f}%</td>',
+                        f'<td class="num yoy-cell">{_growth_html(share_change, " pp")}</td>',
+                    ])
 
-                total_row = (
-                    '<tr class="total-row"><td class="zone-name">TOTAL</td>'
-                    + ''.join(current_total_cells)
-                    + ''.join(previous_total_cells)
-                    + ''.join(yoy_total_cells)
-                    + '</tr>'
+                zone_cy_total = float(current_matrix.loc[zone_key, country_cols].sum()) if country_cols else 0.0
+                zone_ly_total = float(previous_matrix.loc[zone_key, country_cols].sum()) if country_cols else 0.0
+                zone_growth = _safe_growth(zone_cy_total, zone_ly_total)
+                zone_cy_share = (zone_cy_total / current_grand_total * 100) if current_grand_total else 0.0
+                zone_ly_share = (zone_ly_total / previous_grand_total * 100) if previous_grand_total else 0.0
+                zone_share_change = zone_cy_share - zone_ly_share
+                revenue_cells.extend([
+                    f'<td class="num total-cell cy-cell">{zone_cy_total:.2f}</td>',
+                    f'<td class="num total-cell ly-cell">{zone_ly_total:.2f}</td>',
+                    f'<td class="num total-cell yoy-cell">{_growth_html(zone_growth)}</td>',
+                ])
+                share_cells.extend([
+                    f'<td class="num total-cell cy-share">{zone_cy_share:.2f}%</td>',
+                    f'<td class="num total-cell ly-share">{zone_ly_share:.2f}%</td>',
+                    f'<td class="num total-cell yoy-cell">{_growth_html(zone_share_change, " pp")}</td>',
+                ])
+                body_rows.append(
+                    '<tr class="zone-revenue-row">'
+                    f'<td class="zone-name" rowspan="2" style="border-left:4px solid {zone_color};">{escape(display_zone)}</td>'
+                    '<td class="metric-name">Revenue</td>' + ''.join(revenue_cells) + '</tr>'
+                    '<tr class="zone-share-row"><td class="metric-name">% Share</td>' + ''.join(share_cells) + '</tr>'
                 )
 
-                country_count = max(len(country_cols), 1)
-                matrix_html = f"""
-                <style>
-                    .zone-country-wrap {{
-                        width:100%;
-                        max-height:390px;
-                        overflow:auto;
-                        border:1px solid #dbe4ef;
-                        border-radius:10px;
-                        background:#ffffff;
-                    }}
-                    .zone-country-performance {{
-                        width:max-content;
-                        min-width:100%;
-                        border-collapse:separate;
-                        border-spacing:0;
-                        font-family:"Segoe UI",Arial,sans-serif;
-                        font-size:11px;
-                        color:#334155;
-                    }}
-                    .zone-country-performance th,
-                    .zone-country-performance td {{
-                        min-width:142px;
-                        padding:8px 9px;
-                        border-right:1px solid #e2e8f0;
-                        border-bottom:1px solid #e2e8f0;
-                        background:#ffffff;
-                        white-space:nowrap;
-                    }}
-                    .zone-country-performance .zone-head,
-                    .zone-country-performance .zone-name {{
-                        position:sticky;
-                        left:0;
-                        z-index:3;
-                        min-width:88px;
-                        text-align:left;
-                        font-weight:700;
-                        background:#f8fbff;
-                    }}
-                    .zone-country-performance thead th {{
-                        position:sticky;
-                        top:0;
-                        z-index:4;
-                        text-align:center;
-                        font-weight:700;
-                    }}
-                    .zone-country-performance thead tr:first-child th {{ top:0; }}
-                    .zone-country-performance thead tr:nth-child(2) th {{ top:34px; }}
-                    .group-current {{background:#eaf2ff!important;color:#1d4ed8!important;}}
-                    .group-previous {{background:#e8f7f5!important;color:#0f766e!important;}}
-                    .group-yoy {{background:#f3eefe!important;color:#6d28d9!important;}}
-                    .country-current {{background:#f5f9ff!important;color:#334155!important;}}
-                    .country-previous {{background:#f2fbfa!important;color:#334155!important;}}
-                    .country-yoy {{background:#faf7ff!important;color:#334155!important;}}
-                    .perf-cell {{
-                        display:grid;
-                        grid-template-columns:55px 58px 45px;
-                        align-items:center;
-                        gap:6px;
-                    }}
-                    .perf-value {{font-weight:600;color:#334155;text-align:right;}}
-                    .perf-bar-track {{height:7px;background:#e5edf6;border-radius:999px;overflow:hidden;}}
-                    .perf-bar-fill {{height:100%;border-radius:999px;}}
-                    .perf-share {{font-size:10px;color:#64748b;text-align:right;}}
-                    .yoy-cell {{display:flex;justify-content:space-between;align-items:center;gap:8px;}}
-                    .change-value {{color:#475569;font-weight:600;}}
-                    .growth-value {{font-weight:700;}}
-                    .total-row td {{background:#eef4ff!important;font-weight:700;}}
-                </style>
-                <div class="zone-country-wrap">
-                    <table class="zone-country-performance">
-                        <thead>
-                            <tr>
-                                <th class="zone-head" rowspan="2">Zone</th>
-                                <th class="group-current" colspan="{country_count}">CURRENT YEAR ({escape(str(fy))})</th>
-                                <th class="group-previous" colspan="{country_count}">LAST YEAR ({escape(str(prev_fy))})</th>
-                                <th class="group-yoy" colspan="{country_count}">YoY COMPARISON</th>
-                            </tr>
-                            <tr>
-                                {''.join(f'<th class="country-current">{escape(str(c))}</th>' for c in country_cols)}
-                                {''.join(f'<th class="country-previous">{escape(str(c))}</th>' for c in country_cols)}
-                                {''.join(f'<th class="country-yoy">{escape(str(c))}</th>' for c in country_cols)}
-                            </tr>
-                        </thead>
-                        <tbody>{''.join(body_rows)}{total_row}</tbody>
-                    </table>
-                </div>
-                """
+            grand_revenue_cells, grand_share_cells = [], []
+            for country in country_cols:
+                cy = float(current_matrix[country].sum())
+                ly = float(previous_matrix[country].sum())
+                growth = _safe_growth(cy, ly)
+                cy_share = (cy / current_grand_total * 100) if current_grand_total else 0.0
+                ly_share = (ly / previous_grand_total * 100) if previous_grand_total else 0.0
+                share_change = cy_share - ly_share
+                grand_revenue_cells.extend([
+                    f'<td class="num cy-cell">{cy:.2f}</td>',
+                    f'<td class="num ly-cell">{ly:.2f}</td>',
+                    f'<td class="num yoy-cell">{_growth_html(growth)}</td>',
+                ])
+                grand_share_cells.extend([
+                    f'<td class="num cy-share">{cy_share:.2f}%</td>',
+                    f'<td class="num ly-share">{ly_share:.2f}%</td>',
+                    f'<td class="num yoy-cell">{_growth_html(share_change, " pp")}</td>',
+                ])
 
-                if hasattr(st, "html"):
-                    st.html(matrix_html)
-                else:
-                    st.markdown(matrix_html, unsafe_allow_html=True)
+            grand_growth = _safe_growth(current_grand_total, previous_grand_total)
+            grand_revenue_cells.extend([
+                f'<td class="num total-cell cy-cell">{current_grand_total:.2f}</td>',
+                f'<td class="num total-cell ly-cell">{previous_grand_total:.2f}</td>',
+                f'<td class="num total-cell yoy-cell">{_growth_html(grand_growth)}</td>',
+            ])
+            grand_share_cells.extend([
+                '<td class="num total-cell cy-share">100.00%</td>',
+                '<td class="num total-cell ly-share">100.00%</td>',
+                '<td class="num total-cell yoy-cell">—</td>',
+            ])
+            total_rows = (
+                '<tr class="grand-total-row"><td class="zone-name" rowspan="2">TOTAL</td><td class="metric-name">Revenue</td>'
+                + ''.join(grand_revenue_cells) + '</tr>'
+                '<tr class="grand-total-row"><td class="metric-name">% Share</td>'
+                + ''.join(grand_share_cells) + '</tr>'
+            )
 
-        # Prepare Month-on-Month analysis for the right-hand column.
+            dynamic_font = "9px" if len(country_cols) >= 5 else "10px"
+            matrix_html = f"""
+            <style>
+                .compact-zone-matrix-wrap {{width:100%;overflow:visible;border:1px solid #dbe4ef;border-radius:10px;background:#ffffff;}}
+                .compact-zone-matrix {{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-family:'Segoe UI',Arial,sans-serif;font-size:{dynamic_font};color:#243b53;}}
+                .compact-zone-matrix th,.compact-zone-matrix td {{padding:5px 3px;border-right:1px solid #e3eaf2;border-bottom:1px solid #e3eaf2;text-align:center;line-height:1.15;overflow:hidden;text-overflow:ellipsis;}}
+                .compact-zone-matrix thead th {{font-weight:500;}}
+                .compact-zone-matrix .zone-head {{width:7%;background:#eef4fb;text-align:left;padding-left:8px;}}
+                .compact-zone-matrix .metric-head {{width:7%;background:#eef4fb;text-align:left;padding-left:7px;}}
+                .compact-zone-matrix .country-group {{background:#eaf2ff;color:#0f2744;font-size:11px;border-top:3px solid #2563eb;}}
+                .compact-zone-matrix .total-group {{background:#edf4ff;}}
+                .compact-zone-matrix .cy-head {{background:#eff6ff;color:#1d4ed8;}}
+                .compact-zone-matrix .ly-head {{background:#ecfdf8;color:#0f766e;}}
+                .compact-zone-matrix .yoy-head {{background:#f7f2ff;color:#6d28d9;}}
+                .compact-zone-matrix .zone-name {{text-align:left;padding-left:8px;font-size:11px;font-weight:500;background:#f8fbff;white-space:normal;}}
+                .compact-zone-matrix .metric-name {{text-align:left;padding-left:7px;color:#475569;font-weight:400;background:#fbfdff;white-space:nowrap;}}
+                .compact-zone-matrix .num {{white-space:nowrap;font-weight:400;}}
+                .compact-zone-matrix .cy-cell,.compact-zone-matrix .cy-share {{background:#f8fbff;}}
+                .compact-zone-matrix .ly-cell,.compact-zone-matrix .ly-share {{background:#f7fcfb;}}
+                .compact-zone-matrix .yoy-cell {{background:#fcfaff;}}
+                .compact-zone-matrix .total-cell {{font-weight:500;}}
+                .compact-zone-matrix .zone-share-row td {{color:#64748b;}}
+                .compact-zone-matrix .grand-total-row td {{background:#eaf2ff!important;font-weight:500;color:#0f2744;}}
+                .compact-zone-matrix tr:last-child td {{border-bottom:0;}}
+                .compact-zone-matrix th:last-child,.compact-zone-matrix td:last-child {{border-right:0;}}
+                .zone-matrix-note {{display:flex;gap:18px;flex-wrap:wrap;margin:7px 2px 0;color:#64748b;font-size:10px;}}
+                @media (max-width:1200px) {{.compact-zone-matrix {{font-size:8px;}}.compact-zone-matrix th,.compact-zone-matrix td {{padding:4px 2px;}}.compact-zone-matrix .country-group,.compact-zone-matrix .zone-name {{font-size:9px;}}}}
+            </style>
+            <div class="compact-zone-matrix-wrap">
+                <table class="compact-zone-matrix">
+                    <thead>
+                        <tr><th class="zone-head" rowspan="2">Zone</th><th class="metric-head" rowspan="2">Metric</th>{''.join(header_groups)}</tr>
+                        <tr>{sub_headers}</tr>
+                    </thead>
+                    <tbody>{''.join(body_rows)}{total_rows}</tbody>
+                </table>
+            </div>
+            <div class="zone-matrix-note">
+                <span>Values in ₹ {escape(str(revenue_unit))}</span>
+                <span style="color:#16a34a;">▲ Positive movement</span>
+                <span style="color:#dc2626;">▼ Negative movement</span>
+                <span>YoY % = (CY − LY) ÷ LY × 100</span>
+            </div>
+            """
+            if hasattr(st, "html"):
+                st.html(matrix_html)
+            else:
+                st.markdown(matrix_html, unsafe_allow_html=True)
+
+        compact_spacer()
+
+        # Month-on-Month analysis remains available below the full-width matrix.
         monthly_chart = monthly.copy()
-        monthly_chart["Growth %"] = (
-            monthly_chart["Business Cr"].pct_change().mul(100).round(2)
-        )
+        monthly_chart["Growth %"] = monthly_chart["Business Cr"].pct_change().mul(100).round(2)
         monthly_chart = monthly_chart.dropna(subset=["Month"]).copy()
         monthly_chart["Month"] = monthly_chart["Month"].astype(str)
 
-        with mom_chart_col:
-            with st.container(border=True):
-                st.markdown("<div style='font-size:13px;font-weight:400;color:#0f172a;margin-bottom:2px;'>Month on Month Business & Growth</div>", unsafe_allow_html=True)
-    
-                fig_mom = go.Figure()
-                fig_mom.add_trace(
-                    go.Bar(
-                        x=monthly_chart["Month"],
-                        y=monthly_chart["Business Cr"],
-                        name="Business",
-                        marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
-                        text=monthly_chart["Business Cr"],
-                        texttemplate=f"₹%{{text:.2f}} {revenue_unit}",
-                        textposition="outside",
-                        cliponaxis=False,
-                        hovertemplate=f"<b>%{{x}}</b><br>Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
-                    )
-                )
-    
-                growth_colors = [
-                    "#16a34a" if pd.notna(v) and v >= 0 else "#dc2626"
-                    for v in monthly_chart["Growth %"]
-                ]
-                fig_mom.add_trace(
-                    go.Scatter(
-                        x=monthly_chart["Month"],
-                        y=monthly_chart["Growth %"],
-                        name="MoM Growth",
-                        mode="lines+markers+text",
-                        yaxis="y2",
-                        line=dict(color="#f59e0b", width=3),
-                        marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
-                        text=[
-                            "" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%"
-                            for v in monthly_chart["Growth %"]
-                        ],
-                        textposition="top center",
-                        textfont=dict(size=10, color="#ffffff"),
-                        hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
-                    )
-                )
-    
-                revenue_max = pd.to_numeric(monthly_chart["Business Cr"], errors="coerce").max()
-                revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
-                growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
-                growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
-    
-                fig_mom.update_layout(
-                    height=235,
-                    margin=dict(l=8, r=8, t=28, b=6),
-                    plot_bgcolor="#f8fafc",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    legend=dict(orientation="h", y=1.10, x=0),
-                    bargap=0.35,
-                    yaxis=dict(
-                        title=f"Business ({revenue_unit})",
-                        range=[0, revenue_max * 1.30],
-                        showgrid=False,
-                        zeroline=False,
-                    ),
-                    yaxis2=dict(
-                        title="Growth (%)",
-                        overlaying="y",
-                        side="right",
-                        range=[-growth_abs_max * 1.35, growth_abs_max * 1.35],
-                        showgrid=False,
-                        zeroline=True,
-                        zerolinecolor="#cbd5e1",
-                    ),
-                    xaxis=dict(showgrid=False, title=""),
-                )
-                apply_3d_chart_layout(fig_mom, height=235, margin=dict(l=8, r=8, t=30, b=6))
-                fig_mom.update_xaxes(showline=False, zeroline=False)
-                fig_mom.update_yaxes(showline=False)
-    
-                st.plotly_chart(
-                    fig_mom,
-                    width="stretch",
-                    config={"displayModeBar": False, "responsive": True},
-                )
+        with st.container(border=True):
+            st.markdown("<div style='font-size:13px;font-weight:400;color:#0f172a;margin-bottom:2px;'>Month on Month Business & Growth</div>", unsafe_allow_html=True)
+            fig_mom = go.Figure()
+            fig_mom.add_trace(go.Bar(
+                x=monthly_chart["Month"], y=monthly_chart["Business Cr"], name="Business",
+                marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
+                text=monthly_chart["Business Cr"], texttemplate=f"₹%{{text:.2f}} {revenue_unit}",
+                textposition="outside", cliponaxis=False,
+                hovertemplate=f"<b>%{{x}}</b><br>Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
+            ))
+            growth_colors = ["#16a34a" if pd.notna(v) and v >= 0 else "#dc2626" for v in monthly_chart["Growth %"]]
+            fig_mom.add_trace(go.Scatter(
+                x=monthly_chart["Month"], y=monthly_chart["Growth %"], name="MoM Growth",
+                mode="lines+markers+text", yaxis="y2", line=dict(color="#f59e0b", width=3),
+                marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
+                text=["" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%" for v in monthly_chart["Growth %"]],
+                textposition="top center", textfont=dict(size=10, color="#334155", family="Arial"),
+                hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
+            ))
+            revenue_max = pd.to_numeric(monthly_chart["Business Cr"], errors="coerce").max()
+            revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
+            growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
+            growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
+            fig_mom.update_layout(
+                height=235, margin=dict(l=8, r=8, t=28, b=6), plot_bgcolor="#f8fafc",
+                paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=1.10, x=0), bargap=0.35,
+                yaxis=dict(title=f"Business ({revenue_unit})", range=[0, revenue_max * 1.30], showgrid=False, zeroline=False),
+                yaxis2=dict(title="Growth (%)", overlaying="y", side="right", range=[-growth_abs_max * 1.35, growth_abs_max * 1.35], showgrid=False, zeroline=True, zerolinecolor="#cbd5e1"),
+                xaxis=dict(showgrid=False, title=""),
+            )
+            apply_3d_chart_layout(fig_mom, height=235, margin=dict(l=8, r=8, t=30, b=6))
+            fig_mom.update_xaxes(showline=False, zeroline=False)
+            fig_mom.update_yaxes(showline=False)
+            st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False, "responsive": True})
+
     # =====================================================
     # Top 10 Consignors / Consignees | View-type aware
     # =====================================================
