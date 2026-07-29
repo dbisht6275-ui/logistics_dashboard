@@ -3740,7 +3740,7 @@ def show_overview():
 
                 if active_days < 30:
                     performance = "New - Monitoring"
-                elif avg_monthly >= 5000000:
+                elif avg_monthly >= 500000:
                     performance = "Strong"
                 elif avg_monthly >= 100000:
                     performance = "Progressing"
@@ -3815,7 +3815,7 @@ def show_overview():
                 st.caption(
                     f"Combined average monthly revenue of new locations: "
                     f"{avg_new_monthly:,.2f} {revenue_unit}. "
-                    "Performance bands: Strong ≥ ₹50 lakh/month; "
+                    "Performance bands: Strong ≥ ₹5 lakh/month; "
                     "Progressing ≥ ₹1 lakh/month; below this Needs Attention."
                 )
 
