@@ -2724,45 +2724,136 @@ def show_overview():
                     ["ZONE_LABEL", "CY_REVENUE"], ascending=[True, False]
                 )
 
-                # Simple Zone vs Country table: retain the existing visual style and add only PY value.
-                zone_country_display = zone_country_perf.copy()
-                zone_country_display["Zone"] = zone_country_display["ZONE_LABEL"].astype(str)
-                zone_country_display["Country"] = zone_country_display["COUNTRY"].astype(str)
-                zone_country_display[f"CY Business ({revenue_unit})"] = zone_country_display["CY_VALUE"].round(2)
-                zone_country_display[f"PY Business ({revenue_unit})"] = zone_country_display["LY_VALUE"].round(2)
-
-                zone_country_display = zone_country_display[[
-                    "Zone",
-                    "Country",
-                    f"CY Business ({revenue_unit})",
-                    f"PY Business ({revenue_unit})",
-                ]].reset_index(drop=True)
-
-                total_row = pd.DataFrame([{
-                    "Zone": "TOTAL",
-                    "Country": "",
-                    f"CY Business ({revenue_unit})": round(cy_total / revenue_divisor, 2),
-                    f"PY Business ({revenue_unit})": round(ly_total / revenue_divisor, 2),
-                }])
-                zone_country_display = pd.concat(
-                    [zone_country_display, total_row], ignore_index=True
+                # Keep the original Zone vs Country matrix visual and show PY below each CY value.
+                current_matrix = zone_country_perf.pivot_table(
+                    index="ZONE_LABEL",
+                    columns="COUNTRY",
+                    values="CY_VALUE",
+                    aggfunc="sum",
+                    fill_value=0,
+                )
+                previous_matrix = zone_country_perf.pivot_table(
+                    index="ZONE_LABEL",
+                    columns="COUNTRY",
+                    values="LY_VALUE",
+                    aggfunc="sum",
+                    fill_value=0,
                 )
 
-                st.dataframe(
-                    zone_country_display,
-                    width="stretch",
-                    hide_index=True,
-                    column_config={
-                        "Zone": st.column_config.TextColumn("Zone"),
-                        "Country": st.column_config.TextColumn("Country"),
-                        f"CY Business ({revenue_unit})": st.column_config.NumberColumn(
-                            f"CY Business ({revenue_unit})", format="%.2f"
-                        ),
-                        f"PY Business ({revenue_unit})": st.column_config.NumberColumn(
-                            f"PY Business ({revenue_unit})", format="%.2f"
-                        ),
-                    },
+                all_countries = sorted(set(current_matrix.columns).union(previous_matrix.columns))
+                current_matrix = current_matrix.reindex(index=zone_order, columns=all_countries, fill_value=0)
+                previous_matrix = previous_matrix.reindex(index=zone_order, columns=all_countries, fill_value=0)
+
+                current_matrix["Total"] = current_matrix.sum(axis=1)
+                previous_matrix["Total"] = previous_matrix.sum(axis=1)
+
+                cy_grand_total = float(current_matrix[all_countries].to_numpy().sum()) if all_countries else 0.0
+
+                table_headers = "".join(
+                    f"<th>{escape(str(col))}</th>"
+                    for col in ["Zone"] + all_countries + ["Total"]
                 )
+
+                table_rows = []
+                for zone_name in zone_order:
+                    cells = [f"<td class='zone-name'>{escape(str(zone_name))}</td>"]
+                    for col in all_countries + ["Total"]:
+                        cy_value = float(current_matrix.loc[zone_name, col]) if zone_name in current_matrix.index else 0.0
+                        py_value = float(previous_matrix.loc[zone_name, col]) if zone_name in previous_matrix.index else 0.0
+                        share = (cy_value / cy_grand_total * 100) if cy_grand_total > 0 else 0.0
+                        cells.append(
+                            "<td>"
+                            f"<div class='matrix-value'>₹{cy_value:.2f} {revenue_unit}"
+                            f" <span class='matrix-separator'>|</span> "
+                            f"<span class='matrix-percent'>{share:.1f}%</span></div>"
+                            f"<div class='matrix-py'>PY: ₹{py_value:.2f} {revenue_unit}</div>"
+                            "</td>"
+                        )
+                    table_rows.append(f"<tr>{''.join(cells)}</tr>")
+
+                total_cells = ["<td class='zone-name total-label'>TOTAL</td>"]
+                for col in all_countries + ["Total"]:
+                    cy_value = float(current_matrix[col].sum())
+                    py_value = float(previous_matrix[col].sum())
+                    share = (cy_value / cy_grand_total * 100) if cy_grand_total > 0 else 0.0
+                    total_cells.append(
+                        "<td class='total-cell'>"
+                        f"<div class='matrix-value'>₹{cy_value:.2f} {revenue_unit}"
+                        f" <span class='matrix-separator'>|</span> "
+                        f"<span class='matrix-percent'>{share:.1f}%</span></div>"
+                        f"<div class='matrix-py'>PY: ₹{py_value:.2f} {revenue_unit}</div>"
+                        "</td>"
+                    )
+                table_rows.append(f"<tr>{''.join(total_cells)}</tr>")
+
+                matrix_html = f"""
+                <style>
+                    .zone-country-wrap {{
+                        width: 100%;
+                        height: auto;
+                        max-height: 320px;
+                        overflow-x: auto;
+                        overflow-y: auto;
+                        border: 1px solid #e2e8f0;
+                        border-radius: 10px;
+                        background: #ffffff;
+                    }}
+                    .zone-country-table {{
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 12px;
+                        line-height: 1.35;
+                        color: #334155;
+                    }}
+                    .zone-country-table th {{
+                        position: sticky;
+                        top: 0;
+                        z-index: 1;
+                        padding: 10px 9px;
+                        font-size: 12px;
+                        text-align: center;
+                        white-space: nowrap;
+                        background: #eef6ff;
+                        color: #334155;
+                        font-weight: 700;
+                        border: 1px solid #dbe7f3;
+                    }}
+                    .zone-country-table td {{
+                        padding: 8px 9px;
+                        font-size: 12px;
+                        text-align: center;
+                        white-space: nowrap;
+                        background: #f8fbff;
+                        border: 1px solid #e2e8f0;
+                    }}
+                    .zone-country-table .zone-name {{
+                        text-align: left;
+                        font-weight: 700;
+                        color: #334155;
+                    }}
+                    .matrix-value {{ color: #475569; }}
+                    .matrix-separator {{ color: #94a3b8; }}
+                    .matrix-percent {{ color: #2563eb; font-weight: 700; }}
+                    .matrix-py {{
+                        margin-top: 3px;
+                        color: #64748b;
+                        font-size: 10px;
+                        font-weight: 400;
+                    }}
+                    .total-cell, .total-label {{ background: #f1f5f9 !important; }}
+                </style>
+                <div class="zone-country-wrap">
+                    <table class="zone-country-table">
+                        <thead><tr>{table_headers}</tr></thead>
+                        <tbody>{''.join(table_rows)}</tbody>
+                    </table>
+                </div>
+                """
+
+                if hasattr(st, "html"):
+                    st.html(matrix_html)
+                else:
+                    st.markdown(matrix_html, unsafe_allow_html=True)
 
         # Prepare Month-on-Month analysis for the right-hand column.
         monthly_chart = monthly.copy()
