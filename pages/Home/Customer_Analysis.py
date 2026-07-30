@@ -784,7 +784,7 @@ def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> Non
             "positive": None,
         },
         {
-            "title": "Repeat Rate",
+            "title": "Multi-Shipment Customers %",
             "value": f"{metrics['repeat_rate']:.1f}%",
             "delta": f"{format_delta(metrics['repeat_rate_growth'])}",
             "icon": "🔁",
