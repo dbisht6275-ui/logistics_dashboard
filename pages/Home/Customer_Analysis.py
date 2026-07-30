@@ -37,80 +37,55 @@ def apply_dashboard_style() -> None:
             font-weight: 400;
         }
 
-        /* ---------- Gradient KPI Cards ---------- */
+        /* ---------- KPI Cards: same style as Overview Dashboard ---------- */
         .kpi-card {
-            border: 1px solid rgba(255,255,255,0.20);
-            border-radius: 14px;
-            padding: 16px 17px;
-            min-height: 118px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            box-shadow: 0 8px 20px rgba(15,23,42,0.14);
+            background: #ffffff;
+            padding: 8px 9px;
+            border-radius: 10px;
+            border: 1px solid #e5e7eb;
+            border-left: 4px solid var(--accent-color, #2563eb);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+            min-height: 70px;
             position: relative;
             overflow: hidden;
-            color: #ffffff;
-            transition: transform 0.18s ease, box-shadow 0.18s ease;
+            transition: transform 0.16s ease, box-shadow 0.16s ease;
         }
         .kpi-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 26px rgba(15,23,42,0.18);
+            transform: translateY(-1px);
+            box-shadow: 0 5px 14px rgba(15,23,42,0.12);
         }
-        .kpi-card::before {
-            content: "";
-            position: absolute;
-            width: 90px;
-            height: 90px;
-            border-radius: 50%;
-            right: -28px;
-            top: -34px;
-            background: rgba(255,255,255,0.12);
-        }
-        .kpi-card::after {
-            content: "";
-            position: absolute;
-            width: 62px;
-            height: 62px;
-            border-radius: 50%;
-            right: 18px;
-            bottom: -34px;
-            background: rgba(255,255,255,0.08);
+        .kpi-card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
         }
         .kpi-title {
+            color: var(--accent-color, #2563eb);
             font-size: 11px;
-            font-weight: 700;
-            color: rgba(255,255,255,0.88);
-            text-transform: uppercase;
-            letter-spacing: 0.45px;
-            margin-bottom: 8px;
-            position: relative;
-            z-index: 2;
-            padding-right: 28px;
+            font-weight: 800;
+            line-height: 1.15;
+            white-space: normal;
+        }
+        .kpi-icon {
+            font-size: 18px;
+            line-height: 1;
+            flex: 0 0 auto;
         }
         .kpi-value {
-            font-size: 22px;
-            font-weight: 800;
-            color: #ffffff;
-            line-height: 1.2;
-            position: relative;
-            z-index: 2;
+            font-size: 17px;
+            font-weight: 900;
+            color: #0f172a;
+            margin-top: 2px;
+            line-height: 1.15;
             white-space: nowrap;
         }
         .kpi-delta {
-            font-size: 11px;
-            color: rgba(255,255,255,0.82);
-            margin-top: 6px;
-            position: relative;
-            z-index: 2;
-        }
-        .kpi-icon {
-            position: absolute;
-            top: 10px;
-            right: 12px;
-            font-size: 19px;
-            opacity: 0.96;
-            z-index: 3;
-            filter: drop-shadow(0 2px 3px rgba(0,0,0,0.12));
+            font-size: 10.5px;
+            font-weight: 700;
+            margin-top: 2px;
+            line-height: 1.15;
+            white-space: normal;
         }
 
         /* ---------- Section Headers ---------- */
@@ -237,34 +212,7 @@ def apply_dashboard_style() -> None:
             white-space: nowrap !important;
         }
 
-        /* ---------- Compact KPI row ---------- */
-        .kpi-card {
-            min-height: 92px !important;
-            padding: 9px 12px !important;
-            border-radius: 12px !important;
-            box-shadow: 0 4px 12px rgba(15,23,42,0.12) !important;
-        }
-        .kpi-title {
-            margin-bottom: 3px !important;
-            font-size: 9.5px !important;
-            line-height: 1.15 !important;
-        }
-        .kpi-value {
-            font-size: 18px !important;
-            line-height: 1.12 !important;
-        }
-        .kpi-delta {
-            margin-top: 3px !important;
-            font-size: 9.5px !important;
-            line-height: 1.15 !important;
-            font-size: 10px !important;
-        }
-        .kpi-icon {
-            top: 11px !important;
-            right: 12px !important;
-            font-size: 20px !important;
-        }
-
+        /* ---------- Compact KPI row: dimensions inherited from Overview-style card ---------- */
         /* ---------- Compact insight sections ---------- */
         hr {
             margin-top: 0.35rem !important;
@@ -475,16 +423,39 @@ def apply_filters(
 
 
 # =====================================================
-# KPI Card  (accent bar color)
+# KPI Card - same component used by Overview Dashboard
 # =====================================================
-def kpi_card(title: str, value: str, delta: str, icon: str, gradient: str) -> None:
+def kpi_card(
+    title: str,
+    value: str,
+    delta: str,
+    icon: str,
+    color: str = "#2563eb",
+    positive: bool | None = None,
+) -> None:
+    """Render the compact white KPI card used on the Overview dashboard.
+
+    positive controls the delta colour:
+    - True  -> green
+    - False -> red
+    - None  -> muted grey for informational subtitles
+    """
+    if positive is True:
+        delta_color = "#166534"
+    elif positive is False:
+        delta_color = "#dc2626"
+    else:
+        delta_color = "#64748b"
+
     st.markdown(
         f"""
-        <div class="kpi-card" style="background:{gradient};">
-            <div class="kpi-icon">{icon}</div>
-            <div class="kpi-title">{title}</div>
+        <div class="kpi-card" style="--accent-color:{color};">
+            <div class="kpi-card-top">
+                <div class="kpi-title">{title}</div>
+                <div class="kpi-icon">{icon}</div>
+            </div>
             <div class="kpi-value">{value}</div>
-            <div class="kpi-delta">{delta}</div>
+            <div class="kpi-delta" style="color:{delta_color};">{delta}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -752,67 +723,72 @@ def render_data_filters(
 # KPI Row  — 7 equal columns
 # =====================================================
 def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> None:
+    """Render all Customer Analysis KPIs using the Overview dashboard card style."""
     cols = st.columns(7, gap="small")
 
     cards = [
-        (
-            f"Active {customer_label}s",
-            f"{metrics['active_customers']:,}",
-            format_delta(metrics["active_growth"]),
-            "👥",
-            "linear-gradient(135deg, #0f766e 0%, #14b8a6 100%)" if metrics["active_growth"] >= 0
-            else "linear-gradient(135deg, #b91c1c 0%, #ef4444 100%)",
-        ),
-        (
-            f"New {customer_label}s",
-            f"{metrics['new_customers']:,}",
-            "Current FY vs Previous FY",
-            "🆕",
-            "linear-gradient(135deg, #047857 0%, #22c55e 100%)",
-        ),
-        (
-            f"Lost {customer_label}s",
-            f"{metrics['lost_customers']:,}",
-            "Previous FY not active now",
-            "❌",
-            "linear-gradient(135deg, #be123c 0%, #f43f5e 100%)",
-        ),
-        (
-            "Reactivated Customers",
-            f"{metrics['reactivated_customers']:,}",
-            "Returned after inactive FY",
-            "🔄",
-            "linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%)",
-        ),
-        (
-            f"At Risk {customer_label}s",
-            f"{metrics['at_risk_customers']:,}",
-            "Revenue dropped above 25%",
-            "⚠️",
-            "linear-gradient(135deg, #c2410c 0%, #f59e0b 100%)",
-        ),
-        (
-            "Total Revenue",
-            money_display(metrics["total_revenue"], conversion_type),
-            format_delta(metrics["revenue_growth"]),
-            "₹",
-            "linear-gradient(135deg, #6d28d9 0%, #a855f7 100%)" if metrics["revenue_growth"] >= 0
-            else "linear-gradient(135deg, #b91c1c 0%, #ef4444 100%)",
-        ),
-        (
-            "Current Yield",
-            f"₹{metrics['current_yield']:.2f} /Kg",
-            "Revenue / Chg Wt",
-            "⚡",
-            "linear-gradient(135deg, #7e22ce 0%, #ec4899 100%)",
-        ),
+        {
+            "title": f"Active {customer_label}s",
+            "value": f"{metrics['active_customers']:,}",
+            "delta": f"{format_delta(metrics['active_growth'])}",
+            "icon": "👥",
+            "color": "#2563eb",
+            "positive": metrics["active_growth"] >= 0,
+        },
+        {
+            "title": f"New {customer_label}s",
+            "value": f"{metrics['new_customers']:,}",
+            "delta": "Current FY vs Previous FY",
+            "icon": "🆕",
+            "color": "#16a34a",
+            "positive": None,
+        },
+        {
+            "title": f"Lost {customer_label}s",
+            "value": f"{metrics['lost_customers']:,}",
+            "delta": "Previous FY not active now",
+            "icon": "❌",
+            "color": "#dc2626",
+            "positive": False if metrics["lost_customers"] > 0 else None,
+        },
+        {
+            "title": "Reactivated Customers",
+            "value": f"{metrics['reactivated_customers']:,}",
+            "delta": "Returned after inactive FY",
+            "icon": "🔄",
+            "color": "#0d9488",
+            "positive": True if metrics["reactivated_customers"] > 0 else None,
+        },
+        {
+            "title": f"At Risk {customer_label}s",
+            "value": f"{metrics['at_risk_customers']:,}",
+            "delta": "Revenue dropped above 25%",
+            "icon": "⚠️",
+            "color": "#d97706",
+            "positive": False if metrics["at_risk_customers"] > 0 else None,
+        },
+        {
+            "title": "Total Revenue",
+            "value": money_display(metrics["total_revenue"], conversion_type),
+            "delta": f"{format_delta(metrics['revenue_growth'])}",
+            "icon": "₹",
+            "color": "#7c3aed",
+            "positive": metrics["revenue_growth"] >= 0,
+        },
+        {
+            "title": "Current Yield",
+            "value": f"₹{metrics['current_yield']:.2f} /Kg",
+            "delta": "Revenue / Charge Weight",
+            "icon": "⚡",
+            "color": "#db2777",
+            "positive": None,
+        },
     ]
 
-    for col, (title, value, delta, icon, gradient) in zip(cols, cards):
+    for col, card in zip(cols, cards):
         with col:
-            kpi_card(title, value, delta, icon, gradient)
+            kpi_card(**card)
 
-    # Explicit spacer prevents the next insight row from touching KPI cards.
     st.markdown("<div class='kpi-row-spacer'></div>", unsafe_allow_html=True)
 
 
