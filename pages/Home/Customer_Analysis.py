@@ -472,7 +472,6 @@ def export_to_excel(
     monthly_df: pd.DataFrame,
     reactivated_df: pd.DataFrame,
     service_df: pd.DataFrame,
-    intelligence_df: pd.DataFrame | None = None,
 ) -> BytesIO:
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
@@ -484,8 +483,6 @@ def export_to_excel(
             "Reactivated Customers": reactivated_df,
             "Service Performance": service_df,
         }
-        if intelligence_df is not None:
-            sheets["Customer Intelligence"] = intelligence_df
         workbook = writer.book
         header_format = workbook.add_format(
             {"bold": True, "bg_color": "#1f2937", "font_color": "white", "border": 1}
@@ -523,11 +520,10 @@ def build_customer_summary(
     )
     previous_summary = (
         prev_df.groupby(code_col, as_index=False)
-        .agg(prev_revenue=("Revenue", "sum"), prev_shipments=("ShipmentCount", "sum"))
+        .agg(prev_revenue=("Revenue", "sum"))
     )
     summary = current_summary.merge(previous_summary, on=code_col, how="left")
     summary["prev_revenue"]   = summary["prev_revenue"].fillna(0)
-    summary["prev_shipments"] = summary["prev_shipments"].fillna(0)
     summary["revenue_change"] = summary["revenue"] - summary["prev_revenue"]
     summary["growth_%"]       = summary.apply(
         lambda row: growth_percentage(row["revenue"], row["prev_revenue"]), axis=1
@@ -724,40 +720,83 @@ def render_data_filters(
 
 
 # =====================================================
-# KPI Row  — 7 equal columns
+# KPI Row  — 8 equal columns
 # =====================================================
 def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> None:
-    """Render core customer KPIs using the Overview dashboard card style."""
+    """Render all Customer Analysis KPIs using the Overview dashboard card style."""
+    cols = st.columns(8, gap="small")
+
     cards = [
-        {"title": f"Active {customer_label}s", "value": f"{metrics['active_customers']:,}",
-         "delta": format_delta(metrics['active_growth']), "icon": "👥", "color": "#2563eb",
-         "positive": metrics['active_growth'] >= 0},
-        {"title": f"New {customer_label}s", "value": f"{metrics['new_customers']:,}",
-         "delta": "Acquired vs previous FY", "icon": "🆕", "color": "#16a34a", "positive": None},
-        {"title": "Customer Churn", "value": f"{metrics['churn_rate']:.1f}%",
-         "delta": f"{metrics['lost_customers']:,} customers inactive", "icon": "📉", "color": "#dc2626",
-         "positive": False if metrics['churn_rate'] > 0 else None},
-        {"title": "Repeat Rate", "value": f"{metrics['repeat_rate']:.1f}%",
-         "delta": "Customers with more than 1 shipment", "icon": "🔁", "color": "#0d9488",
-         "positive": True},
-        {"title": "Total Revenue", "value": money_display(metrics['total_revenue'], conversion_type),
-         "delta": format_delta(metrics['revenue_growth']), "icon": "₹", "color": "#7c3aed",
-         "positive": metrics['revenue_growth'] >= 0},
-        {"title": "Revenue / Customer", "value": money_display(metrics['arpu'], conversion_type),
-         "delta": "Average revenue per active customer", "icon": "💳", "color": "#9333ea", "positive": None},
-        {"title": "Avg Shipment Value", "value": f"₹{metrics['avg_shipment_value']:,.0f}",
-         "delta": "Revenue divided by shipments", "icon": "📦", "color": "#d97706", "positive": None},
-        {"title": "Top 20% Revenue Share", "value": f"{metrics['top20_share']:.1f}%",
-         "delta": "Customer concentration (80/20)", "icon": "🎯", "color": "#ea580c", "positive": None},
-        {"title": "Current Yield", "value": f"₹{metrics['current_yield']:.2f} /Kg",
-         "delta": "Revenue / charge weight", "icon": "⚡", "color": "#db2777", "positive": None},
+        {
+            "title": f"Active {customer_label}s",
+            "value": f"{metrics['active_customers']:,}",
+            "delta": f"{format_delta(metrics['active_growth'])}",
+            "icon": "👥",
+            "color": "#2563eb",
+            "positive": metrics["active_growth"] >= 0,
+        },
+        {
+            "title": f"New {customer_label}s",
+            "value": f"{metrics['new_customers']:,}",
+            "delta": "Current FY vs Previous FY",
+            "icon": "🆕",
+            "color": "#16a34a",
+            "positive": None,
+        },
+        {
+            "title": f"Lost {customer_label}s",
+            "value": f"{metrics['lost_customers']:,}",
+            "delta": "Previous FY not active now",
+            "icon": "❌",
+            "color": "#dc2626",
+            "positive": False if metrics["lost_customers"] > 0 else None,
+        },
+        {
+            "title": "Reactivated Customers",
+            "value": f"{metrics['reactivated_customers']:,}",
+            "delta": "Returned after inactive FY",
+            "icon": "🔄",
+            "color": "#0d9488",
+            "positive": True if metrics["reactivated_customers"] > 0 else None,
+        },
+        {
+            "title": f"At Risk {customer_label}s",
+            "value": f"{metrics['at_risk_customers']:,}",
+            "delta": "Revenue dropped above 25%",
+            "icon": "⚠️",
+            "color": "#d97706",
+            "positive": False if metrics["at_risk_customers"] > 0 else None,
+        },
+        {
+            "title": "Total Revenue",
+            "value": money_display(metrics["total_revenue"], conversion_type),
+            "delta": f"{format_delta(metrics['revenue_growth'])}",
+            "icon": "₹",
+            "color": "#7c3aed",
+            "positive": metrics["revenue_growth"] >= 0,
+        },
+        {
+            "title": "Current Yield",
+            "value": f"₹{metrics['current_yield']:.2f} /Kg",
+            "delta": "Revenue / Charge Weight",
+            "icon": "⚡",
+            "color": "#db2777",
+            "positive": None,
+        },
+        {
+            "title": "Repeat Rate",
+            "value": f"{metrics['repeat_rate']:.1f}%",
+            "delta": f"{format_delta(metrics['repeat_rate_growth'])}",
+            "icon": "🔁",
+            "color": "#0f766e",
+            "positive": metrics["repeat_rate_growth"] >= 0,
+        },
     ]
 
-    for row_cards in (cards[:5], cards[5:]):
-        cols = st.columns(len(row_cards), gap="small")
-        for col, card in zip(cols, row_cards):
-            with col:
-                kpi_card(**card)
+    for col, card in zip(cols, cards):
+        with col:
+            kpi_card(**card)
+
     st.markdown("<div class='kpi-row-spacer'></div>", unsafe_allow_html=True)
 
 
@@ -1413,202 +1452,6 @@ def render_branch_summary_table(
         )
 
 
-def build_customer_intelligence(
-    customer_summary: pd.DataFrame,
-    code_col: str,
-    name_col: str,
-    new_customer_codes: set,
-    reactivated_customer_codes: set,
-) -> pd.DataFrame:
-    """Build customer-level commercial intelligence from fields available in the current query."""
-    intel = customer_summary.copy()
-    if intel.empty:
-        return intel
-
-    total_revenue = float(intel["revenue"].sum())
-    intel["revenue_share_%"] = (intel["revenue"] / total_revenue * 100) if total_revenue else 0
-    intel["revenue_per_shipment"] = intel["revenue"] / intel["shipments"].replace(0, pd.NA)
-    intel["revenue_per_shipment"] = intel["revenue_per_shipment"].fillna(0)
-    intel["shipment_growth_%"] = intel.apply(
-        lambda r: growth_percentage(r["shipments"], r["prev_shipments"]), axis=1
-    )
-    intel["repeat_type"] = intel["shipments"].apply(lambda x: "Repeat" if x > 1 else "One-time")
-    intel["service_proxy"] = intel["avg_delay"].apply(
-        lambda x: "On-time / early avg" if x <= 0 else "Delayed avg"
-    )
-
-    revenue_cut = intel["revenue"].quantile(0.80)
-    frequency_cut = intel["shipments"].median()
-
-    def classify(row):
-        code = row[code_col]
-        if code in new_customer_codes:
-            return "New"
-        if code in reactivated_customer_codes:
-            return "Reactivated"
-        if row["revenue"] >= revenue_cut and row["shipments"] >= frequency_cut:
-            return "VIP"
-        if row["shipment_growth_%"] >= 20:
-            return "Growing"
-        if row["shipment_growth_%"] <= -20 or row["growth_%"] <= -25:
-            return "Declining"
-        if row["shipments"] <= 1:
-            return "One-time"
-        return "Regular"
-
-    intel["strategic_segment"] = intel.apply(classify, axis=1)
-    return intel.sort_values("revenue", ascending=False).reset_index(drop=True)
-
-
-def render_customer_intelligence_tab(
-    intelligence_df: pd.DataFrame,
-    monthly: pd.DataFrame,
-    df: pd.DataFrame,
-    prev_df: pd.DataFrame,
-    code_col: str,
-    name_col: str,
-    customer_label: str,
-    lost_customer_codes: set,
-    conversion_type: str,
-) -> None:
-    if intelligence_df.empty:
-        st.info("No customer intelligence data available.")
-        return
-
-    divisor, unit = get_revenue_conversion(conversion_type)
-    total_customers = len(intelligence_df)
-    repeat_customers = int((intelligence_df["repeat_type"] == "Repeat").sum())
-    one_time_customers = total_customers - repeat_customers
-    on_time_proxy = float((intelligence_df["avg_delay"] <= 0).mean() * 100) if total_customers else 0
-
-    # Executive commercial insights
-    a, b, c = st.columns([1.1, 1, 1], gap="small")
-    with a:
-        with st.container(border=True):
-            st.markdown("<div class='section-header'>Strategic Customer Segmentation</div>", unsafe_allow_html=True)
-            segment = intelligence_df.groupby("strategic_segment", as_index=False).agg(
-                Customers=(code_col, "nunique"), Revenue=("revenue", "sum")
-            )
-            segment["Revenue Display"] = segment["Revenue"] / divisor
-            fig = px.scatter(
-                segment, x="Customers", y="Revenue Display", size="Customers",
-                color="strategic_segment", text="strategic_segment",
-                hover_data={"Revenue": False, "Revenue Display": ":.2f"},
-            )
-            fig.update_traces(textposition="top center")
-            fig.update_layout(height=320, margin=dict(l=5, r=5, t=10, b=25),
-                              xaxis_title="Customers", yaxis_title=f"Revenue ({unit})",
-                              showlegend=False, plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    with b:
-        with st.container(border=True):
-            st.markdown("<div class='section-header'>Repeat vs One-time Customers</div>", unsafe_allow_html=True)
-            repeat_df = pd.DataFrame({"Type": ["Repeat", "One-time"],
-                                      "Customers": [repeat_customers, one_time_customers]})
-            fig = px.pie(repeat_df, names="Type", values="Customers", hole=0.58,
-                         color="Type", color_discrete_map={"Repeat": "#16a34a", "One-time": "#f59e0b"})
-            fig.update_traces(textinfo="label+percent")
-            fig.update_layout(height=320, margin=dict(l=5, r=5, t=10, b=5), showlegend=False,
-                              annotations=[dict(text=f"{repeat_customers/total_customers*100:.1f}%<br>Repeat" if total_customers else "0%",
-                                                x=.5, y=.5, showarrow=False, font_size=13)])
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    with c:
-        with st.container(border=True):
-            st.markdown("<div class='section-header'>Shipment Frequency Trend</div>", unsafe_allow_html=True)
-            trend = monthly.copy()
-            trend["Shipments / Customer"] = trend["shipments"] / trend["customers"].replace(0, pd.NA)
-            trend["Shipments / Customer"] = trend["Shipments / Customer"].fillna(0)
-            trend["Month"] = trend["FIN_MONTH"].map(MONTH_MAP)
-            fig = px.line(trend, x="Month", y="Shipments / Customer", markers=True,
-                          category_orders={"Month": MONTH_ORDER})
-            fig.update_layout(height=320, margin=dict(l=5, r=5, t=10, b=25),
-                              xaxis_title="", yaxis_title="Avg shipments / active customer",
-                              plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    # 80/20 and geographic growth
-    left, right = st.columns([1.15, 1], gap="small")
-    with left:
-        with st.container(border=True):
-            st.markdown("<div class='section-header'>80/20 Revenue Concentration</div>", unsafe_allow_html=True)
-            ranked = intelligence_df.sort_values("revenue", ascending=False).copy()
-            ranked["Customer Rank %"] = (ranked.index.to_series() + 1) / len(ranked) * 100
-            ranked["Cumulative Revenue %"] = ranked["revenue"].cumsum() / ranked["revenue"].sum() * 100
-            fig = px.line(ranked, x="Customer Rank %", y="Cumulative Revenue %", markers=False)
-            fig.add_vline(x=20, line_dash="dash", line_color="#dc2626")
-            fig.add_hline(y=80, line_dash="dash", line_color="#64748b")
-            fig.update_layout(height=330, margin=dict(l=5, r=5, t=10, b=25),
-                              xaxis_title="Top customer population (%)",
-                              yaxis_title="Cumulative revenue (%)", plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    with right:
-        with st.container(border=True):
-            st.markdown("<div class='section-header'>Growth by Zone</div>", unsafe_allow_html=True)
-            cy = df.groupby("Zone", as_index=False).agg(CY_Revenue=("Revenue", "sum"), CY_Customers=(code_col, "nunique"))
-            py = prev_df.groupby("Zone", as_index=False).agg(PY_Revenue=("Revenue", "sum"), PY_Customers=(code_col, "nunique"))
-            geo = cy.merge(py, on="Zone", how="outer").fillna(0)
-            geo["Growth %"] = geo.apply(lambda r: growth_percentage(r["CY_Revenue"], r["PY_Revenue"]), axis=1)
-            geo["CY Revenue"] = geo["CY_Revenue"] / divisor
-            geo = geo.sort_values("CY Revenue", ascending=True)
-            fig = px.bar(geo, x="CY Revenue", y="Zone", orientation="h", color="Growth %",
-                         color_continuous_scale="RdYlGn", text="Growth %")
-            fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
-            fig.update_layout(height=330, margin=dict(l=5, r=35, t=10, b=25),
-                              xaxis_title=f"Current Revenue ({unit})", yaxis_title="",
-                              plot_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    # Service proxy and lost/dormant customers
-    s1, s2 = st.columns(2, gap="small")
-    with s1:
-        with st.container(border=True):
-            st.markdown("<div class='section-header'>Customer Service Proxy</div>", unsafe_allow_html=True)
-            st.metric("Customers with average delay ≤ 0 days", f"{on_time_proxy:.1f}%")
-            st.caption("This is a customer-level proxy based on average delay, not a true shipment-level on-time or SLA compliance rate.")
-            service_view = intelligence_df[[name_col, "shipments", "avg_delay", "max_delay", "service_proxy"]].copy()
-            st.dataframe(service_view.sort_values("avg_delay", ascending=False).head(15),
-                         use_container_width=True, hide_index=True)
-
-    with s2:
-        with st.container(border=True):
-            st.markdown(f"<div class='section-header'>Dormant / Lost {customer_label}s</div>", unsafe_allow_html=True)
-            dormant = prev_df[prev_df[code_col].isin(lost_customer_codes)].groupby(
-                [code_col, name_col], as_index=False
-            ).agg(Previous_Revenue=("Revenue", "sum"), Previous_Shipments=("ShipmentCount", "sum"),
-                  Last_Active_Month=("FIN_MONTH", "max"))
-            dormant["Last Active"] = dormant["Last_Active_Month"].map(MONTH_MAP)
-            dormant[f"Previous Revenue ({unit})"] = dormant["Previous_Revenue"] / divisor
-            show_cols = [name_col, "Previous_Shipments", "Last Active", f"Previous Revenue ({unit})"]
-            st.dataframe(dormant.sort_values("Previous_Revenue", ascending=False)[show_cols].head(15),
-                         use_container_width=True, hide_index=True)
-
-    st.markdown("<div class='section-header'>Customer Intelligence Detail</div>", unsafe_allow_html=True)
-    detail_cols = [name_col, "strategic_segment", "repeat_type", "revenue", "shipments",
-                   "revenue_per_shipment", "growth_%", "shipment_growth_%", "avg_delay", "service_proxy"]
-    st.dataframe(intelligence_df[detail_cols], use_container_width=True, hide_index=True,
-                 column_config={
-                     "revenue": st.column_config.NumberColumn("Revenue (Rs.)", format="₹%,.0f"),
-                     "revenue_per_shipment": st.column_config.NumberColumn("Revenue / Shipment", format="₹%,.0f"),
-                     "growth_%": st.column_config.NumberColumn("Revenue Growth %", format="%.1f%%"),
-                     "shipment_growth_%": st.column_config.NumberColumn("Shipment Growth %", format="%.1f%%"),
-                     "avg_delay": st.column_config.NumberColumn("Avg Delay", format="%.2f"),
-                 })
-
-    with st.expander("Metrics requiring additional source data"):
-        st.markdown(
-            """
-            - **Peak routing corridors:** requires origin and destination on the same record/query.
-            - **True on-time delivery and SLA compliance:** requires shipment-level promised and actual delivery status/counts.
-            - **Complaints, service ratings and satisfaction:** require CRM/helpdesk/survey data.
-            - **Cost per shipment and margin:** require shipment-level direct/allocated cost.
-            - **Customer lifetime value:** requires customer acquisition date, retention horizon and margin history.
-            """
-        )
-
-
 def render_drilldown_tab(df: pd.DataFrame, name_col: str, customer_label: str, conversion_type: str) -> None:
     st.subheader(f"{customer_label} Drill Down")
     customers = sorted(df[name_col].dropna().unique())
@@ -1736,15 +1579,25 @@ def show_CustomerAnalysis() -> None:
     reactivated_revenue        = df[df[code_col].isin(reactivated_customer_codes)]["Revenue"].sum()
     charged_weight             = df["ChargeWeight"].sum()
     current_yield              = total_revenue / charged_weight if charged_weight > 0 else 0
-    total_shipments            = float(customer_summary["shipments"].sum())
-    arpu                       = total_revenue / active_customers if active_customers else 0
-    avg_shipment_value         = total_revenue / total_shipments if total_shipments else 0
-    repeat_customers           = int((customer_summary["shipments"] > 1).sum())
-    repeat_rate                = (repeat_customers / active_customers * 100) if active_customers else 0
-    churn_rate                 = (lost_customers / prev_active_customers * 100) if prev_active_customers else 0
-    top_n                      = max(1, int((active_customers * 0.20) + 0.999999)) if active_customers else 0
-    top20_revenue              = customer_summary.nlargest(top_n, "revenue")["revenue"].sum() if top_n else 0
-    top20_share                = (top20_revenue / total_revenue * 100) if total_revenue else 0
+
+    # Repeat Rate:
+    # A customer is treated as repeat when the filtered period contains more than
+    # one shipment for that customer. The rate is repeat customers / active customers.
+    current_customer_shipments = df.groupby(code_col)["ShipmentCount"].sum()
+    previous_customer_shipments = prev_df.groupby(code_col)["ShipmentCount"].sum()
+
+    repeat_customers = int((current_customer_shipments > 1).sum())
+    prev_repeat_customers = int((previous_customer_shipments > 1).sum())
+
+    repeat_rate = (
+        repeat_customers / active_customers * 100
+        if active_customers > 0 else 0.0
+    )
+    prev_repeat_rate = (
+        prev_repeat_customers / prev_active_customers * 100
+        if prev_active_customers > 0 else 0.0
+    )
+
     retention_percent          = (
         ((active_customers - new_customers) / prev_active_customers) * 100
         if prev_active_customers > 0 else 0
@@ -1765,16 +1618,10 @@ def show_CustomerAnalysis() -> None:
         "lost_revenue":               lost_revenue,
         "reactivated_revenue":        reactivated_revenue,
         "current_yield":              current_yield,
-        "arpu":                       arpu,
-        "avg_shipment_value":         avg_shipment_value,
+        "repeat_customers":           repeat_customers,
         "repeat_rate":                repeat_rate,
-        "churn_rate":                 churn_rate,
-        "top20_share":                top20_share,
+        "repeat_rate_growth":         growth_percentage(repeat_rate, prev_repeat_rate),
     }
-
-    intelligence_df = build_customer_intelligence(
-        customer_summary, code_col, name_col, new_customer_codes, reactivated_customer_codes
-    )
 
     excel_file = export_to_excel(
         df=df,
@@ -1783,7 +1630,6 @@ def show_CustomerAnalysis() -> None:
         monthly_df=monthly,
         reactivated_df=reactivated_df,
         service_df=service_df,
-        intelligence_df=intelligence_df,
     )
     with export_placeholder:
         st.download_button(
@@ -1815,9 +1661,8 @@ def show_CustomerAnalysis() -> None:
     st.markdown("<div class='insight-section-spacer'></div>", unsafe_allow_html=True)
 
     # --- Tabs ---
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         f"{customer_label} Overview",
-        "Customer Intelligence",
         "Growth & Retention",
         "Service Performance",
         f"{customer_label} Drill Down",
@@ -1825,13 +1670,8 @@ def show_CustomerAnalysis() -> None:
     with tab1:
         render_overview_tab(customer_summary, monthly, code_col, name_col, customer_label, prev_df, lost_customer_codes, conversion_type)
     with tab2:
-        render_customer_intelligence_tab(
-            intelligence_df, monthly, df, prev_df, code_col, name_col,
-            customer_label, lost_customer_codes, conversion_type
-        )
-    with tab3:
         render_growth_tab(growth_df, name_col, customer_label, conversion_type)
-    with tab4:
+    with tab3:
         render_service_tab(service_df, customer_label, conversion_type)
-    with tab5:
+    with tab4:
         render_drilldown_tab(df, name_col, customer_label, conversion_type)
