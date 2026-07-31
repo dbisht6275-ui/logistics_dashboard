@@ -2181,7 +2181,7 @@ def show_overview():
         with st.container(border=True):
             st.markdown(
                 f'<div style="font-size:{LOAD_TITLE_FONT}px;font-weight:600;'
-                f'color:#0f172a;margin:0 0 5px 0;line-height:1.2;">'
+                f'color:#0f172a;margin:0 0 5px 0;line-height:1.1;">'
                 f'Business by Load Type (CY)</div>',
                 unsafe_allow_html=True,
             )
