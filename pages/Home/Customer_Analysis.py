@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
+from concurrent.futures import ThreadPoolExecutor
 from services.data_CustomerAnalysis import load_booking_data, get_date_range
 
 # =====================================================
@@ -1493,33 +1494,96 @@ def show_CustomerAnalysis() -> None:
     customer_label = config["label"]
 
     start_date, end_date = get_date_range(fin_year)
-    prev_start, prev_end = get_date_range(previous_financial_year(fin_year, 1))
-    old_start,  old_end  = get_date_range(previous_financial_year(fin_year, 2))
 
-    with st.spinner("Loading customer summary data..."):
-        all_df = clean_booking_data(load_booking_data(old_start, end_date, view_type))
+    previous_year = previous_financial_year(fin_year, 1)
+    prev_start, prev_end = get_date_range(previous_year)
 
-    df      = all_df[all_df["YR"].astype(int) == int(fin_year.split("-")[0])].copy()
-    prev_df = all_df[all_df["YR"].astype(int) == int(previous_financial_year(fin_year, 1).split("-")[0])].copy()
-    old_df  = all_df[all_df["YR"].astype(int) == int(previous_financial_year(fin_year, 2).split("-")[0])].copy()
+    older_year = previous_financial_year(fin_year, 2)
+    old_start, old_end = get_date_range(older_year)
+
+    # Load each financial year separately. The stored procedure does not need to
+    # return a YR column because the date range itself identifies the period.
+    # Three independent calls are executed in parallel to reduce wait time.
+    try:
+        with st.spinner("Loading customer summary data..."):
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                current_future = executor.submit(
+                    load_booking_data,
+                    start_date,
+                    end_date,
+                    view_type,
+                )
+                previous_future = executor.submit(
+                    load_booking_data,
+                    prev_start,
+                    prev_end,
+                    view_type,
+                )
+                older_future = executor.submit(
+                    load_booking_data,
+                    old_start,
+                    old_end,
+                    view_type,
+                )
+
+                df = clean_booking_data(current_future.result())
+                prev_df = clean_booking_data(previous_future.result())
+                old_df = clean_booking_data(older_future.result())
+    except Exception as exc:
+        st.error(f"Unable to load Customer Analysis data: {exc}")
+        return
 
     if df.empty:
-        st.warning("No customer data found.")
+        st.warning("No customer data found for the selected financial year.")
         return
+
+    # Validate the columns required by the dashboard before creating helper
+    # columns or filters. YR is intentionally not required.
+    required_cols = [
+        code_col,
+        name_col,
+        "Zone",
+        "Circle",
+        "Branch",
+        "FIN_MONTH",
+        "Revenue",
+        "ShipmentCount",
+        "ActualWeight",
+        "ChargeWeight",
+        "AvgDelayDays",
+        "MaxDelayDays",
+    ]
+
+    missing_cols = [column for column in required_cols if column not in df.columns]
+    if missing_cols:
+        st.error(f"Missing columns returned by stored procedure: {missing_cols}")
+        st.write("Available columns:", list(df.columns))
+        return
+
+    # Previous and older periods use the same output structure. Validate them
+    # separately so a procedure issue is shown clearly instead of failing later.
+    for period_label, period_df in (
+        (previous_year, prev_df),
+        (older_year, old_df),
+    ):
+        period_missing = [
+            column for column in required_cols
+            if column not in period_df.columns
+        ]
+        if period_missing:
+            st.error(
+                f"Missing columns for FY {period_label}: {period_missing}"
+            )
+            st.write(
+                f"Available columns for FY {period_label}:",
+                list(period_df.columns),
+            )
+            return
 
     # Display/filter helper columns. FIN_MONTH remains the source of truth.
     for period_df in (df, prev_df, old_df):
         period_df["Month"] = period_df["FIN_MONTH"].map(MONTH_MAP)
         period_df["Quarter"] = period_df["FIN_MONTH"].map(QUARTER_MAP)
-
-    required_cols = [code_col, name_col, "Zone", "Branch", "FIN_MONTH",
-                     "Revenue", "ShipmentCount", "ActualWeight", "ChargeWeight",
-                     "AvgDelayDays", "MaxDelayDays"]
-    missing_cols = [c for c in required_cols if c not in df.columns]
-    if missing_cols:
-        st.error(f"Missing columns: {missing_cols}")
-        st.write("Available columns:", list(df.columns))
-        return
 
     zone, circle, branch, quarter, month, load_type, customer, conversion_type = render_data_filters(
         df,
