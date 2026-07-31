@@ -1,183 +1,85 @@
-import streamlit as st
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import pandas as pd
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+import streamlit as st
 from sqlalchemy import text
+
 from services.database import get_engine
 
 
+_CACHE_TTL_SECONDS = 24 * 60 * 60
 
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_fixed(5),
-    retry=retry_if_exception_type(Exception),
-    reraise=True,
-)
-def _run_query(query):
-    """
-    Runs the query on a fresh connection each attempt.
-    If the connection dies mid-query (network drop / server timeout),
-    this closes it and retries with a brand new connection up to 3 times.
-    """
+_CUSTOMER_QUERY = text("""
+    EXEC dbo.GetRevenueDataFromCache
+        @StartDate = :start_date,
+        @EndDate   = :end_date,
+        @ViewType  = :view_type
+""")
+
+
+def _fetch_customer_data(start_date, end_date, view_type):
+    started = time.perf_counter()
     engine = get_engine()
-    return pd.read_sql(query, engine)
+
+    with engine.connect() as conn:
+        df = pd.read_sql_query(
+            _CUSTOMER_QUERY,
+            conn,
+            params={
+                "start_date": start_date,
+                "end_date": end_date,
+                "view_type": str(view_type).strip().upper(),
+            },
+        )
+
+    print(
+        f"[Customer Analysis] {start_date} -> {end_date} | "
+        f"{view_type.upper()} | Rows={len(df):,} | "
+        f"{time.perf_counter()-started:.2f}s"
+    )
+
+    return df
 
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=20)
 def load_booking_data(start_date, end_date, view_type="origin"):
-
-    # -------- ORIGIN VIEW --------
-    if view_type == "origin":
-
-        query = f"""
-        SELECT
-            CASE
-                WHEN MONTH(cn.grdt) >= 4
-                    THEN YEAR(cn.grdt)
-                ELSE YEAR(cn.grdt) - 1
-            END AS YR,
-            CASE
-                WHEN MONTH(cn.grdt) >= 4
-                    THEN MONTH(cn.grdt)-3
-                ELSE MONTH(cn.grdt)+9
-            END AS FIN_MONTH,
-            v.zonename AS Zone,
-            v.hubname AS Circle,
-            v.stnname AS Branch,
-            cn.cngrcode,
-            cngr.name AS Consignor,
-            IIF(cn.ftl='y','FTL','LTL') AS LoadType,
-            COUNT(*) AS ShipmentCount,
-            SUM(cn.aweight) AS ActualWeight,
-            SUM(cn.cweight) AS ChargeWeight,
-            SUM(cn.tamount-cn.servicetax) AS Revenue,
-            AVG(
-                DATEDIFF(
-                    DAY,
-                    cn.expecteddeliverydt,
-                    gp.deliverydt
-                )
-            ) AS AvgDelayDays,
-
-            MAX(
-                DATEDIFF(
-                    DAY,
-                    cn.expecteddeliverydt,
-                    gp.deliverydt
-                )
-            ) AS MaxDelayDays
-
-        FROM cnmt cn
-        INNER JOIN viewstationmast v ON v.stncode=cn.orgcode
-        INNER JOIN cngrcngemast cngr ON cngr.code=cn.cngrcode
-        LEFT JOIN
-        (
-            SELECT 
-                grno,
-                MAX(drdt) AS deliverydt
-            FROM viewallcompaniesgatepass
-            WHERE cancel <> 'y'
-            GROUP BY grno
-        ) gp ON gp.grno = cn.grno
-
-    WHERE cn.grdt between '{start_date}' and '{end_date}' and
-            v.zonename<>'Head office'
-            AND cn.grtype<>'n'
-        GROUP BY
-            CASE
-                WHEN MONTH(cn.grdt) >= 4
-                    THEN YEAR(cn.grdt)
-                ELSE YEAR(cn.grdt) - 1
-            END,
-            CASE
-                WHEN MONTH(cn.grdt)>=4
-                    THEN MONTH(cn.grdt)-3
-                ELSE MONTH(cn.grdt)+9
-            END,
-            v.zonename,
-            v.hubname,
-            v.stnname,
-            cn.cngrcode,
-            cngr.name,
-            IIF(cn.ftl='y','FTL','LTL')
-        """
-
-    # -------- DESTINATION VIEW --------
-    else:
-
-        query = f"""
-        SELECT
-            CASE
-                WHEN MONTH(cn.grdt) >= 4 THEN YEAR(cn.grdt)
-                ELSE YEAR(cn.grdt) - 1
-            END AS YR,
-
-            CASE
-                WHEN MONTH(cn.grdt) >= 4 THEN MONTH(cn.grdt) - 3
-                ELSE MONTH(cn.grdt) + 9
-            END AS FIN_MONTH,
-
-            z.zonename AS Zone,
-            z.hubname AS Circle,
-            ISNULL(m.stnname, v.stnname) AS Branch,
-            cn.cngecode AS ConsigneeCode,
-            cnge.name AS Consignee,
-            IIF(cn.ftl = 'y', 'FTL', 'LTL') AS LoadType,
-
-            COUNT(*) AS ShipmentCount,
-            SUM(cn.aweight) AS ActualWeight,
-            SUM(cn.cweight) AS ChargeWeight,
-            SUM(cn.tamount - cn.servicetax) AS Revenue,
-
-            AVG(DATEDIFF(DAY, cn.expecteddeliverydt, gp.deliverydt)) AS AvgDelayDays,
-            MAX(DATEDIFF(DAY, cn.expecteddeliverydt, gp.deliverydt)) AS MaxDelayDays
-
-        FROM cnmt cn
-        INNER JOIN stationmast v ON v.stncode = cn.destcode
-        INNER JOIN cngrcngemast cngr ON cngr.code = cn.cngrcode
-        INNER JOIN cngrcngemast cnge ON cnge.code = cn.cngecode
-        LEFT JOIN stationmast m ON m.stncode = v.mergestncode
-        LEFT JOIN viewstationmast z ON z.stncode = ISNULL(m.stncode, v.stncode)
-        LEFT JOIN
-                (
-                    SELECT 
-                        grno,
-                        MAX(drdt) AS deliverydt
-                    FROM viewallcompaniesgatepass
-                    WHERE cancel <> 'y'
-                    GROUP BY grno
-                ) gp ON gp.grno = cn.grno
-
-        WHERE cn.grdt between '{start_date}' and '{end_date}' and 
-            cn.grtype <> 'n'
-        GROUP BY
-            CASE
-                WHEN MONTH(cn.grdt) >= 4
-                    THEN YEAR(cn.grdt)
-                ELSE YEAR(cn.grdt) - 1
-            END,
-            CASE
-                WHEN MONTH(cn.grdt) >= 4
-                    THEN MONTH(cn.grdt) - 3
-                ELSE MONTH(cn.grdt) + 9
-            END,
-            z.zonename,
-            z.hubname,
-            ISNULL(m.stnname, v.stnname),
-            cn.cngecode,
-            cnge.name,
-            IIF(cn.ftl='y','FTL','LTL')
-        """
-
-    return _run_query(query)
+    return _fetch_customer_data(start_date, end_date, view_type)
 
 
-# -------- DATE RANGE FUNCTION --------
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=12)
+def load_booking_data_pair(
+    start_date,
+    end_date,
+    prev_start,
+    prev_end,
+    view_type="origin",
+):
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        current_future = executor.submit(
+            _fetch_customer_data,
+            start_date,
+            end_date,
+            view_type,
+        )
+
+        previous_future = executor.submit(
+            _fetch_customer_data,
+            prev_start,
+            prev_end,
+            view_type,
+        )
+
+        current_df = current_future.result()
+        previous_df = previous_future.result()
+
+    return current_df, previous_df
+
 
 def get_date_range(fin_year):
-    start_year = int(fin_year.split("-")[0])
-    end_year = int(fin_year.split("-")[1])
+    start_year, end_year = map(int, str(fin_year).split("-"))
 
     return (
         f"{start_year}-04-01",
-        f"{end_year}-03-31"
+        f"{end_year}-03-31",
     )
