@@ -356,14 +356,49 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def clean_booking_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize the stored-procedure output for Customer Analysis.
+
+    The current procedure returns one GR/shipment row with:
+      - grno      -> shipment identifier
+      - aweight   -> available shipment weight
+      - DelayDays -> shipment delay
+
+    The dashboard expects summary-friendly columns. They are derived here so
+    the UI and business calculations can continue without changing the SP.
+    """
     df = normalize_columns(df)
+
+    # The stored procedure returns `aweight` instead of the older weight names.
+    if "ActualWeight" not in df.columns and "aweight" in df.columns:
+        df["ActualWeight"] = df["aweight"]
+
+    # Charge weight is not returned by the current SP. Until the SP exposes a
+    # separate charge-weight field, use the available weight as the fallback.
+    if "ChargeWeight" not in df.columns and "ActualWeight" in df.columns:
+        df["ChargeWeight"] = df["ActualWeight"]
+
+    # Each returned GR row represents one shipment. This allows grouped sums
+    # to produce shipment counts throughout the existing dashboard.
+    if "ShipmentCount" not in df.columns:
+        df["ShipmentCount"] = 1
+
+    # The SP returns row-level DelayDays. Existing grouped calculations need
+    # average-delay and maximum-delay source columns.
+    if "AvgDelayDays" not in df.columns and "DelayDays" in df.columns:
+        df["AvgDelayDays"] = df["DelayDays"]
+
+    if "MaxDelayDays" not in df.columns and "DelayDays" in df.columns:
+        df["MaxDelayDays"] = df["DelayDays"]
+
     numeric_cols = [
         "YR", "FIN_MONTH", "ShipmentCount", "ActualWeight",
         "ChargeWeight", "Revenue", "AvgDelayDays", "MaxDelayDays",
+        "aweight", "DelayDays",
     ]
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
     return df
 
 
