@@ -2182,7 +2182,7 @@ def show_overview():
             st.markdown(
                 f'<div style="font-size:{LOAD_TITLE_FONT}px;font-weight:600;'
                 f'color:#0f172a;margin:0 0 5px 0;line-height:1.2;">'
-                f'Revenue by Load Type (CY)</div>',
+                f'Business by Load Type (CY)</div>',
                 unsafe_allow_html=True,
             )
 
@@ -2370,7 +2370,7 @@ def show_overview():
             st.markdown(
                 f'<div style="font-size:{COMPANY_TITLE_FONT}px;font-weight:600;'
                 f'color:#0f172a;margin:0 0 7px 0;line-height:1.2;">'
-                f'Revenue by Company (CY)</div>',
+                f'Business by Company (CY)</div>',
                 unsafe_allow_html=True,
             )
 
