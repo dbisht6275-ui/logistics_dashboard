@@ -4,7 +4,7 @@ from services.login import login_page
 from services.roles import get_allowed_menu, get_allowed_reports, clear_role_cache
 
 from pages.Home.overview_tab import show_overview
-from pages.Home.PnL_Dashboard import show_pnl_dashboard
+from pages.Home.PNL_Analysis import show_pnl_dashboard
 from pages.Home.comparison_tab import show_comparison
 from pages.Home.Customer_Analysis import show_CustomerAnalysis
 from pages.Home.Service_Analysis import show_service_level
