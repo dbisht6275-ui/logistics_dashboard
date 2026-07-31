@@ -2160,10 +2160,31 @@ def show_overview():
 
     with row2:
         # ==============================================================
-        # Revenue by Load Type — compact reference-style layout
+        # Font settings for the two right-side revenue charts
+        # Increase or reduce these values from one place when required.
+        # ==============================================================
+        LOAD_TITLE_FONT = 16
+        LOAD_CENTER_VALUE_FONT = 19
+        LOAD_CENTER_LABEL_FONT = 12
+        LOAD_LABEL_FONT = 14
+        LOAD_VALUE_FONT = 14
+        LOAD_SUBTEXT_FONT = 12
+
+        COMPANY_TITLE_FONT = 16
+        COMPANY_NAME_FONT = 13
+        COMPANY_VALUE_FONT = 13
+        COMPANY_SUBTEXT_FONT = 11
+
+        # ==============================================================
+        # Revenue by Load Type — larger and clearer values
         # ==============================================================
         with st.container(border=True):
-            st.markdown("###### Revenue by Load Type (CY)")
+            st.markdown(
+                f'<div style="font-size:{LOAD_TITLE_FONT}px;font-weight:600;'
+                f'color:#0f172a;margin:0 0 5px 0;line-height:1.2;">'
+                f'Revenue by Load Type (CY)</div>',
+                unsafe_allow_html=True,
+            )
 
             prev_ftl = prev_kpis["ftl"]
             prev_ltl = prev_kpis["ltl"]
@@ -2173,7 +2194,12 @@ def show_overview():
             ftl_yoy = pct_growth(ftl, prev_ftl)
             ltl_yoy = pct_growth(ltl, prev_ltl)
 
-            load_chart_col, load_legend_col = st.columns([0.86, 1.14], gap="small", vertical_alignment="center")
+            # Slightly more width is assigned to the value/legend section.
+            load_chart_col, load_legend_col = st.columns(
+                [0.80, 1.20],
+                gap="small",
+                vertical_alignment="center",
+            )
 
             with load_chart_col:
                 fig_load = go.Figure(
@@ -2186,7 +2212,6 @@ def show_overview():
                             rotation=0,
                             direction="clockwise",
                             marker=dict(
-                                # Keep the original dashboard colours.
                                 colors=["#2563eb", "#0f766e"],
                                 line=dict(color="#ffffff", width=1.5),
                             ),
@@ -2199,8 +2224,9 @@ def show_overview():
                         )
                     ]
                 )
+
                 fig_load.update_layout(
-                    height=150,
+                    height=165,
                     margin=dict(l=0, r=0, t=0, b=0),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
@@ -2208,20 +2234,29 @@ def show_overview():
                     annotations=[
                         dict(
                             x=0.5,
-                            y=0.54,
+                            y=0.55,
                             text=f"<b>₹{load_total / revenue_divisor:.2f} {revenue_unit}</b>",
                             showarrow=False,
-                            font=dict(size=15, color="#0f172a", family="Arial"),
+                            font=dict(
+                                size=LOAD_CENTER_VALUE_FONT,
+                                color="#0f172a",
+                                family="Arial",
+                            ),
                         ),
                         dict(
                             x=0.5,
-                            y=0.40,
+                            y=0.39,
                             text="Total Revenue",
                             showarrow=False,
-                            font=dict(size=10, color="#64748b", family="Arial"),
+                            font=dict(
+                                size=LOAD_CENTER_LABEL_FONT,
+                                color="#64748b",
+                                family="Arial",
+                            ),
                         ),
                     ],
                 )
+
                 st.plotly_chart(
                     fig_load,
                     width="stretch",
@@ -2235,31 +2270,59 @@ def show_overview():
                 ltl_arrow = "▲" if ltl_yoy >= 0 else "▼"
 
                 load_legend_html = (
-                    '<div style="display:flex;flex-direction:column;gap:12px;padding:3px 0;">'
-                    '<div style="display:grid;grid-template-columns:11px minmax(34px,1fr) auto auto;align-items:center;gap:7px;">'
-                    '<span style="width:9px;height:9px;border-radius:50%;background:#2563eb;display:inline-block;"></span>'
-                    '<span style="font-size:12px;font-weight:400;color:#334155;">FTL</span>'
-                    f'<span style="font-size:12px;font-weight:500;color:#0f172a;white-space:nowrap;">₹{ftl / revenue_divisor:.2f} {revenue_unit}</span>'
-                    f'<span style="font-size:12px;font-weight:500;color:#334155;white-space:nowrap;">{ftl_share:.1f}%</span>'
-                    f'<span style="grid-column:2/5;font-size:10px;color:#64748b;">LY ₹{prev_ftl / revenue_divisor:.2f} {revenue_unit} · '
-                    f'<span style="color:{ftl_growth_color};font-weight:500;">{ftl_arrow} {abs(ftl_yoy):.1f}%</span></span>'
+                    '<div style="display:flex;flex-direction:column;gap:15px;'
+                    'padding:4px 0;line-height:1.2;">'
+
+                    '<div style="display:grid;'
+                    'grid-template-columns:13px minmax(40px,.75fr) minmax(84px,auto) minmax(48px,auto);'
+                    'align-items:center;gap:8px;">'
+                    '<span style="width:11px;height:11px;border-radius:50%;'
+                    'background:#2563eb;display:inline-block;"></span>'
+                    f'<span style="font-size:{LOAD_LABEL_FONT}px;font-weight:600;'
+                    f'color:#334155;">FTL</span>'
+                    f'<span style="font-size:{LOAD_VALUE_FONT}px;font-weight:700;'
+                    f'color:#0f172a;white-space:nowrap;">'
+                    f'₹{ftl / revenue_divisor:.2f} {revenue_unit}</span>'
+                    f'<span style="font-size:{LOAD_VALUE_FONT}px;font-weight:700;'
+                    f'color:#334155;white-space:nowrap;text-align:right;">'
+                    f'{ftl_share:.1f}%</span>'
+                    f'<span style="grid-column:2/5;font-size:{LOAD_SUBTEXT_FONT}px;'
+                    f'color:#64748b;white-space:nowrap;">'
+                    f'LY ₹{prev_ftl / revenue_divisor:.2f} {revenue_unit} · '
+                    f'<span style="color:{ftl_growth_color};font-weight:700;">'
+                    f'{ftl_arrow} {abs(ftl_yoy):.1f}%</span></span>'
                     '</div>'
-                    '<div style="display:grid;grid-template-columns:11px minmax(34px,1fr) auto auto;align-items:center;gap:7px;">'
-                    '<span style="width:9px;height:9px;border-radius:50%;background:#0f766e;display:inline-block;"></span>'
-                    '<span style="font-size:12px;font-weight:400;color:#334155;">LTL</span>'
-                    f'<span style="font-size:12px;font-weight:500;color:#0f172a;white-space:nowrap;">₹{ltl / revenue_divisor:.2f} {revenue_unit}</span>'
-                    f'<span style="font-size:12px;font-weight:500;color:#334155;white-space:nowrap;">{ltl_share:.1f}%</span>'
-                    f'<span style="grid-column:2/5;font-size:10px;color:#64748b;">LY ₹{prev_ltl / revenue_divisor:.2f} {revenue_unit} · '
-                    f'<span style="color:{ltl_growth_color};font-weight:500;">{ltl_arrow} {abs(ltl_yoy):.1f}%</span></span>'
-                    '</div></div>'
+
+                    '<div style="display:grid;'
+                    'grid-template-columns:13px minmax(40px,.75fr) minmax(84px,auto) minmax(48px,auto);'
+                    'align-items:center;gap:8px;">'
+                    '<span style="width:11px;height:11px;border-radius:50%;'
+                    'background:#0f766e;display:inline-block;"></span>'
+                    f'<span style="font-size:{LOAD_LABEL_FONT}px;font-weight:600;'
+                    f'color:#334155;">LTL</span>'
+                    f'<span style="font-size:{LOAD_VALUE_FONT}px;font-weight:700;'
+                    f'color:#0f172a;white-space:nowrap;">'
+                    f'₹{ltl / revenue_divisor:.2f} {revenue_unit}</span>'
+                    f'<span style="font-size:{LOAD_VALUE_FONT}px;font-weight:700;'
+                    f'color:#334155;white-space:nowrap;text-align:right;">'
+                    f'{ltl_share:.1f}%</span>'
+                    f'<span style="grid-column:2/5;font-size:{LOAD_SUBTEXT_FONT}px;'
+                    f'color:#64748b;white-space:nowrap;">'
+                    f'LY ₹{prev_ltl / revenue_divisor:.2f} {revenue_unit} · '
+                    f'<span style="color:{ltl_growth_color};font-weight:700;">'
+                    f'{ltl_arrow} {abs(ltl_yoy):.1f}%</span></span>'
+                    '</div>'
+
+                    '</div>'
                 )
+
                 if hasattr(st, "html"):
                     st.html(load_legend_html)
                 else:
                     st.markdown(load_legend_html, unsafe_allow_html=True)
 
         # ==============================================================
-        # Revenue by Company — compact reference-style bar list
+        # Revenue by Company — larger company, revenue and percentage text
         # ==============================================================
         company_df = (
             df.groupby("compname", dropna=False)["REVENUE"]
@@ -2276,31 +2339,52 @@ def show_overview():
                 .reset_index()
                 .rename(columns={"compname": "Company", "REVENUE": "PY Revenue"})
             )
-            prev_company_df["Company"] = prev_company_df["Company"].fillna("Unknown").astype(str)
+            prev_company_df["Company"] = (
+                prev_company_df["Company"].fillna("Unknown").astype(str)
+            )
         else:
             prev_company_df = pd.DataFrame(columns=["Company", "PY Revenue"])
 
         company_df = company_df.merge(prev_company_df, on="Company", how="left")
-        company_df["PY Revenue"] = pd.to_numeric(company_df["PY Revenue"], errors="coerce").fillna(0)
+        company_df["PY Revenue"] = pd.to_numeric(
+            company_df["PY Revenue"], errors="coerce"
+        ).fillna(0)
         company_df["Business Cr"] = company_df["CY Revenue"] / revenue_divisor
         company_df["PY Business Cr"] = company_df["PY Revenue"] / revenue_divisor
         company_total = company_df["Business Cr"].sum()
         company_df["Contribution %"] = (
-            company_df["Business Cr"] / company_total * 100 if company_total else 0
+            company_df["Business Cr"] / company_total * 100
+            if company_total
+            else 0
         )
         company_df["Growth %"] = company_df.apply(
-            lambda row: pct_growth(row["CY Revenue"], row["PY Revenue"]), axis=1
+            lambda row: pct_growth(row["CY Revenue"], row["PY Revenue"]),
+            axis=1,
         )
-        company_df = company_df.sort_values("Business Cr", ascending=False).reset_index(drop=True)
+        company_df = company_df.sort_values(
+            "Business Cr", ascending=False
+        ).reset_index(drop=True)
         company_chart_df = company_df.head(6).copy()
 
         with st.container(border=True):
-            st.markdown("###### Revenue by Company (CY)")
+            st.markdown(
+                f'<div style="font-size:{COMPANY_TITLE_FONT}px;font-weight:600;'
+                f'color:#0f172a;margin:0 0 7px 0;line-height:1.2;">'
+                f'Revenue by Company (CY)</div>',
+                unsafe_allow_html=True,
+            )
 
             if company_chart_df.empty or company_total <= 0:
                 st.info("No company revenue is available for the selected filters.")
             else:
-                company_colors = ["#2563eb", "#0f9f8f", "#7c3aed", "#f59e0b", "#ec4899", "#64748b"]
+                company_colors = [
+                    "#2563eb",
+                    "#0f9f8f",
+                    "#7c3aed",
+                    "#f59e0b",
+                    "#ec4899",
+                    "#64748b",
+                ]
                 max_company_value = float(company_chart_df["Business Cr"].max() or 1)
                 company_rows = []
 
@@ -2310,25 +2394,55 @@ def show_overview():
                     share = float(row["Contribution %"] or 0)
                     py_value = float(row["PY Business Cr"] or 0)
                     growth = float(row["Growth %"] or 0)
-                    width_pct = min((value / max_company_value * 100), 100) if max_company_value else 0
+                    width_pct = (
+                        min((value / max_company_value * 100), 100)
+                        if max_company_value
+                        else 0
+                    )
                     color = company_colors[idx % len(company_colors)]
                     growth_color = "#16a34a" if growth >= 0 else "#dc2626"
                     growth_arrow = "▲" if growth >= 0 else "▼"
 
                     company_rows.append(
-                        f'<div title="{company_name} | LY ₹{py_value:.2f} {revenue_unit} | {growth_arrow} {abs(growth):.1f}%" '
-                        f'style="display:grid;grid-template-columns:minmax(135px,170px) minmax(48px,.72fr) auto auto;align-items:center;gap:7px;margin:7px 0;">'
-                        f'<div style="font-size:11px;font-weight:400;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{company_name}</div>'
-                        f'<div style="height:8px;background:#e8eef5;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
-                        f'<div style="height:8px;width:{width_pct:.2f}%;background:{color};border-radius:999px;"></div></div>'
-                        f'<div style="font-size:11px;font-weight:400;color:#334155;white-space:nowrap;">₹{value:.2f} {revenue_unit}</div>'
-                        f'<div style="font-size:11px;font-weight:400;color:#334155;min-width:45px;text-align:right;white-space:nowrap;">{share:.2f}%</div>'
-                        f'<div style="grid-column:2/5;margin-top:-4px;font-size:9.5px;color:#64748b;">LY ₹{py_value:.2f} {revenue_unit} · '
-                        f'<span style="color:{growth_color};font-weight:500;">{growth_arrow} {abs(growth):.1f}%</span></div>'
+                        f'<div title="{company_name} | LY ₹{py_value:.2f} {revenue_unit} | '
+                        f'{growth_arrow} {abs(growth):.1f}%" '
+                        f'style="display:grid;'
+                        f'grid-template-columns:minmax(150px,195px) minmax(55px,1fr) '
+                        f'minmax(84px,auto) minmax(58px,auto);'
+                        f'align-items:center;gap:8px;margin:9px 0;line-height:1.2;">'
+
+                        f'<div style="font-size:{COMPANY_NAME_FONT}px;font-weight:600;'
+                        f'color:#334155;white-space:nowrap;overflow:hidden;'
+                        f'text-overflow:ellipsis;">{company_name}</div>'
+
+                        f'<div style="height:9px;background:#e8eef5;border-radius:999px;'
+                        f'overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
+                        f'<div style="height:9px;width:{width_pct:.2f}%;background:{color};'
+                        f'border-radius:999px;"></div></div>'
+
+                        f'<div style="font-size:{COMPANY_VALUE_FONT}px;font-weight:700;'
+                        f'color:#0f172a;white-space:nowrap;">'
+                        f'₹{value:.2f} {revenue_unit}</div>'
+
+                        f'<div style="font-size:{COMPANY_VALUE_FONT}px;font-weight:700;'
+                        f'color:#334155;min-width:54px;text-align:right;white-space:nowrap;">'
+                        f'{share:.2f}%</div>'
+
+                        f'<div style="grid-column:2/5;margin-top:-3px;'
+                        f'font-size:{COMPANY_SUBTEXT_FONT}px;color:#64748b;white-space:nowrap;">'
+                        f'LY ₹{py_value:.2f} {revenue_unit} · '
+                        f'<span style="color:{growth_color};font-weight:700;">'
+                        f'{growth_arrow} {abs(growth):.1f}%</span></div>'
+
                         f'</div>'
                     )
 
-                company_html = '<div style="padding:0 2px 2px 2px;">' + ''.join(company_rows) + '</div>'
+                company_html = (
+                    '<div style="padding:0 3px 4px 3px;">'
+                    + ''.join(company_rows)
+                    + '</div>'
+                )
+
                 if hasattr(st, "html"):
                     st.html(company_html)
                 else:
