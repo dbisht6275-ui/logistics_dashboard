@@ -13,6 +13,9 @@ REVENUE_CHART_HEIGHT = 310
 ALIGNED_CHART_HEIGHT = 310
 RANKING_CHART_HEIGHT = 330
 
+# User-selectable ranking sizes for Customer and Route insights.
+TOP_N_OPTIONS = [10, 20, 30, 40]
+
 
 def compact_spacer(height=SPACER_HEIGHT):
     """Render a consistent, minimal vertical gap between sections."""
@@ -3046,7 +3049,7 @@ def show_overview():
             st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False, "responsive": True})
 
     # =====================================================
-    # Top 10 Consignors / Consignees | View-type aware
+    # Selectable Top-N Consignors / Consignees | View-type aware
     # =====================================================
     compact_spacer()
 
@@ -3129,18 +3132,39 @@ def show_overview():
         )
         customer_insights = (
             customer_insights.sort_values("Current Business", ascending=False)
-            .head(10)
             .reset_index(drop=True)
         )
 
         with party_layout_col:
             with st.container(border=True):
-                st.markdown(
-                    "<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top 10 Customers by Business</div>"
-                    f"<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>"
-                    f"Customer basis: {party_label} | Current FY revenue, share and YoY movement."
-                    "</div>",
-                    unsafe_allow_html=True,
+                customer_title_col, customer_selector_col = st.columns(
+                    [4.2, 1.0],
+                    gap="small",
+                    vertical_alignment="center",
+                )
+
+                with customer_selector_col:
+                    customer_top_n = st.selectbox(
+                        "Customers to display",
+                        TOP_N_OPTIONS,
+                        index=0,
+                        format_func=lambda value: f"Top {value}",
+                        key="top_customer_n",
+                        label_visibility="collapsed",
+                    )
+
+                with customer_title_col:
+                    st.markdown(
+                        f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top {customer_top_n} Customers by Business</div>"
+                        f"<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>"
+                        f"Customer basis: {party_label} | Current FY revenue, share and YoY movement."
+                        "</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                customer_insights = (
+                    customer_insights.head(customer_top_n)
+                    .reset_index(drop=True)
                 )
 
                 if customer_insights.empty:
@@ -3270,12 +3294,12 @@ def show_overview():
         with party_layout_col:
             with st.container(border=True):
                 st.info(
-                    "Top 10 Customers could not be displayed because a matching "
+                    "Customers could not be displayed because a matching "
                     f"{party_label.lower()} column was not found in the booking dataset."
                 )
 
     # =====================================================
-    # Top 10 Routes | Same executive table treatment as Top Customers
+    # Selectable Top-N Routes | Same executive table treatment as Customers
     # =====================================================
     compact_spacer()
 
@@ -3354,21 +3378,41 @@ def show_overview():
             axis=1,
         )
 
-        # Preserve the existing Top-7 ranking business rule.
         route_yoy = (
             route_yoy.sort_values("Current Business", ascending=False)
-            .head(10)
             .reset_index(drop=True)
         )
 
         with route_layout_col:
             with st.container(border=True):
-                st.markdown(
-                    f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top 10 Routes by Business</div>"
-                    "<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>"
-                    + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
-                    + " | Current FY revenue, share and YoY movement.</div>",
-                    unsafe_allow_html=True,
+                route_title_col, route_selector_col = st.columns(
+                    [4.2, 1.0],
+                    gap="small",
+                    vertical_alignment="center",
+                )
+
+                with route_selector_col:
+                    route_top_n = st.selectbox(
+                        "Routes to display",
+                        TOP_N_OPTIONS,
+                        index=0,
+                        format_func=lambda value: f"Top {value}",
+                        key="top_route_n",
+                        label_visibility="collapsed",
+                    )
+
+                with route_title_col:
+                    st.markdown(
+                        f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top {route_top_n} Routes by Business</div>"
+                        "<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>"
+                        + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
+                        + " | Current FY revenue, share and YoY movement.</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                route_yoy = (
+                    route_yoy.head(route_top_n)
+                    .reset_index(drop=True)
                 )
 
                 if route_yoy.empty:
@@ -3494,7 +3538,7 @@ def show_overview():
         with route_layout_col:
             with st.container(border=True):
                 st.info(
-                    "Top 7 Routes could not be displayed because the route column was not found "
+                    "Routes could not be displayed because the route column was not found "
                     "in the booking dataset."
                 )
 
