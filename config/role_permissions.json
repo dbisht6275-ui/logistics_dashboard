@@ -2,6 +2,7 @@
   "admin": {
     "menu": [
       "🏠 Business Overview",
+      "💹 P&L Dashboard",
       "📊 Comparison",
       "📈 Outstanding Analysis",
       "👥 Customer Analysis",
@@ -16,7 +17,7 @@
   },
   "manager": {
     "menu": [
-      "🏠 Revenue Overview",
+      "🏠 Business Overview",
       "📊 Comparison",
       "👥 Customer Analysis",
       "📄 Reports"
@@ -27,7 +28,7 @@
   },
   "viewer": {
     "menu": [
-      "🏠 Revenue Overview"
+      "🏠 Business Overview"
     ],
     "reports": []
   }
