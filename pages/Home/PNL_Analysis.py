@@ -6,7 +6,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from services.data_loader import load_booking_data_pair, get_date_range
+from services.pnl_data_loader import load_pnl_data_pair, get_date_range
 
 
 # =====================================================
@@ -313,13 +313,22 @@ def show_pnl_dashboard() -> None:
         st.info("Please select financial year")
         return
 
+    # Temporary testing restriction: the P&L SP is currently loaded only for FY 2026-27.
+    if fy != "2026-2027":
+        st.warning("P&L testing is currently available only for FY 2026-2027.")
+        return
+
     start_date, end_date = get_date_range(fy)
     prev_fy = get_previous_fy(fy)
     prev_start, prev_end = get_date_range(prev_fy)
 
     with st.spinner("Loading P&L data..."):
-        raw_df, raw_prev_df = load_booking_data_pair(
-            start_date, end_date, prev_start, prev_end, view_type.lower()
+        raw_df, raw_prev_df = load_pnl_data_pair(
+            start_date,
+            end_date,
+            prev_start,
+            prev_end,
+            view_type.lower(),
         )
 
     df = normalize_pnl_columns(raw_df)
@@ -460,16 +469,6 @@ def show_pnl_dashboard() -> None:
     for col, spec in zip(kpi_cols, kpi_specs):
         with col:
             render_kpi_card(*spec)
-
-    # Reconciliation warning only; SP PNL remains source of truth
-    calculated_pnl = float(df["REVENUE"].sum() - df["EXPENSE"].sum())
-    variance = float(df["PNL"].sum() - calculated_pnl)
-    tolerance = max(1.0, abs(df["PNL"].sum()) * 0.000001)
-    if abs(variance) > tolerance:
-        st.warning(
-            f"SP reconciliation difference: PNL column differs from Revenue - Expense by {amount_text(variance, conversion_type)}. "
-            "Dashboard is using the SP PNL column as the source of truth."
-        )
 
     # Row 1: monthly P&L trend + revenue/expense
     monthly = build_monthly_comparison(df, prev_df, divisor)
@@ -626,7 +625,9 @@ def show_pnl_dashboard() -> None:
         detail_columns = [
             col for col in [
                 "COMPNAME", "zone", "circle", "branch", "grno", "grdt", "GRTYPE",
-                "LOADTYPE", "Consignor", "Consignee", "Route", "REVENUE", "EXPENSE", "PNL",
+                "LOADTYPE", "Consignor", "Consignee", "Route", "REVENUE",
+                "DELIVERYINCOME", "ADDITIONALFREIGHT", "OTHERINCOME", "RAW_EXPENSE",
+                "EXPENSE", "PNL",
             ] if col in df.columns
         ]
         detail_df = df[detail_columns].copy()
@@ -643,8 +644,12 @@ def show_pnl_dashboard() -> None:
             hide_index=True,
             height=460,
             column_config={
-                "REVENUE": st.column_config.NumberColumn("Revenue (₹)", format="₹%.0f"),
-                "EXPENSE": st.column_config.NumberColumn("Expense (₹)", format="₹%.0f"),
+                "REVENUE": st.column_config.NumberColumn("Revenue/Freight (₹)", format="₹%.0f"),
+                "DELIVERYINCOME": st.column_config.NumberColumn("Delivery Income (₹)", format="₹%.0f"),
+                "ADDITIONALFREIGHT": st.column_config.NumberColumn("Additional Freight (₹)", format="₹%.0f"),
+                "OTHERINCOME": st.column_config.NumberColumn("Other Income (₹)", format="₹%.0f"),
+                "RAW_EXPENSE": st.column_config.NumberColumn("Raw Expense (₹)", format="₹%.0f"),
+                "EXPENSE": st.column_config.NumberColumn("Adjusted Expense (₹)", format="₹%.0f"),
                 "PNL": st.column_config.NumberColumn("P&L (₹)", format="₹%.0f"),
                 "grdt": st.column_config.DateColumn("GR Date", format="DD-MMM-YYYY"),
             },
@@ -670,4 +675,3 @@ def show_pnl_dashboard() -> None:
 # Optional alias if your app menu expects a shorter function name.
 def show_pnl() -> None:
     show_pnl_dashboard()
-
