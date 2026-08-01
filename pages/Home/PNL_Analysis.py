@@ -6,8 +6,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from services.pnl_data_loader import load_pnl_data_pair, get_date_range
-
+from services.pnl_data_loader import load_pnl_data_pair
+from services.data_loader import get_date_range
 
 # =====================================================
 # Constants
