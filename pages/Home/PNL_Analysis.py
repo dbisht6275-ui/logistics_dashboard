@@ -1245,15 +1245,14 @@ def show_pnl_dashboard() -> None:
                     title="", showgrid=False, zeroline=False, tickfont=dict(size=11)
                 ),
                 yaxis=dict(
-                    title=f"P&L ({unit})",
+                    title=dict(text=f"P&L ({unit})", font=dict(size=12)),
                     showgrid=False,
                     zeroline=False,
                     range=[min(pnl_min - pnl_span * 0.18, 0), max(pnl_max + pnl_span * 0.28, 0)],
                     tickfont=dict(size=11),
-                    titlefont=dict(size=12),
                 ),
                 yaxis2=dict(
-                    title="Growth (%)",
+                    title=dict(text="Growth (%)", font=dict(size=12)),
                     overlaying="y",
                     side="right",
                     showgrid=False,
@@ -1261,7 +1260,6 @@ def show_pnl_dashboard() -> None:
                     range=growth_range,
                     ticksuffix="%",
                     tickfont=dict(size=11),
-                    titlefont=dict(size=12),
                 ),
             )
 
