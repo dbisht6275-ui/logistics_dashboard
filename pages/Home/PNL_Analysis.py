@@ -30,63 +30,87 @@ def _inject_pnl_css() -> None:
     st.markdown(
         """
         <style>
+        .stApp { background:#fffdf8 !important; }
         .block-container {
             max-width: 100% !important;
             padding: .35rem .75rem .90rem !important;
+            background:#fffdf8 !important;
         }
         div[data-testid="stVerticalBlock"] { gap: .38rem !important; }
         div[data-testid="stHorizontalBlock"] { gap: .50rem !important; align-items: flex-start !important; }
         div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] { min-width: 0 !important; }
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            border: 1px solid #dce5ef !important;
+            border: 1px solid #f0d5b8 !important;
             border-radius: 14px !important;
-            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
-            box-shadow: 0 7px 18px rgba(15,42,67,.075), inset 0 1px 0 #ffffff !important;
+            background: linear-gradient(180deg, #ffffff 0%, #fffaf3 100%) !important;
+            box-shadow: 0 7px 18px rgba(180,105,20,.08), inset 0 1px 0 #ffffff !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div { padding: .58rem .68rem !important; }
 
-        .pnl-title { color:#102a43; font-size:19px; font-weight:850; letter-spacing:-.25px; margin:0; }
-        .pnl-subtitle { color:#64748b; font-size:11px; margin-top:2px; }
-        .section-title { font-size:14px; font-weight:700; color:#0f2744; margin:1px 0 6px 1px; }
+        .pnl-title { color:#9a4f00; font-size:19px; font-weight:850; letter-spacing:-.25px; margin:0; }
+        .pnl-subtitle { color:#8a6a45; font-size:11px; margin-top:2px; }
+        .section-title { font-size:14px; font-weight:700; color:#a35400; margin:1px 0 6px 1px; }
 
         .filter-summary { display:flex; flex-wrap:wrap; gap:7px; min-height:30px; align-items:center; }
         .filter-chip {
             display:inline-flex; align-items:center; min-height:27px; padding:5px 12px;
-            border:1px solid #b8d1f2; border-radius:999px; background:#f5f9ff;
-            color:#31557d; font-size:10.5px; font-weight:600; white-space:nowrap;
+            border:1px solid #edc89f; border-radius:999px; background:#fff4e5;
+            color:#a35400; font-size:10.5px; font-weight:600; white-space:nowrap;
         }
 
         div[data-testid="stSelectbox"] { display:flex !important; flex-direction:column !important; gap:5px !important; }
         div[data-testid="stSelectbox"] > label,
         div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
             min-height:20px !important; line-height:20px !important; margin:0 0 1px 2px !important;
-            font-size:9.5px !important; color:#243b53 !important; white-space:nowrap !important;
+            font-size:9.5px !important; color:#7a4a1f !important; white-space:nowrap !important;
         }
         div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-            min-height:38px !important; height:38px !important; border:1px solid #cbd9ea !important;
-            border-radius:10px !important; background:linear-gradient(180deg,#ffffff,#f5f8fc) !important;
+            min-height:38px !important; height:38px !important; border:1px solid #efcca6 !important;
+            border-radius:10px !important; background:linear-gradient(180deg,#ffffff,#fff6eb) !important;
+        }
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:focus-within {
+            border-color:#d97706 !important;
+            box-shadow:0 0 0 1px #d97706 !important;
         }
 
         .kpi-card {
             position:relative; min-height:76px; padding:8px 9px 9px;
-            border:1px solid #cbd5e1; border-radius:13px;
-            background:linear-gradient(145deg,#ffffff 0%,#f8fafc 48%,#e7edf5 100%);
-            box-shadow:0 4px 0 #c2ccd9,0 8px 13px rgba(15,23,42,.14),inset 1px 1px 0 #fff;
+            border:1px solid #efc99f; border-radius:13px;
+            background:linear-gradient(145deg,#ffffff 0%,#fff8ef 48%,#ffe8cf 100%);
+            box-shadow:0 4px 0 #e8c39b,0 8px 13px rgba(170,95,10,.12),inset 1px 1px 0 #fff;
         }
         .kpi-head { display:grid; grid-template-columns:minmax(0,1fr) 26px; gap:5px; align-items:center; }
-        .kpi-title { color:var(--accent); font-size:10px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .kpi-icon { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; background:#fff; border:1px solid #d6e0eb; }
-        .kpi-value { color:#102a43; font-size:16px; font-weight:900; margin-top:3px; line-height:1.08; white-space:nowrap; }
+        .kpi-title { color:#c46a00 !important; font-size:10px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .kpi-icon { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; background:#fff4e6; border:1px solid #efc99f; }
+        .kpi-value { color:#5f350d; font-size:16px; font-weight:900; margin-top:3px; line-height:1.08; white-space:nowrap; }
         .kpi-footer { display:flex; justify-content:space-between; align-items:center; gap:5px; margin-top:5px; }
-        .kpi-ly { color:#64748b; font-size:8.5px; font-weight:600; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+        .kpi-ly { color:#8a6a45; font-size:8.5px; font-weight:600; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
         .kpi-growth { padding:2px 6px; border:1px solid; border-radius:999px; font-size:8.5px; font-weight:700; white-space:nowrap; }
 
-        [data-testid="stDataFrame"] { border:1px solid #e2eaf3; border-radius:10px; overflow:hidden; }
+        [data-testid="stDataFrame"] { border:1px solid #eed7bd; border-radius:10px; overflow:hidden; }
         [data-testid="stDataFrame"] table { font-size:11px; }
 
         div[data-testid="stDownloadButton"] > button,
-        .stButton > button { border-radius:8px !important; min-height:34px !important; font-size:10px !important; font-weight:800 !important; }
+        .stButton > button {
+            border-radius:8px !important; min-height:34px !important; font-size:10px !important; font-weight:800 !important;
+            border:1px solid #d97706 !important; background:#fff4e6 !important; color:#a35400 !important;
+        }
+        div[data-testid="stDownloadButton"] > button:hover,
+        .stButton > button:hover { background:#ffead0 !important; border-color:#b85f00 !important; }
+
+        div[data-testid="stSegmentedControl"] label:has(input:checked),
+        div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
+            background:#d97706 !important;
+            border-color:#d97706 !important;
+            color:#ffffff !important;
+        }
+        div[data-testid="stSegmentedControl"] label:has(input:checked) p,
+        div[data-testid="stSegmentedControl"] button[aria-pressed="true"] p,
+        div[data-testid="stSegmentedControl"] label:has(input:checked) span,
+        div[data-testid="stSegmentedControl"] button[aria-pressed="true"] span {
+            color:#ffffff !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
