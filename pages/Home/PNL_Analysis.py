@@ -30,86 +30,140 @@ def _inject_pnl_css() -> None:
     st.markdown(
         """
         <style>
-        .stApp { background:#fffdf8 !important; }
-        .block-container {
-            max-width: 100% !important;
-            padding: .35rem .75rem .90rem !important;
-            background:#fffdf8 !important;
+        :root {
+            --pnl-primary:#6d4bd2;
+            --pnl-primary-dark:#5137aa;
+            --pnl-primary-soft:#eee9ff;
+            --pnl-border:#ddd6fe;
+            --pnl-surface:#fcfbff;
+            --pnl-muted:#6b7280;
         }
-        div[data-testid="stVerticalBlock"] { gap: .38rem !important; }
-        div[data-testid="stHorizontalBlock"] { gap: .50rem !important; align-items: flex-start !important; }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] { min-width: 0 !important; }
+
+        .stApp {
+            background:linear-gradient(180deg,#fdfcff 0%,#faf8ff 100%) !important;
+        }
+        .block-container {
+            max-width:100% !important;
+            padding:.45rem .75rem 1rem !important;
+        }
+        div[data-testid="stVerticalBlock"] { gap:.52rem !important; }
+        div[data-testid="stHorizontalBlock"] {
+            gap:.62rem !important;
+            align-items:flex-start !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            min-width:0 !important;
+        }
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            border: 1px solid #f0d5b8 !important;
-            border-radius: 14px !important;
-            background: linear-gradient(180deg, #ffffff 0%, #fffaf3 100%) !important;
-            box-shadow: 0 7px 18px rgba(180,105,20,.08), inset 0 1px 0 #ffffff !important;
+            border:1px solid #ded8f6 !important;
+            border-radius:14px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#fdfcff 100%) !important;
+            box-shadow:0 7px 18px rgba(76,55,140,.07), inset 0 1px 0 #ffffff !important;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"] > div { padding: .58rem .68rem !important; }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding:.72rem .80rem !important;
+        }
 
-        .pnl-title { color:#9a4f00; font-size:19px; font-weight:850; letter-spacing:-.25px; margin:0; }
-        .pnl-subtitle { color:#8a6a45; font-size:11px; margin-top:2px; }
-        .section-title { font-size:14px; font-weight:700; color:#a35400; margin:1px 0 6px 1px; }
+        .pnl-title {
+            color:#251b4f; font-size:19px; font-weight:850;
+            letter-spacing:-.25px; margin:0;
+        }
+        .pnl-subtitle { color:#6b7280; font-size:11px; margin-top:2px; }
+        .section-title {
+            font-size:14px; font-weight:700; color:#35256f;
+            margin:1px 0 7px 1px;
+        }
 
-        .filter-summary { display:flex; flex-wrap:wrap; gap:7px; min-height:30px; align-items:center; }
+        .filter-summary {
+            display:flex; flex-wrap:wrap; gap:8px; min-height:30px;
+            align-items:center; margin:7px 0 15px 0 !important;
+        }
         .filter-chip {
-            display:inline-flex; align-items:center; min-height:27px; padding:5px 12px;
-            border:1px solid #edc89f; border-radius:999px; background:#fff4e5;
-            color:#a35400; font-size:10.5px; font-weight:600; white-space:nowrap;
+            display:inline-flex; align-items:center; min-height:28px; padding:5px 13px;
+            border:1px solid #cfc4f6; border-radius:999px; background:#f7f4ff;
+            color:#5638ad; font-size:10.5px; font-weight:650; white-space:nowrap;
+            box-shadow:0 2px 5px rgba(109,75,210,.06);
         }
 
-        div[data-testid="stSelectbox"] { display:flex !important; flex-direction:column !important; gap:5px !important; }
+        div[data-testid="stSelectbox"] {
+            display:flex !important; flex-direction:column !important; gap:5px !important;
+        }
         div[data-testid="stSelectbox"] > label,
         div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
-            min-height:20px !important; line-height:20px !important; margin:0 0 1px 2px !important;
-            font-size:9.5px !important; color:#7a4a1f !important; white-space:nowrap !important;
+            min-height:20px !important; line-height:20px !important;
+            margin:0 0 1px 2px !important; font-size:9.5px !important;
+            color:#4f3c91 !important; white-space:nowrap !important;
         }
         div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-            min-height:38px !important; height:38px !important; border:1px solid #efcca6 !important;
-            border-radius:10px !important; background:linear-gradient(180deg,#ffffff,#fff6eb) !important;
+            min-height:38px !important; height:38px !important;
+            border:1px solid #ddd6f6 !important; border-radius:10px !important;
+            background:linear-gradient(180deg,#ffffff,#f4f1fb) !important;
+            box-shadow:0 2px 5px rgba(76,55,140,.04);
         }
         div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:focus-within {
-            border-color:#d97706 !important;
-            box-shadow:0 0 0 1px #d97706 !important;
+            border-color:#8b6ee7 !important;
+            box-shadow:0 0 0 2px rgba(109,75,210,.12) !important;
         }
 
         .kpi-card {
-            position:relative; min-height:76px; padding:8px 9px 9px;
-            border:1px solid #efc99f; border-radius:13px;
-            background:linear-gradient(145deg,#ffffff 0%,#fff8ef 48%,#ffe8cf 100%);
-            box-shadow:0 4px 0 #e8c39b,0 8px 13px rgba(170,95,10,.12),inset 1px 1px 0 #fff;
+            position:relative; min-height:82px; padding:9px 10px 10px;
+            border:1px solid #ddd6f6; border-radius:13px;
+            background:linear-gradient(145deg,#ffffff 0%,#faf8ff 52%,#eee9ff 100%);
+            box-shadow:0 4px 0 #d8cff2,0 8px 14px rgba(76,55,140,.10),inset 1px 1px 0 #fff;
         }
-        .kpi-head { display:grid; grid-template-columns:minmax(0,1fr) 26px; gap:5px; align-items:center; }
-        .kpi-title { color:#c46a00 !important; font-size:10px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .kpi-icon { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; background:#fff4e6; border:1px solid #efc99f; }
-        .kpi-value { color:#5f350d; font-size:16px; font-weight:900; margin-top:3px; line-height:1.08; white-space:nowrap; }
-        .kpi-footer { display:flex; justify-content:space-between; align-items:center; gap:5px; margin-top:5px; }
-        .kpi-ly { color:#8a6a45; font-size:8.5px; font-weight:600; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-        .kpi-growth { padding:2px 6px; border:1px solid; border-radius:999px; font-size:8.5px; font-weight:700; white-space:nowrap; }
+        .kpi-head {
+            display:grid; grid-template-columns:minmax(0,1fr) 28px;
+            gap:6px; align-items:center;
+        }
+        .kpi-title {
+            color:#5b3fbb !important; font-size:10px; font-weight:750;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+        .kpi-icon {
+            width:28px; height:28px; border-radius:8px; display:flex;
+            align-items:center; justify-content:center; font-size:14px;
+            background:#f4f0ff; border:1px solid #d7cdf8;
+        }
+        .kpi-value {
+            color:#17152b; font-size:16px; font-weight:900;
+            margin-top:4px; line-height:1.08; white-space:nowrap;
+        }
+        .kpi-footer {
+            display:flex; justify-content:space-between; align-items:center;
+            gap:5px; margin-top:6px;
+        }
+        .kpi-ly {
+            color:#6b7280; font-size:8.5px; font-weight:600;
+            overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+        }
+        .kpi-growth {
+            padding:2px 6px; border:1px solid; border-radius:999px;
+            font-size:8.5px; font-weight:700; white-space:nowrap;
+        }
 
-        [data-testid="stDataFrame"] { border:1px solid #eed7bd; border-radius:10px; overflow:hidden; }
+        div[data-testid="stSegmentedControl"] { margin-top:1px !important; }
+        div[data-testid="stSegmentedControl"] label:has(input:checked),
+        div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
+            color:#4b2ea3 !important; background:#eee8ff !important;
+            border-color:#b9a7ef !important;
+        }
+
+        [data-testid="stDataFrame"] {
+            border:1px solid #e3def5; border-radius:10px; overflow:hidden;
+        }
         [data-testid="stDataFrame"] table { font-size:11px; }
 
         div[data-testid="stDownloadButton"] > button,
         .stButton > button {
-            border-radius:8px !important; min-height:34px !important; font-size:10px !important; font-weight:800 !important;
-            border:1px solid #d97706 !important; background:#fff4e6 !important; color:#a35400 !important;
+            border-radius:8px !important; min-height:34px !important;
+            font-size:10px !important; font-weight:800 !important;
+            border-color:#c9bdf1 !important; color:#4f359f !important;
+            background:#f7f4ff !important;
         }
         div[data-testid="stDownloadButton"] > button:hover,
-        .stButton > button:hover { background:#ffead0 !important; border-color:#b85f00 !important; }
-
-        div[data-testid="stSegmentedControl"] label:has(input:checked),
-        div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
-            background:#d97706 !important;
-            border-color:#d97706 !important;
-            color:#ffffff !important;
-        }
-        div[data-testid="stSegmentedControl"] label:has(input:checked) p,
-        div[data-testid="stSegmentedControl"] button[aria-pressed="true"] p,
-        div[data-testid="stSegmentedControl"] label:has(input:checked) span,
-        div[data-testid="stSegmentedControl"] button[aria-pressed="true"] span {
-            color:#ffffff !important;
+        .stButton > button:hover {
+            border-color:#8b6ee7 !important; background:#eee8ff !important;
         }
         </style>
         """,
@@ -720,6 +774,7 @@ def show_pnl_dashboard() -> None:
         for label, value in chips if value not in (None, "", "All")
     )
     st.markdown(f'<div class="filter-summary">{chip_html}</div>', unsafe_allow_html=True)
+    st.markdown("<div aria-hidden='true' style='height:7px'></div>", unsafe_allow_html=True)
 
     if df.empty:
         st.warning("No data found for selected filters.")
@@ -748,15 +803,15 @@ def show_pnl_dashboard() -> None:
     previous = calculate_pnl_kpis(prev_df)
 
     kpi_specs = [
-        ("Revenue", amount_text(current["revenue"], conversion_type), amount_text(previous["revenue"], conversion_type), pct_change(current["revenue"], previous["revenue"]), "💰", "#2563eb", False),
-        ("Expense", amount_text(current["expense"], conversion_type), amount_text(previous["expense"], conversion_type), pct_change(current["expense"], previous["expense"]), "🧾", "#dc2626", True),
-        ("P&L", amount_text(current["pnl"], conversion_type), amount_text(previous["pnl"], conversion_type), pct_change(current["pnl"], previous["pnl"]), "📈", "#16a34a" if current["pnl"] >= 0 else "#dc2626", False),
-        ("P&L Margin", f'{current["margin"]:.2f}%', f'{previous["margin"]:.2f}%', current["margin"] - previous["margin"], "🎯", "#7c3aed", False),
-        ("FTL P&L", amount_text(current["ftl_pnl"], conversion_type), amount_text(previous["ftl_pnl"], conversion_type), pct_change(current["ftl_pnl"], previous["ftl_pnl"]), "🚛", "#2563eb", False),
-        ("LTL P&L", amount_text(current["ltl_pnl"], conversion_type), amount_text(previous["ltl_pnl"], conversion_type), pct_change(current["ltl_pnl"], previous["ltl_pnl"]), "🚚", "#0f766e", False),
-        ("Profit GR", f'{current["profit_gr"]:,}', f'{previous["profit_gr"]:,}', pct_change(current["profit_gr"], previous["profit_gr"]), "✅", "#16a34a", False),
-        ("Loss GR", f'{current["loss_gr"]:,}', f'{previous["loss_gr"]:,}', pct_change(current["loss_gr"], previous["loss_gr"]), "⚠️", "#dc2626", True),
-        ("Avg P&L / GR", f'₹{current["avg_pnl_gr"]:,.0f}', f'₹{previous["avg_pnl_gr"]:,.0f}', pct_change(current["avg_pnl_gr"], previous["avg_pnl_gr"]), "📦", "#d97706", False),
+        ("Revenue", amount_text(current["revenue"], conversion_type), amount_text(previous["revenue"], conversion_type), pct_change(current["revenue"], previous["revenue"]), "💰", "#5b3fbb", False),
+        ("Expense", amount_text(current["expense"], conversion_type), amount_text(previous["expense"], conversion_type), pct_change(current["expense"], previous["expense"]), "🧾", "#5b3fbb", True),
+        ("P&L", amount_text(current["pnl"], conversion_type), amount_text(previous["pnl"], conversion_type), pct_change(current["pnl"], previous["pnl"]), "📈", "#5b3fbb" if current["pnl"] >= 0 else "#dc2626", False),
+        ("P&L Margin", f'{current["margin"]:.2f}%', f'{previous["margin"]:.2f}%', current["margin"] - previous["margin"], "🎯", "#5b3fbb", False),
+        ("FTL P&L", amount_text(current["ftl_pnl"], conversion_type), amount_text(previous["ftl_pnl"], conversion_type), pct_change(current["ftl_pnl"], previous["ftl_pnl"]), "🚛", "#5b3fbb", False),
+        ("LTL P&L", amount_text(current["ltl_pnl"], conversion_type), amount_text(previous["ltl_pnl"], conversion_type), pct_change(current["ltl_pnl"], previous["ltl_pnl"]), "🚚", "#5b3fbb", False),
+        ("Profit GR", f'{current["profit_gr"]:,}', f'{previous["profit_gr"]:,}', pct_change(current["profit_gr"], previous["profit_gr"]), "✅", "#5b3fbb", False),
+        ("Loss GR", f'{current["loss_gr"]:,}', f'{previous["loss_gr"]:,}', pct_change(current["loss_gr"], previous["loss_gr"]), "⚠️", "#5b3fbb", True),
+        ("Avg P&L / GR", f'₹{current["avg_pnl_gr"]:,.0f}', f'₹{previous["avg_pnl_gr"]:,.0f}', pct_change(current["avg_pnl_gr"], previous["avg_pnl_gr"]), "📦", "#5b3fbb", False),
     ]
 
     kpi_cols = st.columns(9, gap="small")
@@ -838,13 +893,13 @@ def show_pnl_dashboard() -> None:
                     y=trend_df["Current P&L"],
                     name=f"Current ({fy})",
                     marker=dict(
-                        color="#2563eb",
-                        line=dict(color="#1e3a8a", width=1.3),
+                        color="#7657d6",
+                        line=dict(color="#5137aa", width=1.3),
                     ),
                     text=trend_df["Current P&L"],
                     texttemplate="%{text:.2f}",
                     textposition="outside",
-                    textfont=dict(size=12, color="#1d4ed8", family="Arial"),
+                    textfont=dict(size=12, color="#5b3fbb", family="Arial"),
                     cliponaxis=False,
                     hovertemplate=(
                         f"<b>%{{x}}</b><br>Current P&L: ₹%{{y:.2f}} {unit}<extra></extra>"
@@ -885,7 +940,7 @@ def show_pnl_dashboard() -> None:
                 barmode="group",
                 height=310,
                 margin=dict(l=8, r=8, t=24, b=8),
-                plot_bgcolor="#f8fafc",
+                plot_bgcolor="#fbfaff",
                 paper_bgcolor="rgba(0,0,0,0)",
                 legend=dict(
                     orientation="h",
@@ -974,7 +1029,7 @@ def show_pnl_dashboard() -> None:
                             rotation=0,
                             direction="clockwise",
                             marker=dict(
-                                colors=["#2563eb", "#0f766e"],
+                                colors=["#7657d6", "#178f9b"],
                                 line=dict(color="#ffffff", width=1.5),
                             ),
                             textinfo="none",
@@ -987,8 +1042,8 @@ def show_pnl_dashboard() -> None:
                     ]
                 )
                 fig_load.update_layout(
-                    height=165,
-                    margin=dict(l=0, r=0, t=0, b=0),
+                    height=178,
+                    margin=dict(l=0, r=0, t=12, b=0),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     showlegend=False,
@@ -1046,9 +1101,9 @@ def show_pnl_dashboard() -> None:
                     )
 
                 load_legend_html = (
-                    '<div style="display:flex;flex-direction:column;gap:15px;padding:4px 0;line-height:1.2;">'
-                    + _load_row("FTL", ftl, ftl_share, prev_ftl, ftl_yoy, "#2563eb")
-                    + _load_row("LTL", ltl, ltl_share, prev_ltl, ltl_yoy, "#0f766e")
+                    '<div style="display:flex;flex-direction:column;gap:17px;padding:12px 0 3px;line-height:1.2;">'
+                    + _load_row("FTL", ftl, ftl_share, prev_ftl, ftl_yoy, "#7657d6")
+                    + _load_row("LTL", ltl, ltl_share, prev_ltl, ltl_yoy, "#178f9b")
                     + '</div>'
                 )
                 if hasattr(st, "html"):
@@ -1111,7 +1166,7 @@ def show_pnl_dashboard() -> None:
                 st.info("No company P&L is available for the selected filters.")
             else:
                 company_colors = [
-                    "#2563eb", "#0f9f8f", "#7c3aed",
+                    "#7657d6", "#178f9b", "#9b6ce3",
                     "#f59e0b", "#ec4899", "#64748b",
                 ]
                 max_company_value = float(company_chart_df["CY PNL"].abs().max() or 1)
@@ -1187,7 +1242,7 @@ def show_pnl_dashboard() -> None:
             st.info("No monthly P&L data is available for the selected filters.")
         else:
             bar_colors = [
-                "#2563eb" if value >= 0 else "#dc2626"
+                "#7657d6" if value >= 0 else "#dc2626"
                 for value in mom_df["P&L Display"]
             ]
             growth_colors = [
@@ -1203,7 +1258,7 @@ def show_pnl_dashboard() -> None:
                     name="P&L",
                     marker=dict(
                         color=bar_colors,
-                        line=dict(color="#1e40af", width=1.1),
+                        line=dict(color="#5137aa", width=1.1),
                     ),
                     text=mom_df["P&L Display"],
                     texttemplate=f"₹%{{text:.2f}} {unit}",
@@ -1255,7 +1310,7 @@ def show_pnl_dashboard() -> None:
             fig_mom.update_layout(
                 height=330,
                 margin=dict(l=10, r=12, t=20, b=8),
-                plot_bgcolor="#f8fafc",
+                plot_bgcolor="#fbfaff",
                 paper_bgcolor="rgba(0,0,0,0)",
                 bargap=0.34,
                 legend=dict(
