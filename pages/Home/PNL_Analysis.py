@@ -2,286 +2,708 @@ import io
 from html import escape
 
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
 from services.pnl_data_loader import load_pnl_data_pair
 from services.data_loader import get_date_range
 
-SPACER_HEIGHT = 4
-REVENUE_CHART_HEIGHT = 310
-ALIGNED_CHART_HEIGHT = 310
-TOP_N_OPTIONS = [10, 20, 30, 40]
+# =====================================================
+# Constants
+# =====================================================
 MONTH_ORDER = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar"]
-MONTH_MAP = {1:"Apr",2:"May",3:"Jun",4:"Jul",5:"Aug",6:"Sep",7:"Oct",8:"Nov",9:"Dec",10:"Jan",11:"Feb",12:"Mar"}
+MONTH_MAP = {1: "Apr", 2: "May", 3: "Jun", 4: "Jul", 5: "Aug", 6: "Sep", 7: "Oct", 8: "Nov", 9: "Dec", 10: "Jan", 11: "Feb", 12: "Mar"}
 QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
-QUARTER_MAP = {1:"Q1",2:"Q1",3:"Q1",4:"Q2",5:"Q2",6:"Q2",7:"Q3",8:"Q3",9:"Q3",10:"Q4",11:"Q4",12:"Q4"}
-FY_OPTIONS = ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"]
+TOP_N_OPTIONS = [10, 20, 30, 40]
+QUARTER_MAP = {1: "Q1", 2: "Q1", 3: "Q1", 4: "Q2", 5: "Q2", 6: "Q2", 7: "Q3", 8: "Q3", 9: "Q3", 10: "Q4", 11: "Q4", 12: "Q4"}
+FY_OPTIONS = [
+    "Select FY", "2026-2027", "2025-2026", "2024-2025",
+    "2023-2024", "2022-2023", "2021-2022", "2020-2021",
+]
 
 
-def compact_spacer(height=SPACER_HEIGHT):
-    st.markdown(f"<div aria-hidden='true' style='height:{height}px'></div>", unsafe_allow_html=True)
+# =====================================================
+# Styling
+# =====================================================
+def _inject_pnl_css() -> None:
+    st.markdown(
+        """
+        <style>
+        .block-container {
+            max-width: 100% !important;
+            padding: .35rem .75rem .90rem !important;
+        }
+        div[data-testid="stVerticalBlock"] { gap: .38rem !important; }
+        div[data-testid="stHorizontalBlock"] { gap: .50rem !important; align-items: flex-start !important; }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] { min-width: 0 !important; }
+
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border: 1px solid #dce5ef !important;
+            border-radius: 14px !important;
+            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
+            box-shadow: 0 7px 18px rgba(15,42,67,.075), inset 0 1px 0 #ffffff !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div { padding: .58rem .68rem !important; }
+
+        .pnl-title { color:#102a43; font-size:19px; font-weight:850; letter-spacing:-.25px; margin:0; }
+        .pnl-subtitle { color:#64748b; font-size:11px; margin-top:2px; }
+        .section-title { font-size:14px; font-weight:700; color:#0f2744; margin:1px 0 6px 1px; }
+
+        .filter-summary { display:flex; flex-wrap:wrap; gap:7px; min-height:30px; align-items:center; }
+        .filter-chip {
+            display:inline-flex; align-items:center; min-height:27px; padding:5px 12px;
+            border:1px solid #b8d1f2; border-radius:999px; background:#f5f9ff;
+            color:#31557d; font-size:10.5px; font-weight:600; white-space:nowrap;
+        }
+
+        div[data-testid="stSelectbox"] { display:flex !important; flex-direction:column !important; gap:5px !important; }
+        div[data-testid="stSelectbox"] > label,
+        div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
+            min-height:20px !important; line-height:20px !important; margin:0 0 1px 2px !important;
+            font-size:9.5px !important; color:#243b53 !important; white-space:nowrap !important;
+        }
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+            min-height:38px !important; height:38px !important; border:1px solid #cbd9ea !important;
+            border-radius:10px !important; background:linear-gradient(180deg,#ffffff,#f5f8fc) !important;
+        }
+
+        .kpi-card {
+            position:relative; min-height:76px; padding:8px 9px 9px;
+            border:1px solid #cbd5e1; border-radius:13px;
+            background:linear-gradient(145deg,#ffffff 0%,#f8fafc 48%,#e7edf5 100%);
+            box-shadow:0 4px 0 #c2ccd9,0 8px 13px rgba(15,23,42,.14),inset 1px 1px 0 #fff;
+        }
+        .kpi-head { display:grid; grid-template-columns:minmax(0,1fr) 26px; gap:5px; align-items:center; }
+        .kpi-title { color:var(--accent); font-size:10px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .kpi-icon { width:26px; height:26px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; background:#fff; border:1px solid #d6e0eb; }
+        .kpi-value { color:#102a43; font-size:16px; font-weight:900; margin-top:3px; line-height:1.08; white-space:nowrap; }
+        .kpi-footer { display:flex; justify-content:space-between; align-items:center; gap:5px; margin-top:5px; }
+        .kpi-ly { color:#64748b; font-size:8.5px; font-weight:600; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+        .kpi-growth { padding:2px 6px; border:1px solid; border-radius:999px; font-size:8.5px; font-weight:700; white-space:nowrap; }
+
+        [data-testid="stDataFrame"] { border:1px solid #e2eaf3; border-radius:10px; overflow:hidden; }
+        [data-testid="stDataFrame"] table { font-size:11px; }
+
+        div[data-testid="stDownloadButton"] > button,
+        .stButton > button { border-radius:8px !important; min-height:34px !important; font-size:10px !important; font-weight:800 !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
-def _inject_pnl_css():
-    st.markdown("""
-    <style>
-    .block-container{max-width:100%;padding:.35rem .75rem .75rem!important}
-    div[data-testid="stVerticalBlock"]{gap:.35rem!important}
-    div[data-testid="stHorizontalBlock"]{gap:.5rem!important;align-items:flex-start!important}
-    div[data-testid="stHorizontalBlock"]>div[data-testid="stColumn"]{min-width:0!important}
-    div[data-testid="stVerticalBlockBorderWrapper"]{border:1px solid #dce5ef!important;border-radius:14px!important;background:linear-gradient(180deg,#fff 0%,#fbfdff 100%)!important;box-shadow:0 7px 18px rgba(15,42,67,.075),inset 0 1px 0 #fff!important}
-    div[data-testid="stVerticalBlockBorderWrapper"]>div{padding:.55rem .65rem!important}
-    .executive-title{color:#102a43;font-size:19px;font-weight:850;letter-spacing:-.3px;margin:0}
-    .executive-subtitle{color:#64748b;font-size:11px;margin-top:2px}
-    .filter-summary{display:flex;flex-wrap:wrap;align-items:center;min-height:32px;gap:7px;margin:0}
-    .filter-chip{display:inline-flex;align-items:center;min-height:28px;padding:6px 13px;border:1px solid #b8d1f2;border-radius:999px;background:#f5f9ff;color:#31557d;font-size:11px;font-weight:500;white-space:nowrap}
-    div[data-testid="stSelectbox"]{display:flex!important;flex-direction:column!important;gap:7px!important;margin:0 0 2px!important}
-    div[data-testid="stSelectbox"]>label,div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"]{min-height:22px!important;line-height:22px!important;margin:0 0 2px 2px!important;font-size:10px!important;color:#243b53!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
-    div[data-testid="stSelectbox"] div[data-baseweb="select"]>div{min-height:40px!important;height:40px!important;padding:0 8px!important;border:1px solid #cbd9ea!important;border-radius:10px!important;background:linear-gradient(180deg,#fff,#f5f8fc)!important}
-    div[data-testid="stSegmentedControl"]{display:flex!important;justify-content:flex-end!important;width:100%!important}
-    div[data-testid="stSegmentedControl"]>div,div[data-testid="stSegmentedControl"] [role="radiogroup"]{display:grid!important;grid-auto-flow:column!important;gap:6px!important;width:auto!important;background:#edf2f7!important;border:1px solid #c9d5e3!important;border-radius:8px!important;padding:3px!important}
-    div[data-testid="stSegmentedControl"] label,div[data-testid="stSegmentedControl"] button{min-height:28px!important;height:28px!important;padding:3px 9px!important;border:1px solid #cbd5e1!important;border-radius:6px!important;background:linear-gradient(180deg,#fff,#e9eef5)!important;box-shadow:0 2px 0 #aebac8,inset 0 1px 0 #fff!important;font-size:10px!important;font-weight:700!important}
-    div[data-testid="stSegmentedControl"] label:has(input:checked),div[data-testid="stSegmentedControl"] button[aria-pressed="true"]{color:#fff!important;background:#123f73!important;border-color:#123f73!important;box-shadow:inset 0 1px 2px rgba(0,0,0,.18)!important}
-    .kpi-3d-card{position:relative;overflow:hidden;min-height:70px;padding:8px 9px;border:1px solid #cbd5e1;border-radius:14px;background:linear-gradient(145deg,#fff 0%,#f8fafc 45%,#e7edf5 100%);box-shadow:0 3px 8px rgba(15,23,42,.10)}
-    .kpi-3d-head{display:grid;grid-template-columns:minmax(0,1fr) 27px;align-items:center;gap:6px}.kpi-3d-title{color:var(--kpi-accent);font-size:11px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpi-3d-icon{width:27px;height:27px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:15px;background:linear-gradient(145deg,#fff,#dfe7f1);border:1px solid #cbd5e1}.kpi-3d-value{margin-top:2px;color:#102a43;font-size:16px;font-weight:900}.kpi-3d-footer{margin-top:4px;display:flex;justify-content:space-between;gap:6px}.kpi-3d-ly{color:#64748b;font-size:9px;font-weight:600}.kpi-3d-growth{padding:2px 7px;border:1px solid;border-radius:999px;font-size:9px;font-weight:600}
-    [data-testid="stDataFrame"]{border:1px solid #e2eaf3;border-radius:10px;overflow:hidden}[data-testid="stDataFrame"] table{font-size:11px}
-    </style>""", unsafe_allow_html=True)
-
-
-def _normal(value):
+# =====================================================
+# Data helpers
+# =====================================================
+def _normalized_name(value: str) -> str:
     return str(value).strip().replace("_", "").replace(" ", "").casefold()
 
 
-def _find_column(df, candidates):
+def _find_column(df: pd.DataFrame, candidates: list[str]) -> str | None:
     if df is None:
         return None
-    mapping = {_normal(c): c for c in df.columns}
+    column_map = {_normalized_name(c): c for c in df.columns}
     for candidate in candidates:
-        if _normal(candidate) in mapping:
-            return mapping[_normal(candidate)]
+        found = column_map.get(_normalized_name(candidate))
+        if found is not None:
+            return found
     return None
 
 
-def normalize_pnl_columns(df):
+def normalize_pnl_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Standardise SP output without changing accounting values."""
     if df is None:
         return pd.DataFrame()
+
     out = df.copy()
     aliases = {
-        "COMPNAME":["COMPNAME","compname","company","companyname"],"zone":["zone","zonename"],"circle":["circle","circlename","hubname"],"branch":["branch","branchname"],
-        "grno":["grno","gr_no","grnumber"],"grdt":["grdt","grdate","bookingdate"],"GRTYPE":["GRTYPE","grtype"],"LOADTYPE":["LOADTYPE","loadtype","load_type"],
-        "FIN_MONTH":["FIN_MONTH","fin_month","financialmonth"],"REVENUE":["REVENUE","revenue","business"],"EXPENSE":["EXPENSE","expense","expenses","cost"],"PNL":["PNL","pnl","profitloss","profit_loss","profitandloss"],
-        "Consignor":["Consignor","consignor","consignorname","customer","customername"],"Consignee":["Consignee","consignee","consigneename"],"Route":["Route","route","routename"],"COUNTRY":["COUNTRY","country","countryname"]
+        "COMPNAME": ["COMPNAME", "compname", "company", "companyname"],
+        "zone": ["zone", "zonename"],
+        "circle": ["circle", "circlename", "hubname"],
+        "branch": ["branch", "branchname"],
+        "grno": ["grno", "gr_no", "grnumber"],
+        "grdt": ["grdt", "grdate", "bookingdate"],
+        "GRTYPE": ["GRTYPE", "grtype"],
+        "LOADTYPE": ["LOADTYPE", "loadtype", "load_type"],
+        "FIN_MONTH": ["FIN_MONTH", "fin_month", "financialmonth"],
+        "REVENUE": ["REVENUE", "revenue", "business"],
+        "EXPENSE": ["EXPENSE", "expense", "expenses", "cost"],
+        "PNL": ["PNL", "pnl", "profitloss", "profit_loss", "profitandloss"],
+        "Consignor": ["Consignor", "consignor"],
+        "Consignee": ["Consignee", "consignee"],
+        "Route": ["Route", "route"],
     }
-    rename = {}
+
+    rename_map = {}
     for target, candidates in aliases.items():
         source = _find_column(out, candidates)
         if source is not None and source != target:
-            rename[source] = target
-    out = out.rename(columns=rename)
-    for col in ["REVENUE","EXPENSE","PNL","FIN_MONTH"]:
+            rename_map[source] = target
+    out = out.rename(columns=rename_map)
+
+    for col in ["REVENUE", "EXPENSE", "PNL", "FIN_MONTH"]:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0)
+
     if "grdt" in out.columns:
         out["grdt"] = pd.to_datetime(out["grdt"], errors="coerce")
-    for col in ["COMPNAME","zone","circle","branch","GRTYPE","LOADTYPE","Consignor","Consignee","Route","COUNTRY"]:
+
+    for col in ["COMPNAME", "zone", "circle", "branch", "GRTYPE", "LOADTYPE"]:
         if col in out.columns:
             out[col] = out[col].fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
+
     if "FIN_MONTH" in out.columns:
         out["FIN_MONTH"] = out["FIN_MONTH"].astype(int)
         out["Month"] = out["FIN_MONTH"].map(MONTH_MAP)
         out["Quarter"] = out["FIN_MONTH"].map(QUARTER_MAP)
+
     return out
 
 
-def get_previous_fy(fy):
-    start, end = map(int, fy.split("-")); return f"{start-1}-{end-1}"
+def validate_pnl_data(df: pd.DataFrame) -> list[str]:
+    required = ["COMPNAME", "zone", "circle", "branch", "grno", "grdt", "LOADTYPE", "FIN_MONTH", "REVENUE", "EXPENSE", "PNL"]
+    return [col for col in required if col not in df.columns]
 
 
-def get_conversion(kind):
-    return (100000, "Lac") if kind == "Lac" else (10000000, "Cr")
+def get_previous_fy(fy: str) -> str:
+    start_year, end_year = map(int, fy.split("-"))
+    return f"{start_year - 1}-{end_year - 1}"
 
 
-def pct_growth(current, previous):
-    if previous in (0, None) or pd.isna(previous): return 0.0
+def get_conversion(conversion_type: str) -> tuple[float, str]:
+    return (100_000, "Lac") if conversion_type == "Lac" else (10_000_000, "Cr")
+
+
+def amount_text(value: float, conversion_type: str) -> str:
+    divisor, unit = get_conversion(conversion_type)
+    return f"₹{value / divisor:,.2f} {unit}"
+
+
+def pct_change(current: float, previous: float) -> float:
+    if previous is None or pd.isna(previous) or previous == 0:
+        return 0.0
     return ((current - previous) / abs(previous)) * 100
 
 
-def growth_label(value):
-    return f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
+def pnl_margin(revenue: float, pnl: float) -> float:
+    return (pnl / revenue * 100) if revenue else 0.0
 
 
-def create_card(title, value, color, icon, growth_value=0.0, previous_value=None):
-    positive = growth_value >= 0
-    html = (f'<div class="kpi-3d-card" style="--kpi-accent:{color};"><div class="kpi-3d-head"><div class="kpi-3d-title">{escape(title)}</div><div class="kpi-3d-icon">{icon}</div></div>'
-            f'<div class="kpi-3d-value">{escape(value)}</div><div class="kpi-3d-footer"><span class="kpi-3d-ly">LY: {escape(previous_value or "N/A")}</span>'
-            f'<span class="kpi-3d-growth" style="background:#fff;border-color:{"#86efac" if positive else "#fda4af"};color:{"#15803d" if positive else "#dc2626"};">{growth_label(growth_value)}</span></div></div>')
+def _apply_filter(df: pd.DataFrame, column: str, selected: str) -> pd.DataFrame:
+    if selected == "All" or column not in df.columns:
+        return df
+    return df[df[column] == selected]
+
+
+def _safe_options(df: pd.DataFrame, column: str) -> list[str]:
+    if column not in df.columns:
+        return []
+    values = df[column].dropna().astype(str).str.strip()
+    values = values[values.ne("")]
+    return sorted(values.unique().tolist(), key=str.casefold)
+
+
+def calculate_pnl_kpis(df: pd.DataFrame) -> dict:
+    if df is None or df.empty:
+        return {
+            "revenue": 0.0, "expense": 0.0, "pnl": 0.0, "margin": 0.0,
+            "ftl_pnl": 0.0, "ltl_pnl": 0.0, "profit_gr": 0, "loss_gr": 0,
+            "avg_pnl_gr": 0.0,
+        }
+
+    revenue = float(df["REVENUE"].sum())
+    expense = float(df["EXPENSE"].sum())
+    pnl = float(df["PNL"].sum())
+    gr_count = int(df["grno"].nunique()) if "grno" in df.columns else len(df)
+
+    return {
+        "revenue": revenue,
+        "expense": expense,
+        "pnl": pnl,
+        "margin": pnl_margin(revenue, pnl),
+        "ftl_pnl": float(df.loc[df["LOADTYPE"].eq("FTL"), "PNL"].sum()),
+        "ltl_pnl": float(df.loc[df["LOADTYPE"].eq("LTL"), "PNL"].sum()),
+        "profit_gr": int(df.loc[df["PNL"] > 0, "grno"].nunique()),
+        "loss_gr": int(df.loc[df["PNL"] < 0, "grno"].nunique()),
+        "avg_pnl_gr": pnl / gr_count if gr_count else 0.0,
+    }
+
+
+# =====================================================
+# UI helpers
+# =====================================================
+def render_kpi_card(title: str, value: str, previous: str, growth: float, icon: str, accent: str, reverse_good: bool = False) -> None:
+    positive = growth <= 0 if reverse_good else growth >= 0
+    color = "#15803d" if positive else "#dc2626"
+    border = "#86efac" if positive else "#fda4af"
+    arrow = "▲" if growth >= 0 else "▼"
+    html = (
+        f'<div class="kpi-card" style="--accent:{accent};">'
+        f'<div class="kpi-head"><div class="kpi-title">{escape(title)}</div><div class="kpi-icon">{icon}</div></div>'
+        f'<div class="kpi-value">{escape(value)}</div>'
+        f'<div class="kpi-footer"><span class="kpi-ly">LY: {escape(previous)}</span>'
+        f'<span class="kpi-growth" style="color:{color};border-color:{border};background:#fff;">{arrow} {abs(growth):.1f}%</span></div>'
+        f'</div>'
+    )
+    if hasattr(st, "html"):
+        st.html(html)
+    else:
+        st.markdown(html, unsafe_allow_html=True)
+
+
+def render_header() -> st.delta_generator.DeltaGenerator:
+    with st.container(border=True):
+        left, right = st.columns([7, 1], gap="small", vertical_alignment="center")
+        with left:
+            st.markdown(
+                '<div><div class="pnl-title">P&amp;L Dashboard</div>'
+                '<div class="pnl-subtitle">Executive profitability view across company, geography, load type and branch</div></div>',
+                unsafe_allow_html=True,
+            )
+        with right:
+            export_placeholder = st.empty()
+    return export_placeholder
+
+
+def build_monthly_comparison(df: pd.DataFrame, prev_df: pd.DataFrame, divisor: float) -> pd.DataFrame:
+    current = df.groupby("Month", observed=False, as_index=False).agg(
+        Revenue=("REVENUE", "sum"), Expense=("EXPENSE", "sum"), PNL=("PNL", "sum")
+    )
+    previous = prev_df.groupby("Month", observed=False, as_index=False).agg(
+        PY_PNL=("PNL", "sum")
+    ) if prev_df is not None and not prev_df.empty else pd.DataFrame(columns=["Month", "PY_PNL"])
+
+    result = current.merge(previous, on="Month", how="left")
+    result["Month"] = pd.Categorical(result["Month"], MONTH_ORDER, ordered=True)
+    result = result.sort_values("Month")
+    for col in ["Revenue", "Expense", "PNL", "PY_PNL"]:
+        result[col] = pd.to_numeric(result[col], errors="coerce").fillna(0) / divisor
+    result["Margin %"] = result.apply(lambda r: (r["PNL"] / r["Revenue"] * 100) if r["Revenue"] else 0, axis=1)
+    return result
+
+
+def build_group_summary(df: pd.DataFrame, prev_df: pd.DataFrame, group_col: str) -> pd.DataFrame:
+    current = df.groupby(group_col, dropna=False, as_index=False).agg(
+        Revenue=("REVENUE", "sum"), Expense=("EXPENSE", "sum"), PNL=("PNL", "sum"), GRs=("grno", "nunique")
+    )
+    previous = prev_df.groupby(group_col, dropna=False, as_index=False).agg(PY_PNL=("PNL", "sum")) \
+        if prev_df is not None and not prev_df.empty and group_col in prev_df.columns \
+        else pd.DataFrame(columns=[group_col, "PY_PNL"])
+    summary = current.merge(previous, on=group_col, how="left")
+    summary["PY_PNL"] = pd.to_numeric(summary["PY_PNL"], errors="coerce").fillna(0)
+    summary["Margin %"] = summary.apply(lambda r: pnl_margin(r["Revenue"], r["PNL"]), axis=1)
+    summary["Growth %"] = summary.apply(lambda r: pct_change(r["PNL"], r["PY_PNL"]), axis=1)
+    return summary
+
+
+
+
+def build_pnl_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, prev_fy_start):
+    cur = current_df[[date_col, "PNL", "FIN_MONTH"]].copy()
+    prev = previous_df[[date_col, "PNL", "FIN_MONTH"]].copy() if previous_df is not None and not previous_df.empty else pd.DataFrame()
+    cur[date_col] = pd.to_datetime(cur[date_col], errors="coerce")
+    if not prev.empty:
+        prev[date_col] = pd.to_datetime(prev[date_col], errors="coerce")
+    fy_start_ts = pd.to_datetime(fy_start)
+    prev_start_ts = pd.to_datetime(prev_fy_start)
+    if trend_type == "Daily":
+        trend = cur.groupby(cur[date_col].dt.date)["PNL"].sum().reset_index(); trend.columns = ["Period", "PNL"]
+        trend["Key"] = (pd.to_datetime(trend["Period"]) - fy_start_ts).dt.days
+        py = prev.groupby(prev[date_col].dt.date)["PNL"].sum().reset_index() if not prev.empty else pd.DataFrame()
+        if not py.empty:
+            py.columns = ["Period", "PY_PNL"]; py["Key"] = (pd.to_datetime(py["Period"]) - prev_start_ts).dt.days
+    elif trend_type == "Weekly":
+        trend = cur.groupby(cur[date_col].dt.to_period("W"))["PNL"].sum().reset_index()
+        trend["Period"] = trend[date_col].astype(str); trend["Key"] = (trend[date_col].dt.start_time - fy_start_ts).dt.days // 7
+        trend = trend.drop(columns=[date_col])
+        py = prev.groupby(prev[date_col].dt.to_period("W"))["PNL"].sum().reset_index() if not prev.empty else pd.DataFrame()
+        if not py.empty:
+            py["Key"] = (py[date_col].dt.start_time - prev_start_ts).dt.days // 7
+            py = py.rename(columns={"PNL": "PY_PNL"}).drop(columns=[date_col])
+    elif trend_type == "Quarterly":
+        trend = cur.assign(Period=cur["FIN_MONTH"].map(QUARTER_MAP)).groupby("Period")["PNL"].sum().reset_index()
+        trend["Period"] = pd.Categorical(trend["Period"], QUARTER_ORDER, ordered=True); trend = trend.sort_values("Period"); trend["Key"] = trend["Period"].astype(str)
+        py = prev.assign(Key=prev["FIN_MONTH"].map(QUARTER_MAP)).groupby("Key")["PNL"].sum().reset_index().rename(columns={"PNL": "PY_PNL"}) if not prev.empty else pd.DataFrame()
+    else:
+        trend = cur.assign(Period=cur["FIN_MONTH"].map(MONTH_MAP)).groupby("Period")["PNL"].sum().reset_index()
+        trend["Period"] = pd.Categorical(trend["Period"], MONTH_ORDER, ordered=True); trend = trend.sort_values("Period"); trend["Key"] = trend["Period"].astype(str)
+        py = prev.assign(Key=prev["FIN_MONTH"].map(MONTH_MAP)).groupby("Key")["PNL"].sum().reset_index().rename(columns={"PNL": "PY_PNL"}) if not prev.empty else pd.DataFrame()
+    if py.empty:
+        py = pd.DataFrame(columns=["Key", "PY_PNL"])
+    trend = trend.merge(py[["Key", "PY_PNL"]], on="Key", how="left")
+    trend["PY_PNL"] = pd.to_numeric(trend["PY_PNL"], errors="coerce").fillna(0)
+    return trend
+
+
+def render_top_n_pnl_table(df, prev_df, group_col, entity_name, unit, divisor, widget_key):
+    top_n = st.selectbox(f"{entity_name} count", TOP_N_OPTIONS, index=0, key=f"{widget_key}_top_n", label_visibility="collapsed")
+    current_rank = df.groupby(group_col, dropna=False, as_index=False)["PNL"].sum()
+    previous_rank = prev_df.groupby(group_col, dropna=False, as_index=False)["PNL"].sum().rename(columns={"PNL": "PY_PNL"}) if prev_df is not None and not prev_df.empty and group_col in prev_df.columns else pd.DataFrame(columns=[group_col, "PY_PNL"])
+    ranking = current_rank.merge(previous_rank, on=group_col, how="left")
+    ranking["PY_PNL"] = pd.to_numeric(ranking["PY_PNL"], errors="coerce").fillna(0)
+    ranking["Growth"] = ranking.apply(lambda r: pct_change(r["PNL"], r["PY_PNL"]), axis=1)
+    ranking = ranking.sort_values("PNL", ascending=False).head(top_n).reset_index(drop=True)
+    total = float(df["PNL"].sum())
+    st.markdown(f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top {top_n} {entity_name} by P&L</div>", unsafe_allow_html=True)
+    rows = []
+    for i, row in ranking.iterrows():
+        value = float(row["PNL"]); growth = float(row["Growth"]); share = value / total * 100 if total else 0
+        arrow = "▲" if growth >= 0 else "▼"; color = "#16a34a" if growth >= 0 else "#dc2626"
+        rows.append(f'<tr><td style="text-align:center">{i+1}</td><td>{escape(str(row[group_col]))}</td><td>₹{value/divisor:,.2f} {unit}</td><td style="text-align:right">{share:.2f}%</td><td style="text-align:right;color:{color}">{arrow} {abs(growth):.1f}%</td></tr>')
+    html = '<div style="max-height:420px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th style="padding:8px;background:#f8fafc">#</th><th style="padding:8px;background:#f8fafc;text-align:left">'+entity_name[:-1]+'</th><th style="padding:8px;background:#f8fafc;text-align:left">P&L ('+unit+')</th><th style="padding:8px;background:#f8fafc;text-align:right">% Share</th><th style="padding:8px;background:#f8fafc;text-align:right">vs LY</th></tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'
     st.html(html) if hasattr(st, "html") else st.markdown(html, unsafe_allow_html=True)
 
 
-def build_yoy_pnl_trend(current_df, previous_df, trend_type, fy_start, prev_fy_start):
-    cur = current_df[["grdt","PNL","FIN_MONTH"]].copy()
-    prev = previous_df[["grdt","PNL","FIN_MONTH"]].copy() if previous_df is not None and not previous_df.empty else pd.DataFrame()
-    cur["grdt"] = pd.to_datetime(cur["grdt"], errors="coerce")
-    if not prev.empty: prev["grdt"] = pd.to_datetime(prev["grdt"], errors="coerce")
-    fy_start_ts, prev_start_ts = pd.to_datetime(fy_start), pd.to_datetime(prev_fy_start)
-    if trend_type == "Daily":
-        t = cur.groupby(cur["grdt"].dt.date)["PNL"].sum().reset_index(); t.columns=["Period","PNL"]; t["Key"]=(pd.to_datetime(t["Period"])-fy_start_ts).dt.days
-        p = prev.groupby(prev["grdt"].dt.date)["PNL"].sum().reset_index() if not prev.empty else pd.DataFrame()
-        if not p.empty: p.columns=["Period","PREV_PNL"]; p["Key"]=(pd.to_datetime(p["Period"])-prev_start_ts).dt.days
-    elif trend_type == "Weekly":
-        t = cur.groupby(cur["grdt"].dt.to_period("W"))["PNL"].sum().reset_index(); t["Period"]=t["grdt"].astype(str); t["Key"]=(t["grdt"].dt.start_time-fy_start_ts).dt.days//7; t=t.drop(columns=["grdt"])
-        p = prev.groupby(prev["grdt"].dt.to_period("W"))["PNL"].sum().reset_index() if not prev.empty else pd.DataFrame()
-        if not p.empty: p["Key"]=(p["grdt"].dt.start_time-prev_start_ts).dt.days//7; p=p.rename(columns={"PNL":"PREV_PNL"}).drop(columns=["grdt"])
-    elif trend_type == "Quarterly":
-        cur["Quarter"]=cur["FIN_MONTH"].map(QUARTER_MAP); t=cur.groupby("Quarter")["PNL"].sum().reset_index(); t["Quarter"]=pd.Categorical(t["Quarter"],QUARTER_ORDER,ordered=True); t=t.sort_values("Quarter"); t.columns=["Period","PNL"]; t["Key"]=t["Period"]
-        if not prev.empty: prev["Quarter"]=prev["FIN_MONTH"].map(QUARTER_MAP); p=prev.groupby("Quarter")["PNL"].sum().reset_index(); p.columns=["Key","PREV_PNL"]
-        else: p=pd.DataFrame()
-    else:
-        cur["Month"]=cur["FIN_MONTH"].map(MONTH_MAP); t=cur.groupby("Month")["PNL"].sum().reset_index(); t["Month"]=pd.Categorical(t["Month"],MONTH_ORDER,ordered=True); t=t.sort_values("Month"); t.columns=["Period","PNL"]; t["Key"]=t["Period"]
-        if not prev.empty: prev["Month"]=prev["FIN_MONTH"].map(MONTH_MAP); p=prev.groupby("Month")["PNL"].sum().reset_index(); p.columns=["Key","PREV_PNL"]
-        else: p=pd.DataFrame()
-    if p is None or p.empty: t["PREV_PNL"]=0.0
-    else: t=t.merge(p[["Key","PREV_PNL"]],on="Key",how="left"); t["PREV_PNL"]=t["PREV_PNL"].fillna(0)
-    return t
-
-
-def _apply(df, col, value):
-    return df if value == "All" or col not in df.columns else df[df[col] == value]
-
-
-def _options(df, col):
-    return sorted(df[col].dropna().astype(str).str.strip().replace("", pd.NA).dropna().unique().tolist(), key=str.casefold) if col in df.columns else []
-
-
-def _rank_table(data, name_col, value_col, title, unit, top_n, key_prefix):
-    with st.container(border=True):
-        h1, h2 = st.columns([3,1])
-        with h1: st.markdown(f"<div style='font-size:15px;font-weight:500;color:#0f2744;'>{title}</div>", unsafe_allow_html=True)
-        with h2: selected = st.selectbox("Top N", TOP_N_OPTIONS, index=0, key=f"{key_prefix}_topn", label_visibility="collapsed")
-        ranked = data.groupby(name_col, dropna=False)[value_col].sum().reset_index().sort_values(value_col, ascending=False).head(selected)
-        total = float(data[value_col].sum())
-        ranked["Display"] = ranked[value_col] / get_conversion(unit)[0]
-        ranked["Share %"] = ranked[value_col].apply(lambda v: v / total * 100 if total else 0)
-        ranked.insert(0, "#", range(1, len(ranked)+1))
-        st.dataframe(ranked[["#",name_col,"Display","Share %"]], hide_index=True, width="stretch", height=min(410, 70+len(ranked)*31), column_config={name_col:st.column_config.TextColumn(name_col),"Display":st.column_config.NumberColumn(f"P&L ({get_conversion(unit)[1]})",format="%.2f"),"Share %":st.column_config.NumberColumn("% Share",format="%.2f%%")})
-
-
-def show_pnl_dashboard():
+# =====================================================
+# Main page
+# =====================================================
+def show_pnl_dashboard() -> None:
     _inject_pnl_css()
-    with st.container(border=True):
-        left, right = st.columns([7,1], gap="small", vertical_alignment="center")
-        with left:
-            st.markdown('<div style="padding:2px 0 3px 4px;"><div class="executive-title">P&amp;L Overview</div><div class="executive-subtitle">Executive view of profitability, load mix, geography, customers, routes and branch performance</div></div>', unsafe_allow_html=True)
-        with right: export_placeholder = st.empty()
-    compact_spacer(4)
+    export_placeholder = render_header()
+
     filter_cols = st.columns(10, gap="small")
-    with filter_cols[0]: view_type = st.selectbox("⇄ View Type", ["Origin","Destination"], key="pnl_view_type")
-    with filter_cols[1]: fy = st.selectbox("◷ Financial Year", FY_OPTIONS, key="pnl_fy")
-    if fy == "Select FY": st.info("Please select financial year"); return
-    start_date, end_date = get_date_range(fy); prev_fy=get_previous_fy(fy); prev_start, prev_end=get_date_range(prev_fy)
-    with st.spinner("Loading current and previous-year P&L data..."):
-        raw, raw_prev = load_pnl_data_pair(start_date,end_date,prev_start,prev_end,view_type.lower())
-    df, prev_df = normalize_pnl_columns(raw), normalize_pnl_columns(raw_prev)
-    if df.empty: st.warning("No P&L data found"); return
-    required=["COMPNAME","zone","circle","branch","grno","grdt","LOADTYPE","FIN_MONTH","REVENUE","EXPENSE","PNL"]
-    missing=[c for c in required if c not in df.columns]
-    if missing: st.error(f"Missing columns: {missing}"); st.write(list(df.columns)); return
-    scope=st.session_state.get("data_scope",{}) or {}; locked_zone=scope.get("zone"); locked_circle=scope.get("circle"); locked_branch=scope.get("branch")
-    with filter_cols[2]: company=st.selectbox("▥ Company",["All"]+_options(df,"COMPNAME"),key="pnl_company")
-    df=_apply(df,"COMPNAME",company)
-    with filter_cols[3]: zone=locked_zone or st.selectbox("◉ Zone",["All"]+_options(df,"zone"),key="pnl_zone")
-    if locked_zone: st.session_state.setdefault("pnl_zone_locked",locked_zone)
-    df=_apply(df,"zone",zone)
-    with filter_cols[4]: circle=locked_circle or st.selectbox("◎ Circle",["All"]+_options(df,"circle"),key="pnl_circle")
-    df=_apply(df,"circle",circle)
-    with filter_cols[5]: branch=locked_branch or st.selectbox("⌂ Branch",["All"]+_options(df,"branch"),key="pnl_branch")
-    df=_apply(df,"branch",branch)
-    with filter_cols[6]: quarter=st.selectbox("▦ Quarter",["All"]+[q for q in QUARTER_ORDER if q in df["Quarter"].dropna().tolist()],key="pnl_quarter")
-    df=_apply(df,"Quarter",quarter)
-    with filter_cols[7]: month=st.selectbox("▣ Month",["All"]+[m for m in MONTH_ORDER if m in df["Month"].dropna().tolist()],key="pnl_month")
-    df=_apply(df,"Month",month)
-    with filter_cols[8]: loadtype=st.selectbox("▤ Load Type",["All"]+_options(df,"LOADTYPE"),key="pnl_loadtype")
-    df=_apply(df,"LOADTYPE",loadtype)
-    with filter_cols[9]: conversion_type=st.selectbox("₹ Conversion",["Crore","Lac"],key="pnl_conversion_type")
-    for col,val in [("COMPNAME",company),("zone",zone),("circle",circle),("branch",branch),("Quarter",quarter),("Month",month),("LOADTYPE",loadtype)]: prev_df=_apply(prev_df,col,val)
-    chips=[("FY",fy),("View",view_type),("Company",company),("Zone",zone),("Circle",circle),("Branch",branch),("Quarter",quarter),("Month",month),("Load",loadtype),("Unit",conversion_type)]
-    st.markdown('<div class="filter-summary">'+''.join(f'<span class="filter-chip">{escape(k)}: {escape(str(v))}</span>' for k,v in chips if v not in (None,"","All"))+'</div>', unsafe_allow_html=True)
-    if df.empty: st.warning("No data found for selected filters"); return
+    with filter_cols[0]:
+        view_type = st.selectbox("⇄ View Type", ["Origin", "Destination"], key="pnl_view_type")
+    with filter_cols[1]:
+        fy = st.selectbox("◷ Financial Year", FY_OPTIONS, key="pnl_fy")
+
+    if fy == "Select FY":
+        st.info("Please select financial year")
+        return
+
+    # Temporary testing restriction: the P&L SP is currently loaded only for FY 2026-27.
+    if fy != "2026-2027":
+        st.warning("P&L testing is currently available only for FY 2026-2027.")
+        return
+
+    start_date, end_date = get_date_range(fy)
+    prev_fy = get_previous_fy(fy)
+    prev_start, prev_end = get_date_range(prev_fy)
+
+    with st.spinner("Loading P&L data..."):
+        raw_df, raw_prev_df = load_pnl_data_pair(
+            start_date,
+            end_date,
+            prev_start,
+            prev_end,
+            view_type.lower(),
+        )
+
+    df = normalize_pnl_columns(raw_df)
+    prev_df = normalize_pnl_columns(raw_prev_df)
+
+    if df.empty:
+        st.warning("No P&L data found for the selected financial year.")
+        return
+
+    missing = validate_pnl_data(df)
+    if missing:
+        st.error(f"Missing columns returned by stored procedure: {missing}")
+        st.write("Available columns:", list(df.columns))
+        return
+
+    data_scope = st.session_state.get("data_scope", {}) or {}
+    locked_zone = data_scope.get("zone")
+    locked_circle = data_scope.get("circle")
+    locked_branch = data_scope.get("branch")
+
+    if locked_branch:
+        branch_rows = df[df["branch"].astype(str).str.casefold() == str(locked_branch).casefold()]
+        if not branch_rows.empty:
+            locked_branch = branch_rows["branch"].iloc[0]
+            locked_circle = branch_rows["circle"].iloc[0]
+            locked_zone = branch_rows["zone"].iloc[0]
+    elif locked_circle:
+        circle_rows = df[df["circle"].astype(str).str.casefold() == str(locked_circle).casefold()]
+        if not circle_rows.empty:
+            locked_circle = circle_rows["circle"].iloc[0]
+            locked_zone = circle_rows["zone"].iloc[0]
+
+    # Current-year cascading filters
+    with filter_cols[2]:
+        company = st.selectbox("▥ Company", ["All"] + _safe_options(df, "COMPNAME"), key="pnl_company")
+    df = _apply_filter(df, "COMPNAME", company)
+
+    with filter_cols[3]:
+        if locked_zone:
+            zone = locked_zone
+            st.selectbox("◉ Zone", [zone], disabled=True, key="pnl_zone_locked")
+        else:
+            zone = st.selectbox("◉ Zone", ["All"] + _safe_options(df, "zone"), key="pnl_zone")
+    df = _apply_filter(df, "zone", zone)
+
+    with filter_cols[4]:
+        if locked_circle:
+            circle = locked_circle
+            st.selectbox("◎ Circle", [circle], disabled=True, key="pnl_circle_locked")
+        else:
+            circle = st.selectbox("◎ Circle", ["All"] + _safe_options(df, "circle"), key="pnl_circle")
+    df = _apply_filter(df, "circle", circle)
+
+    with filter_cols[5]:
+        if locked_branch:
+            branch = locked_branch
+            st.selectbox("⌂ Branch", [branch], disabled=True, key="pnl_branch_locked")
+        else:
+            branch = st.selectbox("⌂ Branch", ["All"] + _safe_options(df, "branch"), key="pnl_branch")
+    df = _apply_filter(df, "branch", branch)
+
+    with filter_cols[6]:
+        available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().tolist()]
+        quarter = st.selectbox("▦ Quarter", ["All"] + available_quarters, key="pnl_quarter")
+    df = _apply_filter(df, "Quarter", quarter)
+
+    with filter_cols[7]:
+        available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().tolist()]
+        month = st.selectbox("▣ Month", ["All"] + available_months, key="pnl_month")
+    df = _apply_filter(df, "Month", month)
+
+    with filter_cols[8]:
+        load_type = st.selectbox("▤ Load Type", ["All"] + _safe_options(df, "LOADTYPE"), key="pnl_loadtype")
+    df = _apply_filter(df, "LOADTYPE", load_type)
+
+    with filter_cols[9]:
+        conversion_type = st.selectbox("₹ Conversion", ["Crore", "Lac"], key="pnl_conversion")
+
     divisor, unit = get_conversion(conversion_type)
-    safe_fy=fy.replace("/","-"); export_key=f"pnl_export_{view_type}_{safe_fy}"
+
+    # Apply identical filters to LY data
+    for column, selected in [
+        ("COMPNAME", company), ("zone", zone), ("circle", circle), ("branch", branch),
+        ("Quarter", quarter), ("Month", month), ("LOADTYPE", load_type),
+    ]:
+        prev_df = _apply_filter(prev_df, column, selected)
+
+    chips = [
+        ("FY", fy), ("View", view_type), ("Company", company), ("Zone", zone),
+        ("Circle", circle), ("Branch", branch), ("Quarter", quarter),
+        ("Month", month), ("Load", load_type), ("Unit", conversion_type),
+    ]
+    chip_html = "".join(
+        f'<span class="filter-chip">{escape(label)}: {escape(str(value))}</span>'
+        for label, value in chips if value not in (None, "", "All")
+    )
+    st.markdown(f'<div class="filter-summary">{chip_html}</div>', unsafe_allow_html=True)
+
+    if df.empty:
+        st.warning("No data found for selected filters.")
+        return
+
+    # Lazy CSV export
+    safe_fy = fy.replace("/", "-")
+    export_key = f"pnl_export_ready_{view_type}_{safe_fy}"
     with export_placeholder:
-        st.download_button("⬇ Download CSV",df.to_csv(index=False).encode("utf-8-sig"),f"pnl_overview_{view_type.lower()}_{safe_fy}.csv","text/csv",key=export_key,width="content")
-    cur_total=float(df["PNL"].sum()); py_total=float(prev_df["PNL"].sum()) if not prev_df.empty else 0
-    cur_exp=float(df["EXPENSE"].sum()); py_exp=float(prev_df["EXPENSE"].sum()) if not prev_df.empty else 0
-    cur_rev=float(df["REVENUE"].sum()); py_rev=float(prev_df["REVENUE"].sum()) if not prev_df.empty else 0
-    ftl=float(df.loc[df["LOADTYPE"].eq("FTL"),"PNL"].sum()); py_ftl=float(prev_df.loc[prev_df["LOADTYPE"].eq("FTL"),"PNL"].sum()) if not prev_df.empty else 0
-    ltl=float(df.loc[df["LOADTYPE"].eq("LTL"),"PNL"].sum()); py_ltl=float(prev_df.loc[prev_df["LOADTYPE"].eq("LTL"),"PNL"].sum()) if not prev_df.empty else 0
-    cards=[("Revenue",cur_rev,py_rev,"💰","#2563eb"),("Expense",cur_exp,py_exp,"🧾","#dc2626"),("P&L",cur_total,py_total,"📈","#16a34a" if cur_total>=0 else "#dc2626"),("P&L Margin",cur_total/cur_rev*100 if cur_rev else 0,py_total/py_rev*100 if py_rev else 0,"🎯","#7c3aed"),("FTL P&L",ftl,py_ftl,"🚛","#2563eb"),("LTL P&L",ltl,py_ltl,"🚚","#0f766e")]
-    cols=st.columns(6,gap="small")
-    for c,(title,cur,py,icon,color) in zip(cols,cards):
-        with c:
-            if "Margin" in title: create_card(title,f"{cur:.2f}%",color,icon,cur-py,f"{py:.2f}%")
-            else: create_card(title,f"₹{cur/divisor:.2f} {unit}",color,icon,pct_growth(cur,py),f"₹{py/divisor:.2f} {unit}")
-    compact_spacer()
-    row1,row2=st.columns([1.20,.80])
+        if not st.session_state.get(export_key, False):
+            if st.button("⬇ Prepare CSV", key=f"prepare_{export_key}", width="content"):
+                st.session_state[export_key] = True
+                st.rerun()
+        else:
+            st.download_button(
+                "⬇ Download CSV",
+                data=df.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"pnl_dashboard_{view_type.lower()}_{safe_fy}.csv",
+                mime="text/csv",
+                key=f"download_{export_key}",
+                width="content",
+                on_click=lambda: st.session_state.update({export_key: False}),
+            )
+
+    current = calculate_pnl_kpis(df)
+    previous = calculate_pnl_kpis(prev_df)
+
+    kpi_specs = [
+        ("Revenue", amount_text(current["revenue"], conversion_type), amount_text(previous["revenue"], conversion_type), pct_change(current["revenue"], previous["revenue"]), "💰", "#2563eb", False),
+        ("Expense", amount_text(current["expense"], conversion_type), amount_text(previous["expense"], conversion_type), pct_change(current["expense"], previous["expense"]), "🧾", "#dc2626", True),
+        ("P&L", amount_text(current["pnl"], conversion_type), amount_text(previous["pnl"], conversion_type), pct_change(current["pnl"], previous["pnl"]), "📈", "#16a34a" if current["pnl"] >= 0 else "#dc2626", False),
+        ("P&L Margin", f'{current["margin"]:.2f}%', f'{previous["margin"]:.2f}%', current["margin"] - previous["margin"], "🎯", "#7c3aed", False),
+        ("FTL P&L", amount_text(current["ftl_pnl"], conversion_type), amount_text(previous["ftl_pnl"], conversion_type), pct_change(current["ftl_pnl"], previous["ftl_pnl"]), "🚛", "#2563eb", False),
+        ("LTL P&L", amount_text(current["ltl_pnl"], conversion_type), amount_text(previous["ltl_pnl"], conversion_type), pct_change(current["ltl_pnl"], previous["ltl_pnl"]), "🚚", "#0f766e", False),
+        ("Profit GR", f'{current["profit_gr"]:,}', f'{previous["profit_gr"]:,}', pct_change(current["profit_gr"], previous["profit_gr"]), "✅", "#16a34a", False),
+        ("Loss GR", f'{current["loss_gr"]:,}', f'{previous["loss_gr"]:,}', pct_change(current["loss_gr"], previous["loss_gr"]), "⚠️", "#dc2626", True),
+        ("Avg P&L / GR", f'₹{current["avg_pnl_gr"]:,.0f}', f'₹{previous["avg_pnl_gr"]:,.0f}', pct_change(current["avg_pnl_gr"], previous["avg_pnl_gr"]), "📦", "#d97706", False),
+    ]
+
+    kpi_cols = st.columns(9, gap="small")
+    for col, spec in zip(kpi_cols, kpi_specs):
+        with col:
+            render_kpi_card(*spec)
+
+    # Overview-style P&L insights
+    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
+
+    row1, row2 = st.columns([1.20, 0.80])
     with row1:
         with st.container(border=True):
-            t1,t2=st.columns([2,2])
-            with t1:
-                g=pct_growth(cur_total,py_total); st.markdown(f"<div style='font-size:14px;font-weight:400;color:#0f172a;'>P&L Trend <span style='font-size:11px;font-weight:700;color:{'#166534' if g>=0 else '#dc2626'};'>({growth_label(g)} vs LY)</span></div>",unsafe_allow_html=True)
-            with t2: trend_type=st.segmented_control("P&L trend period",["Daily","Weekly","Monthly","Quarterly"],default="Monthly",label_visibility="collapsed",key="pnl_trend_type") or "Monthly"
-            trend=build_yoy_pnl_trend(df,prev_df,trend_type,start_date,prev_start); trend["Current"]=trend["PNL"]/divisor; trend["Previous"]=trend["PREV_PNL"]/divisor
-            fig=go.Figure(); fig.add_bar(x=trend["Period"],y=trend["Previous"],name=f"LY ({prev_fy})",marker=dict(color="#cbd5e1",line=dict(color="#94a3b8",width=1.3)),text=trend["Previous"],texttemplate="%{text:.2f}",textposition="outside")
-            fig.add_bar(x=trend["Period"],y=trend["Current"],name=f"Current ({fy})",marker=dict(color="#2563eb",line=dict(color="#1e3a8a",width=1.3)),text=trend["Current"],texttemplate="%{text:.2f}",textposition="outside")
-            fig.add_hline(y=0,line_color="#64748b",line_width=1); fig.update_layout(barmode="group",height=REVENUE_CHART_HEIGHT,margin=dict(l=8,r=8,t=24,b=8),plot_bgcolor="#f8fafc",paper_bgcolor="rgba(0,0,0,0)",legend=dict(orientation="h",y=1.05,x=0),yaxis_title=f"P&L ({unit})")
-            st.plotly_chart(fig,width="stretch",config={"displayModeBar":False,"responsive":True})
+            title_col, filter_col = st.columns([2, 2])
+            total_growth = pct_change(current["pnl"], previous["pnl"])
+            with title_col:
+                badge_color = "#166534" if total_growth >= 0 else "#dc2626"
+                arrow = "▲" if total_growth >= 0 else "▼"
+                st.markdown(f"<div style='font-size:14px;font-weight:400;color:#0f172a;'>P&L Trend <span style='font-size:11px;font-weight:700;color:{badge_color};'>({arrow} {abs(total_growth):.1f}% vs LY)</span></div>", unsafe_allow_html=True)
+            with filter_col:
+                trend_type = st.segmented_control("P&L trend period", ["Daily", "Weekly", "Monthly", "Quarterly"], default="Monthly", label_visibility="collapsed", key="pnl_trend_type") or "Monthly"
+            trend_df = build_pnl_yoy_trend(df, prev_df, trend_type, "grdt", start_date, prev_start)
+            trend_df["Current"] = trend_df["PNL"] / divisor; trend_df["Previous"] = trend_df["PY_PNL"] / divisor
+            fig_yoy = go.Figure()
+            fig_yoy.add_trace(go.Bar(x=trend_df["Period"], y=trend_df["Previous"], name=f"LY ({prev_fy})", marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.3)), text=trend_df["Previous"], texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False))
+            fig_yoy.add_trace(go.Bar(x=trend_df["Period"], y=trend_df["Current"], name=f"Current ({fy})", marker=dict(color="#2563eb", line=dict(color="#1e3a8a", width=1.3)), text=trend_df["Current"], texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False))
+            fig_yoy.add_hline(y=0, line_color="#64748b", line_width=1)
+            fig_yoy.update_layout(barmode="group", height=310, margin=dict(l=8,r=8,t=24,b=8), plot_bgcolor="#f8fafc", paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=1.05, x=0), yaxis_title=f"P&L ({unit})", bargap=.22, bargroupgap=.08)
+            fig_yoy.update_xaxes(showgrid=False, showline=False, zeroline=False); fig_yoy.update_yaxes(showgrid=False, showline=False, zeroline=False)
+            st.plotly_chart(fig_yoy, width="stretch", config={"displayModeBar":False,"responsive":True})
+
     with row2:
         with st.container(border=True):
-            st.markdown('<div style="font-size:16px;font-weight:600;color:#0f172a;margin:0 0 5px;">P&L by Load Type (CY)</div>',unsafe_allow_html=True)
-            vals=[ftl,ltl]; total=sum(vals); fig=go.Figure(go.Pie(labels=["FTL","LTL"],values=vals,hole=.66,marker=dict(colors=["#2563eb","#0f766e"],line=dict(color="#fff",width=2)),textinfo="none",hovertemplate=f"<b>%{{label}}</b><br>P&L: ₹%{{value:.2f}}<extra></extra>"))
-            fig.add_annotation(text=f"<b>₹{total/divisor:.2f}</b><br><span style='font-size:10px'>{unit}</span>",x=.5,y=.5,showarrow=False); fig.update_layout(height=REVENUE_CHART_HEIGHT,margin=dict(l=5,r=5,t=10,b=5),showlegend=True,legend=dict(orientation="h",y=-.05,x=.5,xanchor="center"),paper_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig,width="stretch",config={"displayModeBar":False})
-    compact_spacer()
-    zone_left,zone_right=st.columns([1.55,1],gap="small")
-    with zone_left:
-        if view_type=="Origin" and "COUNTRY" in df.columns:
-            with st.container(border=True):
-                st.markdown("<div style='font-size:15px;font-weight:500;color:#0f2744;margin-bottom:8px;'>Zone-wise Country P&L</div>",unsafe_allow_html=True)
-                matrix=df.pivot_table(index="zone",columns="COUNTRY",values="PNL",aggfunc="sum",fill_value=0)/divisor; matrix["Total"]=matrix.sum(axis=1); matrix=matrix.sort_values("Total",ascending=False)
-                st.dataframe(matrix.style.format("{:.2f}").background_gradient(cmap="RdYlGn",axis=None),width="stretch",height=ALIGNED_CHART_HEIGHT)
-        else:
-            with st.container(border=True): st.info("Zone-wise Country P&L is available for Origin view when COUNTRY is present.")
-    with zone_right:
-        with st.container(border=True):
-            st.markdown("###### P&L by Zone")
-            z=df.groupby("zone")["PNL"].sum().reset_index().sort_values("PNL",ascending=False); total=float(z["PNL"].sum()); colors=["#1565C0","#009688","#FB8C00","#7E57C2","#EC407A","#EF5350"]
-            fig=go.Figure(go.Pie(labels=z["zone"],values=z["PNL"].abs(),hole=.62,marker=dict(colors=colors[:len(z)],line=dict(color="#fff",width=2)),customdata=z["PNL"],textinfo="none",hovertemplate=f"<b>%{{label}}</b><br>P&L: ₹%{{customdata:.2f}}<extra></extra>")); fig.add_annotation(text=f"<b>₹{total/divisor:.2f} {unit}</b><br><span style='font-size:10px'>Net P&L</span>",x=.5,y=.5,showarrow=False); fig.update_layout(height=ALIGNED_CHART_HEIGHT,margin=dict(l=0,r=0,t=4,b=0),showlegend=True,legend=dict(orientation="h",y=-.08),paper_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig,width="stretch",config={"displayModeBar":False})
-    compact_spacer()
-    c1,c2=st.columns(2,gap="small")
-    with c1:
-        if "Consignor" in df.columns: _rank_table(df,"Consignor","PNL","Top N Customers by P&L",conversion_type,10,"pnl_customer")
-        else: st.info("Customer column not found.")
-    with c2:
-        if "Route" in df.columns: _rank_table(df,"Route","PNL","Top N Routes by P&L",conversion_type,10,"pnl_route")
-        else: st.info("Route column not found.")
-    compact_spacer()
+            st.markdown('<div style="font-size:16px;font-weight:600;color:#0f172a;margin:0 0 5px 0;line-height:1.1;">P&L by Load Type (CY)</div>', unsafe_allow_html=True)
+            ftl = float(df.loc[df["LOADTYPE"].eq("FTL"), "PNL"].sum()); ltl = float(df.loc[df["LOADTYPE"].eq("LTL"), "PNL"].sum())
+            fig_load = go.Figure(go.Pie(labels=["FTL","LTL"], values=[abs(ftl),abs(ltl)], customdata=[ftl/divisor,ltl/divisor], hole=.66, marker=dict(colors=["#2563eb","#0f766e"], line=dict(color="#fff",width=2)), textinfo="none", sort=False, hovertemplate=f"<b>%{{label}}</b><br>P&L: ₹%{{customdata:.2f}} {unit}<extra></extra>"))
+            fig_load.add_annotation(text=f"<b>₹{(ftl+ltl)/divisor:.2f}</b><br><span style='font-size:10px'>{unit}</span>", x=.5,y=.5,showarrow=False)
+            fig_load.update_layout(height=310, margin=dict(l=5,r=5,t=10,b=5), showlegend=True, legend=dict(orientation="h",y=-.05,x=.5,xanchor="center"), paper_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_load, width="stretch", config={"displayModeBar":False,"responsive":True})
+
+    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
     with st.container(border=True):
-        st.markdown("<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Branches by P&L</div>",unsafe_allow_html=True)
-        options=["All","Loss","₹0–5 Lac","₹5–10 Lac","₹10–25 Lac","₹25–50 Lac","₹50 Lac & Above"]
-        slab=st.segmented_control("Branch P&L slab",options,default="All",key="pnl_branch_slab",label_visibility="collapsed",width="stretch") or "All"
-        b=df.groupby("branch")["PNL"].sum().reset_index(); ranges={"₹0–5 Lac":(0,500000),"₹5–10 Lac":(500000,1000000),"₹10–25 Lac":(1000000,2500000),"₹25–50 Lac":(2500000,5000000),"₹50 Lac & Above":(5000000,None)}
-        if slab=="Loss": b=b[b["PNL"]<0].sort_values("PNL")
-        elif slab in ranges:
-            lo,hi=ranges[slab]; b=b[b["PNL"]>=lo]; b=b if hi is None else b[b["PNL"]<hi]; b=b.sort_values("PNL",ascending=False)
-        else: b=b.sort_values("PNL",ascending=False)
-        b["P&L Display"]=b["PNL"]/divisor
-        if b.empty: st.info(f"No branch falls in {slab}.")
+        st.markdown("###### P&L by Zone")
+        zone_df = df.groupby("zone", as_index=False)["PNL"].sum().sort_values("PNL", ascending=False)
+        zone_df["Display"] = zone_df["PNL"] / divisor; zone_df["Pct"] = (zone_df["PNL"].abs()/zone_df["PNL"].abs().sum()*100 if zone_df["PNL"].abs().sum() else 0)
+        colors=["#1565C0","#009688","#FB8C00","#7E57C2","#EC407A","#EF5350","#334155"]
+        fig_zone=go.Figure(go.Pie(labels=zone_df["zone"], values=zone_df["PNL"].abs(), customdata=zone_df[["Display","Pct"]], hole=.62, sort=False, domain=dict(x=[0,.60],y=[0,1]), marker=dict(colors=colors[:len(zone_df)],line=dict(color="#fff",width=2)), textinfo="none", hovertemplate=f"<b>%{{label}}</b><br>P&L: ₹%{{customdata[0]:.2f}} {unit}<br>Contribution: %{{customdata[1]:.1f}}%<extra></extra>"))
+        for idx,row in zone_df.reset_index(drop=True).iterrows():
+            y=.91-idx*(.145 if len(zone_df)<=6 else .105); color=colors[idx%len(colors)]
+            fig_zone.add_annotation(x=.625,y=y,xref="paper",yref="paper",text="●",showarrow=False,xanchor="left",font=dict(size=16,color=color))
+            fig_zone.add_annotation(x=.675,y=y,xref="paper",yref="paper",text=f"<b>{escape(str(row['zone']))}</b><br>₹{row['Display']:.2f} {unit} <span style='color:{color}'>({row['Pct']:.1f}%)</span>",showarrow=False,xanchor="left",align="left")
+        fig_zone.add_annotation(x=.30,y=.50,xref="paper",yref="paper",text=f"<b>₹{zone_df['Display'].sum():.2f} {unit}</b><br><span style='font-size:10px'>Net P&L</span>",showarrow=False)
+        fig_zone.update_layout(height=310,margin=dict(l=0,r=0,t=4,b=0),showlegend=False,paper_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig_zone,width="stretch",config={"displayModeBar":False,"responsive":True})
+
+    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
+    if view_type == "Origin" and "COUNTRY" in df.columns:
+        with st.container(border=True):
+            st.markdown("<div style='font-size:15px;font-weight:500;color:#0f2744;margin:0 0 8px 2px;'>Zone-wise Country P&L</div>", unsafe_allow_html=True)
+            matrix=(df.pivot_table(index="zone",columns="COUNTRY",values="PNL",aggfunc="sum",fill_value=0)/divisor)
+            matrix["Total"]=matrix.sum(axis=1); matrix=matrix.sort_values("Total",ascending=False)
+            st.dataframe(matrix.style.format("{:.2f}").background_gradient(cmap="RdYlGn",axis=None),width="stretch",height=350)
+
+    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
+    customer_col = _find_column(df,["Consignor","consignorname","customer","customername"]); route_col = _find_column(df,["Route","routename"])
+    customer_layout_col, route_layout_col = st.columns(2,gap="small")
+    with customer_layout_col:
+        with st.container(border=True):
+            render_top_n_pnl_table(df,prev_df,customer_col,"Customers",unit,divisor,"pnl_customer") if customer_col else st.info("Customer column not found.")
+    with route_layout_col:
+        with st.container(border=True):
+            render_top_n_pnl_table(df,prev_df,route_col,"Routes",unit,divisor,"pnl_route") if route_col else st.info("Route column not found.")
+
+    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown("<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>Branches by P&L</div>", unsafe_allow_html=True)
+        options=["All","Loss","₹0–5 Lac","₹5–10 Lac","₹10–15 Lac","₹15–25 Lac","₹25–50 Lac","₹50 Lac & Above"]
+        selected=st.segmented_control("Branch P&L slab",options,default="All",key="top_branch_pnl_slab",label_visibility="collapsed",width="stretch") or "All"
+        ranges={"All":(None,None),"Loss":(None,0),"₹0–5 Lac":(0,500000),"₹5–10 Lac":(500000,1000000),"₹10–15 Lac":(1000000,1500000),"₹15–25 Lac":(1500000,2500000),"₹25–50 Lac":(2500000,5000000),"₹50 Lac & Above":(5000000,None)}
+        branch_rank=df.groupby("branch",as_index=False)["PNL"].sum(); low,high=ranges[selected]
+        if selected=="Loss": branch_rank=branch_rank[branch_rank["PNL"]<0]
         else:
-            fig=go.Figure(go.Bar(x=b["P&L Display"],y=b["branch"],orientation="h",marker_color=["#16a34a" if v>=0 else "#dc2626" for v in b["PNL"]],text=b["P&L Display"],texttemplate="%{text:.2f}",textposition="outside")); fig.add_vline(x=0,line_color="#64748b",line_width=1); fig.update_layout(height=max(360,min(900,80+len(b)*28)),margin=dict(l=5,r=30,t=8,b=5),xaxis_title=f"P&L ({unit})",yaxis_title="",plot_bgcolor="#f8fafc",paper_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig,width="stretch",config={"displayModeBar":False})
+            if low is not None: branch_rank=branch_rank[branch_rank["PNL"]>=low]
+            if high is not None: branch_rank=branch_rank[branch_rank["PNL"]<high]
+        branch_rank=branch_rank.sort_values("PNL",ascending=False).reset_index(drop=True)
+        if branch_rank.empty: st.info(f"No branch falls in the {selected} P&L slab.")
+        else:
+            max_abs=float(branch_rank["PNL"].abs().max()) or 1; rows=[]
+            for i,row in branch_rank.iterrows():
+                value=float(row["PNL"]); width=abs(value)/max_abs*100; color="#16a34a" if value>=0 else "#dc2626"; medal={0:"🥇",1:"🥈",2:"🥉"}.get(i,str(i+1))
+                rows.append(f'<div style="margin-bottom:5px;padding:5px 7px;border:1px solid #e5ebf2;border-radius:9px;background:#fbfdff"><div style="display:grid;grid-template-columns:25px minmax(185px,230px) minmax(55px,.75fr) 90px;align-items:center;gap:7px"><div style="text-align:center">{medal}</div><div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{escape(str(row["branch"]))}</div><div style="height:5px;background:#e8eef5;border-radius:999px;overflow:hidden"><div style="width:{width:.1f}%;height:5px;background:{color}"></div></div><div style="text-align:right;color:{color}">₹{value/divisor:,.2f} {unit}</div></div></div>')
+            html='<div style="max-height:430px;overflow:auto">'+''.join(rows)+'</div>'; st.html(html) if hasattr(st,"html") else st.markdown(html,unsafe_allow_html=True)
+
+    # Detailed tabs
+    tab1, tab2, tab3 = st.tabs(["Branch Summary", "Monthly Summary", "Detailed GR Records"])
+
+    with tab1:
+        display = branch_summary.sort_values("PNL", ascending=False).copy()
+        for col in ["Revenue", "Expense", "PNL", "PY_PNL"]:
+            display[col] = display[col] / divisor
+        st.dataframe(
+            display,
+            width="stretch",
+            hide_index=True,
+            height=430,
+            column_config={
+                "Revenue": st.column_config.NumberColumn(f"Revenue ({unit})", format="%.2f"),
+                "Expense": st.column_config.NumberColumn(f"Expense ({unit})", format="%.2f"),
+                "PNL": st.column_config.NumberColumn(f"P&L ({unit})", format="%.2f"),
+                "PY_PNL": st.column_config.NumberColumn(f"LY P&L ({unit})", format="%.2f"),
+                "Margin %": st.column_config.NumberColumn("Margin %", format="%.2f%%"),
+                "Growth %": st.column_config.NumberColumn("Growth %", format="%.1f%%"),
+                "GRs": st.column_config.NumberColumn("GRs", format="%d"),
+            },
+        )
+
+    with tab2:
+        monthly_display = monthly.copy()
+        st.dataframe(
+            monthly_display,
+            width="stretch",
+            hide_index=True,
+            column_config={
+                "Revenue": st.column_config.NumberColumn(f"Revenue ({unit})", format="%.2f"),
+                "Expense": st.column_config.NumberColumn(f"Expense ({unit})", format="%.2f"),
+                "PNL": st.column_config.NumberColumn(f"P&L ({unit})", format="%.2f"),
+                "PY_PNL": st.column_config.NumberColumn(f"LY P&L ({unit})", format="%.2f"),
+                "Margin %": st.column_config.NumberColumn("Margin %", format="%.2f%%"),
+            },
+        )
+
+    with tab3:
+        detail_columns = [
+            col for col in [
+                "COMPNAME", "zone", "circle", "branch", "grno", "grdt", "GRTYPE",
+                "LOADTYPE", "Consignor", "Consignee", "Route", "REVENUE",
+                "DELIVERYINCOME", "ADDITIONALFREIGHT", "OTHERINCOME", "RAW_EXPENSE",
+                "EXPENSE", "PNL",
+            ] if col in df.columns
+        ]
+        detail_df = df[detail_columns].copy()
+        search_text = st.text_input("Search GR, branch, customer or route", key="pnl_detail_search")
+        if search_text:
+            mask = detail_df.astype(str).apply(
+                lambda col: col.str.contains(search_text, case=False, na=False)
+            ).any(axis=1)
+            detail_df = detail_df[mask]
+
+        st.dataframe(
+            detail_df,
+            width="stretch",
+            hide_index=True,
+            height=460,
+            column_config={
+                "REVENUE": st.column_config.NumberColumn("Revenue/Freight (₹)", format="₹%.0f"),
+                "DELIVERYINCOME": st.column_config.NumberColumn("Delivery Income (₹)", format="₹%.0f"),
+                "ADDITIONALFREIGHT": st.column_config.NumberColumn("Additional Freight (₹)", format="₹%.0f"),
+                "OTHERINCOME": st.column_config.NumberColumn("Other Income (₹)", format="₹%.0f"),
+                "RAW_EXPENSE": st.column_config.NumberColumn("Raw Expense (₹)", format="₹%.0f"),
+                "EXPENSE": st.column_config.NumberColumn("Adjusted Expense (₹)", format="₹%.0f"),
+                "PNL": st.column_config.NumberColumn("P&L (₹)", format="₹%.0f"),
+                "grdt": st.column_config.DateColumn("GR Date", format="DD-MMM-YYYY"),
+            },
+        )
+
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+            detail_df.to_excel(writer, index=False, sheet_name="GR Detail")
+            branch_summary.to_excel(writer, index=False, sheet_name="Branch Summary")
+            monthly.to_excel(writer, index=False, sheet_name="Monthly Summary")
+        excel_buffer.seek(0)
+
+        st.download_button(
+            "Download P&L analysis (Excel)",
+            data=excel_buffer.getvalue(),
+            file_name=f"pnl_analysis_{view_type.lower()}_{safe_fy}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="pnl_excel_download",
+            width="content",
+        )
 
 
-def show_pnl():
+# Optional alias if your app menu expects a shorter function name.
+def show_pnl() -> None:
     show_pnl_dashboard()
