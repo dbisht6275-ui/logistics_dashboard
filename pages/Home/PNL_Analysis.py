@@ -1817,12 +1817,7 @@ def show_pnl_dashboard() -> None:
             "₹50 Lac & Above": (5_000_000, None),
         }
 
-        all_branch_pnl = (
-            df.groupby("branch", dropna=False, as_index=False)["PNL"]
-            .sum()
-            .sort_values("PNL", ascending=False)
-            .reset_index(drop=True)
-        )
+        all_branch_pnl = branch_summary[["branch", "PNL", "PY_PNL"]].copy()
         all_branch_pnl["branch"] = (
             all_branch_pnl["branch"]
             .fillna("Unknown")
@@ -1830,6 +1825,15 @@ def show_pnl_dashboard() -> None:
             .str.strip()
             .replace("", "Unknown")
         )
+        all_branch_pnl["PNL"] = pd.to_numeric(
+            all_branch_pnl["PNL"], errors="coerce"
+        ).fillna(0.0)
+        all_branch_pnl["PY_PNL"] = pd.to_numeric(
+            all_branch_pnl["PY_PNL"], errors="coerce"
+        ).fillna(0.0)
+        all_branch_pnl = all_branch_pnl.sort_values(
+            "PNL", ascending=False
+        ).reset_index(drop=True)
 
         selected_branch_pnl = all_branch_pnl.copy()
         slab_low, slab_high = slab_ranges[selected_branch_slab]
@@ -1846,20 +1850,39 @@ def show_pnl_dashboard() -> None:
             "PNL", ascending=False
         ).reset_index(drop=True)
 
-        total_branch_pnl = float(all_branch_pnl["PNL"].sum())
+        total_abs_branch_pnl = float(all_branch_pnl["PNL"].abs().sum())
         selected_pnl_total = float(selected_branch_pnl["PNL"].sum())
-        selected_share = (
-            selected_pnl_total / total_branch_pnl * 100
-            if total_branch_pnl
+        selected_ly_total = float(selected_branch_pnl["PY_PNL"].sum())
+        selected_abs_share = (
+            float(selected_branch_pnl["PNL"].abs().sum())
+            / total_abs_branch_pnl
+            * 100
+            if total_abs_branch_pnl
             else 0.0
         )
+        selected_growth = (
+            ((selected_pnl_total - selected_ly_total) / abs(selected_ly_total)) * 100
+            if selected_ly_total != 0
+            else None
+        )
+        if selected_growth is None:
+            selected_growth_html = '<span style="color:#7c3aed;font-weight:700;">NEW</span>'
+        else:
+            selected_growth_color = "#16a34a" if selected_growth >= 0 else "#dc2626"
+            selected_growth_arrow = "▲" if selected_growth >= 0 else "▼"
+            selected_growth_html = (
+                f'<span style="color:{selected_growth_color};font-weight:700;">'
+                f'{selected_growth_arrow} {abs(selected_growth):.1f}%</span>'
+            )
 
         st.markdown(
-            f'<div style="color:#2563eb;font-size:12px;font-weight:500;'
+            f'<div style="color:#6d28d9;font-size:12px;font-weight:500;'
             f'margin:7px 0 8px 1px;">'
             f'Showing {len(selected_branch_pnl):,} branches in {escape(selected_branch_slab)}. '
-            f'Selected P&amp;L: ₹{selected_pnl_total / divisor:,.2f} {escape(unit)} '
-            f'({selected_share:.2f}% of total branch P&amp;L). Scroll to view all.'
+            f'CY P&amp;L: <b>₹{selected_pnl_total / divisor:,.2f} {escape(unit)}</b> · '
+            f'LY P&amp;L: <b>₹{selected_ly_total / divisor:,.2f} {escape(unit)}</b> · '
+            f'Share: <b>{selected_abs_share:.2f}%</b> · '
+            f'Growth: {selected_growth_html}. Scroll to view all.'
             f'</div>',
             unsafe_allow_html=True,
         )
@@ -1872,33 +1895,65 @@ def show_pnl_dashboard() -> None:
 
             for index, branch_row in selected_branch_pnl.iterrows():
                 branch_value = float(branch_row["PNL"] or 0)
+                previous_value = float(branch_row["PY_PNL"] or 0)
                 width_pct = min(abs(branch_value) / max_abs_pnl * 100, 100)
-                fill_color = "#22c55e" if branch_value >= 0 else "#dc2626"
+                fill_color = "#7c3aed" if branch_value >= 0 else "#dc2626"
                 amount_color = "#111827" if branch_value >= 0 else "#dc2626"
                 rank = index + 1
                 branch_name = escape(str(branch_row["branch"]))
+                share_pct = (
+                    abs(branch_value) / total_abs_branch_pnl * 100
+                    if total_abs_branch_pnl
+                    else 0.0
+                )
+
+                if previous_value == 0:
+                    growth_html = '<span style="color:#7c3aed;font-weight:700;">NEW</span>'
+                else:
+                    growth_value = ((branch_value - previous_value) / abs(previous_value)) * 100
+                    growth_color = "#16a34a" if growth_value >= 0 else "#dc2626"
+                    growth_arrow = "▲" if growth_value >= 0 else "▼"
+                    growth_html = (
+                        f'<span style="color:{growth_color};font-weight:700;">'
+                        f'{growth_arrow} {abs(growth_value):.1f}%</span>'
+                    )
 
                 branch_rows.append(
                     f'<div style="margin-bottom:7px;padding:8px 10px;'
-                    f'border:1px solid #dbe4ef;border-radius:12px;background:#f8fbff;">'
+                    f'border:1px solid #ddd6fe;border-radius:12px;background:#fbfaff;">'
                     f'<div style="display:grid;'
-                    f'grid-template-columns:34px minmax(190px,310px) minmax(120px,1fr) 115px;'
-                    f'align-items:center;gap:10px;">'
+                    f'grid-template-columns:34px minmax(175px,280px) minmax(100px,1fr) '
+                    f'105px 105px 70px 82px;align-items:center;gap:10px;">'
                     f'<div style="text-align:center;font-size:13px;color:#334155;">{rank}</div>'
                     f'<div style="font-size:14px;color:#0f2744;white-space:nowrap;'
                     f'overflow:hidden;text-overflow:ellipsis;">{branch_name}</div>'
-                    f'<div style="height:7px;background:#e2e8f0;border-radius:999px;'
+                    f'<div style="height:7px;background:#e7e5f4;border-radius:999px;'
                     f'overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.08);">'
                     f'<div style="width:{width_pct:.1f}%;height:7px;background:{fill_color};'
                     f'border-radius:999px;"></div></div>'
                     f'<div style="text-align:right;color:{amount_color};font-size:13px;'
-                    f'font-weight:600;white-space:nowrap;">'
-                    f'₹{branch_value / divisor:,.2f} {escape(unit)}</div>'
+                    f'font-weight:700;white-space:nowrap;">₹{branch_value / divisor:,.2f} {escape(unit)}</div>'
+                    f'<div style="text-align:right;color:#64748b;font-size:12px;'
+                    f'white-space:nowrap;">₹{previous_value / divisor:,.2f} {escape(unit)}</div>'
+                    f'<div style="text-align:right;color:#6d28d9;font-size:12px;'
+                    f'font-weight:600;white-space:nowrap;">{share_pct:.2f}%</div>'
+                    f'<div style="text-align:right;font-size:12px;white-space:nowrap;">{growth_html}</div>'
                     f'</div></div>'
                 )
 
+            branch_header = (
+                '<div style="display:grid;grid-template-columns:34px minmax(175px,280px) '
+                'minmax(100px,1fr) 105px 105px 70px 82px;align-items:center;gap:10px;'
+                'padding:0 10px 5px 10px;color:#64748b;font-size:10px;font-weight:700;">'
+                '<div style="text-align:center;">#</div><div>Branch</div><div>P&L Scale</div>'
+                '<div style="text-align:right;">CY P&L</div>'
+                '<div style="text-align:right;">LY P&L</div>'
+                '<div style="text-align:right;">Share</div>'
+                '<div style="text-align:right;">Growth</div></div>'
+            )
             branch_html = (
-                '<div style="max-height:430px;overflow-y:auto;padding-right:3px;">'
+                branch_header
+                + '<div style="max-height:430px;overflow-y:auto;padding-right:3px;">'
                 + "".join(branch_rows)
                 + "</div>"
             )
