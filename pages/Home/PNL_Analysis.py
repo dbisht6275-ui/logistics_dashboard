@@ -1297,7 +1297,7 @@ def show_pnl_dashboard() -> None:
     with zone_col:
         with st.container(border=True):
             st.markdown(
-                "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
+                "<div style='font-size:16px;font-weight:600;color:#0f172a;margin:1px 0 7px 2px;'>"
                 "P&L by Zone</div>",
                 unsafe_allow_html=True,
             )
@@ -1306,6 +1306,7 @@ def show_pnl_dashboard() -> None:
                 df.groupby("zone", as_index=False)["PNL"]
                 .sum()
                 .sort_values("PNL", ascending=False)
+                .reset_index(drop=True)
             )
             zone_df["Display"] = zone_df["PNL"] / divisor
             zone_abs_total = float(zone_df["PNL"].abs().sum())
@@ -1313,84 +1314,135 @@ def show_pnl_dashboard() -> None:
                 zone_df["PNL"].abs() / zone_abs_total * 100
                 if zone_abs_total else 0.0
             )
-            colors = [
-                "#1565C0", "#009688", "#FB8C00", "#7E57C2",
-                "#EC407A", "#EF5350", "#334155",
+
+            zone_short_map = {
+                "NORTH ZONE": "North",
+                "WEST ZONE": "West",
+                "SOUTH ZONE": "South",
+                "EAST ZONE": "East",
+                "NORTH EAST ZONE": "NE",
+                "NEPAL ZONE": "Nepal",
+                "North Zone": "North",
+                "West Zone": "West",
+                "South Zone": "South",
+                "East Zone": "East",
+                "North East Zone": "NE",
+                "Nepal Zone": "Nepal",
+            }
+            zone_color_map = {
+                "NORTH ZONE": "#1565C0",
+                "WEST ZONE": "#009688",
+                "SOUTH ZONE": "#FB8C00",
+                "EAST ZONE": "#7E57C2",
+                "NORTH EAST ZONE": "#EC407A",
+                "NEPAL ZONE": "#EF5350",
+                "North Zone": "#1565C0",
+                "West Zone": "#009688",
+                "South Zone": "#FB8C00",
+                "East Zone": "#7E57C2",
+                "North East Zone": "#EC407A",
+                "Nepal Zone": "#EF5350",
+            }
+            zone_df["zone_short"] = zone_df["zone"].map(zone_short_map).fillna(zone_df["zone"])
+            zone_colors = [
+                zone_color_map.get(str(zone_name), "#2563eb")
+                for zone_name in zone_df["zone"]
             ]
 
             if zone_df.empty or zone_abs_total == 0:
                 st.info("No zone P&L is available for the selected filters.")
             else:
+                donut_domain = dict(x=[0.00, 0.60], y=[0.00, 1.00])
+                donut_center_x = 0.30
+                donut_center_y = 0.50
+
                 fig_zone = go.Figure(
-                    go.Pie(
-                        labels=zone_df["zone"],
-                        values=zone_df["PNL"].abs(),
-                        customdata=zone_df[["Display", "Pct"]],
-                        hole=0.62,
-                        sort=False,
-                        domain=dict(x=[0, 0.58], y=[0, 1]),
-                        marker=dict(
-                            colors=colors[:len(zone_df)],
-                            line=dict(color="#fff", width=2),
-                        ),
-                        textinfo="none",
-                        hovertemplate=(
-                            f"<b>%{{label}}</b><br>P&L: ₹%{{customdata[0]:.2f}} {unit}"
-                            "<br>Contribution: %{customdata[1]:.1f}%<extra></extra>"
-                        ),
-                    )
+                    data=[
+                        go.Pie(
+                            labels=zone_df["zone_short"],
+                            values=zone_df["PNL"].abs(),
+                            customdata=zone_df[["Display", "Pct"]],
+                            hole=0.62,
+                            sort=False,
+                            direction="clockwise",
+                            rotation=90,
+                            domain=donut_domain,
+                            marker=dict(
+                                colors=zone_colors,
+                                line=dict(color="#ffffff", width=2),
+                            ),
+                            textinfo="none",
+                            hovertemplate=(
+                                f"<b>%{{label}}</b><br>P&L: ₹%{{customdata[0]:.2f}} {unit}"
+                                "<br>Contribution: %{customdata[1]:.1f}%<extra></extra>"
+                            ),
+                        )
+                    ]
                 )
 
-                legend_step = 0.145 if len(zone_df) <= 6 else 0.105
-                for idx, row in zone_df.reset_index(drop=True).iterrows():
-                    y_pos = 0.91 - idx * legend_step
-                    color = colors[idx % len(colors)]
+                legend_y_start = 0.91
+                legend_step = 0.145 if len(zone_df) <= 6 else 0.115
+                for idx, row in zone_df.iterrows():
+                    y_pos = legend_y_start - (idx * legend_step)
+                    color = zone_colors[idx]
                     value_color = "#0f172a" if row["Display"] >= 0 else "#dc2626"
+
                     fig_zone.add_annotation(
-                        x=0.61,
+                        x=0.625,
                         y=y_pos,
                         xref="paper",
                         yref="paper",
                         text="●",
                         showarrow=False,
                         xanchor="left",
-                        font=dict(size=15, color=color),
+                        yanchor="middle",
+                        font=dict(size=16, color=color),
                     )
                     fig_zone.add_annotation(
-                        x=0.66,
+                        x=0.675,
                         y=y_pos,
                         xref="paper",
                         yref="paper",
                         text=(
-                            f"<b>{escape(str(row['zone']))}</b><br>"
-                            f"<span style='color:{value_color}'>₹{row['Display']:.2f} {unit}</span> "
-                            f"<span style='color:{color}'>({row['Pct']:.1f}%)</span>"
+                            f"<span style='font-size:14px;color:#0f172a'><b>"
+                            f"{escape(str(row['zone_short']))}</b></span>"
+                            f"<br><span style='font-size:12px;color:{value_color}'>"
+                            f"₹{row['Display']:.2f} {unit} &nbsp; "
+                            f"<span style='color:{color};font-weight:700'>"
+                            f"({row['Pct']:.1f}%)</span></span>"
                         ),
                         showarrow=False,
                         xanchor="left",
+                        yanchor="middle",
                         align="left",
-                        font=dict(size=11, color="#334155"),
+                        font=dict(size=12, color="#334155", family="Arial"),
                     )
 
-                fig_zone.add_annotation(
-                    x=0.29,
-                    y=0.50,
-                    xref="paper",
-                    yref="paper",
-                    text=(
-                        f"<b>₹{zone_df['Display'].sum():.2f} {unit}</b>"
-                        "<br><span style='font-size:10px;color:#64748b'>Net P&L</span>"
-                    ),
-                    showarrow=False,
-                    font=dict(size=14, color="#0f172a"),
-                )
                 fig_zone.update_layout(
                     height=315,
                     margin=dict(l=0, r=0, t=4, b=0),
-                    showlegend=False,
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
+                    showlegend=False,
+                    annotations=list(fig_zone.layout.annotations) + [
+                        dict(
+                            x=donut_center_x,
+                            y=donut_center_y,
+                            xref="paper",
+                            yref="paper",
+                            xanchor="center",
+                            yanchor="middle",
+                            text=(
+                                f"<b>₹{zone_df['Display'].sum():.2f} {unit}</b>"
+                                "<br><span style='font-size:10px;color:#64748b'>Net P&L</span>"
+                            ),
+                            showarrow=False,
+                            align="center",
+                            font=dict(size=15, color="#0f172a", family="Arial"),
+                        )
+                    ],
                 )
+
                 st.plotly_chart(
                     fig_zone,
                     width="stretch",
