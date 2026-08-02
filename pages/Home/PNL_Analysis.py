@@ -20,6 +20,7 @@ FY_OPTIONS = [
     "Select FY", "2026-2027", "2025-2026", "2024-2025",
     "2023-2024", "2022-2023", "2021-2022", "2020-2021",
 ]
+TOP_N_OPTIONS = [10, 20, 30, 40]
 
 
 # =====================================================
@@ -131,7 +132,9 @@ def normalize_pnl_columns(df: pd.DataFrame) -> pd.DataFrame:
         "PNL": ["PNL", "pnl", "profitloss", "profit_loss", "profitandloss"],
         "Consignor": ["Consignor", "consignor"],
         "Consignee": ["Consignee", "consignee"],
-        "Route": ["Route", "route"],
+        "Route": ["Route", "route", "routename"],
+        "COUNTRY": ["COUNTRY", "country", "countryname"],
+        "Customer": ["Customer", "customer", "customername", "Consignor"],
     }
 
     rename_map = {}
@@ -294,6 +297,150 @@ def build_group_summary(df: pd.DataFrame, prev_df: pd.DataFrame, group_col: str)
     summary["Margin %"] = summary.apply(lambda r: pnl_margin(r["Revenue"], r["PNL"]), axis=1)
     summary["Growth %"] = summary.apply(lambda r: pct_change(r["PNL"], r["PY_PNL"]), axis=1)
     return summary
+
+
+
+def growth_label(value: float | None) -> str:
+    if value is None or pd.isna(value):
+        return "N/A"
+    return f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
+
+
+def build_pnl_yoy_trend(
+    current_df: pd.DataFrame,
+    previous_df: pd.DataFrame,
+    trend_type: str,
+    date_col: str,
+    fy_start,
+    prev_fy_start,
+    divisor: float,
+) -> pd.DataFrame:
+    """Build Current FY versus LY P&L trend for daily, weekly, monthly or quarterly views."""
+    cur = current_df[[c for c in [date_col, "PNL", "FIN_MONTH"] if c in current_df.columns]].copy()
+    prev = (
+        previous_df[[c for c in [date_col, "PNL", "FIN_MONTH"] if c in previous_df.columns]].copy()
+        if previous_df is not None and not previous_df.empty
+        else pd.DataFrame()
+    )
+
+    cur[date_col] = pd.to_datetime(cur[date_col], errors="coerce")
+    if not prev.empty and date_col in prev.columns:
+        prev[date_col] = pd.to_datetime(prev[date_col], errors="coerce")
+
+    fy_start_ts = pd.to_datetime(fy_start)
+    prev_fy_start_ts = pd.to_datetime(prev_fy_start)
+
+    if trend_type == "Daily":
+        current = cur.groupby(cur[date_col].dt.date, dropna=True)["PNL"].sum().reset_index()
+        current.columns = ["Period", "PNL"]
+        current["Key"] = (pd.to_datetime(current["Period"]) - fy_start_ts).dt.days
+        if not prev.empty:
+            previous = prev.groupby(prev[date_col].dt.date, dropna=True)["PNL"].sum().reset_index()
+            previous.columns = ["Period", "PY_PNL"]
+            previous["Key"] = (pd.to_datetime(previous["Period"]) - prev_fy_start_ts).dt.days
+        else:
+            previous = pd.DataFrame(columns=["Key", "PY_PNL"])
+
+    elif trend_type == "Weekly":
+        current = cur.groupby(cur[date_col].dt.to_period("W"))["PNL"].sum().reset_index()
+        current["Period"] = current[date_col].astype(str)
+        current["Key"] = (current[date_col].dt.start_time - fy_start_ts).dt.days // 7
+        current = current.drop(columns=[date_col])
+        if not prev.empty:
+            previous = prev.groupby(prev[date_col].dt.to_period("W"))["PNL"].sum().reset_index()
+            previous["Key"] = (previous[date_col].dt.start_time - prev_fy_start_ts).dt.days // 7
+            previous = previous.rename(columns={"PNL": "PY_PNL"}).drop(columns=[date_col])
+        else:
+            previous = pd.DataFrame(columns=["Key", "PY_PNL"])
+
+    elif trend_type == "Quarterly":
+        cur["Period"] = cur["FIN_MONTH"].map(QUARTER_MAP)
+        current = cur.groupby("Period", observed=False)["PNL"].sum().reset_index()
+        current["Period"] = pd.Categorical(current["Period"], QUARTER_ORDER, ordered=True)
+        current = current.sort_values("Period")
+        current["Key"] = current["Period"].astype(str)
+        if not prev.empty:
+            prev["Key"] = prev["FIN_MONTH"].map(QUARTER_MAP)
+            previous = prev.groupby("Key", observed=False)["PNL"].sum().reset_index().rename(columns={"PNL": "PY_PNL"})
+        else:
+            previous = pd.DataFrame(columns=["Key", "PY_PNL"])
+
+    else:
+        cur["Period"] = cur["FIN_MONTH"].map(MONTH_MAP)
+        current = cur.groupby("Period", observed=False)["PNL"].sum().reset_index()
+        current["Period"] = pd.Categorical(current["Period"], MONTH_ORDER, ordered=True)
+        current = current.sort_values("Period")
+        current["Key"] = current["Period"].astype(str)
+        if not prev.empty:
+            prev["Key"] = prev["FIN_MONTH"].map(MONTH_MAP)
+            previous = prev.groupby("Key", observed=False)["PNL"].sum().reset_index().rename(columns={"PNL": "PY_PNL"})
+        else:
+            previous = pd.DataFrame(columns=["Key", "PY_PNL"])
+
+    current["P&L Display"] = pd.to_numeric(current["PNL"], errors="coerce").fillna(0) / divisor
+    if not previous.empty:
+        previous["LY P&L Display"] = pd.to_numeric(previous["PY_PNL"], errors="coerce").fillna(0) / divisor
+        current = current.merge(previous[["Key", "LY P&L Display"]], on="Key", how="left")
+    else:
+        current["LY P&L Display"] = 0.0
+
+    current["Growth %"] = current.apply(
+        lambda row: pct_change(row["P&L Display"], row["LY P&L Display"])
+        if row["LY P&L Display"] != 0 else None,
+        axis=1,
+    )
+    current["Growth Label"] = current["Growth %"].apply(growth_label)
+    return current
+
+
+def _ranking_summary(df: pd.DataFrame, prev_df: pd.DataFrame, column: str) -> pd.DataFrame:
+    current = df.groupby(column, dropna=False, as_index=False).agg(
+        PNL=("PNL", "sum"), Revenue=("REVENUE", "sum"), GRs=("grno", "nunique")
+    )
+    previous = (
+        prev_df.groupby(column, dropna=False, as_index=False).agg(PY_PNL=("PNL", "sum"))
+        if prev_df is not None and not prev_df.empty and column in prev_df.columns
+        else pd.DataFrame(columns=[column, "PY_PNL"])
+    )
+    result = current.merge(previous, on=column, how="left")
+    result["PY_PNL"] = pd.to_numeric(result["PY_PNL"], errors="coerce").fillna(0)
+    total = float(result["PNL"].sum())
+    result["Share %"] = result["PNL"].apply(lambda value: value / total * 100 if total else 0)
+    result["Growth %"] = result.apply(lambda row: pct_change(row["PNL"], row["PY_PNL"]), axis=1)
+    return result
+
+
+def _render_ranking_table(
+    data: pd.DataFrame,
+    name_col: str,
+    title: str,
+    unit: str,
+    divisor: float,
+    top_n: int,
+) -> None:
+    with st.container(border=True):
+        st.markdown(f'<div class="section-title">{escape(title)}</div>', unsafe_allow_html=True)
+        ranked = data.sort_values("PNL", ascending=False).head(top_n).copy()
+        if ranked.empty:
+            st.info("No data is available for the selected filters.")
+            return
+        ranked.insert(0, "Rank", range(1, len(ranked) + 1))
+        ranked["P&L"] = ranked["PNL"] / divisor
+        display = ranked[["Rank", name_col, "P&L", "Share %", "Growth %", "GRs"]]
+        st.dataframe(
+            display,
+            width="stretch",
+            hide_index=True,
+            height=min(465, 78 + (len(display) * 35)),
+            column_config={
+                "Rank": st.column_config.NumberColumn("#", format="%d", width="small"),
+                name_col: st.column_config.TextColumn(name_col, width="large"),
+                "P&L": st.column_config.NumberColumn(f"P&L ({unit})", format="%.2f"),
+                "Share %": st.column_config.NumberColumn("% Share", format="%.2f%%"),
+                "Growth %": st.column_config.NumberColumn("vs LY", format="%.1f%%"),
+                "GRs": st.column_config.NumberColumn("GRs", format="%d"),
+            },
+        )
 
 
 # =====================================================
@@ -470,118 +617,219 @@ def show_pnl_dashboard() -> None:
         with col:
             render_kpi_card(*spec)
 
-    # Row 1: monthly P&L trend + revenue/expense
-    monthly = build_monthly_comparison(df, prev_df, divisor)
-    left, right = st.columns([1.35, 1], gap="small")
+    # =====================================================
+    # Overview-style P&L insights and visuals
+    # =====================================================
+    trend_left, load_right = st.columns([1.20, 0.80], gap="small")
 
-    with left:
+    with trend_left:
         with st.container(border=True):
-            st.markdown('<div class="section-title">Monthly P&L: Current FY vs LY</div>', unsafe_allow_html=True)
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=monthly["Month"], y=monthly["PY_PNL"], name=f"LY ({prev_fy})",
-                marker_color="#cbd5e1", text=monthly["PY_PNL"], texttemplate="%{text:.2f}", textposition="outside",
+            title_col, period_col = st.columns([2, 2])
+            total_growth = pct_change(current["pnl"], previous["pnl"]) if previous["pnl"] else None
+            badge_color = "#166534" if total_growth is None or total_growth >= 0 else "#dc2626"
+            with title_col:
+                st.markdown(
+                    f'<div class="section-title">P&L Trend '
+                    f'<span style="font-size:11px;color:{badge_color};">'
+                    f'({growth_label(total_growth)} vs LY)</span></div>',
+                    unsafe_allow_html=True,
+                )
+            with period_col:
+                trend_type = st.segmented_control(
+                    "P&L trend period",
+                    ["Daily", "Weekly", "Monthly", "Quarterly"],
+                    default="Monthly",
+                    label_visibility="collapsed",
+                    key="pnl_trend_type",
+                ) or "Monthly"
+
+            trend_df = build_pnl_yoy_trend(
+                df, prev_df, trend_type, "grdt", start_date, prev_start, divisor
+            )
+            fig_trend = go.Figure()
+            fig_trend.add_trace(go.Bar(
+                x=trend_df["Period"], y=trend_df["LY P&L Display"],
+                name=f"LY ({prev_fy})", marker_color="#cbd5e1",
+                text=trend_df["LY P&L Display"], texttemplate="%{text:.2f}",
+                textposition="outside", cliponaxis=False,
+                hovertemplate=f"<b>%{{x}}</b><br>LY P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
             ))
-            fig.add_trace(go.Bar(
-                x=monthly["Month"], y=monthly["PNL"], name=f"Current ({fy})",
-                marker_color="#16a34a", text=monthly["PNL"], texttemplate="%{text:.2f}", textposition="outside",
+            fig_trend.add_trace(go.Bar(
+                x=trend_df["Period"], y=trend_df["P&L Display"],
+                name=f"Current ({fy})", marker_color="#16a34a",
+                text=trend_df["P&L Display"], texttemplate="%{text:.2f}",
+                textposition="outside", cliponaxis=False,
+                hovertemplate=f"<b>%{{x}}</b><br>Current P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
             ))
-            fig.add_hline(y=0, line_color="#64748b", line_width=1)
-            fig.update_layout(
-                barmode="group", height=325, margin=dict(l=5, r=5, t=20, b=5),
+            fig_trend.add_hline(y=0, line_color="#64748b", line_width=1)
+            fig_trend.update_layout(
+                barmode="group", height=330, margin=dict(l=5, r=5, t=24, b=5),
                 plot_bgcolor="#f8fafc", paper_bgcolor="rgba(0,0,0,0)",
                 yaxis_title=f"P&L ({unit})", xaxis_title="",
                 legend=dict(orientation="h", y=1.08, x=0),
             )
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            st.plotly_chart(fig_trend, width="stretch", config={"displayModeBar": False})
 
-    with right:
+    with load_right:
         with st.container(border=True):
-            st.markdown('<div class="section-title">Monthly Revenue vs Expense</div>', unsafe_allow_html=True)
-            fig = go.Figure()
-            fig.add_trace(go.Bar(x=monthly["Month"], y=monthly["Revenue"], name="Revenue", marker_color="#2563eb"))
-            fig.add_trace(go.Bar(x=monthly["Month"], y=monthly["Expense"], name="Expense", marker_color="#dc2626"))
-            fig.add_trace(go.Scatter(
-                x=monthly["Month"], y=monthly["PNL"], name="P&L", mode="lines+markers",
-                line=dict(color="#16a34a", width=3), marker=dict(size=7),
-            ))
-            fig.update_layout(
-                barmode="group", height=325, margin=dict(l=5, r=5, t=20, b=5),
-                plot_bgcolor="#f8fafc", paper_bgcolor="rgba(0,0,0,0)",
-                yaxis_title=f"Amount ({unit})", xaxis_title="",
-                legend=dict(orientation="h", y=1.08, x=0),
-            )
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-    # Row 2: Company, Zone, Load Type
-    c1, c2, c3 = st.columns(3, gap="small")
-    summaries = [
-        (c1, "COMPNAME", "Company-wise P&L", 10),
-        (c2, "zone", "Zone-wise P&L", 10),
-        (c3, "LOADTYPE", "Load Type-wise P&L", 10),
-    ]
-    for container_col, group_col, title, top_n in summaries:
-        with container_col:
-            with st.container(border=True):
-                st.markdown(f'<div class="section-title">{title}</div>', unsafe_allow_html=True)
-                summary = build_group_summary(df, prev_df, group_col).nlargest(top_n, "PNL").sort_values("PNL")
-                summary["PNL Display"] = summary["PNL"] / divisor
-                fig = px.bar(
-                    summary, x="PNL Display", y=group_col, orientation="h", text="PNL Display",
-                    color="Margin %", color_continuous_scale="RdYlGn",
-                    hover_data={"Revenue": ":,.0f", "Expense": ":,.0f", "Margin %": ":.2f", "Growth %": ":.1f"},
+            st.markdown('<div class="section-title">P&L by Load Type (CY)</div>', unsafe_allow_html=True)
+            load_summary = df.groupby("LOADTYPE", as_index=False)["PNL"].sum()
+            load_summary = load_summary[load_summary["LOADTYPE"].isin(["FTL", "LTL"])]
+            load_values = {
+                row["LOADTYPE"]: float(row["PNL"])
+                for _, row in load_summary.iterrows()
+            }
+            ftl_value = load_values.get("FTL", 0.0)
+            ltl_value = load_values.get("LTL", 0.0)
+            # A pie cannot represent negative values. Use absolute slice size while showing signed P&L.
+            pie_values = [abs(ftl_value), abs(ltl_value)]
+            if sum(pie_values) == 0:
+                st.info("No FTL/LTL P&L is available for the selected filters.")
+            else:
+                fig_load = go.Figure(go.Pie(
+                    labels=["FTL", "LTL"], values=pie_values, hole=0.66,
+                    marker=dict(colors=["#2563eb", "#0f766e"], line=dict(color="#ffffff", width=2)),
+                    customdata=[[ftl_value / divisor], [ltl_value / divisor]],
+                    textinfo="label+percent",
+                    hovertemplate=f"<b>%{{label}}</b><br>P&L: ₹%{{customdata[0]:.2f}} {unit}<extra></extra>",
+                ))
+                fig_load.update_layout(
+                    height=330, margin=dict(l=5, r=5, t=10, b=5),
+                    paper_bgcolor="rgba(0,0,0,0)", showlegend=True,
+                    legend=dict(orientation="h", y=-0.02, x=0.28),
+                    annotations=[dict(
+                        text=f"₹{current['pnl'] / divisor:.2f}<br>{unit} P&L",
+                        x=0.5, y=0.5, showarrow=False,
+                        font=dict(size=15, color="#0f172a"),
+                    )],
                 )
-                fig.update_traces(texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False)
-                fig.add_vline(x=0, line_color="#64748b", line_width=1)
-                fig.update_layout(
-                    height=330, margin=dict(l=5, r=25, t=8, b=5),
+                st.plotly_chart(fig_load, width="stretch", config={"displayModeBar": False})
+
+    zone_left, country_right = st.columns([0.80, 1.20], gap="small")
+
+    with zone_left:
+        with st.container(border=True):
+            st.markdown('<div class="section-title">P&L by Zone</div>', unsafe_allow_html=True)
+            zone_df = df.groupby("zone", as_index=False)["PNL"].sum().sort_values("PNL", ascending=False)
+            if zone_df.empty:
+                st.info("No zone P&L is available for the selected filters.")
+            else:
+                zone_df["P&L Display"] = zone_df["PNL"] / divisor
+                fig_zone = px.bar(
+                    zone_df.sort_values("PNL"), x="P&L Display", y="zone",
+                    orientation="h", text="P&L Display",
+                    color="P&L Display", color_continuous_scale="RdYlGn",
+                )
+                fig_zone.update_traces(texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False)
+                fig_zone.add_vline(x=0, line_color="#64748b", line_width=1)
+                fig_zone.update_layout(
+                    height=360, margin=dict(l=5, r=28, t=8, b=5),
                     xaxis_title=f"P&L ({unit})", yaxis_title="",
                     plot_bgcolor="#f8fafc", paper_bgcolor="rgba(0,0,0,0)",
                     coloraxis_showscale=False,
                 )
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+                st.plotly_chart(fig_zone, width="stretch", config={"displayModeBar": False})
 
-    # Row 3: Branch profitability and loss-making branches
-    branch_summary = build_group_summary(df, prev_df, "branch")
-    b1, b2 = st.columns([1.25, 1], gap="small")
-
-    with b1:
+    with country_right:
         with st.container(border=True):
-            st.markdown('<div class="section-title">Top 15 Branches by P&L</div>', unsafe_allow_html=True)
-            top_branches = branch_summary.nlargest(15, "PNL").sort_values("PNL")
-            top_branches["PNL Display"] = top_branches["PNL"] / divisor
-            fig = px.bar(
-                top_branches, x="PNL Display", y="branch", orientation="h", text="PNL Display",
-                color="Margin %", color_continuous_scale="Tealgrn",
-            )
-            fig.update_traces(texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False)
-            fig.update_layout(
-                height=430, margin=dict(l=5, r=30, t=8, b=5),
-                xaxis_title=f"P&L ({unit})", yaxis_title="", coloraxis_showscale=False,
-                plot_bgcolor="#f8fafc", paper_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-    with b2:
-        with st.container(border=True):
-            st.markdown('<div class="section-title">Top 15 Loss-Making Branches</div>', unsafe_allow_html=True)
-            loss_branches = branch_summary[branch_summary["PNL"] < 0].nsmallest(15, "PNL").copy()
-            if loss_branches.empty:
-                st.success("No loss-making branch for selected filters.")
+            st.markdown('<div class="section-title">Zone-wise Country P&L</div>', unsafe_allow_html=True)
+            if view_type != "Origin":
+                st.info("Zone-wise Country P&L is available in Origin view.")
+            elif "COUNTRY" not in df.columns:
+                st.info("COUNTRY column is not available in the P&L dataset.")
             else:
-                loss_branches["Loss Display"] = loss_branches["PNL"] / divisor
-                fig = px.bar(
-                    loss_branches.sort_values("PNL", ascending=False),
-                    x="Loss Display", y="branch", orientation="h", text="Loss Display",
-                    color_discrete_sequence=["#dc2626"],
+                matrix_source = df.groupby(["zone", "COUNTRY"], dropna=False)["PNL"].sum().reset_index()
+                matrix_source["P&L"] = matrix_source["PNL"] / divisor
+                matrix = matrix_source.pivot(index="zone", columns="COUNTRY", values="P&L").fillna(0)
+                matrix["Total"] = matrix.sum(axis=1)
+                matrix = matrix.sort_values("Total", ascending=False).reset_index()
+                st.dataframe(
+                    matrix,
+                    width="stretch", hide_index=True, height=360,
+                    column_config={
+                        col: st.column_config.NumberColumn(col, format="%.2f")
+                        for col in matrix.columns if col != "zone"
+                    },
                 )
-                fig.update_traces(texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False)
-                fig.update_layout(
-                    height=430, margin=dict(l=5, r=30, t=8, b=5),
-                    xaxis_title=f"P&L ({unit})", yaxis_title="",
-                    plot_bgcolor="#f8fafc", paper_bgcolor="rgba(0,0,0,0)",
-                )
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+    customer_col = "Customer" if "Customer" in df.columns else ("Consignor" if "Consignor" in df.columns else None)
+    route_col = "Route" if "Route" in df.columns else None
+
+    rank_left, rank_right = st.columns(2, gap="small")
+    with rank_left:
+        customer_top_n = st.selectbox(
+            "Top N Customers", TOP_N_OPTIONS, index=0, key="pnl_customer_top_n"
+        )
+        if customer_col:
+            customer_rank = _ranking_summary(df, prev_df, customer_col)
+            _render_ranking_table(
+                customer_rank, customer_col,
+                f"Top {customer_top_n} Customers by P&L", unit, divisor, customer_top_n,
+            )
+        else:
+            with st.container(border=True):
+                st.info("Customer/Consignor column is not available in the P&L dataset.")
+
+    with rank_right:
+        route_top_n = st.selectbox(
+            "Top N Routes", TOP_N_OPTIONS, index=0, key="pnl_route_top_n"
+        )
+        if route_col:
+            route_rank = _ranking_summary(df, prev_df, route_col)
+            _render_ranking_table(
+                route_rank, route_col,
+                f"Top {route_top_n} Routes by P&L", unit, divisor, route_top_n,
+            )
+        else:
+            with st.container(border=True):
+                st.info("Route column is not available in the P&L dataset.")
+
+    branch_summary = build_group_summary(df, prev_df, "branch")
+    with st.container(border=True):
+        st.markdown('<div class="section-title">Branches by P&L</div>', unsafe_allow_html=True)
+        pnl_slab_options = [
+            "All", "Loss", "₹0–5 Lac", "₹5–10 Lac", "₹10–25 Lac",
+            "₹25–50 Lac", "₹50 Lac & Above",
+        ]
+        selected_slab = st.segmented_control(
+            "Branch P&L slab", pnl_slab_options, default="All",
+            key="top_branch_pnl_slab", label_visibility="collapsed", width="stretch",
+        ) or "All"
+        slab_ranges = {
+            "All": (None, None), "Loss": (None, 0), "₹0–5 Lac": (0, 500000),
+            "₹5–10 Lac": (500000, 1000000), "₹10–25 Lac": (1000000, 2500000),
+            "₹25–50 Lac": (2500000, 5000000), "₹50 Lac & Above": (5000000, None),
+        }
+        lower, upper = slab_ranges[selected_slab]
+        branch_rank = branch_summary.copy()
+        if selected_slab == "Loss":
+            branch_rank = branch_rank[branch_rank["PNL"] < 0]
+        else:
+            if lower is not None:
+                branch_rank = branch_rank[branch_rank["PNL"] >= lower]
+            if upper is not None:
+                branch_rank = branch_rank[branch_rank["PNL"] < upper]
+        branch_rank = branch_rank.sort_values("PNL", ascending=False)
+        if branch_rank.empty:
+            st.info(f"No branch falls in the {selected_slab} P&L slab.")
+        else:
+            branch_rank["P&L Display"] = branch_rank["PNL"] / divisor
+            branch_rank["Revenue Display"] = branch_rank["Revenue"] / divisor
+            branch_rank["Expense Display"] = branch_rank["Expense"] / divisor
+            st.dataframe(
+                branch_rank[["branch", "P&L Display", "Revenue Display", "Expense Display", "Margin %", "GRs"]],
+                width="stretch", hide_index=True, height=430,
+                column_config={
+                    "branch": st.column_config.TextColumn("Branch", width="large"),
+                    "P&L Display": st.column_config.NumberColumn(f"P&L ({unit})", format="%.2f"),
+                    "Revenue Display": st.column_config.NumberColumn(f"Revenue ({unit})", format="%.2f"),
+                    "Expense Display": st.column_config.NumberColumn(f"Expense ({unit})", format="%.2f"),
+                    "Margin %": st.column_config.NumberColumn("Margin %", format="%.2f%%"),
+                    "GRs": st.column_config.NumberColumn("GRs", format="%d"),
+                },
+            )
+
+    monthly = build_monthly_comparison(df, prev_df, divisor)
 
     # Detailed tabs
     tab1, tab2, tab3 = st.tabs(["Branch Summary", "Monthly Summary", "Detailed GR Records"])
@@ -625,7 +873,7 @@ def show_pnl_dashboard() -> None:
         detail_columns = [
             col for col in [
                 "COMPNAME", "zone", "circle", "branch", "grno", "grdt", "GRTYPE",
-                "LOADTYPE", "Consignor", "Consignee", "Route", "REVENUE",
+                "LOADTYPE", "Customer", "Consignor", "Consignee", "Route", "COUNTRY", "REVENUE",
                 "DELIVERYINCOME", "ADDITIONALFREIGHT", "OTHERINCOME", "RAW_EXPENSE",
                 "EXPENSE", "PNL",
             ] if col in df.columns
