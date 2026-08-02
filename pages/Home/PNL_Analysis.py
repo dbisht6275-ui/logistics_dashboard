@@ -529,38 +529,396 @@ def show_pnl_dashboard() -> None:
         with col:
             render_kpi_card(*spec)
 
-    # Overview-style P&L insights
+    # =====================================================
+    # STEP 1: Overview-style P&L Trend, Load Type and Company
+    # =====================================================
     st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
 
     row1, row2 = st.columns([1.20, 0.80])
+
     with row1:
         with st.container(border=True):
             title_col, filter_col = st.columns([2, 2])
+
             total_growth = pct_change(current["pnl"], previous["pnl"])
             with title_col:
-                badge_color = "#166534" if total_growth >= 0 else "#dc2626"
-                arrow = "▲" if total_growth >= 0 else "▼"
-                st.markdown(f"<div style='font-size:14px;font-weight:400;color:#0f172a;'>P&L Trend <span style='font-size:11px;font-weight:700;color:{badge_color};'>({arrow} {abs(total_growth):.1f}% vs LY)</span></div>", unsafe_allow_html=True)
+                trend_badge_color = "#166534" if total_growth >= 0 else "#dc2626"
+                trend_arrow = "▲" if total_growth >= 0 else "▼"
+                st.markdown(
+                    f"<div style='font-size:14px;font-weight:400;color:#0f172a;'>P&L Trend "
+                    f"<span style='font-size:11px;font-weight:700;color:{trend_badge_color};'>"
+                    f"({trend_arrow} {abs(total_growth):.1f}% vs LY)</span></div>",
+                    unsafe_allow_html=True,
+                )
+
             with filter_col:
-                trend_type = st.segmented_control("P&L trend period", ["Daily", "Weekly", "Monthly", "Quarterly"], default="Monthly", label_visibility="collapsed", key="pnl_trend_type") or "Monthly"
-            trend_df = build_pnl_yoy_trend(df, prev_df, trend_type, "grdt", start_date, prev_start)
-            trend_df["Current"] = trend_df["PNL"] / divisor; trend_df["Previous"] = trend_df["PY_PNL"] / divisor
+                trend_type = st.segmented_control(
+                    "P&L trend period",
+                    ["Daily", "Weekly", "Monthly", "Quarterly"],
+                    default="Monthly",
+                    label_visibility="collapsed",
+                    key="pnl_trend_type",
+                ) or "Monthly"
+
+            trend_df = build_pnl_yoy_trend(
+                df, prev_df, trend_type, "grdt", start_date, prev_start
+            )
+            trend_df["Current P&L"] = pd.to_numeric(
+                trend_df["PNL"], errors="coerce"
+            ).fillna(0) / divisor
+            trend_df["Previous P&L"] = pd.to_numeric(
+                trend_df["PY_PNL"], errors="coerce"
+            ).fillna(0) / divisor
+            trend_df["Growth %"] = trend_df.apply(
+                lambda r: pct_change(r["Current P&L"], r["Previous P&L"]),
+                axis=1,
+            )
+            trend_df["Growth Label"] = trend_df["Growth %"].apply(
+                lambda value: f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
+            )
+
             fig_yoy = go.Figure()
-            fig_yoy.add_trace(go.Bar(x=trend_df["Period"], y=trend_df["Previous"], name=f"LY ({prev_fy})", marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.3)), text=trend_df["Previous"], texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False))
-            fig_yoy.add_trace(go.Bar(x=trend_df["Period"], y=trend_df["Current"], name=f"Current ({fy})", marker=dict(color="#2563eb", line=dict(color="#1e3a8a", width=1.3)), text=trend_df["Current"], texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False))
+            fig_yoy.add_trace(
+                go.Bar(
+                    x=trend_df["Period"],
+                    y=trend_df["Previous P&L"],
+                    name=f"LY ({prev_fy})",
+                    marker=dict(
+                        color="#cbd5e1",
+                        line=dict(color="#94a3b8", width=1.3),
+                    ),
+                    text=trend_df["Previous P&L"],
+                    texttemplate="%{text:.2f}",
+                    textposition="outside",
+                    textfont=dict(size=12, color="#475569", family="Arial"),
+                    cliponaxis=False,
+                    hovertemplate=(
+                        f"<b>%{{x}}</b><br>LY P&L: ₹%{{y:.2f}} {unit}<extra></extra>"
+                    ),
+                )
+            )
+            fig_yoy.add_trace(
+                go.Bar(
+                    x=trend_df["Period"],
+                    y=trend_df["Current P&L"],
+                    name=f"Current ({fy})",
+                    marker=dict(
+                        color="#2563eb",
+                        line=dict(color="#1e3a8a", width=1.3),
+                    ),
+                    text=trend_df["Current P&L"],
+                    texttemplate="%{text:.2f}",
+                    textposition="outside",
+                    textfont=dict(size=12, color="#1d4ed8", family="Arial"),
+                    cliponaxis=False,
+                    hovertemplate=(
+                        f"<b>%{{x}}</b><br>Current P&L: ₹%{{y:.2f}} {unit}<extra></extra>"
+                    ),
+                )
+            )
+
+            all_trend_values = pd.concat(
+                [
+                    trend_df["Current P&L"].abs(),
+                    trend_df["Previous P&L"].abs(),
+                ],
+                ignore_index=True,
+            )
+            trend_max = all_trend_values.max()
+            trend_max = trend_max if pd.notna(trend_max) and trend_max > 0 else 1
+
+            if len(trend_df) <= 40:
+                for _, trend_row in trend_df.iterrows():
+                    growth_value = float(trend_row["Growth %"] or 0)
+                    label_color = "#166534" if growth_value >= 0 else "#dc2626"
+                    current_value = float(trend_row["Current P&L"] or 0)
+                    previous_value = float(trend_row["Previous P&L"] or 0)
+                    positive_top = max(current_value, previous_value, 0)
+                    negative_bottom = min(current_value, previous_value, 0)
+                    gap = trend_max * (0.24 if trend_type == "Monthly" else 0.16)
+                    annotation_y = positive_top + gap if positive_top > 0 else negative_bottom - gap
+                    fig_yoy.add_annotation(
+                        x=trend_row["Period"],
+                        y=annotation_y,
+                        text=trend_row["Growth Label"],
+                        showarrow=False,
+                        font=dict(size=12, color=label_color, family="Arial"),
+                    )
+
             fig_yoy.add_hline(y=0, line_color="#64748b", line_width=1)
-            fig_yoy.update_layout(barmode="group", height=310, margin=dict(l=8,r=8,t=24,b=8), plot_bgcolor="#f8fafc", paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=1.05, x=0), yaxis_title=f"P&L ({unit})", bargap=.22, bargroupgap=.08)
-            fig_yoy.update_xaxes(showgrid=False, showline=False, zeroline=False); fig_yoy.update_yaxes(showgrid=False, showline=False, zeroline=False)
-            st.plotly_chart(fig_yoy, width="stretch", config={"displayModeBar":False,"responsive":True})
+            fig_yoy.update_layout(
+                barmode="group",
+                height=310,
+                margin=dict(l=8, r=8, t=24, b=8),
+                plot_bgcolor="#f8fafc",
+                paper_bgcolor="rgba(0,0,0,0)",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.05,
+                    x=0,
+                    font=dict(size=11),
+                ),
+                font=dict(size=11, family="Arial"),
+                xaxis_title="",
+                yaxis_title=f"P&L ({unit})",
+                bargap=0.22,
+                bargroupgap=0.08,
+            )
+            fig_yoy.update_xaxes(
+                showgrid=False,
+                showline=False,
+                zeroline=False,
+                tickfont=dict(size=11),
+            )
+            fig_yoy.update_yaxes(
+                showgrid=False,
+                showline=False,
+                zeroline=False,
+                tickfont=dict(size=11),
+                title_font=dict(size=12),
+            )
+            st.plotly_chart(
+                fig_yoy,
+                width="stretch",
+                config={"displayModeBar": False, "responsive": True},
+            )
 
     with row2:
+        LOAD_TITLE_FONT = 16
+        LOAD_CENTER_VALUE_FONT = 19
+        LOAD_CENTER_LABEL_FONT = 12
+        LOAD_LABEL_FONT = 14
+        LOAD_VALUE_FONT = 14
+        LOAD_SUBTEXT_FONT = 12
+
+        COMPANY_TITLE_FONT = 16
+        COMPANY_NAME_FONT = 13
+        COMPANY_VALUE_FONT = 13
+        COMPANY_SUBTEXT_FONT = 11
+
+        # P&L by Load Type — same Overview layout with LY arrow indicators.
         with st.container(border=True):
-            st.markdown('<div style="font-size:16px;font-weight:600;color:#0f172a;margin:0 0 5px 0;line-height:1.1;">P&L by Load Type (CY)</div>', unsafe_allow_html=True)
-            ftl = float(df.loc[df["LOADTYPE"].eq("FTL"), "PNL"].sum()); ltl = float(df.loc[df["LOADTYPE"].eq("LTL"), "PNL"].sum())
-            fig_load = go.Figure(go.Pie(labels=["FTL","LTL"], values=[abs(ftl),abs(ltl)], customdata=[ftl/divisor,ltl/divisor], hole=.66, marker=dict(colors=["#2563eb","#0f766e"], line=dict(color="#fff",width=2)), textinfo="none", sort=False, hovertemplate=f"<b>%{{label}}</b><br>P&L: ₹%{{customdata:.2f}} {unit}<extra></extra>"))
-            fig_load.add_annotation(text=f"<b>₹{(ftl+ltl)/divisor:.2f}</b><br><span style='font-size:10px'>{unit}</span>", x=.5,y=.5,showarrow=False)
-            fig_load.update_layout(height=310, margin=dict(l=5,r=5,t=10,b=5), showlegend=True, legend=dict(orientation="h",y=-.05,x=.5,xanchor="center"), paper_bgcolor="rgba(0,0,0,0)")
-            st.plotly_chart(fig_load, width="stretch", config={"displayModeBar":False,"responsive":True})
+            st.markdown(
+                f'<div style="font-size:{LOAD_TITLE_FONT}px;font-weight:600;'
+                f'color:#0f172a;margin:0 0 5px 0;line-height:1.1;">'
+                f'P&L by Load Type (CY)</div>',
+                unsafe_allow_html=True,
+            )
+
+            ftl = float(df.loc[df["LOADTYPE"].eq("FTL"), "PNL"].sum())
+            ltl = float(df.loc[df["LOADTYPE"].eq("LTL"), "PNL"].sum())
+            prev_ftl = float(
+                prev_df.loc[prev_df["LOADTYPE"].eq("FTL"), "PNL"].sum()
+            ) if prev_df is not None and not prev_df.empty else 0.0
+            prev_ltl = float(
+                prev_df.loc[prev_df["LOADTYPE"].eq("LTL"), "PNL"].sum()
+            ) if prev_df is not None and not prev_df.empty else 0.0
+
+            load_abs_total = abs(ftl) + abs(ltl)
+            ftl_share = abs(ftl) / load_abs_total * 100 if load_abs_total else 0
+            ltl_share = abs(ltl) / load_abs_total * 100 if load_abs_total else 0
+            ftl_yoy = pct_change(ftl, prev_ftl)
+            ltl_yoy = pct_change(ltl, prev_ltl)
+
+            load_chart_col, load_legend_col = st.columns(
+                [0.80, 1.20],
+                gap="small",
+                vertical_alignment="center",
+            )
+
+            with load_chart_col:
+                fig_load = go.Figure(
+                    data=[
+                        go.Pie(
+                            labels=["FTL", "LTL"],
+                            values=[abs(ftl), abs(ltl)],
+                            customdata=[ftl / divisor, ltl / divisor],
+                            hole=0.66,
+                            sort=False,
+                            rotation=0,
+                            direction="clockwise",
+                            marker=dict(
+                                colors=["#2563eb", "#0f766e"],
+                                line=dict(color="#ffffff", width=1.5),
+                            ),
+                            textinfo="none",
+                            hovertemplate=(
+                                "<b>%{label}</b><br>"
+                                f"P&L: ₹%{{customdata:.2f}} {unit}<br>"
+                                "Share: %{percent}<extra></extra>"
+                            ),
+                        )
+                    ]
+                )
+                fig_load.update_layout(
+                    height=165,
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    showlegend=False,
+                    annotations=[
+                        dict(
+                            x=0.5,
+                            y=0.55,
+                            text=f"<b>₹{(ftl + ltl) / divisor:.2f} {unit}</b>",
+                            showarrow=False,
+                            font=dict(
+                                size=LOAD_CENTER_VALUE_FONT,
+                                color="#0f172a",
+                                family="Arial",
+                            ),
+                        ),
+                        dict(
+                            x=0.5,
+                            y=0.39,
+                            text="Total P&L",
+                            showarrow=False,
+                            font=dict(
+                                size=LOAD_CENTER_LABEL_FONT,
+                                color="#64748b",
+                                family="Arial",
+                            ),
+                        ),
+                    ],
+                )
+                st.plotly_chart(
+                    fig_load,
+                    width="stretch",
+                    config={"displayModeBar": False, "responsive": True},
+                )
+
+            with load_legend_col:
+                def _load_row(label, value, share, py_value, growth, dot_color):
+                    growth_color = "#16a34a" if growth >= 0 else "#dc2626"
+                    growth_arrow = "▲" if growth >= 0 else "▼"
+                    value_color = "#0f172a" if value >= 0 else "#dc2626"
+                    return (
+                        '<div style="display:grid;'
+                        'grid-template-columns:13px minmax(40px,.75fr) minmax(84px,auto) minmax(48px,auto);'
+                        'align-items:center;gap:8px;">'
+                        f'<span style="width:11px;height:11px;border-radius:50%;background:{dot_color};display:inline-block;"></span>'
+                        f'<span style="font-size:{LOAD_LABEL_FONT}px;font-weight:600;color:#334155;">{label}</span>'
+                        f'<span style="font-size:{LOAD_VALUE_FONT}px;font-weight:700;color:{value_color};white-space:nowrap;">'
+                        f'₹{value / divisor:.2f} {unit}</span>'
+                        f'<span style="font-size:{LOAD_VALUE_FONT}px;font-weight:700;color:#334155;white-space:nowrap;text-align:right;">'
+                        f'{share:.1f}%</span>'
+                        f'<span style="grid-column:2/5;font-size:{LOAD_SUBTEXT_FONT}px;color:#64748b;white-space:nowrap;">'
+                        f'LY ₹{py_value / divisor:.2f} {unit} · '
+                        f'<span style="color:{growth_color};font-weight:700;">'
+                        f'{growth_arrow} {abs(growth):.1f}%</span></span>'
+                        '</div>'
+                    )
+
+                load_legend_html = (
+                    '<div style="display:flex;flex-direction:column;gap:15px;padding:4px 0;line-height:1.2;">'
+                    + _load_row("FTL", ftl, ftl_share, prev_ftl, ftl_yoy, "#2563eb")
+                    + _load_row("LTL", ltl, ltl_share, prev_ltl, ltl_yoy, "#0f766e")
+                    + '</div>'
+                )
+                if hasattr(st, "html"):
+                    st.html(load_legend_html)
+                else:
+                    st.markdown(load_legend_html, unsafe_allow_html=True)
+
+        # P&L by Company — same Overview layout with LY arrow indicators.
+        company_df = (
+            df.groupby("COMPNAME", dropna=False)["PNL"]
+            .sum()
+            .reset_index()
+            .rename(columns={"COMPNAME": "Company", "PNL": "CY PNL"})
+        )
+        company_df["Company"] = company_df["Company"].fillna("Unknown").astype(str)
+
+        if prev_df is not None and not prev_df.empty and "COMPNAME" in prev_df.columns:
+            prev_company_df = (
+                prev_df.groupby("COMPNAME", dropna=False)["PNL"]
+                .sum()
+                .reset_index()
+                .rename(columns={"COMPNAME": "Company", "PNL": "PY PNL"})
+            )
+            prev_company_df["Company"] = (
+                prev_company_df["Company"].fillna("Unknown").astype(str)
+            )
+        else:
+            prev_company_df = pd.DataFrame(columns=["Company", "PY PNL"])
+
+        company_df = company_df.merge(prev_company_df, on="Company", how="left")
+        company_df["PY PNL"] = pd.to_numeric(
+            company_df["PY PNL"], errors="coerce"
+        ).fillna(0)
+        company_df["P&L Display"] = company_df["CY PNL"] / divisor
+        company_df["PY P&L Display"] = company_df["PY PNL"] / divisor
+        company_abs_total = company_df["CY PNL"].abs().sum()
+        company_df["Contribution %"] = (
+            company_df["CY PNL"].abs() / company_abs_total * 100
+            if company_abs_total
+            else 0
+        )
+        company_df["Growth %"] = company_df.apply(
+            lambda row: pct_change(row["CY PNL"], row["PY PNL"]),
+            axis=1,
+        )
+        company_df = company_df.sort_values(
+            "CY PNL", ascending=False
+        ).reset_index(drop=True)
+        company_chart_df = company_df.head(6).copy()
+
+        with st.container(border=True):
+            st.markdown(
+                f'<div style="font-size:{COMPANY_TITLE_FONT}px;font-weight:600;'
+                f'color:#0f172a;margin:0 0 7px 0;line-height:1.2;">'
+                f'P&L by Company (CY)</div>',
+                unsafe_allow_html=True,
+            )
+
+            if company_chart_df.empty:
+                st.info("No company P&L is available for the selected filters.")
+            else:
+                company_colors = [
+                    "#2563eb", "#0f9f8f", "#7c3aed",
+                    "#f59e0b", "#ec4899", "#64748b",
+                ]
+                max_company_value = float(company_chart_df["CY PNL"].abs().max() or 1)
+                company_rows = []
+
+                for idx, company_row in company_chart_df.iterrows():
+                    company_name = escape(str(company_row["Company"]))
+                    raw_value = float(company_row["CY PNL"] or 0)
+                    value = float(company_row["P&L Display"] or 0)
+                    share = float(company_row["Contribution %"] or 0)
+                    py_value = float(company_row["PY P&L Display"] or 0)
+                    growth = float(company_row["Growth %"] or 0)
+                    width_pct = min(abs(raw_value) / max_company_value * 100, 100)
+                    color = company_colors[idx % len(company_colors)]
+                    growth_color = "#16a34a" if growth >= 0 else "#dc2626"
+                    growth_arrow = "▲" if growth >= 0 else "▼"
+                    value_color = "#0f172a" if raw_value >= 0 else "#dc2626"
+                    bar_color = color if raw_value >= 0 else "#dc2626"
+
+                    company_rows.append(
+                        f'<div title="{company_name} | LY ₹{py_value:.2f} {unit} | {growth_arrow} {abs(growth):.1f}%" '
+                        f'style="display:grid;grid-template-columns:minmax(150px,195px) minmax(55px,1fr) '
+                        f'minmax(84px,auto) minmax(58px,auto);align-items:center;gap:8px;margin:9px 0;line-height:1.2;">'
+                        f'<div style="font-size:{COMPANY_NAME_FONT}px;font-weight:600;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{company_name}</div>'
+                        f'<div style="height:9px;background:#e8eef5;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
+                        f'<div style="height:9px;width:{width_pct:.2f}%;background:{bar_color};border-radius:999px;"></div></div>'
+                        f'<div style="font-size:{COMPANY_VALUE_FONT}px;font-weight:700;color:{value_color};white-space:nowrap;">₹{value:.2f} {unit}</div>'
+                        f'<div style="font-size:{COMPANY_VALUE_FONT}px;font-weight:700;color:#334155;min-width:54px;text-align:right;white-space:nowrap;">{share:.2f}%</div>'
+                        f'<div style="grid-column:2/5;margin-top:-3px;font-size:{COMPANY_SUBTEXT_FONT}px;color:#64748b;white-space:nowrap;">'
+                        f'LY ₹{py_value:.2f} {unit} · <span style="color:{growth_color};font-weight:700;">'
+                        f'{growth_arrow} {abs(growth):.1f}%</span></div></div>'
+                    )
+
+                company_html = (
+                    '<div style="padding:0 3px 4px 3px;">'
+                    + ''.join(company_rows)
+                    + '</div>'
+                )
+                if hasattr(st, "html"):
+                    st.html(company_html)
+                else:
+                    st.markdown(company_html, unsafe_allow_html=True)
 
     st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
     with st.container(border=True):
