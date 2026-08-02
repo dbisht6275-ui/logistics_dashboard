@@ -336,24 +336,235 @@ def build_pnl_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start,
     return trend
 
 
-def render_top_n_pnl_table(df, prev_df, group_col, entity_name, unit, divisor, widget_key):
-    top_n = st.selectbox(f"{entity_name} count", TOP_N_OPTIONS, index=0, key=f"{widget_key}_top_n", label_visibility="collapsed")
-    current_rank = df.groupby(group_col, dropna=False, as_index=False)["PNL"].sum()
-    previous_rank = prev_df.groupby(group_col, dropna=False, as_index=False)["PNL"].sum().rename(columns={"PNL": "PY_PNL"}) if prev_df is not None and not prev_df.empty and group_col in prev_df.columns else pd.DataFrame(columns=[group_col, "PY_PNL"])
-    ranking = current_rank.merge(previous_rank, on=group_col, how="left")
-    ranking["PY_PNL"] = pd.to_numeric(ranking["PY_PNL"], errors="coerce").fillna(0)
-    ranking["Growth"] = ranking.apply(lambda r: pct_change(r["PNL"], r["PY_PNL"]), axis=1)
-    ranking = ranking.sort_values("PNL", ascending=False).head(top_n).reset_index(drop=True)
-    total = float(df["PNL"].sum())
-    st.markdown(f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top {top_n} {entity_name} by P&L</div>", unsafe_allow_html=True)
-    rows = []
-    for i, row in ranking.iterrows():
-        value = float(row["PNL"]); growth = float(row["Growth"]); share = value / total * 100 if total else 0
-        arrow = "▲" if growth >= 0 else "▼"; color = "#16a34a" if growth >= 0 else "#dc2626"
-        rows.append(f'<tr><td style="text-align:center">{i+1}</td><td>{escape(str(row[group_col]))}</td><td>₹{value/divisor:,.2f} {unit}</td><td style="text-align:right">{share:.2f}%</td><td style="text-align:right;color:{color}">{arrow} {abs(growth):.1f}%</td></tr>')
-    html = '<div style="max-height:420px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr><th style="padding:8px;background:#f8fafc">#</th><th style="padding:8px;background:#f8fafc;text-align:left">'+entity_name[:-1]+'</th><th style="padding:8px;background:#f8fafc;text-align:left">P&L ('+unit+')</th><th style="padding:8px;background:#f8fafc;text-align:right">% Share</th><th style="padding:8px;background:#f8fafc;text-align:right">vs LY</th></tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>'
-    st.html(html) if hasattr(st, "html") else st.markdown(html, unsafe_allow_html=True)
+def render_top_n_pnl_table(
+    df,
+    prev_df,
+    group_col,
+    entity_name,
+    unit,
+    divisor,
+    widget_key,
+    subtitle="",
+):
+    """Render the Overview-style Top-N insight table using P&L instead of business."""
+    title_col, selector_col = st.columns(
+        [4.2, 1.0],
+        gap="small",
+        vertical_alignment="center",
+    )
 
+    with selector_col:
+        top_n = st.selectbox(
+            f"{entity_name} to display",
+            TOP_N_OPTIONS,
+            index=0,
+            format_func=lambda value: f"Top {value}",
+            key=f"{widget_key}_top_n",
+            label_visibility="collapsed",
+        )
+
+    with title_col:
+        st.markdown(
+            f"<div style='font-size:18px;font-weight:400;color:#0f2744;"
+            f"margin:1px 0 9px 2px;'>Top {top_n} {entity_name} by P&amp;L</div>"
+            f"<div style='font-size:12px;font-weight:400;color:#64748b;"
+            f"margin-top:-4px;'>{escape(subtitle)}</div>",
+            unsafe_allow_html=True,
+        )
+
+    current_data = df[[group_col, "PNL"]].copy()
+    current_data[group_col] = (
+        current_data[group_col]
+        .fillna("Unknown")
+        .astype(str)
+        .str.strip()
+        .replace("", "Unknown")
+    )
+    current_rank = (
+        current_data[current_data[group_col].ne("Unknown")]
+        .groupby(group_col, dropna=False)["PNL"]
+        .sum()
+        .reset_index(name="Current PNL")
+    )
+
+    if (
+        prev_df is not None
+        and not prev_df.empty
+        and group_col in prev_df.columns
+        and "PNL" in prev_df.columns
+    ):
+        previous_data = prev_df[[group_col, "PNL"]].copy()
+        previous_data[group_col] = (
+            previous_data[group_col]
+            .fillna("Unknown")
+            .astype(str)
+            .str.strip()
+            .replace("", "Unknown")
+        )
+        previous_rank = (
+            previous_data[previous_data[group_col].ne("Unknown")]
+            .groupby(group_col, dropna=False)["PNL"]
+            .sum()
+            .reset_index(name="Previous PNL")
+        )
+    else:
+        previous_rank = pd.DataFrame(columns=[group_col, "Previous PNL"])
+
+    ranking = current_rank.merge(previous_rank, on=group_col, how="left")
+    ranking["Previous PNL"] = pd.to_numeric(
+        ranking["Previous PNL"], errors="coerce"
+    ).fillna(0.0)
+    ranking["P&L Display"] = (
+        pd.to_numeric(ranking["Current PNL"], errors="coerce").fillna(0.0)
+        / divisor
+    ).round(2)
+
+    # Share is based on absolute P&L so mixed profit/loss values remain meaningful.
+    total_abs_pnl = float(ranking["Current PNL"].abs().sum())
+    ranking["Share %"] = (
+        ranking["Current PNL"].abs() / total_abs_pnl * 100
+        if total_abs_pnl else 0.0
+    )
+    ranking["Growth %"] = ranking.apply(
+        lambda row: pct_change(row["Current PNL"], row["Previous PNL"])
+        if row["Previous PNL"] != 0 else None,
+        axis=1,
+    )
+    ranking = (
+        ranking.sort_values("Current PNL", ascending=False)
+        .head(top_n)
+        .reset_index(drop=True)
+    )
+
+    if ranking.empty:
+        st.info(f"No {entity_name.lower()} P&L is available for the selected filters.")
+        return
+
+    max_abs_value = max(float(ranking["P&L Display"].abs().max()), 1.0)
+    prefix = "cust" if entity_name == "Customers" else "route"
+    bar_gradient = (
+        "linear-gradient(90deg,#60a5fa,#2563eb)"
+        if prefix == "cust"
+        else "linear-gradient(90deg,#2dd4bf,#0f766e)"
+    )
+    singular_name = "Customer" if entity_name == "Customers" else "Route"
+    rows = []
+
+    for idx, row in ranking.iterrows():
+        pnl_display = float(row["P&L Display"] or 0)
+        share_pct = float(row["Share %"] or 0)
+        bar_width = min((abs(pnl_display) / max_abs_value) * 100, 100)
+        growth = row["Growth %"]
+
+        if pd.isna(growth):
+            growth_html = f"<span class='{prefix}-growth new'>NEW</span>"
+        else:
+            positive = growth >= 0
+            growth_class = "up" if positive else "down"
+            growth_arrow = "▲" if positive else "▼"
+            growth_html = (
+                f"<span class='{prefix}-growth {growth_class}'>"
+                f"{growth_arrow} {abs(growth):.1f}%</span>"
+            )
+
+        full_name = escape(str(row[group_col]))
+        value_color = "#0f172a" if pnl_display >= 0 else "#dc2626"
+        rows.append(
+            "<tr>"
+            f"<td class='{prefix}-rank'>{idx + 1}</td>"
+            f"<td class='{prefix}-name' title='{full_name}'>{full_name}</td>"
+            f"<td class='{prefix}-revenue'>"
+            f"<div class='{prefix}-value' style='color:{value_color};'>"
+            f"₹{pnl_display:.2f} {escape(str(unit))}</div>"
+            f"<div class='{prefix}-bar-track'>"
+            f"<div class='{prefix}-bar-fill' style='width:{bar_width:.1f}%'></div>"
+            "</div></td>"
+            f"<td class='{prefix}-share'>{share_pct:.1f}%</td>"
+            f"<td class='{prefix}-yoy'>{growth_html}</td>"
+            "</tr>"
+        )
+
+    table_html = f"""
+    <style>
+        .{prefix}-insight-wrap {{
+            width:100%; overflow-x:auto; margin-top:5px;
+            border:1px solid #e2e8f0; border-radius:10px;
+            background:#ffffff;
+        }}
+        .{prefix}-insight-table {{
+            width:100%; border-collapse:collapse;
+            table-layout:fixed; font-size:12px; color:#334155;
+        }}
+        .{prefix}-insight-table th {{
+            padding:7px 6px; background:#f8fafc;
+            color:#64748b; font-size:12px; font-weight:400;
+            text-align:left; border-bottom:1px solid #e2e8f0;
+            white-space:nowrap;
+        }}
+        .{prefix}-insight-table td {{
+            padding:8px 6px; border-bottom:1px solid #edf2f7;
+            vertical-align:middle;
+        }}
+        .{prefix}-insight-table tr:last-child td {{border-bottom:0;}}
+        .{prefix}-insight-table tbody tr:hover {{background:#f8fbff;}}
+        .{prefix}-rank {{
+            width:4%; padding-left:2px !important; padding-right:2px !important;
+            text-align:center; font-weight:400; color:#64748b;
+        }}
+        .{prefix}-name {{
+            width:38%; padding-left:3px !important;
+            font-weight:400; color:#1e293b;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }}
+        .{prefix}-revenue {{width:32%;}}
+        .{prefix}-value {{font-weight:400; margin-bottom:3px;}}
+        .{prefix}-bar-track {{
+            width:100%; height:5px; border-radius:999px;
+            background:#e8eef8; overflow:hidden;
+        }}
+        .{prefix}-bar-fill {{
+            height:5px; border-radius:999px;
+            background:{bar_gradient};
+        }}
+        .{prefix}-share {{
+            width:12%; text-align:right; font-weight:400; color:#475569;
+        }}
+        .{prefix}-yoy {{width:14%; text-align:right;}}
+        .{prefix}-growth {{
+            display:inline-block; min-width:50px; text-align:right;
+            font-size:11px; font-weight:400;
+        }}
+        .{prefix}-growth.up {{color:#16a34a;}}
+        .{prefix}-growth.down {{color:#dc2626;}}
+        .{prefix}-growth.new {{color:#7c3aed;}}
+    </style>
+    <div class="{prefix}-insight-wrap">
+        <table class="{prefix}-insight-table">
+            <colgroup>
+                <col style="width:4%">
+                <col style="width:38%">
+                <col style="width:32%">
+                <col style="width:12%">
+                <col style="width:14%">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th style="text-align:center;">#</th>
+                    <th>{singular_name}</th>
+                    <th>P&amp;L ({escape(str(unit))})</th>
+                    <th style="text-align:right;">% Share</th>
+                    <th style="text-align:right;">vs LY</th>
+                </tr>
+            </thead>
+            <tbody>{''.join(rows)}</tbody>
+        </table>
+    </div>
+    """
+
+    if hasattr(st, "html"):
+        st.html(table_html)
+    else:
+        st.markdown(table_html, unsafe_allow_html=True)
 
 # =====================================================
 # Main page
@@ -1179,14 +1390,52 @@ def show_pnl_dashboard() -> None:
             st.info("Zone-wise Country P&L cannot be displayed because COUNTRY is missing from the P&L dataset.")
 
     st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
-    customer_col = _find_column(df,["Consignor","consignorname","customer","customername"]); route_col = _find_column(df,["Route","routename"])
-    customer_layout_col, route_layout_col = st.columns(2,gap="small")
+    customer_col = _find_column(
+        df,
+        ["Consignor", "consignorname", "customer", "customername"],
+    )
+    route_col = _find_column(df, ["Route", "routename"])
+    customer_layout_col, route_layout_col = st.columns(2, gap="medium")
+
     with customer_layout_col:
         with st.container(border=True):
-            render_top_n_pnl_table(df,prev_df,customer_col,"Customers",unit,divisor,"pnl_customer") if customer_col else st.info("Customer column not found.")
+            if customer_col:
+                render_top_n_pnl_table(
+                    df,
+                    prev_df,
+                    customer_col,
+                    "Customers",
+                    unit,
+                    divisor,
+                    "pnl_customer",
+                    subtitle=(
+                        "Customer basis: Consignor | Current FY P&L, share and YoY movement."
+                        if view_type == "Origin"
+                        else "Customer basis: Consignee | Current FY P&L, share and YoY movement."
+                    ),
+                )
+            else:
+                st.info("Customer column not found.")
+
     with route_layout_col:
         with st.container(border=True):
-            render_top_n_pnl_table(df,prev_df,route_col,"Routes",unit,divisor,"pnl_route") if route_col else st.info("Route column not found.")
+            if route_col:
+                render_top_n_pnl_table(
+                    df,
+                    prev_df,
+                    route_col,
+                    "Routes",
+                    unit,
+                    divisor,
+                    "pnl_route",
+                    subtitle=(
+                        "Origin → Destination | Current FY P&L, share and YoY movement."
+                        if view_type == "Origin"
+                        else "Destination → Origin | Current FY P&L, share and YoY movement."
+                    ),
+                )
+            else:
+                st.info("Route column not found.")
 
     st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
     with st.container(border=True):
