@@ -1211,157 +1211,277 @@ def show_pnl_dashboard() -> None:
                     st.markdown(company_html, unsafe_allow_html=True)
 
     # =====================================================
-    # Month-on-Month P&L and Growth
+    # Month-on-Month P&L and P&L by Zone — side by side
     # =====================================================
-    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
-    with st.container(border=True):
-        st.markdown(
-            "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
-            "Month on Month P&L & Growth</div>",
-            unsafe_allow_html=True,
-        )
+    st.markdown("<div aria-hidden='true' style='height:8px'></div>", unsafe_allow_html=True)
+    mom_col, zone_col = st.columns([1.35, 1.0], gap="small")
 
-        mom_df = (
-            df.groupby("Month", observed=False, as_index=False)["PNL"]
-            .sum()
-        )
-        mom_df["Month"] = pd.Categorical(
-            mom_df["Month"], categories=MONTH_ORDER, ordered=True
-        )
-        mom_df = mom_df.sort_values("Month").reset_index(drop=True)
-        mom_df["P&L Display"] = mom_df["PNL"] / divisor
-        mom_df["MoM Growth"] = mom_df["PNL"].pct_change() * 100
-        mom_df["Growth Label"] = mom_df["MoM Growth"].apply(
-            lambda value: (
-                f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
-                if pd.notna(value) else ""
+    with mom_col:
+        with st.container(border=True):
+            st.markdown(
+                "<div style='font-size:16px;font-weight:600;color:#241a4f;margin:2px 0 8px 2px;'>"
+                "Month on Month P&L & Growth</div>",
+                unsafe_allow_html=True,
             )
-        )
 
-        if mom_df.empty:
-            st.info("No monthly P&L data is available for the selected filters.")
-        else:
-            bar_colors = [
-                "#7657d6" if value >= 0 else "#dc2626"
-                for value in mom_df["P&L Display"]
-            ]
-            growth_colors = [
-                "#16a34a" if pd.notna(value) and value >= 0 else "#dc2626"
-                for value in mom_df["MoM Growth"]
-            ]
+            mom_df = df.groupby("Month", observed=False, as_index=False)["PNL"].sum()
+            mom_df["Month"] = pd.Categorical(
+                mom_df["Month"], categories=MONTH_ORDER, ordered=True
+            )
+            mom_df = mom_df.sort_values("Month").reset_index(drop=True)
+            mom_df["P&L Display"] = mom_df["PNL"] / divisor
 
-            fig_mom = go.Figure()
-            fig_mom.add_trace(
-                go.Bar(
-                    x=mom_df["Month"],
-                    y=mom_df["P&L Display"],
-                    name="P&L",
-                    marker=dict(
-                        color=bar_colors,
-                        line=dict(color="#5137aa", width=1.1),
-                    ),
-                    text=mom_df["P&L Display"],
-                    texttemplate=f"₹%{{text:.2f}} {unit}",
-                    textposition="outside",
-                    cliponaxis=False,
-                    hovertemplate=(
-                        f"<b>%{{x}}</b><br>P&L: ₹%{{y:.2f}} {unit}<extra></extra>"
-                    ),
+            def _safe_mom_growth(values: pd.Series) -> pd.Series:
+                result = pd.Series(index=values.index, dtype="float64")
+                result.iloc[0] = float("nan")
+                for idx in range(1, len(values)):
+                    previous_value = float(values.iloc[idx - 1])
+                    current_value = float(values.iloc[idx])
+                    if previous_value == 0:
+                        result.iloc[idx] = float("nan")
+                    else:
+                        result.iloc[idx] = (
+                            (current_value - previous_value) / abs(previous_value)
+                        ) * 100
+                return result
+
+            mom_df["MoM Growth"] = _safe_mom_growth(mom_df["PNL"])
+            mom_df["Growth Label"] = mom_df["MoM Growth"].apply(
+                lambda value: (
+                    f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
+                    if pd.notna(value) else ""
                 )
             )
-            fig_mom.add_trace(
-                go.Scatter(
-                    x=mom_df["Month"],
-                    y=mom_df["MoM Growth"],
-                    name="MoM Growth",
-                    mode="lines+markers+text",
-                    yaxis="y2",
-                    line=dict(color="#f59e0b", width=3),
+
+            if mom_df.empty:
+                st.info("No monthly P&L data is available for the selected filters.")
+            else:
+                bar_colors = [
+                    "#7657d6" if value >= 0 else "#dc2626"
+                    for value in mom_df["P&L Display"]
+                ]
+                growth_colors = [
+                    "#16a34a" if pd.notna(value) and value >= 0 else "#dc2626"
+                    for value in mom_df["MoM Growth"]
+                ]
+
+                fig_mom = go.Figure()
+                fig_mom.add_trace(
+                    go.Bar(
+                        x=mom_df["Month"],
+                        y=mom_df["P&L Display"],
+                        name="P&L",
+                        marker=dict(
+                            color=bar_colors,
+                            line=dict(color="#5137aa", width=1.0),
+                        ),
+                        text=mom_df["P&L Display"],
+                        texttemplate=f"₹%{{text:.2f}} {unit}",
+                        textposition="outside",
+                        cliponaxis=False,
+                        hovertemplate=(
+                            f"<b>%{{x}}</b><br>P&L: ₹%{{y:.2f}} {unit}<extra></extra>"
+                        ),
+                    )
+                )
+                fig_mom.add_trace(
+                    go.Scatter(
+                        x=mom_df["Month"],
+                        y=mom_df["MoM Growth"],
+                        name="MoM Growth",
+                        mode="lines+markers+text",
+                        yaxis="y2",
+                        line=dict(color="#f59e0b", width=3),
+                        marker=dict(
+                            size=8,
+                            color=growth_colors,
+                            line=dict(color="#ffffff", width=2),
+                        ),
+                        text=mom_df["Growth Label"],
+                        textposition="top center",
+                        textfont=dict(size=10, color="#334155"),
+                        connectgaps=False,
+                        hovertemplate=(
+                            "<b>%{x}</b><br>MoM Growth: %{y:.1f}%<extra></extra>"
+                        ),
+                    )
+                )
+
+                pnl_values = mom_df["P&L Display"].dropna()
+                pnl_min = float(pnl_values.min()) if not pnl_values.empty else 0.0
+                pnl_max = float(pnl_values.max()) if not pnl_values.empty else 0.0
+                pnl_span = max(abs(pnl_min), abs(pnl_max), 1.0)
+
+                growth_values = mom_df["MoM Growth"].dropna()
+                if growth_values.empty:
+                    growth_range = [-100, 100]
+                else:
+                    growth_min = float(growth_values.min())
+                    growth_max = float(growth_values.max())
+                    growth_padding = max((growth_max - growth_min) * 0.25, 15.0)
+                    growth_range = [growth_min - growth_padding, growth_max + growth_padding]
+
+                fig_mom.add_hline(y=0, line_color="#94a3b8", line_width=1)
+                fig_mom.update_layout(
+                    height=335,
+                    margin=dict(l=8, r=12, t=22, b=8),
+                    plot_bgcolor="#fbfaff",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    bargap=0.34,
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        x=0.01,
+                        font=dict(size=10),
+                    ),
+                    xaxis=dict(
+                        title="", showgrid=False, zeroline=False,
+                        tickfont=dict(size=10),
+                    ),
+                    yaxis=dict(
+                        title=dict(text=f"P&L ({unit})", font=dict(size=11)),
+                        showgrid=False,
+                        zeroline=False,
+                        range=[
+                            min(pnl_min - pnl_span * 0.18, 0),
+                            max(pnl_max + pnl_span * 0.28, 0),
+                        ],
+                        tickfont=dict(size=10),
+                    ),
+                    yaxis2=dict(
+                        title=dict(text="Growth (%)", font=dict(size=11)),
+                        overlaying="y",
+                        side="right",
+                        showgrid=False,
+                        zeroline=False,
+                        range=growth_range,
+                        ticksuffix="%",
+                        tickfont=dict(size=10),
+                    ),
+                )
+                st.plotly_chart(
+                    fig_mom,
+                    width="stretch",
+                    config={"displayModeBar": False, "responsive": True},
+                )
+
+    with zone_col:
+        with st.container(border=True):
+            st.markdown(
+                "<div style='font-size:16px;font-weight:600;color:#241a4f;margin:2px 0 8px 2px;'>"
+                "P&L by Zone</div>",
+                unsafe_allow_html=True,
+            )
+
+            zone_df = (
+                df.groupby("zone", as_index=False)["PNL"]
+                .sum()
+                .sort_values("PNL", ascending=False)
+                .reset_index(drop=True)
+            )
+            zone_df["Display"] = zone_df["PNL"] / divisor
+            absolute_zone_total = float(zone_df["PNL"].abs().sum())
+            zone_df["Pct"] = (
+                zone_df["PNL"].abs() / absolute_zone_total * 100
+                if absolute_zone_total else 0.0
+            )
+
+            zone_name_map = {
+                "NORTH ZONE": "North", "WEST ZONE": "West",
+                "SOUTH ZONE": "South", "EAST ZONE": "East",
+                "NORTH EAST ZONE": "NE", "NEPAL ZONE": "Nepal",
+                "North Zone": "North", "West Zone": "West",
+                "South Zone": "South", "East Zone": "East",
+                "North East Zone": "NE", "Nepal Zone": "Nepal",
+            }
+            zone_df["Display Zone"] = zone_df["zone"].map(zone_name_map).fillna(zone_df["zone"])
+            zone_colors = [
+                "#7657d6", "#178f9b", "#f59e0b",
+                "#8b5cc7", "#ec4899", "#ef5b5b", "#64748b",
+            ]
+
+            fig_zone = go.Figure(
+                go.Pie(
+                    labels=zone_df["Display Zone"],
+                    values=zone_df["PNL"].abs(),
+                    customdata=zone_df[["Display", "Pct"]],
+                    hole=0.64,
+                    sort=False,
+                    rotation=90,
+                    direction="clockwise",
+                    domain=dict(x=[0.00, 0.60], y=[0.03, 0.97]),
                     marker=dict(
-                        size=9,
-                        color=growth_colors,
+                        colors=zone_colors[:len(zone_df)],
                         line=dict(color="#ffffff", width=2),
                     ),
-                    text=mom_df["Growth Label"],
-                    textposition="top center",
-                    textfont=dict(size=11, color="#334155"),
-                    connectgaps=False,
+                    textinfo="none",
                     hovertemplate=(
-                        "<b>%{x}</b><br>MoM Growth: %{y:.1f}%<extra></extra>"
+                        f"<b>%{{label}}</b><br>P&L: ₹%{{customdata[0]:.2f}} {unit}"
+                        "<br>Contribution: %{customdata[1]:.1f}%<extra></extra>"
                     ),
                 )
             )
 
-            pnl_values = mom_df["P&L Display"].dropna()
-            pnl_min = float(pnl_values.min()) if not pnl_values.empty else 0.0
-            pnl_max = float(pnl_values.max()) if not pnl_values.empty else 0.0
-            pnl_span = max(abs(pnl_min), abs(pnl_max), 1.0)
+            legend_step = 0.14 if len(zone_df) <= 6 else 0.105
+            for idx, row in zone_df.iterrows():
+                y_pos = 0.88 - idx * legend_step
+                color = zone_colors[idx % len(zone_colors)]
+                fig_zone.add_annotation(
+                    x=0.65, y=y_pos, xref="paper", yref="paper",
+                    text="●", showarrow=False, xanchor="left",
+                    font=dict(size=16, color=color),
+                )
+                fig_zone.add_annotation(
+                    x=0.705, y=y_pos, xref="paper", yref="paper",
+                    text=(
+                        f"<b>{escape(str(row['Display Zone']))}</b><br>"
+                        f"₹{row['Display']:.2f} {unit} "
+                        f"<span style='color:{color}'>({row['Pct']:.1f}%)</span>"
+                    ),
+                    showarrow=False,
+                    xanchor="left",
+                    align="left",
+                    font=dict(size=11, color="#1f2937"),
+                )
 
-            growth_values = mom_df["MoM Growth"].dropna()
-            if growth_values.empty:
-                growth_range = [-100, 100]
-            else:
-                growth_min = float(growth_values.min())
-                growth_max = float(growth_values.max())
-                growth_padding = max((growth_max - growth_min) * 0.25, 15.0)
-                growth_range = [growth_min - growth_padding, growth_max + growth_padding]
-
-            fig_mom.add_hline(y=0, line_color="#94a3b8", line_width=1)
-            fig_mom.update_layout(
-                height=330,
-                margin=dict(l=10, r=12, t=20, b=8),
-                plot_bgcolor="#fbfaff",
-                paper_bgcolor="rgba(0,0,0,0)",
-                bargap=0.34,
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    x=0.01,
-                    font=dict(size=11),
-                ),
-                xaxis=dict(
-                    title="", showgrid=False, zeroline=False, tickfont=dict(size=11)
-                ),
-                yaxis=dict(
-                    title=dict(text=f"P&L ({unit})", font=dict(size=12)),
-                    showgrid=False,
-                    zeroline=False,
-                    range=[min(pnl_min - pnl_span * 0.18, 0), max(pnl_max + pnl_span * 0.28, 0)],
-                    tickfont=dict(size=11),
-                ),
-                yaxis2=dict(
-                    title=dict(text="Growth (%)", font=dict(size=12)),
-                    overlaying="y",
-                    side="right",
-                    showgrid=False,
-                    zeroline=False,
-                    range=growth_range,
-                    ticksuffix="%",
-                    tickfont=dict(size=11),
-                ),
+            net_zone_pnl = float(zone_df["Display"].sum())
+            fig_zone.add_annotation(
+                x=0.30,
+                y=0.53,
+                xref="paper",
+                yref="paper",
+                text=f"<b>₹{net_zone_pnl:.2f} {unit}</b>",
+                showarrow=False,
+                xanchor="center",
+                yanchor="middle",
+                align="center",
+                font=dict(size=22, color="#17152f", family="Arial"),
             )
-
+            fig_zone.add_annotation(
+                x=0.30,
+                y=0.43,
+                xref="paper",
+                yref="paper",
+                text="Net P&L",
+                showarrow=False,
+                xanchor="center",
+                yanchor="middle",
+                align="center",
+                font=dict(size=12, color="#746d91", family="Arial"),
+            )
+            fig_zone.update_layout(
+                height=335,
+                margin=dict(l=0, r=0, t=0, b=0),
+                showlegend=False,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+            )
             st.plotly_chart(
-                fig_mom,
+                fig_zone,
                 width="stretch",
                 config={"displayModeBar": False, "responsive": True},
             )
-
-    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
-    with st.container(border=True):
-        st.markdown("###### P&L by Zone")
-        zone_df = df.groupby("zone", as_index=False)["PNL"].sum().sort_values("PNL", ascending=False)
-        zone_df["Display"] = zone_df["PNL"] / divisor; zone_df["Pct"] = (zone_df["PNL"].abs()/zone_df["PNL"].abs().sum()*100 if zone_df["PNL"].abs().sum() else 0)
-        colors=["#1565C0","#009688","#FB8C00","#7E57C2","#EC407A","#EF5350","#334155"]
-        fig_zone=go.Figure(go.Pie(labels=zone_df["zone"], values=zone_df["PNL"].abs(), customdata=zone_df[["Display","Pct"]], hole=.62, sort=False, domain=dict(x=[0,.60],y=[0,1]), marker=dict(colors=colors[:len(zone_df)],line=dict(color="#fff",width=2)), textinfo="none", hovertemplate=f"<b>%{{label}}</b><br>P&L: ₹%{{customdata[0]:.2f}} {unit}<br>Contribution: %{{customdata[1]:.1f}}%<extra></extra>"))
-        for idx,row in zone_df.reset_index(drop=True).iterrows():
-            y=.91-idx*(.145 if len(zone_df)<=6 else .105); color=colors[idx%len(colors)]
-            fig_zone.add_annotation(x=.625,y=y,xref="paper",yref="paper",text="●",showarrow=False,xanchor="left",font=dict(size=16,color=color))
-            fig_zone.add_annotation(x=.675,y=y,xref="paper",yref="paper",text=f"<b>{escape(str(row['zone']))}</b><br>₹{row['Display']:.2f} {unit} <span style='color:{color}'>({row['Pct']:.1f}%)</span>",showarrow=False,xanchor="left",align="left")
-        fig_zone.add_annotation(x=.30,y=.50,xref="paper",yref="paper",text=f"<b>₹{zone_df['Display'].sum():.2f} {unit}</b><br><span style='font-size:10px'>Net P&L</span>",showarrow=False)
-        fig_zone.update_layout(height=310,margin=dict(l=0,r=0,t=4,b=0),showlegend=False,paper_bgcolor="rgba(0,0,0,0)")
-        st.plotly_chart(fig_zone,width="stretch",config={"displayModeBar":False,"responsive":True})
 
     st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
     if view_type == "Origin" and "COUNTRY" in df.columns:
