@@ -1462,7 +1462,7 @@ def show_pnl_dashboard() -> None:
                 fig_zone.add_annotation(
                     x=0.65, y=y_pos, xref="paper", yref="paper",
                     text="●", showarrow=False, xanchor="left",
-                    font=dict(size=16, color=color),
+                    font=dict(size=19, color=color),
                 )
                 fig_zone.add_annotation(
                     x=0.705, y=y_pos, xref="paper", yref="paper",
@@ -1474,7 +1474,7 @@ def show_pnl_dashboard() -> None:
                     showarrow=False,
                     xanchor="left",
                     align="left",
-                    font=dict(size=11, color="#1f2937"),
+                    font=dict(size=14, color="#1f2937"),
                 )
 
             net_zone_pnl = float(zone_df["Display"].sum())
@@ -1488,7 +1488,7 @@ def show_pnl_dashboard() -> None:
                 xanchor="center",
                 yanchor="middle",
                 align="center",
-                font=dict(size=22, color="#17152f", family="Arial"),
+                font=dict(size=25, color="#17152f", family="Arial"),
             )
             fig_zone.add_annotation(
                 x=0.30,
@@ -1500,7 +1500,7 @@ def show_pnl_dashboard() -> None:
                 xanchor="center",
                 yanchor="middle",
                 align="center",
-                font=dict(size=12, color="#746d91", family="Arial"),
+                font=dict(size=14, color="#746d91", family="Arial"),
             )
             fig_zone.update_layout(
                 height=335,
