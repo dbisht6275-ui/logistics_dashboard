@@ -18,6 +18,8 @@ from pages.IT.DeliverySummaryTurnover import show_delivery_summary_turnover
 from pages.IT.BranchWiseBookingTurnover import show_branch_wise_booking_turnover
 from pages.IT.BookingWeightSummaryTurnover import show_booking_weight_summary_turnover
 
+from pages.IT.GatepassCustomerVoucherDetails import show_gatepass_customer_voucher_details
+
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
 from pages.Admin.user_management import show_UserManagement
 
@@ -476,6 +478,7 @@ REPORTS = {
         "📊 Delivery Summary Turnover": show_delivery_summary_turnover,
         "📊 Branch Wise Booking Turnover": show_branch_wise_booking_turnover,
         "⚖️ Booking Weight Summary": show_booking_weight_summary_turnover,
+        "📋 Gatepass Customer Voucher Details": show_gatepass_customer_voucher_details,
     },
     "💰 Accounts Reports": {
         "📋 GR Costing Head Wise": show_GrCostingHeadWise,
