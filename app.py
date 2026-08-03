@@ -13,7 +13,7 @@ from pages.IT.zone_booking_turnover import show_ZoneBookingTurnover
 from pages.IT.Bangladesh_Delivery_Turnover import show_bangladesh_delivery_turnover
 from pages.IT.BookingSummaryTurnover import show_booking_summary_turnover
 from pages.IT.ZoneWiseDeliveryTurnover import show_zone_wise_delivery_turnover
-
+from pages.IT.BranchWiseDeliveryTurnover import show_branch_wise_delivery_turnover
 
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
 from pages.Admin.user_management import show_UserManagement
@@ -469,6 +469,7 @@ REPORTS = {
         "📋 Bangladesh Delivery Turnover": show_bangladesh_delivery_turnover,
         "📈 Booking Summary Turnover": show_booking_summary_turnover,
         "📊 Zone Wise Delivery Turnover": show_zone_wise_delivery_turnover,
+        "📊 Branch Wise Delivery Turnover": show_branch_wise_delivery_turnover,
         
     },
     "💰 Accounts Reports": {
