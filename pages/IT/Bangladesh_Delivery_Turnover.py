@@ -19,13 +19,23 @@ def to_excel(df):
         )
 
     output.seek(0)
-    return output
+    return output.getvalue()
 
 
 # ------------------------------------
 # DYNAMIC COLUMN NAME FUNCTION
 # ------------------------------------
-def format_date_range(from_date, to_date, is_ftl=False):
+def format_date_range(
+    period_number,
+    from_date,
+    to_date,
+    is_ftl=False,
+):
+    """
+    Creates unique headings even when two selected
+    periods cover the same month.
+    """
+
     from_month = from_date.strftime("%b-%y").upper()
     to_month = to_date.strftime("%b-%y").upper()
 
@@ -40,18 +50,117 @@ def format_date_range(from_date, to_date, is_ftl=False):
     if is_ftl:
         column_name += " (FTL)"
 
-    return column_name
+    return f"{period_number}. {column_name}"
+
+
+# ------------------------------------
+# DATAFRAME CLEANING FOR AGGRID
+# ------------------------------------
+def prepare_dataframe_for_aggrid(df):
+    """
+    Convert SQL-returned values into JSON-safe values
+    before passing the DataFrame to AgGrid.
+    """
+
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    clean_df = df.copy()
+
+    # Make every column name a unique string.
+    new_columns = []
+    used_columns = {}
+
+    for column in clean_df.columns:
+        column_name = str(column).strip()
+
+        if column_name in used_columns:
+            used_columns[column_name] += 1
+            column_name = (
+                f"{column_name}_{used_columns[column_name]}"
+            )
+        else:
+            used_columns[column_name] = 1
+
+        new_columns.append(column_name)
+
+    clean_df.columns = new_columns
+
+    text_columns = [
+        "ZONENAME",
+        "HUBNAME",
+        "BRANCH",
+    ]
+
+    # Clean text columns.
+    for column in text_columns:
+        if column in clean_df.columns:
+            clean_df[column] = (
+                clean_df[column]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+            )
+
+    # Convert all remaining columns to regular floats.
+    numeric_columns = [
+        column
+        for column in clean_df.columns
+        if column not in text_columns
+    ]
+
+    for column in numeric_columns:
+        clean_df[column] = (
+            pd.to_numeric(
+                clean_df[column],
+                errors="coerce",
+            )
+            .fillna(0.0)
+            .astype(float)
+            .round(2)
+        )
+
+    # Replace unsupported special values.
+    clean_df = clean_df.replace(
+        {
+            float("inf"): 0.0,
+            float("-inf"): 0.0,
+        }
+    )
+
+    return clean_df
 
 
 # ------------------------------------
 # DATA FUNCTION
 # ------------------------------------
 def get_bangladesh_delivery_turnover(
-        date1_from, date1_to,
-        date2_from, date2_to,
-        date3_from, date3_to):
-
+    date1_from,
+    date1_to,
+    date2_from,
+    date2_to,
+    date3_from,
+    date3_to,
+):
     try:
+        # ------------------------------------
+        # DATE VALIDATION
+        # ------------------------------------
+        if date1_from > date1_to:
+            raise ValueError(
+                "Period 1 From Date cannot be after To Date."
+            )
+
+        if date2_from > date2_to:
+            raise ValueError(
+                "Period 2 From Date cannot be after To Date."
+            )
+
+        if date3_from > date3_to:
+            raise ValueError(
+                "Period 3 From Date cannot be after To Date."
+            )
+
         # ------------------------------------
         # DATE CONVERSION FOR SQL
         # ------------------------------------
@@ -65,39 +174,45 @@ def get_bangladesh_delivery_turnover(
         to3_sql = date3_to.strftime("%Y-%m-%d")
 
         # ------------------------------------
-        # DYNAMIC COLUMN NAMES
+        # DYNAMIC AND UNIQUE COLUMN NAMES
         # ------------------------------------
         col1_non_ftl = format_date_range(
+            1,
             date1_from,
             date1_to,
             False,
         )
 
         col2_non_ftl = format_date_range(
+            2,
             date2_from,
             date2_to,
             False,
         )
 
         col3_non_ftl = format_date_range(
+            3,
             date3_from,
             date3_to,
             False,
         )
 
         col1_ftl = format_date_range(
+            1,
             date1_from,
             date1_to,
             True,
         )
 
         col2_ftl = format_date_range(
+            2,
             date2_from,
             date2_to,
             True,
         )
 
         col3_ftl = format_date_range(
+            3,
             date3_from,
             date3_to,
             True,
@@ -117,11 +232,13 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') <> 'Y'
-                         AND CN.GRDT BETWEEN '{from1_sql}' AND '{to1_sql}'
-                    THEN (
-                        ISNULL(CN.TAMOUNT, 0)
-                        - ISNULL(CN.SERVICETAX, 0)
-                    ) / 300000.0
+                    AND CN.GRDT BETWEEN
+                        '{from1_sql}' AND '{to1_sql}'
+                    THEN
+                        (
+                            ISNULL(CN.TAMOUNT, 0)
+                            - ISNULL(CN.SERVICETAX, 0)
+                        ) / 300000.0
                     ELSE 0
                 END
             ) AS [{col1_non_ftl}],
@@ -129,11 +246,13 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') <> 'Y'
-                         AND CN.GRDT BETWEEN '{from2_sql}' AND '{to2_sql}'
-                    THEN (
-                        ISNULL(CN.TAMOUNT, 0)
-                        - ISNULL(CN.SERVICETAX, 0)
-                    ) / 100000.0
+                    AND CN.GRDT BETWEEN
+                        '{from2_sql}' AND '{to2_sql}'
+                    THEN
+                        (
+                            ISNULL(CN.TAMOUNT, 0)
+                            - ISNULL(CN.SERVICETAX, 0)
+                        ) / 100000.0
                     ELSE 0
                 END
             ) AS [{col2_non_ftl}],
@@ -141,11 +260,13 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') <> 'Y'
-                         AND CN.GRDT BETWEEN '{from3_sql}' AND '{to3_sql}'
-                    THEN (
-                        ISNULL(CN.TAMOUNT, 0)
-                        - ISNULL(CN.SERVICETAX, 0)
-                    ) / 100000.0
+                    AND CN.GRDT BETWEEN
+                        '{from3_sql}' AND '{to3_sql}'
+                    THEN
+                        (
+                            ISNULL(CN.TAMOUNT, 0)
+                            - ISNULL(CN.SERVICETAX, 0)
+                        ) / 100000.0
                     ELSE 0
                 END
             ) AS [{col3_non_ftl}],
@@ -153,11 +274,13 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') = 'Y'
-                         AND CN.GRDT BETWEEN '{from1_sql}' AND '{to1_sql}'
-                    THEN (
-                        ISNULL(CN.TAMOUNT, 0)
-                        - ISNULL(CN.SERVICETAX, 0)
-                    ) / 300000.0
+                    AND CN.GRDT BETWEEN
+                        '{from1_sql}' AND '{to1_sql}'
+                    THEN
+                        (
+                            ISNULL(CN.TAMOUNT, 0)
+                            - ISNULL(CN.SERVICETAX, 0)
+                        ) / 300000.0
                     ELSE 0
                 END
             ) AS [{col1_ftl}],
@@ -165,11 +288,13 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') = 'Y'
-                         AND CN.GRDT BETWEEN '{from2_sql}' AND '{to2_sql}'
-                    THEN (
-                        ISNULL(CN.TAMOUNT, 0)
-                        - ISNULL(CN.SERVICETAX, 0)
-                    ) / 100000.0
+                    AND CN.GRDT BETWEEN
+                        '{from2_sql}' AND '{to2_sql}'
+                    THEN
+                        (
+                            ISNULL(CN.TAMOUNT, 0)
+                            - ISNULL(CN.SERVICETAX, 0)
+                        ) / 100000.0
                     ELSE 0
                 END
             ) AS [{col2_ftl}],
@@ -177,11 +302,13 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') = 'Y'
-                         AND CN.GRDT BETWEEN '{from3_sql}' AND '{to3_sql}'
-                    THEN (
-                        ISNULL(CN.TAMOUNT, 0)
-                        - ISNULL(CN.SERVICETAX, 0)
-                    ) / 100000.0
+                    AND CN.GRDT BETWEEN
+                        '{from3_sql}' AND '{to3_sql}'
+                    THEN
+                        (
+                            ISNULL(CN.TAMOUNT, 0)
+                            - ISNULL(CN.SERVICETAX, 0)
+                        ) / 100000.0
                     ELSE 0
                 END
             ) AS [{col3_ftl}]
@@ -198,11 +325,13 @@ def get_bangladesh_delivery_turnover(
             ON DST.STNCODE = CN.DESTCODE
 
         WHERE
-            CN.GRDT BETWEEN '{from1_sql}' AND '{to3_sql}'
+            CN.GRDT BETWEEN
+                '{from1_sql}' AND '{to3_sql}'
 
             AND CN.GRTYPE <> 'N'
 
-            AND (
+            AND
+            (
                 UPPER(
                     LTRIM(
                         RTRIM(
@@ -211,13 +340,16 @@ def get_bangladesh_delivery_turnover(
                     )
                 ) = 'BANGLADESH'
 
-                OR UPPER(
+                OR
+
+                UPPER(
                     LTRIM(
                         RTRIM(
                             ISNULL(DST.STNNAME, '')
                         )
                     )
-                ) IN (
+                ) IN
+                (
                     'PETRAPOLE',
                     'MYMENSINGH'
                 )
@@ -239,10 +371,12 @@ def get_bangladesh_delivery_turnover(
             engine,
         )
 
-        return df.round(2)
+        return prepare_dataframe_for_aggrid(df)
 
-    except Exception as e:
-        st.error(str(e))
+    except Exception as error:
+        st.error(
+            f"Bangladesh report error: {error}"
+        )
         return pd.DataFrame()
 
 
@@ -252,8 +386,6 @@ def get_bangladesh_delivery_turnover(
 def show_bangladesh_delivery_turnover():
 
     st.title("Bangladesh Delivery Turnover")
-
-    df = pd.DataFrame()
 
     col1, col2, col3 = st.columns(3)
 
@@ -320,24 +452,42 @@ def show_bangladesh_delivery_turnover():
             )
             return
 
-        df = get_bangladesh_delivery_turnover(
-            d1_from,
-            d1_to,
-            d2_from,
-            d2_to,
-            d3_from,
-            d3_to,
-        )
+        with st.spinner("Generating report..."):
+            df = get_bangladesh_delivery_turnover(
+                d1_from,
+                d1_to,
+                d2_from,
+                d2_to,
+                d3_from,
+                d3_to,
+            )
 
-        if not df.empty:
+        if df.empty:
+            st.warning("No data found.")
+            return
 
+        # ------------------------------------
+        # AGGRID
+        # ------------------------------------
+        try:
             gb = GridOptionsBuilder.from_dataframe(df)
 
             gb.configure_default_column(
                 sortable=True,
                 filter=True,
                 resizable=True,
+                minWidth=110,
             )
+
+            # Configure numeric columns.
+            for column in df.columns[3:]:
+                gb.configure_column(
+                    column,
+                    type=["numericColumn"],
+                    valueFormatter=(
+                        "Number(params.value).toFixed(2)"
+                    ),
+                )
 
             grid_options = gb.build()
 
@@ -345,22 +495,42 @@ def show_bangladesh_delivery_turnover():
                 df,
                 gridOptions=grid_options,
                 height=500,
-                fit_columns_on_grid_load=True,
+                theme="streamlit",
+                enable_enterprise_modules=False,
+                allow_unsafe_jscode=False,
+                key="bangladesh_delivery_grid",
             )
 
-            excel_file = to_excel(df)
+        except Exception as grid_error:
+            # Keep the report usable even if AgGrid has a
+            # package compatibility issue.
+            st.warning(
+                "AgGrid could not display the report. "
+                "Showing the standard report table instead."
+            )
 
-            st.download_button(
-                label="📥 Export To Excel",
-                data=excel_file,
-                file_name="BangladeshDeliveryTurnover.xlsx",
-                mime=(
-                    "application/vnd.openxmlformats-"
-                    "officedocument.spreadsheetml.sheet"
-                ),
+            st.code(str(grid_error))
+
+            st.dataframe(
+                df,
                 use_container_width=True,
-                key="bd_export_excel",
+                height=500,
+                hide_index=True,
             )
 
-        else:
-            st.warning("No data found.")
+        # ------------------------------------
+        # EXCEL DOWNLOAD
+        # ------------------------------------
+        excel_file = to_excel(df)
+
+        st.download_button(
+            label="📥 Export To Excel",
+            data=excel_file,
+            file_name="BangladeshDeliveryTurnover.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            use_container_width=True,
+            key="bd_export_excel",
+        )
