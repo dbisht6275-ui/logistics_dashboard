@@ -89,9 +89,9 @@ def format_period_column(
 ):
     period_name = (
         f"{period_number}. "
-        f"{from_date.strftime('%d-%b-%y').upper()} "
+        f"{from_date.strftime('%d-%m-%Y')} "
         f"TO "
-        f"{to_date.strftime('%d-%b-%y').upper()}"
+        f"{to_date.strftime('%d-%m-%Y')}"
     )
 
     if is_ftl:
@@ -103,7 +103,7 @@ def format_period_column(
 
 
 # ------------------------------------
-# THREE PERIOD DATA FUNCTION
+# THREE-PERIOD DATA FUNCTION
 # ------------------------------------
 def get_bangladesh_delivery_turnover(
     date1_from,
@@ -139,45 +139,27 @@ def get_bangladesh_delivery_turnover(
         to3_sql = date3_to.strftime("%Y-%m-%d")
 
         col1_non_ftl = format_period_column(
-            1,
-            date1_from,
-            date1_to,
-            False
+            1, date1_from, date1_to, False
         )
 
         col2_non_ftl = format_period_column(
-            2,
-            date2_from,
-            date2_to,
-            False
+            2, date2_from, date2_to, False
         )
 
         col3_non_ftl = format_period_column(
-            3,
-            date3_from,
-            date3_to,
-            False
+            3, date3_from, date3_to, False
         )
 
         col1_ftl = format_period_column(
-            1,
-            date1_from,
-            date1_to,
-            True
+            1, date1_from, date1_to, True
         )
 
         col2_ftl = format_period_column(
-            2,
-            date2_from,
-            date2_to,
-            True
+            2, date2_from, date2_to, True
         )
 
         col3_ftl = format_period_column(
-            3,
-            date3_from,
-            date3_to,
-            True
+            3, date3_from, date3_to, True
         )
 
         engine = get_engine()
@@ -191,8 +173,12 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') <> 'Y'
-                    AND CN.GRDT BETWEEN
-                        '{from1_sql}' AND '{to1_sql}'
+                         AND CN.GRDT >= '{from1_sql}'
+                         AND CN.GRDT < DATEADD(
+                             DAY,
+                             1,
+                             '{to1_sql}'
+                         )
                     THEN
                         (
                             ISNULL(CN.TAMOUNT, 0)
@@ -205,8 +191,12 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') <> 'Y'
-                    AND CN.GRDT BETWEEN
-                        '{from2_sql}' AND '{to2_sql}'
+                         AND CN.GRDT >= '{from2_sql}'
+                         AND CN.GRDT < DATEADD(
+                             DAY,
+                             1,
+                             '{to2_sql}'
+                         )
                     THEN
                         (
                             ISNULL(CN.TAMOUNT, 0)
@@ -219,8 +209,12 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') <> 'Y'
-                    AND CN.GRDT BETWEEN
-                        '{from3_sql}' AND '{to3_sql}'
+                         AND CN.GRDT >= '{from3_sql}'
+                         AND CN.GRDT < DATEADD(
+                             DAY,
+                             1,
+                             '{to3_sql}'
+                         )
                     THEN
                         (
                             ISNULL(CN.TAMOUNT, 0)
@@ -233,8 +227,12 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') = 'Y'
-                    AND CN.GRDT BETWEEN
-                        '{from1_sql}' AND '{to1_sql}'
+                         AND CN.GRDT >= '{from1_sql}'
+                         AND CN.GRDT < DATEADD(
+                             DAY,
+                             1,
+                             '{to1_sql}'
+                         )
                     THEN
                         (
                             ISNULL(CN.TAMOUNT, 0)
@@ -247,8 +245,12 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') = 'Y'
-                    AND CN.GRDT BETWEEN
-                        '{from2_sql}' AND '{to2_sql}'
+                         AND CN.GRDT >= '{from2_sql}'
+                         AND CN.GRDT < DATEADD(
+                             DAY,
+                             1,
+                             '{to2_sql}'
+                         )
                     THEN
                         (
                             ISNULL(CN.TAMOUNT, 0)
@@ -261,8 +263,12 @@ def get_bangladesh_delivery_turnover(
             SUM(
                 CASE
                     WHEN ISNULL(CN.FTL, 'N') = 'Y'
-                    AND CN.GRDT BETWEEN
-                        '{from3_sql}' AND '{to3_sql}'
+                         AND CN.GRDT >= '{from3_sql}'
+                         AND CN.GRDT < DATEADD(
+                             DAY,
+                             1,
+                             '{to3_sql}'
+                         )
                     THEN
                         (
                             ISNULL(CN.TAMOUNT, 0)
@@ -288,18 +294,30 @@ def get_bangladesh_delivery_turnover(
 
             AND (
                 (
-                    CN.GRDT BETWEEN
-                        '{from1_sql}' AND '{to1_sql}'
+                    CN.GRDT >= '{from1_sql}'
+                    AND CN.GRDT < DATEADD(
+                        DAY,
+                        1,
+                        '{to1_sql}'
+                    )
                 )
                 OR
                 (
-                    CN.GRDT BETWEEN
-                        '{from2_sql}' AND '{to2_sql}'
+                    CN.GRDT >= '{from2_sql}'
+                    AND CN.GRDT < DATEADD(
+                        DAY,
+                        1,
+                        '{to2_sql}'
+                    )
                 )
                 OR
                 (
-                    CN.GRDT BETWEEN
-                        '{from3_sql}' AND '{to3_sql}'
+                    CN.GRDT >= '{from3_sql}'
+                    AND CN.GRDT < DATEADD(
+                        DAY,
+                        1,
+                        '{to3_sql}'
+                    )
                 )
             )
 
@@ -337,10 +355,7 @@ def get_bangladesh_delivery_turnover(
             ORG.STNNAME
         """
 
-        df = pd.read_sql(
-            query,
-            engine
-        )
+        df = pd.read_sql(query, engine)
 
         return prepare_dataframe_for_aggrid(df)
 
@@ -352,7 +367,7 @@ def get_bangladesh_delivery_turnover(
 
 
 # ------------------------------------
-# ONE YEAR DATA FUNCTION
+# ONE-YEAR DATA FUNCTION
 # ------------------------------------
 def get_bangladesh_one_year_turnover(
     year_from,
@@ -368,9 +383,9 @@ def get_bangladesh_one_year_turnover(
         to_sql = year_to.strftime("%Y-%m-%d")
 
         period_name = (
-            f"{year_from.strftime('%d-%b-%y').upper()} "
+            f"{year_from.strftime('%d-%m-%Y')} "
             f"TO "
-            f"{year_to.strftime('%d-%b-%y').upper()}"
+            f"{year_to.strftime('%d-%m-%Y')}"
         )
 
         engine = get_engine()
@@ -424,8 +439,13 @@ def get_bangladesh_one_year_turnover(
             ON DST.STNCODE = CN.DESTCODE
 
         WHERE
-            CN.GRDT BETWEEN
-                '{from_sql}' AND '{to_sql}'
+            CN.GRDT >= '{from_sql}'
+
+            AND CN.GRDT < DATEADD(
+                DAY,
+                1,
+                '{to_sql}'
+            )
 
             AND CN.GRTYPE <> 'N'
 
@@ -463,10 +483,7 @@ def get_bangladesh_one_year_turnover(
             ORG.STNNAME
         """
 
-        df = pd.read_sql(
-            query,
-            engine
-        )
+        df = pd.read_sql(query, engine)
 
         return prepare_dataframe_for_aggrid(df)
 
@@ -526,7 +543,6 @@ def display_report(df, report_type):
     if report_type == "One Year Total":
         file_name = "BangladeshOneYearTurnover.xlsx"
         download_key = "bd_one_year_export"
-
     else:
         file_name = "BangladeshDeliveryTurnover.xlsx"
         download_key = "bd_three_period_export"
@@ -548,7 +564,6 @@ def display_report(df, report_type):
 # MAIN UI FUNCTION
 # -----------------------------------
 def show_bangladesh_delivery_turnover():
-
     st.title("Bangladesh Delivery Turnover")
 
     report_type = st.radio(
@@ -562,7 +577,6 @@ def show_bangladesh_delivery_turnover():
     )
 
     if report_type == "3 Period Comparison":
-
         col1, col2, col3 = st.columns(3)
 
         with col1:
@@ -570,11 +584,13 @@ def show_bangladesh_delivery_turnover():
 
             d1_from = st.date_input(
                 "From",
+                format="DD-MM-YYYY",
                 key="bd_p1_from"
             )
 
             d1_to = st.date_input(
                 "To",
+                format="DD-MM-YYYY",
                 key="bd_p1_to"
             )
 
@@ -583,11 +599,13 @@ def show_bangladesh_delivery_turnover():
 
             d2_from = st.date_input(
                 "From",
+                format="DD-MM-YYYY",
                 key="bd_p2_from"
             )
 
             d2_to = st.date_input(
                 "To",
+                format="DD-MM-YYYY",
                 key="bd_p2_to"
             )
 
@@ -596,11 +614,13 @@ def show_bangladesh_delivery_turnover():
 
             d3_from = st.date_input(
                 "From",
+                format="DD-MM-YYYY",
                 key="bd_p3_from"
             )
 
             d3_to = st.date_input(
                 "To",
+                format="DD-MM-YYYY",
                 key="bd_p3_to"
             )
 
@@ -609,9 +629,7 @@ def show_bangladesh_delivery_turnover():
             use_container_width=True,
             key="bd_generate_three_period"
         ):
-
             with st.spinner("Generating report..."):
-
                 df = get_bangladesh_delivery_turnover(
                     d1_from,
                     d1_to,
@@ -621,13 +639,9 @@ def show_bangladesh_delivery_turnover():
                     d3_to
                 )
 
-            display_report(
-                df,
-                report_type
-            )
+            display_report(df, report_type)
 
     else:
-
         st.markdown("### One Year Period")
 
         year_col1, year_col2 = st.columns(2)
@@ -635,12 +649,14 @@ def show_bangladesh_delivery_turnover():
         with year_col1:
             year_from = st.date_input(
                 "Year From",
+                format="DD-MM-YYYY",
                 key="bd_year_from"
             )
 
         with year_col2:
             year_to = st.date_input(
                 "Year To",
+                format="DD-MM-YYYY",
                 key="bd_year_to"
             )
 
@@ -649,20 +665,15 @@ def show_bangladesh_delivery_turnover():
             use_container_width=True,
             key="bd_generate_one_year"
         ):
-
             with st.spinner(
                 "Generating one-year report..."
             ):
-
                 df = get_bangladesh_one_year_turnover(
                     year_from,
                     year_to
                 )
 
-            display_report(
-                df,
-                report_type
-            )
+            display_report(df, report_type)
 
 
 # -----------------------------------
