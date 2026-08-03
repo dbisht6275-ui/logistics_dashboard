@@ -18,8 +18,6 @@ from pages.IT.DeliverySummaryTurnover import show_delivery_summary_turnover
 from pages.IT.BranchWiseBookingTurnover import show_branch_wise_booking_turnover
 from pages.IT.BookingWeightSummaryTurnover import show_booking_weight_summary_turnover
 
-from pages.IT.GatepassCustomerVoucherDetails import show_gatepass_customer_voucher_details
-
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
 from pages.Admin.user_management import show_UserManagement
 
@@ -449,6 +447,32 @@ section.main {
     margin: 10px 0 !important;
     border-color: rgba(255,255,255,.08) !important;
 }
+
+/* ============================================================
+   Sticky P&L dashboard filter row
+   The matching container key is defined in PNL_Analysis.py.
+   ============================================================ */
+.st-key-pnl_sticky_filters {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 9999 !important;
+    padding: 7px 8px 8px !important;
+    margin: 0 -2px 8px !important;
+    background: rgba(253, 252, 255, 0.98) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    border: 1px solid #ded8f6 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 8px 18px rgba(76, 55, 140, 0.12),
+                inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+}
+
+/* Keep dropdown menus above charts and sticky content. */
+div[data-baseweb="popover"],
+div[data-baseweb="menu"] {
+    z-index: 999999 !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -478,7 +502,6 @@ REPORTS = {
         "📊 Delivery Summary Turnover": show_delivery_summary_turnover,
         "📊 Branch Wise Booking Turnover": show_branch_wise_booking_turnover,
         "⚖️ Booking Weight Summary": show_booking_weight_summary_turnover,
-        "📋 Gatepass Customer Voucher Details": show_gatepass_customer_voucher_details,
     },
     "💰 Accounts Reports": {
         "📋 GR Costing Head Wise": show_GrCostingHeadWise,
