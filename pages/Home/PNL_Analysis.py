@@ -106,40 +106,154 @@ def _inject_pnl_css() -> None:
             box-shadow:0 0 0 2px rgba(109,75,210,.12) !important;
         }
 
-        .kpi-card {
-            position:relative; min-height:82px; padding:9px 10px 10px;
-            border:1px solid #ddd6f6; border-radius:13px;
-            background:linear-gradient(145deg,#ffffff 0%,#faf8ff 52%,#eee9ff 100%);
-            box-shadow:0 4px 0 #d8cff2,0 8px 14px rgba(76,55,140,.10),inset 1px 1px 0 #fff;
+        /* KPI cards aligned with Business Overview design */
+        .kpi-3d-card {
+            position: relative;
+            overflow: hidden;
+            min-height: 82px;
+            padding: 10px 11px 11px 11px;
+            border: 1px solid #cbd5e1;
+            border-radius: 14px;
+            background: linear-gradient(145deg, #ffffff 0%, #f8fafc 45%, #e7edf5 100%);
+            box-shadow:
+                0 7px 0 #c2ccd9,
+                0 11px 17px rgba(15,23,42,.18),
+                inset 1px 1px 0 rgba(255,255,255,.98),
+                inset -1px -1px 0 rgba(100,116,139,.18);
+            transform: translateY(-3px);
+            transition: transform .15s ease, box-shadow .15s ease;
         }
-        .kpi-head {
-            display:grid; grid-template-columns:minmax(0,1fr) 28px;
-            gap:6px; align-items:center;
+
+        .kpi-3d-card:hover {
+            transform: translateY(-5px);
+            box-shadow:
+                0 9px 0 #b9c5d3,
+                0 15px 22px rgba(15,23,42,.22),
+                inset 1px 1px 0 rgba(255,255,255,.98),
+                inset -1px -1px 0 rgba(100,116,139,.20);
         }
-        .kpi-title {
-            color:#5b3fbb !important; font-size:10px; font-weight:750;
-            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+
+        .kpi-3d-topline {
+            display: none !important;
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            height: 4px;
+            background: linear-gradient(
+                90deg,
+                var(--kpi-accent),
+                color-mix(in srgb, var(--kpi-accent) 55%, white)
+            );
+            box-shadow: 0 2px 4px color-mix(
+                in srgb,
+                var(--kpi-accent) 28%,
+                transparent
+            );
         }
-        .kpi-icon {
-            width:28px; height:28px; border-radius:8px; display:flex;
-            align-items:center; justify-content:center; font-size:14px;
-            background:#f4f0ff; border:1px solid #d7cdf8;
+
+        .kpi-3d-gloss {
+            position: absolute;
+            inset: 1px 1px auto 1px;
+            height: 38%;
+            border-radius: 13px 13px 50% 50%;
+            background: linear-gradient(
+                180deg,
+                rgba(255,255,255,.78),
+                rgba(255,255,255,0)
+            );
+            pointer-events: none;
         }
-        .kpi-value {
-            color:#17152b; font-size:16px; font-weight:900;
-            margin-top:4px; line-height:1.08; white-space:nowrap;
+
+        .kpi-3d-head {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 27px;
+            align-items: center;
+            gap: 6px;
         }
-        .kpi-footer {
-            display:flex; justify-content:space-between; align-items:center;
-            gap:5px; margin-top:6px;
+
+        .kpi-3d-title {
+            color: var(--kpi-accent);
+            font-size: 11px;
+            font-family: "Segoe UI", Arial, sans-serif;
+            font-weight: 400;
+            letter-spacing: .15px;
+            text-align: left;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-shadow: 0 1px 0 rgba(255,255,255,.95);
         }
-        .kpi-ly {
-            color:#6b7280; font-size:8.5px; font-weight:600;
-            overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
+
+        .kpi-3d-icon {
+            width: 27px;
+            height: 27px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 15px;
+            background: linear-gradient(145deg, #ffffff, #dfe7f1);
+            border: 1px solid color-mix(
+                in srgb,
+                var(--kpi-accent) 38%,
+                #cbd5e1
+            );
+            box-shadow:
+                0 3px 0 color-mix(in srgb, var(--kpi-accent) 24%, #b8c2cf),
+                0 5px 8px rgba(15,23,42,.14),
+                inset 1px 1px 0 rgba(255,255,255,.95);
         }
-        .kpi-growth {
-            padding:2px 6px; border:1px solid; border-radius:999px;
-            font-size:8.5px; font-weight:700; white-space:nowrap;
+
+        .kpi-3d-value {
+            position: relative;
+            z-index: 1;
+            margin-top: 4px;
+            color: #102a43;
+            font-size: 18px;
+            font-weight: 950;
+            line-height: 1.08;
+            white-space: nowrap;
+            text-shadow: 0 1px 0 #ffffff, 0 2px 3px rgba(15,23,42,.12);
+        }
+
+        .kpi-3d-footer {
+            position: relative;
+            z-index: 1;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .kpi-3d-ly {
+            min-width: 0;
+            color: #64748b;
+            font-family: "Segoe UI", Arial, sans-serif;
+            font-size: 9px;
+            font-weight: 600;
+            line-height: 1.1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .kpi-3d-growth {
+            display: inline-block;
+            padding: 2px 7px;
+            border: 1px solid;
+            border-radius: 999px;
+            font-family: "Segoe UI", Arial, sans-serif;
+            font-size: 9px;
+            font-weight: 400;
+            letter-spacing: 0;
+            white-space: nowrap;
+            box-shadow:
+                inset 0 1px 0 rgba(255,255,255,.9),
+                0 2px 3px rgba(15,23,42,.10);
         }
 
         div[data-testid="stSegmentedControl"] { margin-top:1px !important; }
@@ -311,19 +425,41 @@ def calculate_pnl_kpis(df: pd.DataFrame) -> dict:
 # =====================================================
 # UI helpers
 # =====================================================
-def render_kpi_card(title: str, value: str, previous: str, growth: float, icon: str, accent: str, reverse_good: bool = False) -> None:
+def render_kpi_card(
+    title: str,
+    value: str,
+    previous: str,
+    growth: float,
+    icon: str,
+    accent: str,
+    reverse_good: bool = False,
+) -> None:
+    """Render a P&L KPI using the same typography and card design as Overview."""
     positive = growth <= 0 if reverse_good else growth >= 0
-    color = "#15803d" if positive else "#dc2626"
-    border = "#86efac" if positive else "#fda4af"
-    arrow = "▲" if growth >= 0 else "▼"
+    growth_color = "#15803d" if positive else "#dc2626"
+    growth_border = "#86efac" if positive else "#fda4af"
+    growth_arrow = "▲" if growth >= 0 else "▼"
+
     html = (
-        f'<div class="kpi-card" style="--accent:{accent};">'
-        f'<div class="kpi-head"><div class="kpi-title">{escape(title)}</div><div class="kpi-icon">{icon}</div></div>'
-        f'<div class="kpi-value">{escape(value)}</div>'
-        f'<div class="kpi-footer"><span class="kpi-ly">LY: {escape(previous)}</span>'
-        f'<span class="kpi-growth" style="color:{color};border-color:{border};background:#fff;">{arrow} {abs(growth):.1f}%</span></div>'
+        f'<div class="kpi-3d-card" style="--kpi-accent:{accent};">'
+        f'<div class="kpi-3d-gloss"></div>'
+        f'<div class="kpi-3d-topline"></div>'
+        f'<div class="kpi-3d-head">'
+        f'<div class="kpi-3d-title">{escape(title)}</div>'
+        f'<div class="kpi-3d-icon">{icon}</div>'
+        f'</div>'
+        f'<div class="kpi-3d-value">{escape(value)}</div>'
+        f'<div class="kpi-3d-footer">'
+        f'<span class="kpi-3d-ly">LY: {escape(previous)}</span>'
+        f'<span class="kpi-3d-growth" '
+        f'style="background:#ffffff;border-color:{growth_border};'
+        f'color:{growth_color};">'
+        f'{growth_arrow} {abs(growth):.1f}%'
+        f'</span>'
+        f'</div>'
         f'</div>'
     )
+
     if hasattr(st, "html"):
         st.html(html)
     else:
