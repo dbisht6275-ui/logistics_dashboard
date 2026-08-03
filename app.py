@@ -593,11 +593,11 @@ with st.sidebar:
 
     # Existing reports search/folder logic is preserved exactly.
     if menu == "📄 Reports":
-        # ---------------------------------
-        # SEARCH REPORT
-        # ---------------------------------
+    # ---------------------------------
+    # SEARCH REPORT
+    # ---------------------------------
         
-        st.markdown(
+    st.markdown(
             """
             <style>
             section[data-testid="stSidebar"]
