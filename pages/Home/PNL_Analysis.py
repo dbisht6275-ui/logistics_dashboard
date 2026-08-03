@@ -685,110 +685,109 @@ def show_pnl_dashboard() -> None:
     _inject_pnl_css()
     export_placeholder = render_header()
 
-    with st.container(key="pnl_sticky_filters"):
-        filter_cols = st.columns(10, gap="small")
-        with filter_cols[0]:
-            view_type = st.selectbox("⇄ View Type", ["Origin", "Destination"], key="pnl_view_type")
-        with filter_cols[1]:
-            fy = st.selectbox("◷ Financial Year", FY_OPTIONS, key="pnl_fy")
+    filter_cols = st.columns(10, gap="small")
+    with filter_cols[0]:
+        view_type = st.selectbox("⇄ View Type", ["Origin", "Destination"], key="pnl_view_type")
+    with filter_cols[1]:
+        fy = st.selectbox("◷ Financial Year", FY_OPTIONS, key="pnl_fy")
 
-        if fy == "Select FY":
-            st.info("Please select financial year")
-            return
+    if fy == "Select FY":
+        st.info("Please select financial year")
+        return
 
-        # Temporary testing restriction: the P&L SP is currently loaded only for FY 2026-27.
-        if fy != "2026-2027":
-            st.warning("P&L testing is currently available only for FY 2026-2027.")
-            return
+    # Temporary testing restriction: the P&L SP is currently loaded only for FY 2026-27.
+    if fy != "2026-2027":
+        st.warning("P&L testing is currently available only for FY 2026-2027.")
+        return
 
-        start_date, end_date = get_date_range(fy)
-        prev_fy = get_previous_fy(fy)
-        prev_start, prev_end = get_date_range(prev_fy)
+    start_date, end_date = get_date_range(fy)
+    prev_fy = get_previous_fy(fy)
+    prev_start, prev_end = get_date_range(prev_fy)
 
-        with st.spinner("Loading P&L data..."):
-            raw_df, raw_prev_df = load_pnl_data_pair(
-                start_date,
-                end_date,
-                prev_start,
-                prev_end,
-                view_type,
-            )
+    with st.spinner("Loading P&L data..."):
+        raw_df, raw_prev_df = load_pnl_data_pair(
+            start_date,
+            end_date,
+            prev_start,
+            prev_end,
+            view_type,
+        )
 
-        df = normalize_pnl_columns(raw_df)
-        prev_df = normalize_pnl_columns(raw_prev_df)
+    df = normalize_pnl_columns(raw_df)
+    prev_df = normalize_pnl_columns(raw_prev_df)
 
-        if df.empty:
-            st.warning("No P&L data found for the selected financial year.")
-            return
+    if df.empty:
+        st.warning("No P&L data found for the selected financial year.")
+        return
 
-        missing = validate_pnl_data(df)
-        if missing:
-            st.error(f"Missing columns returned by stored procedure: {missing}")
-            st.write("Available columns:", list(df.columns))
-            return
+    missing = validate_pnl_data(df)
+    if missing:
+        st.error(f"Missing columns returned by stored procedure: {missing}")
+        st.write("Available columns:", list(df.columns))
+        return
 
-        data_scope = st.session_state.get("data_scope", {}) or {}
-        locked_zone = data_scope.get("zone")
-        locked_circle = data_scope.get("circle")
-        locked_branch = data_scope.get("branch")
+    data_scope = st.session_state.get("data_scope", {}) or {}
+    locked_zone = data_scope.get("zone")
+    locked_circle = data_scope.get("circle")
+    locked_branch = data_scope.get("branch")
 
+    if locked_branch:
+        branch_rows = df[df["branch"].astype(str).str.casefold() == str(locked_branch).casefold()]
+        if not branch_rows.empty:
+            locked_branch = branch_rows["branch"].iloc[0]
+            locked_circle = branch_rows["circle"].iloc[0]
+            locked_zone = branch_rows["zone"].iloc[0]
+    elif locked_circle:
+        circle_rows = df[df["circle"].astype(str).str.casefold() == str(locked_circle).casefold()]
+        if not circle_rows.empty:
+            locked_circle = circle_rows["circle"].iloc[0]
+            locked_zone = circle_rows["zone"].iloc[0]
+
+    # Current-year cascading filters
+    with filter_cols[2]:
+        company = st.selectbox("▥ Company", ["All"] + _safe_options(df, "COMPNAME"), key="pnl_company")
+    df = _apply_filter(df, "COMPNAME", company)
+
+    with filter_cols[3]:
+        if locked_zone:
+            zone = locked_zone
+            st.selectbox("◉ Zone", [zone], disabled=True, key="pnl_zone_locked")
+        else:
+            zone = st.selectbox("◉ Zone", ["All"] + _safe_options(df, "zone"), key="pnl_zone")
+    df = _apply_filter(df, "zone", zone)
+
+    with filter_cols[4]:
+        if locked_circle:
+            circle = locked_circle
+            st.selectbox("◎ Circle", [circle], disabled=True, key="pnl_circle_locked")
+        else:
+            circle = st.selectbox("◎ Circle", ["All"] + _safe_options(df, "circle"), key="pnl_circle")
+    df = _apply_filter(df, "circle", circle)
+
+    with filter_cols[5]:
         if locked_branch:
-            branch_rows = df[df["branch"].astype(str).str.casefold() == str(locked_branch).casefold()]
-            if not branch_rows.empty:
-                locked_branch = branch_rows["branch"].iloc[0]
-                locked_circle = branch_rows["circle"].iloc[0]
-                locked_zone = branch_rows["zone"].iloc[0]
-        elif locked_circle:
-            circle_rows = df[df["circle"].astype(str).str.casefold() == str(locked_circle).casefold()]
-            if not circle_rows.empty:
-                locked_circle = circle_rows["circle"].iloc[0]
-                locked_zone = circle_rows["zone"].iloc[0]
+            branch = locked_branch
+            st.selectbox("⌂ Branch", [branch], disabled=True, key="pnl_branch_locked")
+        else:
+            branch = st.selectbox("⌂ Branch", ["All"] + _safe_options(df, "branch"), key="pnl_branch")
+    df = _apply_filter(df, "branch", branch)
 
-        # Current-year cascading filters
-        with filter_cols[2]:
-            company = st.selectbox("▥ Company", ["All"] + _safe_options(df, "COMPNAME"), key="pnl_company")
-        df = _apply_filter(df, "COMPNAME", company)
+    with filter_cols[6]:
+        available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().tolist()]
+        quarter = st.selectbox("▦ Quarter", ["All"] + available_quarters, key="pnl_quarter")
+    df = _apply_filter(df, "Quarter", quarter)
 
-        with filter_cols[3]:
-            if locked_zone:
-                zone = locked_zone
-                st.selectbox("◉ Zone", [zone], disabled=True, key="pnl_zone_locked")
-            else:
-                zone = st.selectbox("◉ Zone", ["All"] + _safe_options(df, "zone"), key="pnl_zone")
-        df = _apply_filter(df, "zone", zone)
+    with filter_cols[7]:
+        available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().tolist()]
+        month = st.selectbox("▣ Month", ["All"] + available_months, key="pnl_month")
+    df = _apply_filter(df, "Month", month)
 
-        with filter_cols[4]:
-            if locked_circle:
-                circle = locked_circle
-                st.selectbox("◎ Circle", [circle], disabled=True, key="pnl_circle_locked")
-            else:
-                circle = st.selectbox("◎ Circle", ["All"] + _safe_options(df, "circle"), key="pnl_circle")
-        df = _apply_filter(df, "circle", circle)
+    with filter_cols[8]:
+        load_type = st.selectbox("▤ Load Type", ["All"] + _safe_options(df, "LOADTYPE"), key="pnl_loadtype")
+    df = _apply_filter(df, "LOADTYPE", load_type)
 
-        with filter_cols[5]:
-            if locked_branch:
-                branch = locked_branch
-                st.selectbox("⌂ Branch", [branch], disabled=True, key="pnl_branch_locked")
-            else:
-                branch = st.selectbox("⌂ Branch", ["All"] + _safe_options(df, "branch"), key="pnl_branch")
-        df = _apply_filter(df, "branch", branch)
-
-        with filter_cols[6]:
-            available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().tolist()]
-            quarter = st.selectbox("▦ Quarter", ["All"] + available_quarters, key="pnl_quarter")
-        df = _apply_filter(df, "Quarter", quarter)
-
-        with filter_cols[7]:
-            available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().tolist()]
-            month = st.selectbox("▣ Month", ["All"] + available_months, key="pnl_month")
-        df = _apply_filter(df, "Month", month)
-
-        with filter_cols[8]:
-            load_type = st.selectbox("▤ Load Type", ["All"] + _safe_options(df, "LOADTYPE"), key="pnl_loadtype")
-        df = _apply_filter(df, "LOADTYPE", load_type)
-
-        with filter_cols[9]:
-            conversion_type = st.selectbox("₹ Conversion", ["Crore", "Lac"], key="pnl_conversion")
+    with filter_cols[9]:
+        conversion_type = st.selectbox("₹ Conversion", ["Crore", "Lac"], key="pnl_conversion")
 
     divisor, unit = get_conversion(conversion_type)
 
