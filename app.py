@@ -593,13 +593,36 @@ with st.sidebar:
 
     # Existing reports search/folder logic is preserved exactly.
     if menu == "📄 Reports":
-        st.markdown('<div class="sugam-nav-label">Search Report</div>', unsafe_allow_html=True)
-
-        search_text = st.text_input(
-            "Search by report name",
-            label_visibility="collapsed",
-            placeholder="🔍 Search report",
-            key="sidebar_report_search",
+        # ---------------------------------
+        # SEARCH REPORT
+        # ---------------------------------
+        
+        st.markdown(
+            """
+            <style>
+            section[data-testid="stSidebar"]
+            div[data-testid="stTextInput"] input {
+                color: #111827 !important;
+                -webkit-text-fill-color: #111827 !important;
+                background-color: #ffffff !important;
+                caret-color: #111827 !important;
+            }
+        
+            section[data-testid="stSidebar"]
+            div[data-testid="stTextInput"] input::placeholder {
+                color: #64748b !important;
+                -webkit-text-fill-color: #64748b !important;
+                opacity: 1 !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+        
+        search_report = st.sidebar.text_input(
+            "SEARCH REPORT",
+            placeholder="Search report",
+            key="report_search"
         )
 
         if search_text:
