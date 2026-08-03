@@ -1,944 +1,366 @@
-import io
-from datetime import date, datetime, timedelta
-
-import pandas as pd
 import streamlit as st
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
-
+import pandas as pd
 from services.database import get_engine
+from io import BytesIO
+from st_aggrid import AgGrid, GridOptionsBuilder
 
 
-# =========================================================
-# CONSTANTS
-# =========================================================
+# ------------------------------------
+# EXCEL EXPORT FUNCTION
+# ------------------------------------
+def to_excel(df):
+    output = BytesIO()
 
-TEXT_COLUMNS = [
-    "ZONENAME",
-    "HUBNAME",
-    "BRANCH",
-]
-
-
-# =========================================================
-# DATE HELPERS
-# =========================================================
-
-def validate_date_range(
-    period_name: str,
-    from_date: date,
-    to_date: date,
-) -> None:
-    """Validate a selected report period."""
-
-    if from_date > to_date:
-        raise ValueError(
-            f"{period_name}: From Date cannot be after To Date."
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(
+            writer,
+            index=False,
+            sheet_name="Report",
         )
 
+    output.seek(0)
+    return output
 
-def format_period_column(
-    period_number: int,
-    from_date: datetime,
-    to_date: datetime,
-    is_ftl: bool = False,
-) -> str:
-    """
-    Create unique dynamic column headings.
 
-    Examples:
-        1. APR-26 TO JUN-26
-        2. JUL-26
-        3. AUG-26 (FTL)
-    """
-
+# ------------------------------------
+# DYNAMIC COLUMN NAME FUNCTION
+# ------------------------------------
+def format_date_range(from_date, to_date, is_ftl=False):
     from_month = from_date.strftime("%b-%y").upper()
     to_month = to_date.strftime("%b-%y").upper()
 
-    same_month = (
+    if (
         from_date.year == to_date.year
         and from_date.month == to_date.month
-    )
-
-    if same_month:
-        heading = to_month
+    ):
+        column_name = to_month
     else:
-        heading = f"{from_month} TO {to_month}"
+        column_name = f"{from_month} TO {to_month}"
 
     if is_ftl:
-        heading += " (FTL)"
+        column_name += " (FTL)"
 
-    return f"{period_number}. {heading}"
+    return column_name
 
 
-# =========================================================
-# DATABASE REPORT FUNCTION
-# =========================================================
-
+# ------------------------------------
+# DATA FUNCTION
+# ------------------------------------
 def get_bangladesh_delivery_turnover(
-    date1_from: str,
-    date1_to: str,
-    date2_from: str,
-    date2_to: str,
-    date3_from: str,
-    date3_to: str,
-):
-    """
-    Fetch branch-wise Bangladesh delivery turnover.
-
-    Input format:
-        DD-MM-YYYY
-
-    Returns:
-        columns, rows
-    """
-
-    raw_connection = None
+        date1_from, date1_to,
+        date2_from, date2_to,
+        date3_from, date3_to):
 
     try:
-        # -------------------------------------------------
-        # DATE CONVERSION
-        # -------------------------------------------------
+        # ------------------------------------
+        # DATE CONVERSION FOR SQL
+        # ------------------------------------
+        from1_sql = date1_from.strftime("%Y-%m-%d")
+        to1_sql = date1_to.strftime("%Y-%m-%d")
 
-        from1_dt = datetime.strptime(date1_from, "%d-%m-%Y")
-        to1_dt = datetime.strptime(date1_to, "%d-%m-%Y")
+        from2_sql = date2_from.strftime("%Y-%m-%d")
+        to2_sql = date2_to.strftime("%Y-%m-%d")
 
-        from2_dt = datetime.strptime(date2_from, "%d-%m-%Y")
-        to2_dt = datetime.strptime(date2_to, "%d-%m-%Y")
+        from3_sql = date3_from.strftime("%Y-%m-%d")
+        to3_sql = date3_to.strftime("%Y-%m-%d")
 
-        from3_dt = datetime.strptime(date3_from, "%d-%m-%Y")
-        to3_dt = datetime.strptime(date3_to, "%d-%m-%Y")
-
-        validate_date_range(
-            "Period 1",
-            from1_dt.date(),
-            to1_dt.date(),
-        )
-
-        validate_date_range(
-            "Period 2",
-            from2_dt.date(),
-            to2_dt.date(),
-        )
-
-        validate_date_range(
-            "Period 3",
-            from3_dt.date(),
-            to3_dt.date(),
-        )
-
-        # Exclusive upper limits include the complete To Date,
-        # even when CN.GRDT contains a time value.
-        to1_exclusive = to1_dt + timedelta(days=1)
-        to2_exclusive = to2_dt + timedelta(days=1)
-        to3_exclusive = to3_dt + timedelta(days=1)
-
-        # -------------------------------------------------
+        # ------------------------------------
         # DYNAMIC COLUMN NAMES
-        # -------------------------------------------------
-
-        col1_non_ftl = format_period_column(
-            1,
-            from1_dt,
-            to1_dt,
-        )
-
-        col2_non_ftl = format_period_column(
-            2,
-            from2_dt,
-            to2_dt,
-        )
-
-        col3_non_ftl = format_period_column(
-            3,
-            from3_dt,
-            to3_dt,
-        )
-
-        col1_ftl = format_period_column(
-            1,
-            from1_dt,
-            to1_dt,
-            is_ftl=True,
-        )
-
-        col2_ftl = format_period_column(
-            2,
-            from2_dt,
-            to2_dt,
-            is_ftl=True,
-        )
-
-        col3_ftl = format_period_column(
-            3,
-            from3_dt,
-            to3_dt,
-            is_ftl=True,
-        )
-
-        # -------------------------------------------------
-        # SQL QUERY
-        # -------------------------------------------------
-
-        query = f"""
-            SELECT
-                ZONE.ZONENAME,
-                ZONE.HUBNAME,
-                ORG.STNNAME AS BRANCH,
-
-                SUM(
-                    CASE
-                        WHEN ISNULL(CN.FTL, 'N') <> 'Y'
-                             AND CN.GRDT >= ?
-                             AND CN.GRDT < ?
-                        THEN (
-                            ISNULL(CN.TAMOUNT, 0)
-                            - ISNULL(CN.SERVICETAX, 0)
-                        ) / 300000.0
-                        ELSE 0
-                    END
-                ) AS [{col1_non_ftl}],
-
-                SUM(
-                    CASE
-                        WHEN ISNULL(CN.FTL, 'N') <> 'Y'
-                             AND CN.GRDT >= ?
-                             AND CN.GRDT < ?
-                        THEN (
-                            ISNULL(CN.TAMOUNT, 0)
-                            - ISNULL(CN.SERVICETAX, 0)
-                        ) / 100000.0
-                        ELSE 0
-                    END
-                ) AS [{col2_non_ftl}],
-
-                SUM(
-                    CASE
-                        WHEN ISNULL(CN.FTL, 'N') <> 'Y'
-                             AND CN.GRDT >= ?
-                             AND CN.GRDT < ?
-                        THEN (
-                            ISNULL(CN.TAMOUNT, 0)
-                            - ISNULL(CN.SERVICETAX, 0)
-                        ) / 100000.0
-                        ELSE 0
-                    END
-                ) AS [{col3_non_ftl}],
-
-                SUM(
-                    CASE
-                        WHEN ISNULL(CN.FTL, 'N') = 'Y'
-                             AND CN.GRDT >= ?
-                             AND CN.GRDT < ?
-                        THEN (
-                            ISNULL(CN.TAMOUNT, 0)
-                            - ISNULL(CN.SERVICETAX, 0)
-                        ) / 300000.0
-                        ELSE 0
-                    END
-                ) AS [{col1_ftl}],
-
-                SUM(
-                    CASE
-                        WHEN ISNULL(CN.FTL, 'N') = 'Y'
-                             AND CN.GRDT >= ?
-                             AND CN.GRDT < ?
-                        THEN (
-                            ISNULL(CN.TAMOUNT, 0)
-                            - ISNULL(CN.SERVICETAX, 0)
-                        ) / 100000.0
-                        ELSE 0
-                    END
-                ) AS [{col2_ftl}],
-
-                SUM(
-                    CASE
-                        WHEN ISNULL(CN.FTL, 'N') = 'Y'
-                             AND CN.GRDT >= ?
-                             AND CN.GRDT < ?
-                        THEN (
-                            ISNULL(CN.TAMOUNT, 0)
-                            - ISNULL(CN.SERVICETAX, 0)
-                        ) / 100000.0
-                        ELSE 0
-                    END
-                ) AS [{col3_ftl}]
-
-            FROM CNMT CN WITH (NOLOCK)
-
-            INNER JOIN STATIONMAST ORG
-                ON ORG.STNCODE = CN.ORGCODE
-
-            INNER JOIN VIEWSTATIONMAST ZONE
-                ON ZONE.STNCODE = CN.ORGCODE
-
-            INNER JOIN STATIONMAST DST
-                ON DST.STNCODE = CN.DESTCODE
-
-            WHERE
-                CN.GRTYPE <> 'N'
-
-                AND (
-                    UPPER(
-                        LTRIM(
-                            RTRIM(
-                                ISNULL(DST.COUNTRY, '')
-                            )
-                        )
-                    ) = 'BANGLADESH'
-
-                    OR UPPER(
-                        LTRIM(
-                            RTRIM(
-                                ISNULL(DST.STNNAME, '')
-                            )
-                        )
-                    ) IN (
-                        'PETRAPOLE',
-                        'MYMENSINGH'
-                    )
-                )
-
-                AND (
-                    (
-                        CN.GRDT >= ?
-                        AND CN.GRDT < ?
-                    )
-                    OR
-                    (
-                        CN.GRDT >= ?
-                        AND CN.GRDT < ?
-                    )
-                    OR
-                    (
-                        CN.GRDT >= ?
-                        AND CN.GRDT < ?
-                    )
-                )
-
-            GROUP BY
-                ZONE.ZONENAME,
-                ZONE.HUBNAME,
-                ORG.STNNAME
-
-            ORDER BY
-                ZONE.ZONENAME,
-                ZONE.HUBNAME,
-                ORG.STNNAME
-        """
-
-        parameters = [
-            # Non-FTL periods
-            from1_dt,
-            to1_exclusive,
-            from2_dt,
-            to2_exclusive,
-            from3_dt,
-            to3_exclusive,
-
-            # FTL periods
-            from1_dt,
-            to1_exclusive,
-            from2_dt,
-            to2_exclusive,
-            from3_dt,
-            to3_exclusive,
-
-            # Main WHERE date ranges
-            from1_dt,
-            to1_exclusive,
-            from2_dt,
-            to2_exclusive,
-            from3_dt,
-            to3_exclusive,
-        ]
-
-        # -------------------------------------------------
-        # DATABASE CONNECTION
-        # -------------------------------------------------
-
-        engine = get_engine()
-        raw_connection = engine.raw_connection()
-
-        dataframe = pd.read_sql_query(
-            query,
-            raw_connection,
-            params=parameters,
-        )
-
-        if dataframe.empty:
-            return [], []
-
-        # -------------------------------------------------
-        # CLEAN DATABASE RESULT
-        # -------------------------------------------------
-
-        for column in TEXT_COLUMNS:
-            if column in dataframe.columns:
-                dataframe[column] = (
-                    dataframe[column]
-                    .fillna("Unknown")
-                    .astype(str)
-                    .str.strip()
-                    .replace("", "Unknown")
-                )
-
-        numeric_columns = [
-            column
-            for column in dataframe.columns
-            if column not in TEXT_COLUMNS
-        ]
-
-        for column in numeric_columns:
-            dataframe[column] = pd.to_numeric(
-                dataframe[column],
-                errors="coerce",
-            ).fillna(0.0)
-
-        dataframe[numeric_columns] = (
-            dataframe[numeric_columns].round(2)
-        )
-
-        return (
-            list(dataframe.columns),
-            dataframe.values.tolist(),
-        )
-
-    except Exception as error:
-        raise RuntimeError(
-            "Bangladesh Delivery Turnover query failed: "
-            f"{error}"
-        ) from error
-
-    finally:
-        if raw_connection is not None:
-            try:
-                raw_connection.close()
-            except Exception:
-                pass
-
-
-# =========================================================
-# GRAND TOTAL
-# =========================================================
-
-def add_grand_total_row(
-    dataframe: pd.DataFrame,
-) -> pd.DataFrame:
-    """Add a grand-total row at the bottom."""
-
-    report_dataframe = dataframe.copy()
-
-    numeric_columns = [
-        column
-        for column in report_dataframe.columns
-        if column not in TEXT_COLUMNS
-    ]
-
-    for column in numeric_columns:
-        report_dataframe[column] = pd.to_numeric(
-            report_dataframe[column],
-            errors="coerce",
-        ).fillna(0.0)
-
-    total_row = {
-        column: ""
-        for column in report_dataframe.columns
-    }
-
-    if "ZONENAME" in total_row:
-        total_row["ZONENAME"] = "GRAND TOTAL"
-
-    for column in numeric_columns:
-        total_row[column] = round(
-            float(report_dataframe[column].sum()),
-            2,
-        )
-
-    return pd.concat(
-        [
-            report_dataframe,
-            pd.DataFrame([total_row]),
-        ],
-        ignore_index=True,
-    )
-
-
-# =========================================================
-# EXCEL EXPORT
-# =========================================================
-
-def create_bangladesh_turnover_excel(
-    report_dataframe: pd.DataFrame,
-) -> bytes:
-    """Create a formatted Excel report."""
-
-    output = io.BytesIO()
-
-    with pd.ExcelWriter(
-        output,
-        engine="openpyxl",
-    ) as writer:
-
-        report_dataframe.to_excel(
-            writer,
-            index=False,
-            sheet_name="Bangladesh Turnover",
-        )
-
-        worksheet = writer.sheets[
-            "Bangladesh Turnover"
-        ]
-
-        worksheet.freeze_panes = "D2"
-        worksheet.auto_filter.ref = worksheet.dimensions
-        worksheet.sheet_view.showGridLines = False
-
-        header_fill = PatternFill(
-            fill_type="solid",
-            fgColor="1F4E78",
-        )
-
-        header_font = Font(
-            bold=True,
-            color="FFFFFF",
-        )
-
-        total_fill = PatternFill(
-            fill_type="solid",
-            fgColor="D9EAF7",
-        )
-
-        total_font = Font(
-            bold=True,
-            color="17365D",
-        )
-
-        # Header
-        for cell in worksheet[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-            cell.alignment = Alignment(
-                horizontal="center",
-                vertical="center",
-                wrap_text=True,
-            )
-
-        worksheet.row_dimensions[1].height = 38
-
-        # Data rows
-        for row_number in range(
-            2,
-            worksheet.max_row + 1,
-        ):
-            for column_number in range(
-                1,
-                worksheet.max_column + 1,
-            ):
-                cell = worksheet.cell(
-                    row=row_number,
-                    column=column_number,
-                )
-
-                if column_number >= 4:
-                    cell.number_format = "0.00"
-
-                cell.alignment = Alignment(
-                    vertical="center",
-                )
-
-        # Grand-total row
-        total_row_number = worksheet.max_row
-
-        for cell in worksheet[total_row_number]:
-            cell.fill = total_fill
-            cell.font = total_font
-
-        # Column widths
-        for column_number, column_name in enumerate(
-            report_dataframe.columns,
-            start=1,
-        ):
-            column_letter = get_column_letter(
-                column_number
-            )
-
-            if column_name == "ZONENAME":
-                width = 20
-
-            elif column_name == "HUBNAME":
-                width = 22
-
-            elif column_name == "BRANCH":
-                width = 26
-
-            else:
-                width = 22
-
-            worksheet.column_dimensions[
-                column_letter
-            ].width = width
-
-    output.seek(0)
-
-    return output.getvalue()
-
-
-# =========================================================
-# STREAMLIT UI
-# =========================================================
-
-def show_bangladesh_delivery_turnover():
-    """Display the Bangladesh Delivery Turnover report."""
-
-    # Simple Streamlit heading prevents raw HTML display.
-    st.title("Bangladesh Delivery Turnover")
-
-    st.caption(
-        "Branch-wise Non-FTL and FTL delivery turnover comparison"
-    )
-
-    # -----------------------------------------------------
-    # DEFAULT DATES
-    # -----------------------------------------------------
-
-    today = date.today()
-    current_month_start = today.replace(day=1)
-
-    previous_month_end = (
-        current_month_start - timedelta(days=1)
-    )
-
-    previous_month_start = (
-        previous_month_end.replace(day=1)
-    )
-
-    period1_end = (
-        previous_month_start - timedelta(days=1)
-    )
-
-    # Previous three complete months
-    period1_start_month = period1_end.month - 2
-    period1_start_year = period1_end.year
-
-    while period1_start_month <= 0:
-        period1_start_month += 12
-        period1_start_year -= 1
-
-    period1_start = date(
-        period1_start_year,
-        period1_start_month,
-        1,
-    )
-
-    # -----------------------------------------------------
-    # DATE FILTERS
-    # -----------------------------------------------------
-
-    with st.container(border=True):
-
-        st.markdown("#### Select Report Periods")
-
-        period1_column, period2_column, period3_column = (
-            st.columns(
-                3,
-                gap="medium",
-            )
-        )
-
-        with period1_column:
-            st.markdown("**Period 1**")
-
-            date1_from = st.date_input(
-                "From Date",
-                value=period1_start,
-                format="DD-MM-YYYY",
-                key="bangladesh_period1_from",
-            )
-
-            date1_to = st.date_input(
-                "To Date",
-                value=period1_end,
-                format="DD-MM-YYYY",
-                key="bangladesh_period1_to",
-            )
-
-        with period2_column:
-            st.markdown("**Period 2**")
-
-            date2_from = st.date_input(
-                "From Date",
-                value=previous_month_start,
-                format="DD-MM-YYYY",
-                key="bangladesh_period2_from",
-            )
-
-            date2_to = st.date_input(
-                "To Date",
-                value=previous_month_end,
-                format="DD-MM-YYYY",
-                key="bangladesh_period2_to",
-            )
-
-        with period3_column:
-            st.markdown("**Period 3**")
-
-            date3_from = st.date_input(
-                "From Date",
-                value=current_month_start,
-                format="DD-MM-YYYY",
-                key="bangladesh_period3_from",
-            )
-
-            date3_to = st.date_input(
-                "To Date",
-                value=today,
-                format="DD-MM-YYYY",
-                key="bangladesh_period3_to",
-            )
-
-        generate_report = st.button(
-            "Generate Report",
-            type="primary",
-            use_container_width=True,
-            key="generate_bangladesh_delivery_report",
-        )
-
-    # -----------------------------------------------------
-    # SAVE SELECTED DATES
-    # -----------------------------------------------------
-
-    if generate_report:
-        st.session_state[
-            "bangladesh_delivery_report_dates"
-        ] = {
-            "date1_from": date1_from,
-            "date1_to": date1_to,
-            "date2_from": date2_from,
-            "date2_to": date2_to,
-            "date3_from": date3_from,
-            "date3_to": date3_to,
-        }
-
-    saved_dates = st.session_state.get(
-        "bangladesh_delivery_report_dates"
-    )
-
-    if not saved_dates:
-        return
-
-    date1_from = saved_dates["date1_from"]
-    date1_to = saved_dates["date1_to"]
-
-    date2_from = saved_dates["date2_from"]
-    date2_to = saved_dates["date2_to"]
-
-    date3_from = saved_dates["date3_from"]
-    date3_to = saved_dates["date3_to"]
-
-    # -----------------------------------------------------
-    # VALIDATION
-    # -----------------------------------------------------
-
-    try:
-        validate_date_range(
-            "Period 1",
+        # ------------------------------------
+        col1_non_ftl = format_date_range(
             date1_from,
             date1_to,
+            False,
         )
 
-        validate_date_range(
-            "Period 2",
+        col2_non_ftl = format_date_range(
             date2_from,
             date2_to,
+            False,
         )
 
-        validate_date_range(
-            "Period 3",
+        col3_non_ftl = format_date_range(
             date3_from,
             date3_to,
+            False,
         )
 
-    except ValueError as error:
-        st.error(str(error))
-        return
+        col1_ftl = format_date_range(
+            date1_from,
+            date1_to,
+            True,
+        )
 
-    # -----------------------------------------------------
-    # LOAD REPORT
-    # -----------------------------------------------------
+        col2_ftl = format_date_range(
+            date2_from,
+            date2_to,
+            True,
+        )
 
-    try:
-        with st.spinner(
-            "Loading Bangladesh delivery turnover report..."
-        ):
-            columns, rows = (
-                get_bangladesh_delivery_turnover(
-                    date1_from.strftime("%d-%m-%Y"),
-                    date1_to.strftime("%d-%m-%Y"),
-                    date2_from.strftime("%d-%m-%Y"),
-                    date2_to.strftime("%d-%m-%Y"),
-                    date3_from.strftime("%d-%m-%Y"),
-                    date3_to.strftime("%d-%m-%Y"),
+        col3_ftl = format_date_range(
+            date3_from,
+            date3_to,
+            True,
+        )
+
+        engine = get_engine()
+
+        # ------------------------------------
+        # SQL QUERY
+        # ------------------------------------
+        query = f"""
+        SELECT
+            ZONE.ZONENAME,
+            ZONE.HUBNAME,
+            ORG.STNNAME AS BRANCH,
+
+            SUM(
+                CASE
+                    WHEN ISNULL(CN.FTL, 'N') <> 'Y'
+                         AND CN.GRDT BETWEEN '{from1_sql}' AND '{to1_sql}'
+                    THEN (
+                        ISNULL(CN.TAMOUNT, 0)
+                        - ISNULL(CN.SERVICETAX, 0)
+                    ) / 300000.0
+                    ELSE 0
+                END
+            ) AS [{col1_non_ftl}],
+
+            SUM(
+                CASE
+                    WHEN ISNULL(CN.FTL, 'N') <> 'Y'
+                         AND CN.GRDT BETWEEN '{from2_sql}' AND '{to2_sql}'
+                    THEN (
+                        ISNULL(CN.TAMOUNT, 0)
+                        - ISNULL(CN.SERVICETAX, 0)
+                    ) / 100000.0
+                    ELSE 0
+                END
+            ) AS [{col2_non_ftl}],
+
+            SUM(
+                CASE
+                    WHEN ISNULL(CN.FTL, 'N') <> 'Y'
+                         AND CN.GRDT BETWEEN '{from3_sql}' AND '{to3_sql}'
+                    THEN (
+                        ISNULL(CN.TAMOUNT, 0)
+                        - ISNULL(CN.SERVICETAX, 0)
+                    ) / 100000.0
+                    ELSE 0
+                END
+            ) AS [{col3_non_ftl}],
+
+            SUM(
+                CASE
+                    WHEN ISNULL(CN.FTL, 'N') = 'Y'
+                         AND CN.GRDT BETWEEN '{from1_sql}' AND '{to1_sql}'
+                    THEN (
+                        ISNULL(CN.TAMOUNT, 0)
+                        - ISNULL(CN.SERVICETAX, 0)
+                    ) / 300000.0
+                    ELSE 0
+                END
+            ) AS [{col1_ftl}],
+
+            SUM(
+                CASE
+                    WHEN ISNULL(CN.FTL, 'N') = 'Y'
+                         AND CN.GRDT BETWEEN '{from2_sql}' AND '{to2_sql}'
+                    THEN (
+                        ISNULL(CN.TAMOUNT, 0)
+                        - ISNULL(CN.SERVICETAX, 0)
+                    ) / 100000.0
+                    ELSE 0
+                END
+            ) AS [{col2_ftl}],
+
+            SUM(
+                CASE
+                    WHEN ISNULL(CN.FTL, 'N') = 'Y'
+                         AND CN.GRDT BETWEEN '{from3_sql}' AND '{to3_sql}'
+                    THEN (
+                        ISNULL(CN.TAMOUNT, 0)
+                        - ISNULL(CN.SERVICETAX, 0)
+                    ) / 100000.0
+                    ELSE 0
+                END
+            ) AS [{col3_ftl}]
+
+        FROM CNMT CN WITH(NOLOCK)
+
+        INNER JOIN STATIONMAST ORG
+            ON ORG.STNCODE = CN.ORGCODE
+
+        INNER JOIN VIEWSTATIONMAST ZONE
+            ON ZONE.STNCODE = CN.ORGCODE
+
+        INNER JOIN STATIONMAST DST
+            ON DST.STNCODE = CN.DESTCODE
+
+        WHERE
+            CN.GRDT BETWEEN '{from1_sql}' AND '{to3_sql}'
+
+            AND CN.GRTYPE <> 'N'
+
+            AND (
+                UPPER(
+                    LTRIM(
+                        RTRIM(
+                            ISNULL(DST.COUNTRY, '')
+                        )
+                    )
+                ) = 'BANGLADESH'
+
+                OR UPPER(
+                    LTRIM(
+                        RTRIM(
+                            ISNULL(DST.STNNAME, '')
+                        )
+                    )
+                ) IN (
+                    'PETRAPOLE',
+                    'MYMENSINGH'
                 )
             )
 
-    except Exception as error:
-        st.error(
-            "Unable to generate Bangladesh Delivery "
-            "Turnover report."
+        GROUP BY
+            ZONE.ZONENAME,
+            ZONE.HUBNAME,
+            ORG.STNNAME
+
+        ORDER BY
+            ZONE.ZONENAME,
+            ZONE.HUBNAME,
+            ORG.STNNAME
+        """
+
+        df = pd.read_sql(
+            query,
+            engine,
         )
 
-        st.exception(error)
-        return
+        return df.round(2)
 
-    if not columns or not rows:
-        st.warning(
-            "The query ran successfully, but no Bangladesh "
-            "delivery turnover data was found for the "
-            "selected periods."
-        )
-        return
+    except Exception as e:
+        st.error(str(e))
+        return pd.DataFrame()
 
-    dataframe = pd.DataFrame(
-        rows,
-        columns=columns,
-    )
 
-    # -----------------------------------------------------
-    # CLEAN REPORT DATA
-    # -----------------------------------------------------
+# -----------------------------------
+# UI FUNCTION
+# -----------------------------------
+def show_bangladesh_delivery_turnover():
 
-    numeric_columns = [
-        column
-        for column in dataframe.columns
-        if column not in TEXT_COLUMNS
-    ]
+    st.title("Bangladesh Delivery Turnover")
 
-    for column in TEXT_COLUMNS:
-        if column in dataframe.columns:
-            dataframe[column] = (
-                dataframe[column]
-                .fillna("Unknown")
-                .astype(str)
-                .str.strip()
-                .replace("", "Unknown")
-            )
+    df = pd.DataFrame()
 
-    for column in numeric_columns:
-        dataframe[column] = pd.to_numeric(
-            dataframe[column],
-            errors="coerce",
-        ).fillna(0.0).round(2)
+    col1, col2, col3 = st.columns(3)
 
-    report_dataframe = add_grand_total_row(
-        dataframe
-    )
+    with col1:
+        st.markdown("### Period 1")
 
-    # -----------------------------------------------------
-    # TABLE CONFIGURATION
-    # -----------------------------------------------------
-
-    column_configuration = {}
-
-    if "ZONENAME" in report_dataframe.columns:
-        column_configuration["ZONENAME"] = (
-            st.column_config.TextColumn(
-                "Zone",
-                width="medium",
-            )
+        d1_from = st.date_input(
+            "From",
+            key="bd_p1_from",
         )
 
-    if "HUBNAME" in report_dataframe.columns:
-        column_configuration["HUBNAME"] = (
-            st.column_config.TextColumn(
-                "Hub",
-                width="medium",
-            )
+        d1_to = st.date_input(
+            "To",
+            key="bd_p1_to",
         )
 
-    if "BRANCH" in report_dataframe.columns:
-        column_configuration["BRANCH"] = (
-            st.column_config.TextColumn(
-                "Branch",
-                width="large",
-            )
+    with col2:
+        st.markdown("### Period 2")
+
+        d2_from = st.date_input(
+            "From",
+            key="bd_p2_from",
         )
 
-    for column in numeric_columns:
-        column_configuration[column] = (
-            st.column_config.NumberColumn(
-                column,
-                format="%.2f",
-                width="small",
-            )
+        d2_to = st.date_input(
+            "To",
+            key="bd_p2_to",
         )
 
-    # -----------------------------------------------------
-    # REPORT TABLE
-    # -----------------------------------------------------
+    with col3:
+        st.markdown("### Period 3")
 
-    st.markdown("### Bangladesh Delivery Turnover Report")
+        d3_from = st.date_input(
+            "From",
+            key="bd_p3_from",
+        )
 
-    st.dataframe(
-        report_dataframe,
+        d3_to = st.date_input(
+            "To",
+            key="bd_p3_to",
+        )
+
+    if st.button(
+        "Generate Report",
         use_container_width=True,
-        height=560,
-        hide_index=True,
-        column_config=column_configuration,
-    )
+        key="bd_generate_report",
+    ):
 
-    st.caption(
-        "Values are displayed in ₹ lakh. "
-        "Period 1 uses division by 300,000; "
-        "Periods 2 and 3 use division by 100,000."
-    )
+        if d1_from > d1_to:
+            st.error(
+                "Period 1 From Date cannot be after To Date."
+            )
+            return
 
-    # -----------------------------------------------------
-    # DOWNLOADS
-    # -----------------------------------------------------
+        if d2_from > d2_to:
+            st.error(
+                "Period 2 From Date cannot be after To Date."
+            )
+            return
 
-    excel_data = create_bangladesh_turnover_excel(
-        report_dataframe
-    )
+        if d3_from > d3_to:
+            st.error(
+                "Period 3 From Date cannot be after To Date."
+            )
+            return
 
-    csv_data = report_dataframe.to_csv(
-        index=False,
-    ).encode("utf-8-sig")
-
-    excel_column, csv_column = st.columns(2)
-
-    with excel_column:
-        st.download_button(
-            label="Download Excel",
-            data=excel_data,
-            file_name=(
-                "bangladesh_delivery_turnover_"
-                f"{date1_from:%Y%m%d}_"
-                f"{date3_to:%Y%m%d}.xlsx"
-            ),
-            mime=(
-                "application/vnd.openxmlformats-officedocument."
-                "spreadsheetml.sheet"
-            ),
-            use_container_width=True,
-            key="download_bangladesh_excel",
+        df = get_bangladesh_delivery_turnover(
+            d1_from,
+            d1_to,
+            d2_from,
+            d2_to,
+            d3_from,
+            d3_to,
         )
 
-    with csv_column:
-        st.download_button(
-            label="Download CSV",
-            data=csv_data,
-            file_name=(
-                "bangladesh_delivery_turnover_"
-                f"{date1_from:%Y%m%d}_"
-                f"{date3_to:%Y%m%d}.csv"
-            ),
-            mime="text/csv",
-            use_container_width=True,
-            key="download_bangladesh_csv",
-        )
+        if not df.empty:
 
+            gb = GridOptionsBuilder.from_dataframe(df)
 
-# Optional alias
-def show_bangladesh_turnover():
-    show_bangladesh_delivery_turnover()
+            gb.configure_default_column(
+                sortable=True,
+                filter=True,
+                resizable=True,
+            )
+
+            grid_options = gb.build()
+
+            AgGrid(
+                df,
+                gridOptions=grid_options,
+                height=500,
+                fit_columns_on_grid_load=True,
+            )
+
+            excel_file = to_excel(df)
+
+            st.download_button(
+                label="📥 Export To Excel",
+                data=excel_file,
+                file_name="BangladeshDeliveryTurnover.xlsx",
+                mime=(
+                    "application/vnd.openxmlformats-"
+                    "officedocument.spreadsheetml.sheet"
+                ),
+                use_container_width=True,
+                key="bd_export_excel",
+            )
+
+        else:
+            st.warning("No data found.")
