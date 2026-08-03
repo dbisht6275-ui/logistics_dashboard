@@ -14,6 +14,9 @@ from pages.IT.Bangladesh_Delivery_Turnover import show_bangladesh_delivery_turno
 from pages.IT.BookingSummaryTurnover import show_booking_summary_turnover
 from pages.IT.ZoneWiseDeliveryTurnover import show_zone_wise_delivery_turnover
 from pages.IT.BranchWiseDeliveryTurnover import show_branch_wise_delivery_turnover
+from pages.IT.DeliverySummaryTurnover import show_delivery_summary_turnover
+from pages.IT.BranchWiseBookingTurnover import show_branch_wise_booking_turnover
+from pages.IT.BookingWeightSummaryTurnover import show_booking_weight_summary_turnover
 
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
 from pages.Admin.user_management import show_UserManagement
@@ -470,7 +473,9 @@ REPORTS = {
         "📈 Booking Summary Turnover": show_booking_summary_turnover,
         "📊 Zone Wise Delivery Turnover": show_zone_wise_delivery_turnover,
         "📊 Branch Wise Delivery Turnover": show_branch_wise_delivery_turnover,
-        
+        "📊 Delivery Summary Turnover": show_delivery_summary_turnover,
+        "📊 Branch Wise Booking Turnover": show_branch_wise_booking_turnover,
+        "⚖️ Booking Weight Summary": show_booking_weight_summary_turnover,
     },
     "💰 Accounts Reports": {
         "📋 GR Costing Head Wise": show_GrCostingHeadWise,
