@@ -29,9 +29,7 @@ def validate_date_range(
     from_date: date,
     to_date: date,
 ) -> None:
-    """
-    Validate one selected date range.
-    """
+    """Validate a selected report period."""
 
     if from_date > to_date:
         raise ValueError(
@@ -46,10 +44,10 @@ def format_period_column(
     is_ftl: bool = False,
 ) -> str:
     """
-    Create dynamic column names.
+    Create unique dynamic column headings.
 
     Examples:
-        1. MAY-26 TO JUL-26
+        1. APR-26 TO JUN-26
         2. JUL-26
         3. AUG-26 (FTL)
     """
@@ -86,51 +84,30 @@ def get_bangladesh_delivery_turnover(
     date3_to: str,
 ):
     """
-    Get branch-wise Bangladesh delivery turnover.
+    Fetch branch-wise Bangladesh delivery turnover.
 
-    Input date format:
+    Input format:
         DD-MM-YYYY
 
-    Return:
+    Returns:
         columns, rows
     """
 
-    connection = None
+    raw_connection = None
 
     try:
         # -------------------------------------------------
         # DATE CONVERSION
         # -------------------------------------------------
 
-        from1_dt = datetime.strptime(
-            date1_from,
-            "%d-%m-%Y",
-        )
+        from1_dt = datetime.strptime(date1_from, "%d-%m-%Y")
+        to1_dt = datetime.strptime(date1_to, "%d-%m-%Y")
 
-        to1_dt = datetime.strptime(
-            date1_to,
-            "%d-%m-%Y",
-        )
+        from2_dt = datetime.strptime(date2_from, "%d-%m-%Y")
+        to2_dt = datetime.strptime(date2_to, "%d-%m-%Y")
 
-        from2_dt = datetime.strptime(
-            date2_from,
-            "%d-%m-%Y",
-        )
-
-        to2_dt = datetime.strptime(
-            date2_to,
-            "%d-%m-%Y",
-        )
-
-        from3_dt = datetime.strptime(
-            date3_from,
-            "%d-%m-%Y",
-        )
-
-        to3_dt = datetime.strptime(
-            date3_to,
-            "%d-%m-%Y",
-        )
+        from3_dt = datetime.strptime(date3_from, "%d-%m-%Y")
+        to3_dt = datetime.strptime(date3_to, "%d-%m-%Y")
 
         validate_date_range(
             "Period 1",
@@ -150,9 +127,8 @@ def get_bangladesh_delivery_turnover(
             to3_dt.date(),
         )
 
-        # Exclusive end date:
-        # CN.GRDT >= start AND CN.GRDT < next day
-        # This includes the complete selected To Date.
+        # Exclusive upper limits include the complete To Date,
+        # even when CN.GRDT contains a time value.
         to1_exclusive = to1_dt + timedelta(days=1)
         to2_exclusive = to2_dt + timedelta(days=1)
         to3_exclusive = to3_dt + timedelta(days=1)
@@ -165,21 +141,18 @@ def get_bangladesh_delivery_turnover(
             1,
             from1_dt,
             to1_dt,
-            is_ftl=False,
         )
 
         col2_non_ftl = format_period_column(
             2,
             from2_dt,
             to2_dt,
-            is_ftl=False,
         )
 
         col3_non_ftl = format_period_column(
             3,
             from3_dt,
             to3_dt,
-            is_ftl=False,
         )
 
         col1_ftl = format_period_column(
@@ -202,13 +175,6 @@ def get_bangladesh_delivery_turnover(
             to3_dt,
             is_ftl=True,
         )
-
-        # -------------------------------------------------
-        # DATABASE CONNECTION
-        # -------------------------------------------------
-
-        engine = get_engine()
-        connection = engine.raw_connection()
 
         # -------------------------------------------------
         # SQL QUERY
@@ -362,46 +328,41 @@ def get_bangladesh_delivery_turnover(
         """
 
         parameters = [
-            # Non-FTL Period 1
+            # Non-FTL periods
             from1_dt,
             to1_exclusive,
-
-            # Non-FTL Period 2
             from2_dt,
             to2_exclusive,
-
-            # Non-FTL Period 3
             from3_dt,
             to3_exclusive,
 
-            # FTL Period 1
+            # FTL periods
             from1_dt,
             to1_exclusive,
-
-            # FTL Period 2
             from2_dt,
             to2_exclusive,
-
-            # FTL Period 3
             from3_dt,
             to3_exclusive,
 
-            # Main WHERE Period 1
+            # Main WHERE date ranges
             from1_dt,
             to1_exclusive,
-
-            # Main WHERE Period 2
             from2_dt,
             to2_exclusive,
-
-            # Main WHERE Period 3
             from3_dt,
             to3_exclusive,
         ]
 
+        # -------------------------------------------------
+        # DATABASE CONNECTION
+        # -------------------------------------------------
+
+        engine = get_engine()
+        raw_connection = engine.raw_connection()
+
         dataframe = pd.read_sql_query(
             query,
-            connection,
+            raw_connection,
             params=parameters,
         )
 
@@ -444,30 +405,27 @@ def get_bangladesh_delivery_turnover(
         )
 
     except Exception as error:
-        print(
-            "Error in Bangladesh Delivery Turnover:",
-            error,
-        )
-        return [], []
+        raise RuntimeError(
+            "Bangladesh Delivery Turnover query failed: "
+            f"{error}"
+        ) from error
 
     finally:
-        if connection is not None:
+        if raw_connection is not None:
             try:
-                connection.close()
+                raw_connection.close()
             except Exception:
                 pass
 
 
 # =========================================================
-# GRAND TOTAL ROW
+# GRAND TOTAL
 # =========================================================
 
 def add_grand_total_row(
     dataframe: pd.DataFrame,
 ) -> pd.DataFrame:
-    """
-    Add a grand-total row at the bottom.
-    """
+    """Add a grand-total row at the bottom."""
 
     report_dataframe = dataframe.copy()
 
@@ -497,14 +455,10 @@ def add_grand_total_row(
             2,
         )
 
-    total_dataframe = pd.DataFrame(
-        [total_row]
-    )
-
     return pd.concat(
         [
             report_dataframe,
-            total_dataframe,
+            pd.DataFrame([total_row]),
         ],
         ignore_index=True,
     )
@@ -517,9 +471,7 @@ def add_grand_total_row(
 def create_bangladesh_turnover_excel(
     report_dataframe: pd.DataFrame,
 ) -> bytes:
-    """
-    Create an Excel report in memory.
-    """
+    """Create a formatted Excel report."""
 
     output = io.BytesIO()
 
@@ -562,7 +514,7 @@ def create_bangladesh_turnover_excel(
             color="17365D",
         )
 
-        # Header formatting
+        # Header
         for cell in worksheet[1]:
             cell.fill = header_fill
             cell.font = header_font
@@ -574,7 +526,7 @@ def create_bangladesh_turnover_excel(
 
         worksheet.row_dimensions[1].height = 38
 
-        # Data formatting
+        # Data rows
         for row_number in range(
             2,
             worksheet.max_row + 1,
@@ -593,10 +545,9 @@ def create_bangladesh_turnover_excel(
 
                 cell.alignment = Alignment(
                     vertical="center",
-                    wrap_text=False,
                 )
 
-        # Grand-total formatting
+        # Grand-total row
         total_row_number = worksheet.max_row
 
         for cell in worksheet[total_row_number]:
@@ -612,23 +563,6 @@ def create_bangladesh_turnover_excel(
                 column_number
             )
 
-            maximum_length = len(str(column_name))
-
-            for row_number in range(
-                2,
-                worksheet.max_row + 1,
-            ):
-                value = worksheet.cell(
-                    row=row_number,
-                    column=column_number,
-                ).value
-
-                if value is not None:
-                    maximum_length = max(
-                        maximum_length,
-                        len(str(value)),
-                    )
-
             if column_name == "ZONENAME":
                 width = 20
 
@@ -639,10 +573,7 @@ def create_bangladesh_turnover_excel(
                 width = 26
 
             else:
-                width = min(
-                    max(maximum_length + 3, 16),
-                    26,
-                )
+                width = 22
 
             worksheet.column_dimensions[
                 column_letter
@@ -658,42 +589,13 @@ def create_bangladesh_turnover_excel(
 # =========================================================
 
 def show_bangladesh_delivery_turnover():
-    """
-    Display Bangladesh Delivery Turnover report.
-    """
+    """Display the Bangladesh Delivery Turnover report."""
 
-    st.markdown(
-        """
-        <div style="
-            padding:14px 18px;
-            margin-bottom:12px;
-            border:1px solid #d8e2f0;
-            border-radius:12px;
-            background:linear-gradient(
-                180deg,
-                #ffffff 0%,
-                #f7faff 100%
-            );
-        ">
-            <div style="
-                color:#17365d;
-                font-size:21px;
-                font-weight:750;
-            ">
-                Bangladesh Delivery Turnover
-            </div>
+    # Simple Streamlit heading prevents raw HTML display.
+    st.title("Bangladesh Delivery Turnover")
 
-            <div style="
-                margin-top:3px;
-                color:#64748b;
-                font-size:12px;
-            ">
-                Branch-wise Non-FTL and FTL delivery
-                turnover comparison
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    st.caption(
+        "Branch-wise Non-FTL and FTL delivery turnover comparison"
     )
 
     # -----------------------------------------------------
@@ -701,36 +603,23 @@ def show_bangladesh_delivery_turnover():
     # -----------------------------------------------------
 
     today = date.today()
-
-    current_month_start = today.replace(
-        day=1
-    )
+    current_month_start = today.replace(day=1)
 
     previous_month_end = (
-        current_month_start
-        - timedelta(days=1)
+        current_month_start - timedelta(days=1)
     )
 
     previous_month_start = (
-        previous_month_end.replace(
-            day=1
-        )
+        previous_month_end.replace(day=1)
     )
 
     period1_end = (
-        previous_month_start
-        - timedelta(days=1)
+        previous_month_start - timedelta(days=1)
     )
 
-    # Period 1 default:
-    # previous three complete months
-    period1_start_month = (
-        period1_end.month - 2
-    )
-
-    period1_start_year = (
-        period1_end.year
-    )
+    # Previous three complete months
+    period1_start_month = period1_end.month - 2
+    period1_start_year = period1_end.year
 
     while period1_start_month <= 0:
         period1_start_month += 12
@@ -743,24 +632,12 @@ def show_bangladesh_delivery_turnover():
     )
 
     # -----------------------------------------------------
-    # FILTER UI
+    # DATE FILTERS
     # -----------------------------------------------------
 
     with st.container(border=True):
 
-        st.markdown(
-            """
-            <div style="
-                margin-bottom:8px;
-                color:#17365d;
-                font-size:15px;
-                font-weight:700;
-            ">
-                Select Report Periods
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        st.markdown("#### Select Report Periods")
 
         period1_column, period2_column, period3_column = (
             st.columns(
@@ -770,7 +647,6 @@ def show_bangladesh_delivery_turnover():
         )
 
         with period1_column:
-
             st.markdown("**Period 1**")
 
             date1_from = st.date_input(
@@ -788,7 +664,6 @@ def show_bangladesh_delivery_turnover():
             )
 
         with period2_column:
-
             st.markdown("**Period 2**")
 
             date2_from = st.date_input(
@@ -806,7 +681,6 @@ def show_bangladesh_delivery_turnover():
             )
 
         with period3_column:
-
             st.markdown("**Period 3**")
 
             date3_from = st.date_input(
@@ -830,10 +704,11 @@ def show_bangladesh_delivery_turnover():
             key="generate_bangladesh_delivery_report",
         )
 
-    # Save dates after Generate Report is clicked.
-    # This keeps the report visible after download interactions.
-    if generate_report:
+    # -----------------------------------------------------
+    # SAVE SELECTED DATES
+    # -----------------------------------------------------
 
+    if generate_report:
         st.session_state[
             "bangladesh_delivery_report_dates"
         ] = {
@@ -862,7 +737,7 @@ def show_bangladesh_delivery_turnover():
     date3_to = saved_dates["date3_to"]
 
     # -----------------------------------------------------
-    # DATE VALIDATION
+    # VALIDATION
     # -----------------------------------------------------
 
     try:
@@ -889,7 +764,7 @@ def show_bangladesh_delivery_turnover():
         return
 
     # -----------------------------------------------------
-    # LOAD REPORT DATA
+    # LOAD REPORT
     # -----------------------------------------------------
 
     try:
@@ -898,39 +773,29 @@ def show_bangladesh_delivery_turnover():
         ):
             columns, rows = (
                 get_bangladesh_delivery_turnover(
-                    date1_from.strftime(
-                        "%d-%m-%Y"
-                    ),
-                    date1_to.strftime(
-                        "%d-%m-%Y"
-                    ),
-                    date2_from.strftime(
-                        "%d-%m-%Y"
-                    ),
-                    date2_to.strftime(
-                        "%d-%m-%Y"
-                    ),
-                    date3_from.strftime(
-                        "%d-%m-%Y"
-                    ),
-                    date3_to.strftime(
-                        "%d-%m-%Y"
-                    ),
+                    date1_from.strftime("%d-%m-%Y"),
+                    date1_to.strftime("%d-%m-%Y"),
+                    date2_from.strftime("%d-%m-%Y"),
+                    date2_to.strftime("%d-%m-%Y"),
+                    date3_from.strftime("%d-%m-%Y"),
+                    date3_to.strftime("%d-%m-%Y"),
                 )
             )
 
     except Exception as error:
         st.error(
-            "Unable to generate Bangladesh "
-            "Delivery Turnover report."
+            "Unable to generate Bangladesh Delivery "
+            "Turnover report."
         )
+
         st.exception(error)
         return
 
     if not columns or not rows:
         st.warning(
-            "No Bangladesh delivery turnover data "
-            "was found for the selected periods."
+            "The query ran successfully, but no Bangladesh "
+            "delivery turnover data was found for the "
+            "selected periods."
         )
         return
 
@@ -940,7 +805,7 @@ def show_bangladesh_delivery_turnover():
     )
 
     # -----------------------------------------------------
-    # CLEAN UI DATA
+    # CLEAN REPORT DATA
     # -----------------------------------------------------
 
     numeric_columns = [
@@ -970,65 +835,49 @@ def show_bangladesh_delivery_turnover():
     )
 
     # -----------------------------------------------------
-    # TABLE COLUMN CONFIGURATION
+    # TABLE CONFIGURATION
     # -----------------------------------------------------
 
     column_configuration = {}
 
     if "ZONENAME" in report_dataframe.columns:
-
-        column_configuration[
-            "ZONENAME"
-        ] = st.column_config.TextColumn(
-            "Zone",
-            width="medium",
+        column_configuration["ZONENAME"] = (
+            st.column_config.TextColumn(
+                "Zone",
+                width="medium",
+            )
         )
 
     if "HUBNAME" in report_dataframe.columns:
-
-        column_configuration[
-            "HUBNAME"
-        ] = st.column_config.TextColumn(
-            "Hub",
-            width="medium",
+        column_configuration["HUBNAME"] = (
+            st.column_config.TextColumn(
+                "Hub",
+                width="medium",
+            )
         )
 
     if "BRANCH" in report_dataframe.columns:
-
-        column_configuration[
-            "BRANCH"
-        ] = st.column_config.TextColumn(
-            "Branch",
-            width="large",
+        column_configuration["BRANCH"] = (
+            st.column_config.TextColumn(
+                "Branch",
+                width="large",
+            )
         )
 
     for column in numeric_columns:
-
-        column_configuration[
-            column
-        ] = st.column_config.NumberColumn(
-            column,
-            format="%.2f",
-            width="small",
+        column_configuration[column] = (
+            st.column_config.NumberColumn(
+                column,
+                format="%.2f",
+                width="small",
+            )
         )
 
     # -----------------------------------------------------
     # REPORT TABLE
     # -----------------------------------------------------
 
-    st.markdown(
-        """
-        <div style="
-            margin:15px 0 8px;
-            color:#17365d;
-            font-size:17px;
-            font-weight:700;
-        ">
-            Bangladesh Delivery Turnover Report
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown("### Bangladesh Delivery Turnover Report")
 
     st.dataframe(
         report_dataframe,
@@ -1040,7 +889,7 @@ def show_bangladesh_delivery_turnover():
 
     st.caption(
         "Values are displayed in ₹ lakh. "
-        "Period 1 uses the existing division by 300,000. "
+        "Period 1 uses division by 300,000; "
         "Periods 2 and 3 use division by 100,000."
     )
 
@@ -1056,12 +905,9 @@ def show_bangladesh_delivery_turnover():
         index=False,
     ).encode("utf-8-sig")
 
-    excel_column, csv_column = st.columns(
-        2
-    )
+    excel_column, csv_column = st.columns(2)
 
     with excel_column:
-
         st.download_button(
             label="Download Excel",
             data=excel_data,
@@ -1079,7 +925,6 @@ def show_bangladesh_delivery_turnover():
         )
 
     with csv_column:
-
         st.download_button(
             label="Download CSV",
             data=csv_data,
@@ -1094,9 +939,6 @@ def show_bangladesh_delivery_turnover():
         )
 
 
-# =========================================================
-# OPTIONAL ALIAS
-# =========================================================
-
+# Optional alias
 def show_bangladesh_turnover():
     show_bangladesh_delivery_turnover()
