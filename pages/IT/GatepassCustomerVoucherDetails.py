@@ -1,11 +1,11 @@
 import streamlit as st
-import pyodbc
 import pandas as pd
 
 from datetime import date, datetime
 from io import BytesIO
 
 from st_aggrid import AgGrid, GridOptionsBuilder
+from services.database import get_engine
 
 
 # =========================================================
@@ -128,36 +128,72 @@ def prepare_dataframe_for_display(df):
     return clean_df
 
 
-def get_Gatepass_customer_Ledger_details_code   (date1_from, date1_to, cnge_code_filter=None):
-    if cnge_code_filter:
-        safe_cnge_code = str(cnge_code_filter).strip().replace("'", "''")
-        cnge_filter_value = f"'{safe_cnge_code}'"
-    else:
-        cnge_filter_value = "NULL"                   
+def _parse_report_date(value, field_name):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, str):
+        value = value.strip()
+        for date_format in ("%d-%m-%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, date_format).date()
+            except ValueError:
+                continue
+    raise ValueError(f"{field_name} must be a valid date in DD-MM-YYYY format.")
+
+
+def _execute_temp_table_query(query):
+    """Execute a multi-statement SQL Server query and return its result set."""
+    engine = get_engine()
+    raw_connection = engine.raw_connection()
+    cursor = None
+
     try:
-        # ---------------------------------
-        # CONVERT INPUT DATES
-        # ---------------------------------
-        from1_dt = datetime.strptime(date1_from, "%d-%m-%Y").strftime('%Y-%m-%d')
-        to1_dt   = datetime.strptime(date1_to, "%d-%m-%Y").strftime('%Y-%m-%d')
+        cursor = raw_connection.cursor()
+        cursor.execute(query)
 
-        # ---------------------------------
-        # SQL CONNECTION
-        # ---------------------------------
-        conn = pyodbc.connect(
-            'DRIVER={ODBC Driver 18 for SQL Server};'
-            'SERVER=142.79.224.75,21443;'
-            'DATABASE=GreenTransSugamExpress;'
-            'UID=data_analytics;'
-            'PWD=User@1234;'
-            'Encrypt=yes;'
-            'TrustServerCertificate=yes;'
-        )
+        while True:
+            if cursor.description is not None:
+                columns = [column[0] for column in cursor.description]
+                rows = cursor.fetchall()
+                return pd.DataFrame.from_records(rows, columns=columns)
 
-        # ---------------------------------
-        # SQL QUERY (Full Temp Table Logic)
-        # ---------------------------------
+            if not cursor.nextset():
+                break
+
+        return pd.DataFrame()
+
+    finally:
+        if cursor is not None:
+            cursor.close()
+        raw_connection.close()
+
+
+def get_Gatepass_customer_Ledger_details_code(
+    date1_from,
+    date1_to,
+    cnge_code_filter=None,
+):
+    try:
+        from_date = _parse_report_date(date1_from, "From Date")
+        to_date = _parse_report_date(date1_to, "To Date")
+
+        if from_date > to_date:
+            raise ValueError("From Date cannot be after To Date.")
+
+        from1_dt = from_date.strftime("%Y-%m-%d")
+        to1_dt = to_date.strftime("%Y-%m-%d")
+
+        if cnge_code_filter:
+            safe_cnge_code = str(cnge_code_filter).strip().replace("'", "''")
+            cnge_filter_value = f"'{safe_cnge_code}'"
+        else:
+            cnge_filter_value = "NULL"
+
         query = f"""
+        USE GreenTransSugamExpress;
+
         DECLARE @StartDate DATE = '{from1_dt}';
         DECLARE @EndDate DATE = '{to1_dt}';
         DECLARE @LedgerCode VARCHAR(10) = '0000010744';
@@ -363,19 +399,12 @@ def get_Gatepass_customer_Ledger_details_code   (date1_from, date1_to, cnge_code
         DROP TABLE #VOUCHER;
         """
 
-        # ---------------------------------
-        # RUN QUERY
-        # ---------------------------------
-        df = pd.read_sql(query, conn)
-        conn.close()
+        return _execute_temp_table_query(query)
 
-        columns = list(df.columns)
-        rows = df.values.tolist()
-        return columns, rows
+    except Exception as error:
+        st.error(f"Gatepass Customer Voucher Details error: {error}")
+        return pd.DataFrame()
 
-    except Exception as e:
-        st.error(f"Gatepass Customer Voucher Details error: {e}")
-        return [], []
 
 # =========================================================
 # REPORT DISPLAY
@@ -521,17 +550,16 @@ def show_gatepass_customer_voucher_details():
             return
 
         with st.spinner("Generating voucher details report..."):
-            columns, rows = get_Gatepass_customer_Ledger_details_code(
-                date_from.strftime("%d-%m-%Y"),
-                date_to.strftime("%d-%m-%Y"),
+            df = get_Gatepass_customer_Ledger_details_code(
+                date_from,
+                date_to,
                 cnge_code_filter.strip() or None,
             )
 
-        if not columns or not rows:
+        if df is None or df.empty:
             st.warning("No data found for the selected filters.")
             return
 
-        df = pd.DataFrame(rows, columns=columns)
         df = prepare_dataframe_for_display(df)
         display_gatepass_customer_voucher_report(df)
 
@@ -544,4 +572,8 @@ def show_GatepassCustomerVoucherDetails():
 
 
 def show_gatepass_customer_ledger_details():
+    show_gatepass_customer_voucher_details()
+
+
+def show_Gatepass_customer_Ledger_details_code():
     show_gatepass_customer_voucher_details()
