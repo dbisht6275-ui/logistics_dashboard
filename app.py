@@ -593,11 +593,11 @@ with st.sidebar:
 
     # Existing reports search/folder logic is preserved exactly.
     if menu == "📄 Reports":
-    # ---------------------------------
-    # SEARCH REPORT
-    # ---------------------------------
-        
-    st.markdown(
+
+        # ---------------------------------
+        # SEARCH REPORT
+        # ---------------------------------
+        st.markdown(
             """
             <style>
             section[data-testid="stSidebar"]
@@ -607,7 +607,7 @@ with st.sidebar:
                 background-color: #ffffff !important;
                 caret-color: #111827 !important;
             }
-        
+
             section[data-testid="stSidebar"]
             div[data-testid="stTextInput"] input::placeholder {
                 color: #64748b !important;
@@ -618,11 +618,11 @@ with st.sidebar:
             """,
             unsafe_allow_html=True,
         )
-        
-        search_report = st.sidebar.text_input(
+
+        search_text = st.text_input(
             "SEARCH REPORT",
             placeholder="Search report",
-            key="report_search"
+            key="report_search",
         )
 
         if search_text:
@@ -637,7 +637,10 @@ with st.sidebar:
                             st.session_state["selected_report"] = report_name
                             st.rerun()
 
-        st.markdown('<div class="sugam-nav-label">Report Folders</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sugam-nav-label">Report Folders</div>',
+            unsafe_allow_html=True,
+        )
 
         if not REPORTS_VISIBLE:
             st.info("No reports assigned to your role.")
