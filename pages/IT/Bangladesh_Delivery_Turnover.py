@@ -15,7 +15,7 @@ def to_excel(df):
         df.to_excel(
             writer,
             index=False,
-            sheet_name="Report",
+            sheet_name="Report"
         )
 
     output.seek(0)
@@ -23,68 +23,18 @@ def to_excel(df):
 
 
 # ------------------------------------
-# DYNAMIC COLUMN NAME FUNCTION
-# ------------------------------------
-def format_date_range(
-    period_number,
-    from_date,
-    to_date,
-    is_ftl=False,
-):
-    """
-    Creates unique headings even when two selected
-    periods cover the same month.
-    """
-
-    from_month = from_date.strftime("%b-%y").upper()
-    to_month = to_date.strftime("%b-%y").upper()
-
-    if (
-        from_date.year == to_date.year
-        and from_date.month == to_date.month
-    ):
-        column_name = to_month
-    else:
-        column_name = f"{from_month} TO {to_month}"
-
-    if is_ftl:
-        column_name += " (FTL)"
-
-    return f"{period_number}. {column_name}"
-
-
-# ------------------------------------
-# DATAFRAME CLEANING FOR AGGRID
+# AGGRID DATA CLEANING
 # ------------------------------------
 def prepare_dataframe_for_aggrid(df):
-    """
-    Convert SQL-returned values into JSON-safe values
-    before passing the DataFrame to AgGrid.
-    """
-
     if df is None or df.empty:
         return pd.DataFrame()
 
     clean_df = df.copy()
 
-    # Make every column name a unique string.
-    new_columns = []
-    used_columns = {}
-
-    for column in clean_df.columns:
-        column_name = str(column).strip()
-
-        if column_name in used_columns:
-            used_columns[column_name] += 1
-            column_name = (
-                f"{column_name}_{used_columns[column_name]}"
-            )
-        else:
-            used_columns[column_name] = 1
-
-        new_columns.append(column_name)
-
-    clean_df.columns = new_columns
+    clean_df.columns = [
+        str(column).strip()
+        for column in clean_df.columns
+    ]
 
     text_columns = [
         "ZONENAME",
@@ -92,7 +42,6 @@ def prepare_dataframe_for_aggrid(df):
         "BRANCH",
     ]
 
-    # Clean text columns.
     for column in text_columns:
         if column in clean_df.columns:
             clean_df[column] = (
@@ -102,7 +51,6 @@ def prepare_dataframe_for_aggrid(df):
                 .str.strip()
             )
 
-    # Convert all remaining columns to regular floats.
     numeric_columns = [
         column
         for column in clean_df.columns
@@ -113,14 +61,13 @@ def prepare_dataframe_for_aggrid(df):
         clean_df[column] = (
             pd.to_numeric(
                 clean_df[column],
-                errors="coerce",
+                errors="coerce"
             )
             .fillna(0.0)
             .astype(float)
             .round(2)
         )
 
-    # Replace unsupported special values.
     clean_df = clean_df.replace(
         {
             float("inf"): 0.0,
@@ -132,7 +79,31 @@ def prepare_dataframe_for_aggrid(df):
 
 
 # ------------------------------------
-# DATA FUNCTION
+# PERIOD COLUMN NAME
+# ------------------------------------
+def format_period_column(
+    period_number,
+    from_date,
+    to_date,
+    is_ftl=False
+):
+    period_name = (
+        f"{period_number}. "
+        f"{from_date.strftime('%d-%b-%y').upper()} "
+        f"TO "
+        f"{to_date.strftime('%d-%b-%y').upper()}"
+    )
+
+    if is_ftl:
+        period_name += " FTL"
+    else:
+        period_name += " NON-FTL"
+
+    return period_name
+
+
+# ------------------------------------
+# THREE PERIOD DATA FUNCTION
 # ------------------------------------
 def get_bangladesh_delivery_turnover(
     date1_from,
@@ -140,12 +111,9 @@ def get_bangladesh_delivery_turnover(
     date2_from,
     date2_to,
     date3_from,
-    date3_to,
+    date3_to
 ):
     try:
-        # ------------------------------------
-        # DATE VALIDATION
-        # ------------------------------------
         if date1_from > date1_to:
             raise ValueError(
                 "Period 1 From Date cannot be after To Date."
@@ -161,9 +129,6 @@ def get_bangladesh_delivery_turnover(
                 "Period 3 From Date cannot be after To Date."
             )
 
-        # ------------------------------------
-        # DATE CONVERSION FOR SQL
-        # ------------------------------------
         from1_sql = date1_from.strftime("%Y-%m-%d")
         to1_sql = date1_to.strftime("%Y-%m-%d")
 
@@ -173,56 +138,50 @@ def get_bangladesh_delivery_turnover(
         from3_sql = date3_from.strftime("%Y-%m-%d")
         to3_sql = date3_to.strftime("%Y-%m-%d")
 
-        # ------------------------------------
-        # DYNAMIC AND UNIQUE COLUMN NAMES
-        # ------------------------------------
-        col1_non_ftl = format_date_range(
+        col1_non_ftl = format_period_column(
             1,
             date1_from,
             date1_to,
-            False,
+            False
         )
 
-        col2_non_ftl = format_date_range(
+        col2_non_ftl = format_period_column(
             2,
             date2_from,
             date2_to,
-            False,
+            False
         )
 
-        col3_non_ftl = format_date_range(
+        col3_non_ftl = format_period_column(
             3,
             date3_from,
             date3_to,
-            False,
+            False
         )
 
-        col1_ftl = format_date_range(
+        col1_ftl = format_period_column(
             1,
             date1_from,
             date1_to,
-            True,
+            True
         )
 
-        col2_ftl = format_date_range(
+        col2_ftl = format_period_column(
             2,
             date2_from,
             date2_to,
-            True,
+            True
         )
 
-        col3_ftl = format_date_range(
+        col3_ftl = format_period_column(
             3,
             date3_from,
             date3_to,
-            True,
+            True
         )
 
         engine = get_engine()
 
-        # ------------------------------------
-        # SQL QUERY
-        # ------------------------------------
         query = f"""
         SELECT
             ZONE.ZONENAME,
@@ -325,13 +284,26 @@ def get_bangladesh_delivery_turnover(
             ON DST.STNCODE = CN.DESTCODE
 
         WHERE
-            CN.GRDT BETWEEN
-                '{from1_sql}' AND '{to3_sql}'
+            CN.GRTYPE <> 'N'
 
-            AND CN.GRTYPE <> 'N'
+            AND (
+                (
+                    CN.GRDT BETWEEN
+                        '{from1_sql}' AND '{to1_sql}'
+                )
+                OR
+                (
+                    CN.GRDT BETWEEN
+                        '{from2_sql}' AND '{to2_sql}'
+                )
+                OR
+                (
+                    CN.GRDT BETWEEN
+                        '{from3_sql}' AND '{to3_sql}'
+                )
+            )
 
-            AND
-            (
+            AND (
                 UPPER(
                     LTRIM(
                         RTRIM(
@@ -348,8 +320,7 @@ def get_bangladesh_delivery_turnover(
                             ISNULL(DST.STNNAME, '')
                         )
                     )
-                ) IN
-                (
+                ) IN (
                     'PETRAPOLE',
                     'MYMENSINGH'
                 )
@@ -368,169 +339,334 @@ def get_bangladesh_delivery_turnover(
 
         df = pd.read_sql(
             query,
-            engine,
+            engine
         )
 
         return prepare_dataframe_for_aggrid(df)
 
     except Exception as error:
         st.error(
-            f"Bangladesh report error: {error}"
+            f"Bangladesh three-period report error: {error}"
         )
         return pd.DataFrame()
 
 
+# ------------------------------------
+# ONE YEAR DATA FUNCTION
+# ------------------------------------
+def get_bangladesh_one_year_turnover(
+    year_from,
+    year_to
+):
+    try:
+        if year_from > year_to:
+            raise ValueError(
+                "Year From Date cannot be after Year To Date."
+            )
+
+        from_sql = year_from.strftime("%Y-%m-%d")
+        to_sql = year_to.strftime("%Y-%m-%d")
+
+        period_name = (
+            f"{year_from.strftime('%d-%b-%y').upper()} "
+            f"TO "
+            f"{year_to.strftime('%d-%b-%y').upper()}"
+        )
+
+        engine = get_engine()
+
+        query = f"""
+        SELECT
+            ZONE.ZONENAME,
+            ZONE.HUBNAME,
+            ORG.STNNAME AS BRANCH,
+
+            SUM(
+                CASE
+                    WHEN ISNULL(CN.FTL, 'N') <> 'Y'
+                    THEN
+                        (
+                            ISNULL(CN.TAMOUNT, 0)
+                            - ISNULL(CN.SERVICETAX, 0)
+                        ) / 1200000.0
+                    ELSE 0
+                END
+            ) AS [{period_name} NON-FTL],
+
+            SUM(
+                CASE
+                    WHEN ISNULL(CN.FTL, 'N') = 'Y'
+                    THEN
+                        (
+                            ISNULL(CN.TAMOUNT, 0)
+                            - ISNULL(CN.SERVICETAX, 0)
+                        ) / 1200000.0
+                    ELSE 0
+                END
+            ) AS [{period_name} FTL],
+
+            SUM(
+                (
+                    ISNULL(CN.TAMOUNT, 0)
+                    - ISNULL(CN.SERVICETAX, 0)
+                ) / 1200000.0
+            ) AS [{period_name} TOTAL]
+
+        FROM CNMT CN WITH(NOLOCK)
+
+        INNER JOIN STATIONMAST ORG
+            ON ORG.STNCODE = CN.ORGCODE
+
+        INNER JOIN VIEWSTATIONMAST ZONE
+            ON ZONE.STNCODE = CN.ORGCODE
+
+        INNER JOIN STATIONMAST DST
+            ON DST.STNCODE = CN.DESTCODE
+
+        WHERE
+            CN.GRDT BETWEEN
+                '{from_sql}' AND '{to_sql}'
+
+            AND CN.GRTYPE <> 'N'
+
+            AND (
+                UPPER(
+                    LTRIM(
+                        RTRIM(
+                            ISNULL(DST.COUNTRY, '')
+                        )
+                    )
+                ) = 'BANGLADESH'
+
+                OR
+
+                UPPER(
+                    LTRIM(
+                        RTRIM(
+                            ISNULL(DST.STNNAME, '')
+                        )
+                    )
+                ) IN (
+                    'PETRAPOLE',
+                    'MYMENSINGH'
+                )
+            )
+
+        GROUP BY
+            ZONE.ZONENAME,
+            ZONE.HUBNAME,
+            ORG.STNNAME
+
+        ORDER BY
+            ZONE.ZONENAME,
+            ZONE.HUBNAME,
+            ORG.STNNAME
+        """
+
+        df = pd.read_sql(
+            query,
+            engine
+        )
+
+        return prepare_dataframe_for_aggrid(df)
+
+    except Exception as error:
+        st.error(
+            f"Bangladesh one-year report error: {error}"
+        )
+        return pd.DataFrame()
+
+
+# ------------------------------------
+# REPORT DISPLAY FUNCTION
+# ------------------------------------
+def display_report(df, report_type):
+    if df is None or df.empty:
+        st.warning("No data found.")
+        return
+
+    try:
+        gb = GridOptionsBuilder.from_dataframe(df)
+
+        gb.configure_default_column(
+            sortable=True,
+            filter=True,
+            resizable=True,
+            minWidth=110
+        )
+
+        for column in df.columns[3:]:
+            gb.configure_column(
+                column,
+                type=["numericColumn"]
+            )
+
+        grid_options = gb.build()
+
+        AgGrid(
+            df,
+            gridOptions=grid_options,
+            height=500,
+            theme="streamlit",
+            enable_enterprise_modules=False,
+            allow_unsafe_jscode=False,
+            key=f"bangladesh_grid_{report_type}"
+        )
+
+    except Exception:
+        st.dataframe(
+            df,
+            use_container_width=True,
+            height=500,
+            hide_index=True
+        )
+
+    excel_file = to_excel(df)
+
+    if report_type == "One Year Total":
+        file_name = "BangladeshOneYearTurnover.xlsx"
+        download_key = "bd_one_year_export"
+
+    else:
+        file_name = "BangladeshDeliveryTurnover.xlsx"
+        download_key = "bd_three_period_export"
+
+    st.download_button(
+        label="📥 Export To Excel",
+        data=excel_file,
+        file_name=file_name,
+        mime=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
+        use_container_width=True,
+        key=download_key
+    )
+
+
 # -----------------------------------
-# UI FUNCTION
+# MAIN UI FUNCTION
 # -----------------------------------
 def show_bangladesh_delivery_turnover():
 
     st.title("Bangladesh Delivery Turnover")
 
-    col1, col2, col3 = st.columns(3)
+    report_type = st.radio(
+        "Report Type",
+        [
+            "3 Period Comparison",
+            "One Year Total",
+        ],
+        horizontal=True,
+        key="bd_report_type"
+    )
 
-    with col1:
-        st.markdown("### Period 1")
+    if report_type == "3 Period Comparison":
 
-        d1_from = st.date_input(
-            "From",
-            key="bd_p1_from",
-        )
+        col1, col2, col3 = st.columns(3)
 
-        d1_to = st.date_input(
-            "To",
-            key="bd_p1_to",
-        )
+        with col1:
+            st.markdown("### Period 1")
 
-    with col2:
-        st.markdown("### Period 2")
-
-        d2_from = st.date_input(
-            "From",
-            key="bd_p2_from",
-        )
-
-        d2_to = st.date_input(
-            "To",
-            key="bd_p2_to",
-        )
-
-    with col3:
-        st.markdown("### Period 3")
-
-        d3_from = st.date_input(
-            "From",
-            key="bd_p3_from",
-        )
-
-        d3_to = st.date_input(
-            "To",
-            key="bd_p3_to",
-        )
-
-    if st.button(
-        "Generate Report",
-        use_container_width=True,
-        key="bd_generate_report",
-    ):
-
-        if d1_from > d1_to:
-            st.error(
-                "Period 1 From Date cannot be after To Date."
-            )
-            return
-
-        if d2_from > d2_to:
-            st.error(
-                "Period 2 From Date cannot be after To Date."
-            )
-            return
-
-        if d3_from > d3_to:
-            st.error(
-                "Period 3 From Date cannot be after To Date."
-            )
-            return
-
-        with st.spinner("Generating report..."):
-            df = get_bangladesh_delivery_turnover(
-                d1_from,
-                d1_to,
-                d2_from,
-                d2_to,
-                d3_from,
-                d3_to,
+            d1_from = st.date_input(
+                "From",
+                key="bd_p1_from"
             )
 
-        if df.empty:
-            st.warning("No data found.")
-            return
-
-        # ------------------------------------
-        # AGGRID
-        # ------------------------------------
-        try:
-            gb = GridOptionsBuilder.from_dataframe(df)
-
-            gb.configure_default_column(
-                sortable=True,
-                filter=True,
-                resizable=True,
-                minWidth=110,
+            d1_to = st.date_input(
+                "To",
+                key="bd_p1_to"
             )
 
-            # Configure numeric columns.
-            for column in df.columns[3:]:
-                gb.configure_column(
-                    column,
-                    type=["numericColumn"],
-                    valueFormatter=(
-                        "Number(params.value).toFixed(2)"
-                    ),
+        with col2:
+            st.markdown("### Period 2")
+
+            d2_from = st.date_input(
+                "From",
+                key="bd_p2_from"
+            )
+
+            d2_to = st.date_input(
+                "To",
+                key="bd_p2_to"
+            )
+
+        with col3:
+            st.markdown("### Period 3")
+
+            d3_from = st.date_input(
+                "From",
+                key="bd_p3_from"
+            )
+
+            d3_to = st.date_input(
+                "To",
+                key="bd_p3_to"
+            )
+
+        if st.button(
+            "Generate Report",
+            use_container_width=True,
+            key="bd_generate_three_period"
+        ):
+
+            with st.spinner("Generating report..."):
+
+                df = get_bangladesh_delivery_turnover(
+                    d1_from,
+                    d1_to,
+                    d2_from,
+                    d2_to,
+                    d3_from,
+                    d3_to
                 )
 
-            grid_options = gb.build()
-
-            AgGrid(
+            display_report(
                 df,
-                gridOptions=grid_options,
-                height=500,
-                theme="streamlit",
-                enable_enterprise_modules=False,
-                allow_unsafe_jscode=False,
-                key="bangladesh_delivery_grid",
+                report_type
             )
 
-        except Exception as grid_error:
-            # Keep the report usable even if AgGrid has a
-            # package compatibility issue.
-            st.warning(
-                "AgGrid could not display the report. "
-                "Showing the standard report table instead."
+    else:
+
+        st.markdown("### One Year Period")
+
+        year_col1, year_col2 = st.columns(2)
+
+        with year_col1:
+            year_from = st.date_input(
+                "Year From",
+                key="bd_year_from"
             )
 
-            st.code(str(grid_error))
-
-            st.dataframe(
-                df,
-                use_container_width=True,
-                height=500,
-                hide_index=True,
+        with year_col2:
+            year_to = st.date_input(
+                "Year To",
+                key="bd_year_to"
             )
 
-        # ------------------------------------
-        # EXCEL DOWNLOAD
-        # ------------------------------------
-        excel_file = to_excel(df)
-
-        st.download_button(
-            label="📥 Export To Excel",
-            data=excel_file,
-            file_name="BangladeshDeliveryTurnover.xlsx",
-            mime=(
-                "application/vnd.openxmlformats-officedocument."
-                "spreadsheetml.sheet"
-            ),
+        if st.button(
+            "Generate One Year Report",
             use_container_width=True,
-            key="bd_export_excel",
-        )
+            key="bd_generate_one_year"
+        ):
+
+            with st.spinner(
+                "Generating one-year report..."
+            ):
+
+                df = get_bangladesh_one_year_turnover(
+                    year_from,
+                    year_to
+                )
+
+            display_report(
+                df,
+                report_type
+            )
+
+
+# -----------------------------------
+# OPTIONAL ALIAS
+# -----------------------------------
+def show_bangladesh_turnover():
+    show_bangladesh_delivery_turnover()
