@@ -11,7 +11,7 @@ from pages.Home.Service_Analysis import show_service_level
 from pages.Home.Outstanding_Analysis import show_OutstandingAnalysis
 from pages.IT.zone_booking_turnover import show_ZoneBookingTurnover
 from pages.IT.Bangladesh_Delivery_Turnover import show_bangladesh_delivery_turnover
-from page.IT.BookingSummaryTurnover import show_booking_summary_turnover
+from pages.IT.BookingSummaryTurnover import show_booking_summary_turnover
 
 
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
