@@ -346,7 +346,7 @@ def render_header() -> st.delta_generator.DeltaGenerator:
 
 def build_monthly_comparison(df: pd.DataFrame, prev_df: pd.DataFrame, divisor: float) -> pd.DataFrame:
     current = df.groupby("Month", observed=False, as_index=False).agg(
-        Revenue=("REVENUE", "sum"), Expense=("EXPENSE", "sum"), PNL=("PNL", "sum")
+        Business=("REVENUE", "sum"), Expense=("EXPENSE", "sum"), PNL=("PNL", "sum")
     )
     previous = prev_df.groupby("Month", observed=False, as_index=False).agg(
         PY_PNL=("PNL", "sum")
@@ -355,23 +355,57 @@ def build_monthly_comparison(df: pd.DataFrame, prev_df: pd.DataFrame, divisor: f
     result = current.merge(previous, on="Month", how="left")
     result["Month"] = pd.Categorical(result["Month"], MONTH_ORDER, ordered=True)
     result = result.sort_values("Month")
-    for col in ["Revenue", "Expense", "PNL", "PY_PNL"]:
+    for col in ["Business", "Expense", "PNL", "PY_PNL"]:
         result[col] = pd.to_numeric(result[col], errors="coerce").fillna(0) / divisor
-    result["Margin %"] = result.apply(lambda r: (r["PNL"] / r["Revenue"] * 100) if r["Revenue"] else 0, axis=1)
+    result["Margin %"] = result.apply(
+        lambda r: (r["PNL"] / r["Business"] * 100) if r["Business"] else 0,
+        axis=1,
+    )
     return result
 
 
 def build_group_summary(df: pd.DataFrame, prev_df: pd.DataFrame, group_col: str) -> pd.DataFrame:
     current = df.groupby(group_col, dropna=False, as_index=False).agg(
-        Revenue=("REVENUE", "sum"), Expense=("EXPENSE", "sum"), PNL=("PNL", "sum"), GRs=("grno", "nunique")
+        Business=("REVENUE", "sum"),
+        Expense=("EXPENSE", "sum"),
+        PNL=("PNL", "sum"),
+        GRs=("grno", "nunique"),
     )
-    previous = prev_df.groupby(group_col, dropna=False, as_index=False).agg(PY_PNL=("PNL", "sum")) \
-        if prev_df is not None and not prev_df.empty and group_col in prev_df.columns \
-        else pd.DataFrame(columns=[group_col, "PY_PNL"])
+
+    previous = (
+        prev_df.groupby(group_col, dropna=False, as_index=False).agg(
+            PY_BUSINESS=("REVENUE", "sum"),
+            PY_PNL=("PNL", "sum"),
+        )
+        if (
+            prev_df is not None
+            and not prev_df.empty
+            and group_col in prev_df.columns
+        )
+        else pd.DataFrame(columns=[group_col, "PY_BUSINESS", "PY_PNL"])
+    )
+
     summary = current.merge(previous, on=group_col, how="left")
-    summary["PY_PNL"] = pd.to_numeric(summary["PY_PNL"], errors="coerce").fillna(0)
-    summary["Margin %"] = summary.apply(lambda r: pnl_margin(r["Revenue"], r["PNL"]), axis=1)
-    summary["Growth %"] = summary.apply(lambda r: pct_change(r["PNL"], r["PY_PNL"]), axis=1)
+    summary["PY_BUSINESS"] = pd.to_numeric(
+        summary["PY_BUSINESS"], errors="coerce"
+    ).fillna(0)
+    summary["PY_PNL"] = pd.to_numeric(
+        summary["PY_PNL"], errors="coerce"
+    ).fillna(0)
+
+    summary["Margin %"] = summary.apply(
+        lambda r: pnl_margin(r["Business"], r["PNL"]),
+        axis=1,
+    )
+    summary["LY Margin %"] = summary.apply(
+        lambda r: pnl_margin(r["PY_BUSINESS"], r["PY_PNL"]),
+        axis=1,
+    )
+    summary["Growth %"] = summary.apply(
+        lambda r: pct_change(r["PNL"], r["PY_PNL"]),
+        axis=1,
+    )
+
     return summary
 
 
@@ -803,7 +837,7 @@ def show_pnl_dashboard() -> None:
     previous = calculate_pnl_kpis(prev_df)
 
     kpi_specs = [
-        ("Revenue", amount_text(current["revenue"], conversion_type), amount_text(previous["revenue"], conversion_type), pct_change(current["revenue"], previous["revenue"]), "💰", "#5b3fbb", False),
+        ("Business", amount_text(current["revenue"], conversion_type), amount_text(previous["revenue"], conversion_type), pct_change(current["revenue"], previous["revenue"]), "💰", "#5b3fbb", False),
         ("Expense", amount_text(current["expense"], conversion_type), amount_text(previous["expense"], conversion_type), pct_change(current["expense"], previous["expense"]), "🧾", "#5b3fbb", True),
         ("P&L", amount_text(current["pnl"], conversion_type), amount_text(previous["pnl"], conversion_type), pct_change(current["pnl"], previous["pnl"]), "📈", "#5b3fbb" if current["pnl"] >= 0 else "#dc2626", False),
         ("P&L Margin", f'{current["margin"]:.2f}%', f'{previous["margin"]:.2f}%', current["margin"] - previous["margin"], "🎯", "#5b3fbb", False),
@@ -1976,21 +2010,67 @@ def show_pnl_dashboard() -> None:
 
     with tab1:
         display = branch_summary.sort_values("PNL", ascending=False).copy()
-        for col in ["Revenue", "Expense", "PNL", "PY_PNL"]:
+
+        for col in ["Business", "Expense", "PNL", "PY_BUSINESS", "PY_PNL"]:
             display[col] = display[col] / divisor
+
+        display = display[
+            [
+                "branch",
+                "Business",
+                "Expense",
+                "PNL",
+                "Margin %",
+                "GRs",
+                "PY_BUSINESS",
+                "PY_PNL",
+                "LY Margin %",
+                "Growth %",
+            ]
+        ]
+
         st.dataframe(
             display,
             width="stretch",
             hide_index=True,
             height=430,
             column_config={
-                "Revenue": st.column_config.NumberColumn(f"Revenue ({unit})", format="%.2f"),
-                "Expense": st.column_config.NumberColumn(f"Expense ({unit})", format="%.2f"),
-                "PNL": st.column_config.NumberColumn(f"P&L ({unit})", format="%.2f"),
-                "PY_PNL": st.column_config.NumberColumn(f"LY P&L ({unit})", format="%.2f"),
-                "Margin %": st.column_config.NumberColumn("Margin %", format="%.2f%%"),
-                "Growth %": st.column_config.NumberColumn("Growth %", format="%.1f%%"),
-                "GRs": st.column_config.NumberColumn("GRs", format="%d"),
+                "Business": st.column_config.NumberColumn(
+                    f"Business ({unit})",
+                    format="%.2f",
+                ),
+                "Expense": st.column_config.NumberColumn(
+                    f"Expense ({unit})",
+                    format="%.2f",
+                ),
+                "PNL": st.column_config.NumberColumn(
+                    f"P&L ({unit})",
+                    format="%.2f",
+                ),
+                "Margin %": st.column_config.NumberColumn(
+                    "Margin %",
+                    format="%.2f%%",
+                ),
+                "GRs": st.column_config.NumberColumn(
+                    "GRs",
+                    format="%d",
+                ),
+                "PY_BUSINESS": st.column_config.NumberColumn(
+                    f"LY Business ({unit})",
+                    format="%.2f",
+                ),
+                "PY_PNL": st.column_config.NumberColumn(
+                    f"LY P&L ({unit})",
+                    format="%.2f",
+                ),
+                "LY Margin %": st.column_config.NumberColumn(
+                    "LY Margin %",
+                    format="%.2f%%",
+                ),
+                "Growth %": st.column_config.NumberColumn(
+                    "Growth %",
+                    format="%.1f%%",
+                ),
             },
         )
 
@@ -2001,7 +2081,7 @@ def show_pnl_dashboard() -> None:
             width="stretch",
             hide_index=True,
             column_config={
-                "Revenue": st.column_config.NumberColumn(f"Revenue ({unit})", format="%.2f"),
+                "Business": st.column_config.NumberColumn(f"Business ({unit})", format="%.2f"),
                 "Expense": st.column_config.NumberColumn(f"Expense ({unit})", format="%.2f"),
                 "PNL": st.column_config.NumberColumn(f"P&L ({unit})", format="%.2f"),
                 "PY_PNL": st.column_config.NumberColumn(f"LY P&L ({unit})", format="%.2f"),
@@ -2032,7 +2112,7 @@ def show_pnl_dashboard() -> None:
             hide_index=True,
             height=460,
             column_config={
-                "REVENUE": st.column_config.NumberColumn("Revenue/Freight (₹)", format="₹%.0f"),
+                "REVENUE": st.column_config.NumberColumn("Business/Freight (₹)", format="₹%.0f"),
                 "DELIVERYINCOME": st.column_config.NumberColumn("Delivery Income (₹)", format="₹%.0f"),
                 "ADDITIONALFREIGHT": st.column_config.NumberColumn("Additional Freight (₹)", format="₹%.0f"),
                 "OTHERINCOME": st.column_config.NumberColumn("Other Income (₹)", format="₹%.0f"),
