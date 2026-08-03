@@ -448,36 +448,6 @@ section.main {
     border-color: rgba(255,255,255,.08) !important;
 }
 
-/* ============================================================
-   Sticky P&L dashboard filter row
-   The matching container key is defined in PNL_Analysis.py.
-   Solid background prevents Chrome ghost/duplicate rendering.
-   ============================================================ */
-.st-key-pnl_sticky_filters {
-    position: sticky !important;
-    top: 2.1rem !important;
-    z-index: 9999 !important;
-    padding: 7px 8px 8px !important;
-    margin: 0 -2px 8px !important;
-    background: #fdfcff !important;
-    border: 1px solid #ded8f6 !important;
-    border-radius: 12px !important;
-    box-shadow: 0 8px 18px rgba(76, 55, 140, 0.12) !important;
-    isolation: isolate !important;
-}
-
-/* Reduce browser repaint artefacts inside the sticky container. */
-.st-key-pnl_sticky_filters,
-.st-key-pnl_sticky_filters * {
-    backface-visibility: hidden !important;
-}
-
-/* Keep dropdown menus above charts and sticky content. */
-div[data-baseweb="popover"],
-div[data-baseweb="menu"] {
-    z-index: 999999 !important;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
