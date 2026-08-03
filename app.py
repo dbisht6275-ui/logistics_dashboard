@@ -10,6 +10,7 @@ from pages.Home.Customer_Analysis import show_CustomerAnalysis
 from pages.Home.Service_Analysis import show_service_level
 from pages.Home.Outstanding_Analysis import show_OutstandingAnalysis
 from pages.IT.zone_booking_turnover import show_ZoneBookingTurnover
+from pages.IT.Bangladesh_Delivery_Turnover import show_bangladesh_delivery_turnover
 
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
 from pages.Admin.user_management import show_UserManagement
@@ -462,7 +463,8 @@ FULL_MENU_ITEMS = [
 REPORTS = {
     "🖥️ IT Reports": {
         "📊 Zone Booking Turnover": show_ZoneBookingTurnover,
-
+        "📋 Bangladesh Delivery Turnover": show_bangladesh_delivery_turnover,
+        
     },
     "💰 Accounts Reports": {
         "📋 GR Costing Head Wise": show_GrCostingHeadWise,
