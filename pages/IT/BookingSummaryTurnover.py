@@ -34,7 +34,7 @@ def apply_report_css():
         .report-subtitle {
             font-size: 12px;
             color: #64748b;
-            margin: 0 0 12px 0;
+            margin: 0 0 10px 0;
         }
 
         .period-title {
@@ -50,6 +50,11 @@ def apply_report_css():
 
         div[data-testid="stDateInput"] {
             margin-bottom: 0;
+        }
+
+        div[data-testid="stRadio"] {
+            margin-top: -4px;
+            margin-bottom: 2px;
         }
 
         div.stButton > button {
@@ -87,16 +92,14 @@ def to_excel(df):
 
 
 # =========================================================
-# DEFAULT DATE RANGES
+# DEFAULT DATES
 # =========================================================
 def get_default_dates():
     today = date.today()
-
     current_month_start = today.replace(day=1)
 
     previous_month_end = (
-        current_month_start
-        - timedelta(days=1)
+        current_month_start - timedelta(days=1)
     )
 
     previous_month_start = (
@@ -104,8 +107,7 @@ def get_default_dates():
     )
 
     previous_three_month_end = (
-        previous_month_start
-        - timedelta(days=1)
+        previous_month_start - timedelta(days=1)
     )
 
     start_month = previous_three_month_end.month - 2
@@ -121,6 +123,16 @@ def get_default_dates():
         1,
     )
 
+    try:
+        one_year_start = today.replace(
+            year=today.year - 1
+        )
+    except ValueError:
+        one_year_start = today.replace(
+            year=today.year - 1,
+            day=28,
+        )
+
     return {
         "today": today,
         "current_month_start": current_month_start,
@@ -128,6 +140,7 @@ def get_default_dates():
         "previous_month_end": previous_month_end,
         "previous_three_month_start": previous_three_month_start,
         "previous_three_month_end": previous_three_month_end,
+        "one_year_start": one_year_start,
     }
 
 
@@ -187,7 +200,7 @@ def prepare_dataframe_for_aggrid(df):
 
 
 # =========================================================
-# BOOKING SUMMARY DATA FUNCTION
+# THREE-PERIOD BOOKING SUMMARY
 # =========================================================
 def get_Booking_summary_trunover(
     date1_from,
@@ -198,30 +211,21 @@ def get_Booking_summary_trunover(
     date3_to,
 ):
     try:
-        # ---------------------------------------------
-        # DATE VALIDATION
-        # ---------------------------------------------
         if date1_from > date1_to:
             raise ValueError(
-                "Previous 3 Months: From Date cannot "
-                "be after To Date."
+                "Previous 3 Months: From Date cannot be after To Date."
             )
 
         if date2_from > date2_to:
             raise ValueError(
-                "Previous Month: From Date cannot "
-                "be after To Date."
+                "Previous Month: From Date cannot be after To Date."
             )
 
         if date3_from > date3_to:
             raise ValueError(
-                "Current Month: From Date cannot "
-                "be after To Date."
+                "Current Month: From Date cannot be after To Date."
             )
 
-        # ---------------------------------------------
-        # SQL DATE FORMAT
-        # ---------------------------------------------
         from1_sql = date1_from.strftime("%Y-%m-%d")
         to1_sql = date1_to.strftime("%Y-%m-%d")
 
@@ -231,9 +235,6 @@ def get_Booking_summary_trunover(
         from3_sql = date3_from.strftime("%Y-%m-%d")
         to3_sql = date3_to.strftime("%Y-%m-%d")
 
-        # ---------------------------------------------
-        # PARTICULAR NAMES IN DD-MM-YYYY FORMAT
-        # ---------------------------------------------
         part1 = (
             "1. PREVIOUS 3 MONTHS "
             f"({date1_from.strftime('%d-%m-%Y')} "
@@ -258,9 +259,6 @@ def get_Booking_summary_trunover(
 
         engine = get_engine()
 
-        # =================================================
-        # ORIGINAL BOOKING SUMMARY SQL
-        # =================================================
         query = f"""
         SELECT
             S.PARTICULAR,
@@ -269,19 +267,13 @@ def get_Booking_summary_trunover(
             SUM(S.FTL) AS FTL,
             SUM(S.TOTAL) AS TOTAL,
 
-            (
-                SUM(S.SML) * 100.0
-            ) / NULLIF(
-                SUM(S.TOTAL),
-                0
-            ) AS [% (SML.+LTL/TOTAL)],
+            (SUM(S.SML) * 100.0)
+                / NULLIF(SUM(S.TOTAL), 0)
+                AS [% (SML.+LTL/TOTAL)],
 
-            (
-                SUM(S.NPBKG) * 100.0
-            ) / NULLIF(
-                SUM(S.TOTAL),
-                0
-            ) AS [% (NEPAL/TOTAL)]
+            (SUM(S.NPBKG) * 100.0)
+                / NULLIF(SUM(S.TOTAL), 0)
+                AS [% (NEPAL/TOTAL)]
 
         FROM
         (
@@ -291,33 +283,22 @@ def get_Booking_summary_trunover(
 
                 IIF(
                     CN.FTL <> 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 300000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
                     0
                 ) AS SML,
 
                 IIF(
                     CN.FTL = 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 300000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
                     0
                 ) AS FTL,
 
-                (
-                    CN.TAMOUNT
-                    - CN.SERVICETAX
-                ) / 300000.0 AS TOTAL,
+                (CN.TAMOUNT - CN.SERVICETAX)
+                    / 300000.0 AS TOTAL,
 
                 IIF(
                     DST.ZONECODE = 'A0006',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 300000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
                     0
                 ) AS NPBKG
 
@@ -334,13 +315,7 @@ def get_Booking_summary_trunover(
 
             WHERE
                 CN.GRDT >= '{from1_sql}'
-
-                AND CN.GRDT < DATEADD(
-                    DAY,
-                    1,
-                    '{to1_sql}'
-                )
-
+                AND CN.GRDT < DATEADD(DAY, 1, '{to1_sql}')
                 AND CN.GRTYPE <> 'N'
 
             UNION ALL
@@ -351,33 +326,22 @@ def get_Booking_summary_trunover(
 
                 IIF(
                     CN.FTL <> 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 300000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
                     0
                 ),
 
                 IIF(
                     CN.FTL = 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 300000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
                     0
                 ),
 
-                (
-                    CN.TAMOUNT
-                    - CN.SERVICETAX
-                ) / 300000.0,
+                (CN.TAMOUNT - CN.SERVICETAX)
+                    / 300000.0,
 
                 IIF(
                     DST.ZONECODE = 'A0006',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 300000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
                     0
                 )
 
@@ -394,13 +358,7 @@ def get_Booking_summary_trunover(
 
             WHERE
                 CN.GRDT >= '{from1_sql}'
-
-                AND CN.GRDT < DATEADD(
-                    DAY,
-                    1,
-                    '{to1_sql}'
-                )
-
+                AND CN.GRDT < DATEADD(DAY, 1, '{to1_sql}')
                 AND CN.GRTYPE <> 'N'
 
             UNION ALL
@@ -411,33 +369,22 @@ def get_Booking_summary_trunover(
 
                 IIF(
                     CN.FTL <> 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 ),
 
                 IIF(
                     CN.FTL = 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 ),
 
-                (
-                    CN.TAMOUNT
-                    - CN.SERVICETAX
-                ) / 100000.0,
+                (CN.TAMOUNT - CN.SERVICETAX)
+                    / 100000.0,
 
                 IIF(
                     DST.ZONECODE = 'A0006',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 )
 
@@ -454,13 +401,7 @@ def get_Booking_summary_trunover(
 
             WHERE
                 CN.GRDT >= '{from2_sql}'
-
-                AND CN.GRDT < DATEADD(
-                    DAY,
-                    1,
-                    '{to2_sql}'
-                )
-
+                AND CN.GRDT < DATEADD(DAY, 1, '{to2_sql}')
                 AND CN.GRTYPE <> 'N'
 
             UNION ALL
@@ -471,33 +412,22 @@ def get_Booking_summary_trunover(
 
                 IIF(
                     CN.FTL <> 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 ),
 
                 IIF(
                     CN.FTL = 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 ),
 
-                (
-                    CN.TAMOUNT
-                    - CN.SERVICETAX
-                ) / 100000.0,
+                (CN.TAMOUNT - CN.SERVICETAX)
+                    / 100000.0,
 
                 IIF(
                     DST.ZONECODE = 'A0006',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 )
 
@@ -514,13 +444,7 @@ def get_Booking_summary_trunover(
 
             WHERE
                 CN.GRDT >= '{from2_sql}'
-
-                AND CN.GRDT < DATEADD(
-                    DAY,
-                    1,
-                    '{to2_sql}'
-                )
-
+                AND CN.GRDT < DATEADD(DAY, 1, '{to2_sql}')
                 AND CN.GRTYPE <> 'N'
 
             UNION ALL
@@ -531,33 +455,22 @@ def get_Booking_summary_trunover(
 
                 IIF(
                     CN.FTL <> 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 ),
 
                 IIF(
                     CN.FTL = 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 ),
 
-                (
-                    CN.TAMOUNT
-                    - CN.SERVICETAX
-                ) / 100000.0,
+                (CN.TAMOUNT - CN.SERVICETAX)
+                    / 100000.0,
 
                 IIF(
                     DST.ZONECODE = 'A0006',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 )
 
@@ -574,13 +487,7 @@ def get_Booking_summary_trunover(
 
             WHERE
                 CN.GRDT >= '{from3_sql}'
-
-                AND CN.GRDT < DATEADD(
-                    DAY,
-                    1,
-                    '{to3_sql}'
-                )
-
+                AND CN.GRDT < DATEADD(DAY, 1, '{to3_sql}')
                 AND CN.GRTYPE <> 'N'
 
             UNION ALL
@@ -591,33 +498,22 @@ def get_Booking_summary_trunover(
 
                 IIF(
                     CN.FTL <> 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 ),
 
                 IIF(
                     CN.FTL = 'Y',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 ),
 
-                (
-                    CN.TAMOUNT
-                    - CN.SERVICETAX
-                ) / 100000.0,
+                (CN.TAMOUNT - CN.SERVICETAX)
+                    / 100000.0,
 
                 IIF(
                     DST.ZONECODE = 'A0006',
-                    (
-                        CN.TAMOUNT
-                        - CN.SERVICETAX
-                    ) / 100000.0,
+                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
                     0
                 )
 
@@ -634,13 +530,7 @@ def get_Booking_summary_trunover(
 
             WHERE
                 CN.GRDT >= '{from3_sql}'
-
-                AND CN.GRDT < DATEADD(
-                    DAY,
-                    1,
-                    '{to3_sql}'
-                )
-
+                AND CN.GRDT < DATEADD(DAY, 1, '{to3_sql}')
                 AND CN.GRTYPE <> 'N'
 
         ) AS S
@@ -653,24 +543,17 @@ def get_Booking_summary_trunover(
             S.PARTICULAR,
 
             IIF(
-                S.ZONENAME = 'NORTH EAST ZONE',
-                1,
+                S.ZONENAME = 'NORTH EAST ZONE', 1,
                 IIF(
-                    S.ZONENAME = 'EAST ZONE',
-                    2,
+                    S.ZONENAME = 'EAST ZONE', 2,
                     IIF(
-                        S.ZONENAME = 'NORTH ZONE',
-                        3,
+                        S.ZONENAME = 'NORTH ZONE', 3,
                         IIF(
-                            S.ZONENAME = 'SOUTH ZONE',
-                            4,
+                            S.ZONENAME = 'SOUTH ZONE', 4,
                             IIF(
-                                S.ZONENAME = 'WEST ZONE',
-                                5,
+                                S.ZONENAME = 'WEST ZONE', 5,
                                 IIF(
-                                    S.ZONENAME = 'NEPAL ZONE',
-                                    6,
-                                    7
+                                    S.ZONENAME = 'NEPAL ZONE', 6, 7
                                 )
                             )
                         )
@@ -690,7 +573,180 @@ def get_Booking_summary_trunover(
 
     except Exception as error:
         st.error(
-            f"Booking Summary Turnover report error: {error}"
+            f"Booking Summary comparison report error: {error}"
+        )
+        return pd.DataFrame()
+
+
+# =========================================================
+# ONE-YEAR BOOKING SUMMARY
+# =========================================================
+def get_booking_summary_one_year_turnover(
+    year_from,
+    year_to,
+):
+    try:
+        if year_from > year_to:
+            raise ValueError(
+                "One Year From Date cannot be after To Date."
+            )
+
+        from_sql = year_from.strftime("%Y-%m-%d")
+        to_sql = year_to.strftime("%Y-%m-%d")
+
+        period_name = (
+            "1. ONE YEAR AVERAGE "
+            f"({year_from.strftime('%d-%m-%Y')} "
+            f"TO {year_to.strftime('%d-%m-%Y')})"
+        )
+
+        total_name = "1.1 TOTAL"
+
+        engine = get_engine()
+
+        query = f"""
+        SELECT
+            S.PARTICULAR,
+            S.ZONENAME,
+            SUM(S.SML) AS LTL,
+            SUM(S.FTL) AS FTL,
+            SUM(S.TOTAL) AS TOTAL,
+
+            (SUM(S.SML) * 100.0)
+                / NULLIF(SUM(S.TOTAL), 0)
+                AS [% (SML.+LTL/TOTAL)],
+
+            (SUM(S.NPBKG) * 100.0)
+                / NULLIF(SUM(S.TOTAL), 0)
+                AS [% (NEPAL/TOTAL)]
+
+        FROM
+        (
+            SELECT
+                '{period_name}' AS PARTICULAR,
+                ZONE.ZONENAME,
+
+                IIF(
+                    CN.FTL <> 'Y',
+                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
+                    0
+                ) AS SML,
+
+                IIF(
+                    CN.FTL = 'Y',
+                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
+                    0
+                ) AS FTL,
+
+                (CN.TAMOUNT - CN.SERVICETAX)
+                    / 1200000.0 AS TOTAL,
+
+                IIF(
+                    DST.ZONECODE = 'A0006',
+                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
+                    0
+                ) AS NPBKG
+
+            FROM CNMT CN WITH(NOLOCK)
+
+            INNER JOIN STATIONMAST ORG
+                ON ORG.STNCODE = CN.ORGCODE
+
+            INNER JOIN VIEWSTATIONMAST ZONE
+                ON ZONE.STNCODE = CN.ORGCODE
+
+            LEFT JOIN STATIONMAST DST
+                ON DST.STNCODE = CN.DESTCODE
+
+            WHERE
+                CN.GRDT >= '{from_sql}'
+                AND CN.GRDT < DATEADD(DAY, 1, '{to_sql}')
+                AND CN.GRTYPE <> 'N'
+
+            UNION ALL
+
+            SELECT
+                '{total_name}',
+                NULL,
+
+                IIF(
+                    CN.FTL <> 'Y',
+                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
+                    0
+                ),
+
+                IIF(
+                    CN.FTL = 'Y',
+                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
+                    0
+                ),
+
+                (CN.TAMOUNT - CN.SERVICETAX)
+                    / 1200000.0,
+
+                IIF(
+                    DST.ZONECODE = 'A0006',
+                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
+                    0
+                )
+
+            FROM CNMT CN WITH(NOLOCK)
+
+            INNER JOIN STATIONMAST ORG
+                ON ORG.STNCODE = CN.ORGCODE
+
+            INNER JOIN VIEWSTATIONMAST ZONE
+                ON ZONE.STNCODE = CN.ORGCODE
+
+            LEFT JOIN STATIONMAST DST
+                ON DST.STNCODE = CN.DESTCODE
+
+            WHERE
+                CN.GRDT >= '{from_sql}'
+                AND CN.GRDT < DATEADD(DAY, 1, '{to_sql}')
+                AND CN.GRTYPE <> 'N'
+
+        ) AS S
+
+        GROUP BY
+            S.PARTICULAR,
+            S.ZONENAME
+
+        ORDER BY
+            S.PARTICULAR,
+
+            IIF(
+                S.ZONENAME = 'NORTH EAST ZONE', 1,
+                IIF(
+                    S.ZONENAME = 'EAST ZONE', 2,
+                    IIF(
+                        S.ZONENAME = 'NORTH ZONE', 3,
+                        IIF(
+                            S.ZONENAME = 'SOUTH ZONE', 4,
+                            IIF(
+                                S.ZONENAME = 'WEST ZONE', 5,
+                                IIF(
+                                    S.ZONENAME = 'NEPAL ZONE', 6, 7
+                                )
+                            )
+                        )
+                    )
+                )
+            ),
+
+            S.ZONENAME
+        """
+
+        df = pd.read_sql(
+            query,
+            engine,
+        )
+
+        return prepare_dataframe_for_aggrid(df)
+
+    except Exception as error:
+        st.error(
+            f"Booking Summary one-year report error: {error}"
         )
         return pd.DataFrame()
 
@@ -698,7 +754,10 @@ def get_Booking_summary_trunover(
 # =========================================================
 # REPORT DISPLAY
 # =========================================================
-def display_booking_summary_report(df):
+def display_booking_summary_report(
+    df,
+    report_type,
+):
     if df is None or df.empty:
         st.warning("No data found.")
         return
@@ -745,7 +804,7 @@ def display_booking_summary_report(df):
             theme="streamlit",
             enable_enterprise_modules=False,
             allow_unsafe_jscode=False,
-            key="booking_summary_turnover_grid",
+            key=f"booking_summary_grid_{report_type}",
         )
 
     except Exception:
@@ -758,23 +817,30 @@ def display_booking_summary_report(df):
 
     excel_file = to_excel(df)
 
+    if report_type == "One Year Average":
+        file_name = "BookingSummaryOneYearTurnover.xlsx"
+        export_key = "booking_summary_one_year_export"
+    else:
+        file_name = "BookingSummaryTurnover.xlsx"
+        export_key = "booking_summary_comparison_export"
+
     st.download_button(
         label="📥 Export To Excel",
         data=excel_file,
-        file_name="BookingSummaryTurnover.xlsx",
+        file_name=file_name,
         mime=(
             "application/vnd.openxmlformats-officedocument."
             "spreadsheetml.sheet"
         ),
         use_container_width=True,
-        key="booking_summary_export",
+        key=export_key,
     )
 
 
 # =========================================================
-# MAIN UI FUNCTION
+# MAIN UI
 # =========================================================
-def show_BookingSummaryTurnover():
+def show_booking_summary_turnover():
     apply_report_css()
 
     defaults = get_default_dates()
@@ -793,113 +859,174 @@ def show_BookingSummaryTurnover():
         unsafe_allow_html=True,
     )
 
-    col1, col2, col3 = st.columns(
-        3,
-        gap="small",
+    report_type = st.radio(
+        "Report Type",
+        [
+            "Period Comparison",
+            "One Year Average",
+        ],
+        horizontal=True,
+        key="booking_summary_report_type",
     )
 
-    with col1:
-        st.markdown(
-            '<div class="period-title">'
-            'Previous 3 Months'
-            '</div>',
-            unsafe_allow_html=True,
+    if report_type == "Period Comparison":
+        col1, col2, col3 = st.columns(
+            3,
+            gap="small",
         )
 
-        d1_from = st.date_input(
-            "From",
-            value=defaults[
-                "previous_three_month_start"
-            ],
-            format="DD-MM-YYYY",
-            key="booking_summary_p1_from",
-        )
-
-        d1_to = st.date_input(
-            "To",
-            value=defaults[
-                "previous_three_month_end"
-            ],
-            format="DD-MM-YYYY",
-            key="booking_summary_p1_to",
-        )
-
-    with col2:
-        st.markdown(
-            '<div class="period-title">'
-            'Previous Month'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        d2_from = st.date_input(
-            "From",
-            value=defaults[
-                "previous_month_start"
-            ],
-            format="DD-MM-YYYY",
-            key="booking_summary_p2_from",
-        )
-
-        d2_to = st.date_input(
-            "To",
-            value=defaults[
-                "previous_month_end"
-            ],
-            format="DD-MM-YYYY",
-            key="booking_summary_p2_to",
-        )
-
-    with col3:
-        st.markdown(
-            '<div class="period-title">'
-            'Current Month'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-
-        d3_from = st.date_input(
-            "From",
-            value=defaults[
-                "current_month_start"
-            ],
-            format="DD-MM-YYYY",
-            key="booking_summary_p3_from",
-        )
-
-        d3_to = st.date_input(
-            "To",
-            value=defaults["today"],
-            format="DD-MM-YYYY",
-            key="booking_summary_p3_to",
-        )
-
-    if st.button(
-        "Generate Report",
-        use_container_width=True,
-        key="generate_booking_summary_report",
-    ):
-        with st.spinner(
-            "Generating Booking Summary Turnover report..."
-        ):
-            df = get_Booking_summary_trunover(
-                d1_from,
-                d1_to,
-                d2_from,
-                d2_to,
-                d3_from,
-                d3_to,
+        with col1:
+            st.markdown(
+                '<div class="period-title">'
+                'Previous 3 Months'
+                '</div>',
+                unsafe_allow_html=True,
             )
 
-        display_booking_summary_report(df)
+            d1_from = st.date_input(
+                "From",
+                value=defaults[
+                    "previous_three_month_start"
+                ],
+                format="DD-MM-YYYY",
+                key="booking_summary_p1_from",
+            )
+
+            d1_to = st.date_input(
+                "To",
+                value=defaults[
+                    "previous_three_month_end"
+                ],
+                format="DD-MM-YYYY",
+                key="booking_summary_p1_to",
+            )
+
+        with col2:
+            st.markdown(
+                '<div class="period-title">'
+                'Previous Month'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            d2_from = st.date_input(
+                "From",
+                value=defaults[
+                    "previous_month_start"
+                ],
+                format="DD-MM-YYYY",
+                key="booking_summary_p2_from",
+            )
+
+            d2_to = st.date_input(
+                "To",
+                value=defaults[
+                    "previous_month_end"
+                ],
+                format="DD-MM-YYYY",
+                key="booking_summary_p2_to",
+            )
+
+        with col3:
+            st.markdown(
+                '<div class="period-title">'
+                'Current Month'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+            d3_from = st.date_input(
+                "From",
+                value=defaults[
+                    "current_month_start"
+                ],
+                format="DD-MM-YYYY",
+                key="booking_summary_p3_from",
+            )
+
+            d3_to = st.date_input(
+                "To",
+                value=defaults["today"],
+                format="DD-MM-YYYY",
+                key="booking_summary_p3_to",
+            )
+
+        if st.button(
+            "Generate Report",
+            use_container_width=True,
+            key="generate_booking_summary_comparison",
+        ):
+            with st.spinner(
+                "Generating Booking Summary report..."
+            ):
+                df = get_Booking_summary_trunover(
+                    d1_from,
+                    d1_to,
+                    d2_from,
+                    d2_to,
+                    d3_from,
+                    d3_to,
+                )
+
+            display_booking_summary_report(
+                df,
+                report_type,
+            )
+
+    else:
+        st.markdown(
+            '<div class="period-title">'
+            'One Year Period'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        year_col1, year_col2 = st.columns(
+            2,
+            gap="small",
+        )
+
+        with year_col1:
+            year_from = st.date_input(
+                "From Date",
+                value=defaults["one_year_start"],
+                format="DD-MM-YYYY",
+                key="booking_summary_year_from",
+            )
+
+        with year_col2:
+            year_to = st.date_input(
+                "To Date",
+                value=defaults["today"],
+                format="DD-MM-YYYY",
+                key="booking_summary_year_to",
+            )
+
+        if st.button(
+            "Generate One Year Report",
+            use_container_width=True,
+            key="generate_booking_summary_one_year",
+        ):
+            with st.spinner(
+                "Generating one-year Booking Summary report..."
+            ):
+                df = get_booking_summary_one_year_turnover(
+                    year_from,
+                    year_to,
+                )
+
+            display_booking_summary_report(
+                df,
+                report_type,
+            )
 
 
 # =========================================================
-# OPTIONAL FUNCTION ALIASES
+# FUNCTION ALIASES
 # =========================================================
-def show_booking_summary_turnover():
-    show_BookingSummaryTurnover()
+def show_BookingSummaryTurnover():
+    show_booking_summary_turnover()
 
 
 def show_Booking_summary_trunover():
-    show_BookingSummaryTurnover()
+    show_booking_summary_turnover()
