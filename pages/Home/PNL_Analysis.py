@@ -1355,7 +1355,7 @@ def show_pnl_dashboard() -> None:
 
                 fig_mom.add_hline(y=0, line_color="#94a3b8", line_width=1)
                 fig_mom.update_layout(
-                    height=335,
+                    height=370,
                     margin=dict(l=8, r=12, t=22, b=8),
                     plot_bgcolor="#fbfaff",
                     paper_bgcolor="rgba(0,0,0,0)",
@@ -1455,9 +1455,9 @@ def show_pnl_dashboard() -> None:
                 )
             )
 
-            legend_step = 0.14 if len(zone_df) <= 6 else 0.105
+            legend_step = 0.17 if len(zone_df) <= 6 else 0.125
             for idx, row in zone_df.iterrows():
-                y_pos = 0.88 - idx * legend_step
+                y_pos = 0.91 - idx * legend_step
                 color = zone_colors[idx % len(zone_colors)]
                 fig_zone.add_annotation(
                     x=0.65, y=y_pos, xref="paper", yref="paper",
