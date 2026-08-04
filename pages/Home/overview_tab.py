@@ -1237,6 +1237,98 @@ def create_target_card(title, actual, target, unit="", decimals=2, icon="🎯"):
     st.markdown(html, unsafe_allow_html=True)
 
 
+def create_target_speedometer(actual, target, unit="", title="Target Achievement"):
+    """Render a compact Plotly speedometer for actual-vs-target achievement."""
+    actual = float(actual or 0)
+    target = float(target or 0)
+    achievement = (actual / target * 100) if target > 0 else 0.0
+    gauge_value = min(max(achievement, 0.0), 150.0)
+
+    if target <= 0:
+        status_text = "Target not set"
+        status_color = "#64748b"
+    elif achievement >= 100:
+        status_text = "Target achieved"
+        status_color = "#16a34a"
+    elif achievement >= 80:
+        status_text = "Near target"
+        status_color = "#f59e0b"
+    else:
+        status_text = "Below target"
+        status_color = "#dc2626"
+
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number+delta",
+            value=gauge_value,
+            number={
+                "suffix": "%",
+                "valueformat": ".1f",
+                "font": {"size": 28, "color": "#0f172a"},
+            },
+            delta={
+                "reference": 100,
+                "relative": False,
+                "valueformat": ".1f",
+                "suffix": " pp",
+                "increasing": {"color": "#16a34a"},
+                "decreasing": {"color": "#dc2626"},
+                "font": {"size": 11},
+            },
+            title={
+                "text": (
+                    f"<b>{title}</b><br>"
+                    f"<span style='font-size:11px;color:#64748b'>"
+                    f"Actual {actual:,.2f}{unit} | Target {target:,.2f}{unit}</span>"
+                ),
+                "font": {"size": 14, "color": "#334155"},
+            },
+            gauge={
+                "axis": {
+                    "range": [0, 150],
+                    "tickmode": "array",
+                    "tickvals": [0, 50, 80, 100, 120, 150],
+                    "ticktext": ["0", "50", "80", "100", "120", "150%"],
+                    "tickfont": {"size": 9, "color": "#64748b"},
+                },
+                "bar": {"color": status_color, "thickness": 0.28},
+                "bgcolor": "#f8fafc",
+                "borderwidth": 1,
+                "bordercolor": "#dbe4ef",
+                "steps": [
+                    {"range": [0, 80], "color": "#fee2e2"},
+                    {"range": [80, 100], "color": "#fef3c7"},
+                    {"range": [100, 150], "color": "#dcfce7"},
+                ],
+                "threshold": {
+                    "line": {"color": "#0f172a", "width": 3},
+                    "thickness": 0.78,
+                    "value": 100,
+                },
+            },
+        )
+    )
+    fig.update_layout(
+        height=250,
+        margin=dict(l=18, r=18, t=55, b=20),
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Arial"),
+        annotations=[
+            dict(
+                x=0.5, y=0.03, xref="paper", yref="paper",
+                text=f"<b>{status_text}</b>",
+                showarrow=False,
+                font=dict(size=12, color=status_color),
+            )
+        ],
+    )
+    st.plotly_chart(
+        fig,
+        width="stretch",
+        config={"displayModeBar": False, "responsive": True},
+    )
+
+
 def mini_rank_card(rank, name, value, max_value, color, render=True):
     """Build a compact ranked branch row with a wider name area and slimmer bar."""
     pct = min((value / max_value * 100), 100) if max_value else 0
@@ -2124,34 +2216,45 @@ def show_overview():
                         load_branch_monthly_targets.clear()
                         st.rerun()
 
-                target_cols = st.columns(3, gap="small")
-                with target_cols[0]:
-                    create_target_card(
-                        "Business",
-                        revenue / revenue_divisor,
-                        revenue_target,
+                gauge_col, target_cards_col = st.columns([1.05, 2.25], gap="small")
+
+                with gauge_col:
+                    create_target_speedometer(
+                        actual=revenue / revenue_divisor,
+                        target=revenue_target,
                         unit=f" {revenue_unit}",
-                        decimals=2,
-                        icon="💰",
+                        title="Overall Target Achievement",
                     )
-                with target_cols[1]:
-                    create_target_card(
-                        "FTL Business",
-                        ftl / revenue_divisor,
-                        ftl_target,
-                        unit=f" {revenue_unit}",
-                        decimals=2,
-                        icon="🚛",
-                    )
-                with target_cols[2]:
-                    create_target_card(
-                        "LTL Business",
-                        ltl / revenue_divisor,
-                        ltl_target,
-                        unit=f" {revenue_unit}",
-                        decimals=2,
-                        icon="🚚",
-                    )
+
+                with target_cards_col:
+                    target_cols = st.columns(3, gap="small")
+                    with target_cols[0]:
+                        create_target_card(
+                            "Business",
+                            revenue / revenue_divisor,
+                            revenue_target,
+                            unit=f" {revenue_unit}",
+                            decimals=2,
+                            icon="💰",
+                        )
+                    with target_cols[1]:
+                        create_target_card(
+                            "FTL Business",
+                            ftl / revenue_divisor,
+                            ftl_target,
+                            unit=f" {revenue_unit}",
+                            decimals=2,
+                            icon="🚛",
+                        )
+                    with target_cols[2]:
+                        create_target_card(
+                            "LTL Business",
+                            ltl / revenue_divisor,
+                            ltl_target,
+                            unit=f" {revenue_unit}",
+                            decimals=2,
+                            icon="🚚",
+                        )
 
                 with st.expander("View Matched Branch Targets", expanded=False):
                     if matched_target_df.empty:
