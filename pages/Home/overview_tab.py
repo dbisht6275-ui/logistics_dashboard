@@ -1152,14 +1152,43 @@ def build_weight_yoy_trend(current_df, previous_df, trend_type, date_col, fy_sta
 
     return trend_df
 
-def create_card(title, value, color, icon, growth_value=0.0, previous_value=None):
-    """Render a compact KPI card with LY value and YoY growth."""
+def create_card(
+    title,
+    value,
+    color,
+    icon,
+    growth_value=0.0,
+    previous_value=None,
+    actual_for_target=None,
+    target_value=None,
+    target_unit="",
+):
+    """Render a compact KPI card with LY growth and an optional target bar."""
     positive = growth_value >= 0
     growth_color = "#15803d" if positive else "#dc2626"
     growth_bg = "#ffffff"
     growth_border = "#86efac" if positive else "#fda4af"
     growth_text = growth_label(growth_value)
     previous_text = previous_value if previous_value is not None else "N/A"
+
+    target_html = ""
+    if target_value is not None and actual_for_target is not None:
+        target_num = float(target_value or 0)
+        actual_num = float(actual_for_target or 0)
+        achievement = (actual_num / target_num * 100.0) if target_num > 0 else 0.0
+        bar_width = min(max(achievement, 0.0), 100.0)
+        bar_color = "#16a34a" if achievement >= 100 else "#f59e0b" if achievement >= 80 else "#dc2626"
+        target_label = f"Target: {target_num:,.2f}{target_unit}" if target_num > 0 else "Target: N/A"
+        achievement_label = f"{achievement:,.1f}%" if target_num > 0 else "N/A"
+        target_html = (
+            f'<div style="margin-top:5px;">'
+            f'<div style="display:flex;justify-content:space-between;gap:5px;font-size:8px;color:#475569;line-height:1.1;">'
+            f'<span>{target_label}</span><span style="font-weight:800;color:{bar_color};">{achievement_label}</span>'
+            f'</div>'
+            f'<div style="height:4px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:3px;">'
+            f'<div style="height:100%;width:{bar_width:.1f}%;background:{bar_color};border-radius:999px;"></div>'
+            f'</div></div>'
+        )
 
     # Keep the complete HTML on one logical line. Blank lines or indented lines
     # inside st.markdown can be interpreted by Markdown as a fenced code block.
@@ -1179,6 +1208,7 @@ def create_card(title, value, color, icon, growth_value=0.0, previous_value=None
         f'{growth_text}'
         f'</span>'
         f'</div>'
+        f'{target_html}'
         f'</div>'
     )
 
@@ -2195,20 +2225,60 @@ def show_overview():
     paid_growth = pct_growth(paid, prev_kpis["paid"])
     tbb_growth = pct_growth(tbb, prev_kpis["tbb"])
 
+    # Targets for the three business KPI cards. Fail softly if the target file
+    # is temporarily unavailable, so the remaining dashboard still loads.
+    kpi_total_target = 0.0
+    kpi_ftl_target = 0.0
+    kpi_ltl_target = 0.0
+    try:
+        (
+            _kpi_total_target_lac,
+            _kpi_ftl_target_lac,
+            _kpi_ltl_target_lac,
+            _kpi_matched_targets,
+            _kpi_target_months,
+            _kpi_unmatched_targets,
+        ) = calculate_filtered_branch_targets(
+            filtered_df=df,
+            selected_month=month,
+            selected_quarter=quarter,
+            selected_loadtype=loadtype,
+        )
+        kpi_total_target = convert_target_lac(_kpi_total_target_lac, conversion_type)
+        kpi_ftl_target = convert_target_lac(_kpi_ftl_target_lac, conversion_type)
+        kpi_ltl_target = convert_target_lac(_kpi_ltl_target_lac, conversion_type)
+    except Exception:
+        pass
+
     # KPI Cards
     k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     with k1:
-        create_card("Business", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth,
-                    format_revenue(prev_kpis["revenue"], conversion_type))
+        create_card(
+            "Business", format_revenue(revenue, conversion_type), "#2563eb", "💰",
+            revenue_growth, format_revenue(prev_kpis["revenue"], conversion_type),
+            actual_for_target=revenue / revenue_divisor,
+            target_value=kpi_total_target,
+            target_unit=f" {revenue_unit}",
+        )
 
     with k2:
-        create_card("FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth,
-                    format_revenue(prev_kpis["ftl"], conversion_type))
+        create_card(
+            "FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛",
+            ftl_growth, format_revenue(prev_kpis["ftl"], conversion_type),
+            actual_for_target=ftl / revenue_divisor,
+            target_value=kpi_ftl_target,
+            target_unit=f" {revenue_unit}",
+        )
 
     with k3:
-        create_card("LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth,
-                    format_revenue(prev_kpis["ltl"], conversion_type))
+        create_card(
+            "LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚",
+            ltl_growth, format_revenue(prev_kpis["ltl"], conversion_type),
+            actual_for_target=ltl / revenue_divisor,
+            target_value=kpi_ltl_target,
+            target_unit=f" {revenue_unit}",
+        )
 
     with k4:
         create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth,
@@ -3439,7 +3509,7 @@ def show_overview():
 
         # Three compact insights in one row: MoM, branch achievement, overall gauge.
         mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
-            [1.20, 1.20, 0.60], gap="small", vertical_alignment="top"
+            [1.45, 0.82, 0.48], gap="small", vertical_alignment="top"
         )
 
         with mom_chart_col:
@@ -3482,7 +3552,7 @@ def show_overview():
         with branch_achievement_col:
             with st.container(border=True):
                 _view_col, _title_col, _top_col = st.columns(
-                    [1.30, 2.25, 0.75], vertical_alignment="center"
+                    [1.55, 2.25, 0.75], vertical_alignment="center"
                 )
                 with _view_col:
                     _achievement_level = st.radio(
