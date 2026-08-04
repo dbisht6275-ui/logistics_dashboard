@@ -3439,7 +3439,7 @@ def show_overview():
 
         # Three compact insights in one row: MoM, branch achievement, overall gauge.
         mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
-            [1.20, 1.00, 0.60], gap="small", vertical_alignment="top"
+            [1.45, 0.82, 0.48], gap="small", vertical_alignment="top"
         )
 
         with mom_chart_col:
@@ -3481,21 +3481,11 @@ def show_overview():
 
         with branch_achievement_col:
             with st.container(border=True):
-                _branch_title_col, _branch_top_col = st.columns([3.2, 1.0], vertical_alignment="center")
-                with _branch_top_col:
-                    _branch_achievement_top_n = st.selectbox(
-                        "Top branches",
-                        options=[5, 10, 20, 30],
-                        index=0,
-                        key="branch_achievement_top_n",
-                        label_visibility="collapsed",
-                    )
-                with _branch_title_col:
-                    st.markdown(
-                        f"<div style='font-size:13px;font-weight:700;color:#0f172a;margin:0 0 6px 0;'>"
-                        f"BRANCH WISE TARGET ACHIEVEMENT (Top {_branch_achievement_top_n})</div>",
-                        unsafe_allow_html=True,
-                    )
+                st.markdown(
+                    "<div style='font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;'>"
+                    "BRANCH WISE TARGET ACHIEVEMENT (Top 5)</div>",
+                    unsafe_allow_html=True,
+                )
                 try:
                     _branch_summary_compact = (
                         df.groupby("branch", dropna=False)["REVENUE"]
@@ -3514,7 +3504,7 @@ def show_overview():
                     ].copy()
                     _branch_ach_df = _branch_ach_df.sort_values(
                         ["Achievement_Pct", "Business"], ascending=[False, False]
-                    ).head(_branch_achievement_top_n)
+                    ).head(5)
 
                     if _branch_ach_df.empty:
                         st.info("No matched branch targets for the active filters.")
@@ -3530,31 +3520,32 @@ def show_overview():
                                 else "#f59e0b" if _ach >= 80
                                 else "#dc2626"
                             )
-                            _branch_name = escape(str(_row["branch"]))
                             _rows_html.append(
-                                f'<div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #eef2f7;font-size:10.5px;color:#0f172a;">'
-                                f'<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{_branch_name}">{_branch_name}</div>'
-                                f'<div style="text-align:right;">{_actual_display:,.2f}</div>'
-                                f'<div style="text-align:right;">{_target_display:,.2f}</div>'
-                                f'<div style="text-align:right;font-weight:700;color:{_status_color};">{_ach:,.2f}%</div>'
-                                f'<div style="height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;">'
-                                f'<div style="height:100%;width:{_bar_width:.1f}%;background:{_status_color};border-radius:999px;"></div>'
-                                f'</div></div>'
+                                f"""
+                                <div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #eef2f7;font-size:10.5px;color:#0f172a;">
+                                    <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{escape(str(_row['branch']))}">{escape(str(_row['branch']))}</div>
+                                    <div style="text-align:right;">{_actual_display:,.2f}</div>
+                                    <div style="text-align:right;">{_target_display:,.2f}</div>
+                                    <div style="text-align:right;font-weight:700;color:{_status_color};">{_ach:,.2f}%</div>
+                                    <div style="height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;">
+                                        <div style="height:100%;width:{_bar_width:.1f}%;background:{_status_color};border-radius:999px;"></div>
+                                    </div>
+                                </div>
+                                """
                             )
 
-                        _table_html = (
-                            '<div style="width:100%;">'
-                            '<div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;gap:7px;padding:2px 0 6px 0;border-bottom:1px solid #dbe3ec;font-size:9.5px;font-weight:700;color:#334155;">'
-                            '<div>Branch</div>'
-                            f'<div style="text-align:right;">Actual ({revenue_unit})</div>'
-                            f'<div style="text-align:right;">Target ({revenue_unit})</div>'
-                            '<div style="text-align:right;">Achievement %</div>'
-                            '<div style="text-align:center;">Achievement Bar</div>'
-                            '</div>'
-                            '<div style="height:148px;overflow-y:auto;overflow-x:hidden;padding-right:3px;scrollbar-gutter:stable;">'
-                            + ''.join(_rows_html)
-                            + '</div></div>'
-                        )
+                        _table_html = f"""
+                        <div style="width:100%;">
+                            <div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;gap:7px;padding:2px 0 6px 0;border-bottom:1px solid #dbe3ec;font-size:9.5px;font-weight:700;color:#334155;">
+                                <div>Branch</div>
+                                <div style="text-align:right;">Actual ({revenue_unit})</div>
+                                <div style="text-align:right;">Target ({revenue_unit})</div>
+                                <div style="text-align:right;">Achievement %</div>
+                                <div style="text-align:center;">Achievement Bar</div>
+                            </div>
+                            {''.join(_rows_html)}
+                        </div>
+                        """
                         st.markdown(_table_html, unsafe_allow_html=True)
                 except Exception as _branch_achievement_exc:
                     st.info(f"Branch target achievement unavailable: {_branch_achievement_exc}")
@@ -4079,128 +4070,145 @@ def show_overview():
         .reset_index()
     )
 
-    # =====================================================
-    # Branches by Business insight
-    # =====================================================
-    with st.container(border=True):
-        branch_title_col, branch_filter_col = st.columns(
-            [1.35, 2.15], gap="small", vertical_alignment="center"
-        )
+    # Top-branch business slab selector. Thresholds always remain in rupees,
+    # irrespective of whether the dashboard display unit is Lac or Crore.
+    business_slab_options = [
+        "All",
+        "₹0–5 Lac",
+        "₹5–10 Lac",
+        "₹10–15 Lac",
+        "₹15–25 Lac",
+        "₹25–50 Lac",
+        "₹50 Lac & Above",
+    ]
 
-        with branch_title_col:
+    selected_business_slab = st.session_state.get(
+        "top_branch_business_slab",
+        "All",
+    )
+
+    slab_ranges = {
+        "All": (None, None),
+        "₹0–5 Lac": (0, 500000),
+        "₹5–10 Lac": (500000, 1000000),
+        "₹10–15 Lac": (1000000, 1500000),
+        "₹15–25 Lac": (1500000, 2500000),
+        "₹25–50 Lac": (2500000, 5000000),
+        "₹50 Lac & Above": (5000000, None),
+    }
+
+    # Streamlit segmented_control may temporarily store None during the first
+    # render, after a code reload, or when an older session-state value becomes
+    # invalid. Always normalise it before using it as a dictionary key.
+    if selected_business_slab not in slab_ranges:
+        selected_business_slab = "All"
+        st.session_state["top_branch_business_slab"] = "All"
+
+    slab_min, slab_max = slab_ranges.get(selected_business_slab, (None, None))
+    top_branch_pool = branch_summary.copy()
+
+    if slab_min is not None:
+        top_branch_pool = top_branch_pool[top_branch_pool["Business"] >= slab_min]
+    if slab_max is not None:
+        # Upper limit is exclusive so one branch cannot fall into two slabs.
+        top_branch_pool = top_branch_pool[top_branch_pool["Business"] < slab_max]
+
+    branch_rank_df = (
+        top_branch_pool
+        .sort_values("Business", ascending=False)
+        .copy()
+    )
+    branch_rank_df["Business Cr"] = (
+        branch_rank_df["Business"] / revenue_divisor
+    ).round(2)
+
+    # Keep only Top Branches and Operational Highlights in one balanced row.
+    b1, b2 = st.columns([1.15, 1], gap="small")
+
+    with b1:
+        with st.container(border=True):
             st.markdown(
-                "<div style='font-size:16px;font-weight:600;color:#0f2744;'>"
-                "Branches by Business</div>"
-                "<div style='font-size:10px;color:#64748b;margin-top:2px;'>"
-                "Branch-wise revenue ranking for the active dashboard filters</div>",
+                "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
+                "Branches by Business</div>",
                 unsafe_allow_html=True,
             )
 
-        with branch_filter_col:
-            branch_business_slab = st.segmented_control(
+            selected_business_slab = st.segmented_control(
                 "Branch business slab",
-                ["Top 10", "Top 20", "Top 30", "All"],
-                default="Top 10",
-                label_visibility="collapsed",
+                business_slab_options,
+                default=selected_business_slab,
                 key="top_branch_business_slab",
-            ) or "Top 10"
+                label_visibility="collapsed",
+                width="stretch",
+            ) or "All"
 
-        branch_business_df = branch_summary.copy()
-        branch_business_df["Business"] = pd.to_numeric(
-            branch_business_df["Business"], errors="coerce"
-        ).fillna(0.0)
-        branch_business_df["FTL"] = pd.to_numeric(
-            branch_business_df["FTL"], errors="coerce"
-        ).fillna(0.0)
-        branch_business_df["LTL"] = pd.to_numeric(
-            branch_business_df["LTL"], errors="coerce"
-        ).fillna(0.0)
-        branch_business_df["GR_Count"] = pd.to_numeric(
-            branch_business_df["GR_Count"], errors="coerce"
-        ).fillna(0).astype(int)
+            # Recalculate immediately from the selected button value because the
+            # widget is rendered inside this card.
+            slab_min, slab_max = slab_ranges.get(selected_business_slab, (None, None))
+            top_branch_pool = branch_summary.copy()
+            if slab_min is not None:
+                top_branch_pool = top_branch_pool[top_branch_pool["Business"] >= slab_min]
+            if slab_max is not None:
+                top_branch_pool = top_branch_pool[top_branch_pool["Business"] < slab_max]
 
-        branch_total_business = float(branch_business_df["Business"].sum())
-        branch_business_df["Contribution %"] = (
-            branch_business_df["Business"] / branch_total_business * 100
-            if branch_total_business > 0
-            else 0.0
-        )
-        branch_business_df["FTL %"] = branch_business_df.apply(
-            lambda row: row["FTL"] / row["Business"] * 100
-            if row["Business"] > 0 else 0.0,
-            axis=1,
-        )
-        branch_business_df["LTL %"] = branch_business_df.apply(
-            lambda row: row["LTL"] / row["Business"] * 100
-            if row["Business"] > 0 else 0.0,
-            axis=1,
-        )
-        branch_business_df = branch_business_df.sort_values(
-            "Business", ascending=False
-        ).reset_index(drop=True)
+            branch_rank_df = (
+                top_branch_pool
+                .sort_values("Business", ascending=False)
+                .copy()
+            )
+            branch_rank_df["Business Cr"] = (
+                branch_rank_df["Business"] / revenue_divisor
+            ).round(2)
 
-        branch_limit = {
-            "Top 10": 10,
-            "Top 20": 20,
-            "Top 30": 30,
-        }.get(branch_business_slab)
-        if branch_limit is not None:
-            branch_business_df = branch_business_df.head(branch_limit)
-
-        if branch_business_df.empty:
-            st.info("No branch business is available for the selected filters.")
-        else:
-            max_branch_business = float(branch_business_df["Business"].max() or 1)
-            branch_rows = []
-
-            for idx, row in branch_business_df.iterrows():
-                rank = idx + 1
-                branch_name = escape(str(row["branch"]))
-                business_value = float(row["Business"] or 0)
-                contribution = float(row["Contribution %"] or 0)
-                ftl_value = float(row["FTL"] or 0)
-                ltl_value = float(row["LTL"] or 0)
-                gr_count = int(row["GR_Count"] or 0)
-                width_pct = min(business_value / max_branch_business * 100, 100)
-
-                branch_rows.append(
-                    f'<div style="display:grid;grid-template-columns:34px minmax(150px,1.45fr) '
-                    f'minmax(120px,1fr) minmax(92px,.72fr) minmax(76px,.58fr);'
-                    f'align-items:center;gap:9px;padding:8px 4px;border-bottom:1px solid #edf2f7;">'
-                    f'<div style="text-align:center;font-size:12px;font-weight:700;color:#64748b;">{rank}</div>'
-                    f'<div title="{branch_name}" style="min-width:0;">'
-                    f'<div style="font-size:12px;font-weight:600;color:#243b53;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{branch_name}</div>'
-                    f'<div style="font-size:9px;color:#64748b;margin-top:2px;">{gr_count:,} GR</div></div>'
-                    f'<div><div style="font-size:11px;font-weight:700;color:#0f172a;margin-bottom:4px;">₹{business_value / revenue_divisor:.2f} {revenue_unit}</div>'
-                    f'<div style="height:6px;background:#e8eef5;border-radius:999px;overflow:hidden;">'
-                    f'<div style="height:6px;width:{width_pct:.2f}%;background:linear-gradient(90deg,#2563eb,#0f766e);border-radius:999px;"></div></div></div>'
-                    f'<div style="font-size:10px;color:#475569;line-height:1.35;">'
-                    f'<span style="color:#2563eb;font-weight:700;">FTL ₹{ftl_value / revenue_divisor:.2f}</span><br>'
-                    f'<span style="color:#0f766e;font-weight:700;">LTL ₹{ltl_value / revenue_divisor:.2f}</span></div>'
-                    f'<div style="font-size:12px;font-weight:700;color:#334155;text-align:right;white-space:nowrap;">{contribution:.1f}%</div>'
-                    f'</div>'
+            if branch_rank_df.empty:
+                st.info(f"No branch falls in the {selected_business_slab} business slab.")
+            else:
+                total_branch_business = float(branch_summary["Business"].sum())
+                selected_branch_business = float(branch_rank_df["Business"].sum())
+                selected_business_share = (
+                    selected_branch_business / total_branch_business * 100
+                    if total_branch_business else 0.0
+                )
+                selected_business_display = format_revenue(
+                    selected_branch_business, conversion_type
                 )
 
-            branch_table_html = (
-                '<div style="display:grid;grid-template-columns:34px minmax(150px,1.45fr) '
-                'minmax(120px,1fr) minmax(92px,.72fr) minmax(76px,.58fr);'
-                'gap:9px;padding:0 4px 6px;border-bottom:1px solid #dbe4ef;'
-                'font-size:10px;font-weight:700;color:#64748b;">'
-                '<div style="text-align:center;">#</div><div>Branch</div>'
-                f'<div>Business ({revenue_unit})</div><div>Load Mix</div>'
-                '<div style="text-align:right;">Share</div></div>'
-                + ''.join(branch_rows)
-            )
+                st.markdown(
+                    f'<div style="color:#2563eb;font-size:12px;font-weight:500;margin:2px 0 7px 1px;">'
+                    f'Showing {len(branch_rank_df)} branches in {selected_business_slab}. '
+                    f'Selected business: ₹{selected_business_display} '
+                    f'({selected_business_share:.2f}% of total branch business). '
+                    f'Scroll to view all.'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+                max_top = branch_rank_df["Business Cr"].max()
 
-            if hasattr(st, "html"):
-                st.html(branch_table_html)
-            else:
-                st.markdown(branch_table_html, unsafe_allow_html=True)
+                branch_rows_html = []
+                for i, row in branch_rank_df.reset_index(drop=True).iterrows():
+                    branch_rows_html.append(
+                        mini_rank_card(
+                            i + 1,
+                            row["branch"],
+                            row["Business Cr"],
+                            max_top,
+                            "#22c55e",
+                            render=False,
+                        )
+                    )
 
-    # Branch Wise Target Achievement is displayed only in the compact middle panel
-    # between the MoM chart and the overall target gauge.
+                branch_scroll_html = (
+                    '<div style="height:285px;overflow-y:auto;overflow-x:hidden;'
+                    'padding:1px 5px 1px 0;scrollbar-gutter:stable;">'
+                    + "".join(branch_rows_html)
+                    + '</div>'
+                )
+                if hasattr(st, "html"):
+                    st.html(branch_scroll_html)
+                else:
+                    st.markdown(branch_scroll_html, unsafe_allow_html=True)
 
-    with st.expander("Operational Highlights", expanded=False):
+    with b2:
         _render_operational_highlights(df, prev_df)
 
     compact_spacer()
