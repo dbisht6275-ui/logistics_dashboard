@@ -787,6 +787,16 @@ def _inject_overview_css():
             }
 
 
+            /* Target achievement Top-N selector: value above, caption below */
+            .st-key-branch_achievement_top_n > div > label,
+            .st-key-branch_achievement_top_n [data-testid="stWidgetLabel"] {
+                display: none !important;
+                height: 0 !important;
+                min-height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
             /* Branches by Business: selected slab button */
             .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked),
             .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
@@ -3241,12 +3251,17 @@ def show_overview():
                         label_visibility="collapsed",
                     ) or "Branch"
                 with _top_col:
+                    # Show the selected value first and place the caption below it.
                     _branch_achievement_top_n = st.selectbox(
                         "Top branches",
                         options=[5, 10, 20, 30],
                         index=0,
                         key="branch_achievement_top_n",
                         label_visibility="collapsed",
+                    )
+                    st.markdown(
+                        "<div style='font-size:11px;color:#334155;margin:2px 0 0 3px;'>Top branches</div>",
+                        unsafe_allow_html=True,
                     )
 
                 st.markdown(
