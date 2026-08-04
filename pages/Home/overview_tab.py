@@ -3252,7 +3252,7 @@ def show_overview():
                         )
                     with _top_dropdown_col:
                         _branch_achievement_top_n = st.selectbox(
-                            "Top",
+                            "",
                             options=[5, 10, 20, 30],
                             index=0,
                             key="branch_achievement_top_n",
