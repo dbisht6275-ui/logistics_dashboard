@@ -3439,7 +3439,7 @@ def show_overview():
 
         # Three compact insights in one row: MoM, branch achievement, overall gauge.
         mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
-            [1.20, 1.00, 0.70], gap="small", vertical_alignment="top"
+            [1.20, 1.00, 0.60], gap="small", vertical_alignment="top"
         )
 
         with mom_chart_col:
