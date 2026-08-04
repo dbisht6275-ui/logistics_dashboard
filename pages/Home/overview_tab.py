@@ -1309,7 +1309,7 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
         )
     )
     fig.update_layout(
-        height=96 if compact else 250,
+        height=96 if compact else 235,
         margin=(dict(l=2, r=2, t=24, b=0) if compact else dict(l=18, r=18, t=55, b=20)),
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Arial"),
@@ -2303,8 +2303,8 @@ def show_overview():
 
     with row1:
         with st.container(border=True):
-            title_col, filter_col, meter_col = st.columns(
-                [1.55, 2.15, 0.75], gap="small", vertical_alignment="top"
+            title_col, filter_col = st.columns(
+                [1.55, 2.15], gap="small", vertical_alignment="top"
             )
 
             with title_col:
@@ -2324,9 +2324,6 @@ def show_overview():
                     label_visibility="collapsed",
                     key="revenue_trend_type",
                 ) or "Monthly"
-
-            with meter_col:
-                trend_meter_placeholder = st.empty()
 
             # Build trend data (Current FY vs LY) for the selected granularity
             DATE_COL = "grdt"   # change if your date column is different
@@ -2369,17 +2366,9 @@ def show_overview():
                 axis=1,
             )
 
-            # Compact overall target meter in the Business Trend header.
+            # Overall target values are reused beside the Month-on-Month chart.
             trend_actual = float(pd.to_numeric(yoy_df["Business Cr"], errors="coerce").fillna(0).sum())
             trend_target = float(pd.to_numeric(yoy_df["Target"], errors="coerce").fillna(0).sum())
-            with trend_meter_placeholder.container():
-                create_target_speedometer(
-                    actual=trend_actual,
-                    target=trend_target,
-                    unit=f" {revenue_unit}",
-                    title="Target",
-                    compact=True,
-                )
 
             # Business trend: Last Year, Current Year and Target.
             fig_yoy = go.Figure()
@@ -3352,40 +3341,56 @@ def show_overview():
         monthly_chart = monthly_chart.dropna(subset=["Month"]).copy()
         monthly_chart["Month"] = monthly_chart["Month"].astype(str)
 
-        with st.container(border=True):
-            st.markdown("<div style='font-size:13px;font-weight:400;color:#0f172a;margin-bottom:2px;'>Month on Month Business & Growth</div>", unsafe_allow_html=True)
-            fig_mom = go.Figure()
-            fig_mom.add_trace(go.Bar(
-                x=monthly_chart["Month"], y=monthly_chart["Business Cr"], name="Business",
-                marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
-                text=monthly_chart["Business Cr"], texttemplate=f"₹%{{text:.2f}} {revenue_unit}",
-                textposition="outside", cliponaxis=False,
-                hovertemplate=f"<b>%{{x}}</b><br>Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
-            ))
-            growth_colors = ["#16a34a" if pd.notna(v) and v >= 0 else "#dc2626" for v in monthly_chart["Growth %"]]
-            fig_mom.add_trace(go.Scatter(
-                x=monthly_chart["Month"], y=monthly_chart["Growth %"], name="MoM Growth",
-                mode="lines+markers+text", yaxis="y2", line=dict(color="#f59e0b", width=3),
-                marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
-                text=["" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%" for v in monthly_chart["Growth %"]],
-                textposition="top center", textfont=dict(size=10, color="#334155", family="Arial"),
-                hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
-            ))
-            revenue_max = pd.to_numeric(monthly_chart["Business Cr"], errors="coerce").max()
-            revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
-            growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
-            growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
-            fig_mom.update_layout(
-                height=235, margin=dict(l=8, r=8, t=28, b=6), plot_bgcolor="#f8fafc",
-                paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=1.10, x=0), bargap=0.35,
-                yaxis=dict(title=f"Business ({revenue_unit})", range=[0, revenue_max * 1.30], showgrid=False, zeroline=False),
-                yaxis2=dict(title="Growth (%)", overlaying="y", side="right", range=[-growth_abs_max * 1.35, growth_abs_max * 1.35], showgrid=False, zeroline=True, zerolinecolor="#cbd5e1"),
-                xaxis=dict(showgrid=False, title=""),
-            )
-            apply_3d_chart_layout(fig_mom, height=235, margin=dict(l=8, r=8, t=30, b=6))
-            fig_mom.update_xaxes(showline=False, zeroline=False)
-            fig_mom.update_yaxes(showline=False)
-            st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False, "responsive": True})
+        mom_chart_col, target_meter_col = st.columns(
+            [1.72, 0.48], gap="small", vertical_alignment="top"
+        )
+
+        with mom_chart_col:
+            with st.container(border=True):
+                st.markdown("<div style='font-size:13px;font-weight:400;color:#0f172a;margin-bottom:2px;'>Month on Month Business & Growth</div>", unsafe_allow_html=True)
+                fig_mom = go.Figure()
+                fig_mom.add_trace(go.Bar(
+                    x=monthly_chart["Month"], y=monthly_chart["Business Cr"], name="Business",
+                    marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
+                    text=monthly_chart["Business Cr"], texttemplate=f"₹%{{text:.2f}} {revenue_unit}",
+                    textposition="outside", cliponaxis=False,
+                    hovertemplate=f"<b>%{{x}}</b><br>Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
+                ))
+                growth_colors = ["#16a34a" if pd.notna(v) and v >= 0 else "#dc2626" for v in monthly_chart["Growth %"]]
+                fig_mom.add_trace(go.Scatter(
+                    x=monthly_chart["Month"], y=monthly_chart["Growth %"], name="MoM Growth",
+                    mode="lines+markers+text", yaxis="y2", line=dict(color="#f59e0b", width=3),
+                    marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
+                    text=["" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%" for v in monthly_chart["Growth %"]],
+                    textposition="top center", textfont=dict(size=10, color="#334155", family="Arial"),
+                    hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
+                ))
+                revenue_max = pd.to_numeric(monthly_chart["Business Cr"], errors="coerce").max()
+                revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
+                growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
+                growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
+                fig_mom.update_layout(
+                    height=235, margin=dict(l=8, r=8, t=28, b=6), plot_bgcolor="#f8fafc",
+                    paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=1.10, x=0), bargap=0.35,
+                    yaxis=dict(title=f"Business ({revenue_unit})", range=[0, revenue_max * 1.30], showgrid=False, zeroline=False),
+                    yaxis2=dict(title="Growth (%)", overlaying="y", side="right", range=[-growth_abs_max * 1.35, growth_abs_max * 1.35], showgrid=False, zeroline=True, zerolinecolor="#cbd5e1"),
+                    xaxis=dict(showgrid=False, title=""),
+                )
+                apply_3d_chart_layout(fig_mom, height=235, margin=dict(l=8, r=8, t=30, b=6))
+                fig_mom.update_xaxes(showline=False, zeroline=False)
+                fig_mom.update_yaxes(showline=False)
+                st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False, "responsive": True})
+
+
+        with target_meter_col:
+            with st.container(border=True):
+                create_target_speedometer(
+                    actual=trend_actual,
+                    target=trend_target,
+                    unit=f" {revenue_unit}",
+                    title="Target Achievement",
+                    compact=False,
+                )
 
     # =====================================================
     # Selectable Top-N Consignors / Consignees | View-type aware
