@@ -2385,6 +2385,8 @@ def show_overview():
                     textfont=dict(size=12, color="#475569", family="Arial"),
                     cliponaxis=False,
                     hovertemplate=f"<b>%{{x}}</b><br>LY Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
+                    offsetgroup="ly",
+                    alignmentgroup="business_trend",
                 )
             )
 
@@ -2400,6 +2402,8 @@ def show_overview():
                     textfont=dict(size=12, color="#1d4ed8", family="Arial"),
                     cliponaxis=False,
                     hovertemplate=f"<b>%{{x}}</b><br>Current Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
+                    offsetgroup="current",
+                    alignmentgroup="business_trend",
                 )
             )
 
@@ -2426,6 +2430,7 @@ def show_overview():
                         + "<br>Achievement: %{customdata[0]:.1f}%<extra></extra>"
                     ),
                     offsetgroup="target",
+                    alignmentgroup="business_trend",
                 )
             )
 
