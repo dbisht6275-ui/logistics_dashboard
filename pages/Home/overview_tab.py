@@ -530,12 +530,12 @@ def _inject_overview_css():
                 font-size: 11px;
                 margin-top: 2px;
             }
-            /* Compact action/chip row between filters and KPI cards */
+            /* Active-filter chips shown inside the Business Overview header */
             div[data-testid="stElementContainer"]:has(.filter-summary) {
                 position: relative !important;
                 z-index: 5 !important;
                 margin-top: 0 !important;
-                margin-bottom: 7px !important;
+                margin-bottom: 0 !important;
             }
             .filter-summary {
                 display: flex;
@@ -1776,15 +1776,9 @@ def show_overview():
         header_left, header_right = st.columns([7, 1], gap="small", vertical_alignment="center")
 
         with header_left:
-            st.markdown(
-                """
-                <div style="padding:2px 0 3px 4px;">
-                    <div class="executive-title">Business Overview</div>
-                    <div class="executive-subtitle">Executive view of business, shipments, load mix, geography and branch performance</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            # Filled after all filters are selected so the active-filter chips
+            # can appear inside the Business Overview header card.
+            header_content_placeholder = st.empty()
 
         with header_right:
             export_placeholder = st.empty()
@@ -1968,10 +1962,23 @@ def show_overview():
         if value not in (None, "", "All")
     )
 
-    if active_filter_html:
-        st.markdown(f'<div class="filter-summary">{active_filter_html}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="filter-summary"></div>', unsafe_allow_html=True)
+    # Render the title, subtitle and active-filter chips inside the header card.
+    header_filter_html = (
+        f'<div class="filter-summary" style="margin-top:7px;min-height:0;">'
+        f'{active_filter_html}</div>'
+        if active_filter_html else ''
+    )
+    with header_content_placeholder:
+        st.markdown(
+            f"""
+            <div style="padding:2px 0 3px 4px;">
+                <div class="executive-title">Business Overview</div>
+                <div class="executive-subtitle">Executive view of business, shipments, load mix, geography and branch performance</div>
+                {header_filter_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
     if df.empty:
         st.warning("No data found for selected filters")
