@@ -787,16 +787,6 @@ def _inject_overview_css():
             }
 
 
-            /* Target achievement Top-N selector: value above, caption below */
-            .st-key-branch_achievement_top_n > div > label,
-            .st-key-branch_achievement_top_n [data-testid="stWidgetLabel"] {
-                display: none !important;
-                height: 0 !important;
-                min-height: 0 !important;
-                margin: 0 !important;
-                padding: 0 !important;
-            }
-
             /* Branches by Business: selected slab button */
             .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked),
             .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
@@ -3251,18 +3241,23 @@ def show_overview():
                         label_visibility="collapsed",
                     ) or "Branch"
                 with _top_col:
-                    # Show the selected value first and place the caption below it.
-                    _branch_achievement_top_n = st.selectbox(
-                        "Top branches",
-                        options=[5, 10, 20, 30],
-                        index=0,
-                        key="branch_achievement_top_n",
-                        label_visibility="collapsed",
+                    _top_label_col, _top_dropdown_col = st.columns(
+                        [0.42, 0.58], gap="small", vertical_alignment="center"
                     )
-                    st.markdown(
-                        "<div style='font-size:11px;color:#334155;margin:2px 0 0 3px;'>Top branches</div>",
-                        unsafe_allow_html=True,
-                    )
+                    with _top_label_col:
+                        st.markdown(
+                            "<div style='font-size:12px;font-weight:600;color:#334155;"
+                            "padding-top:2px;white-space:nowrap;'>Top</div>",
+                            unsafe_allow_html=True,
+                        )
+                    with _top_dropdown_col:
+                        _branch_achievement_top_n = st.selectbox(
+                            "Top",
+                            options=[5, 10, 20, 30],
+                            index=0,
+                            key="branch_achievement_top_n",
+                            label_visibility="collapsed",
+                        )
 
                 st.markdown(
                     f"<div style='font-size:13px;font-weight:700;color:#0f172a;margin:5px 0 8px 0;'>"
