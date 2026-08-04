@@ -1237,8 +1237,8 @@ def create_target_card(title, actual, target, unit="", decimals=2, icon="🎯"):
     st.markdown(html, unsafe_allow_html=True)
 
 
-def create_target_speedometer(actual, target, unit="", title="Target Achievement"):
-    """Render a compact Plotly speedometer for actual-vs-target achievement."""
+def create_target_speedometer(actual, target, unit="", title="Target Achievement", compact=False):
+    """Render a Plotly speedometer. Compact mode is designed for chart headers."""
     actual = float(actual or 0)
     target = float(target or 0)
     achievement = (actual / target * 100) if target > 0 else 0.0
@@ -1264,7 +1264,7 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
             number={
                 "suffix": "%",
                 "valueformat": ".1f",
-                "font": {"size": 28, "color": "#0f172a"},
+                "font": {"size": 19 if compact else 28, "color": "#0f172a"},
             },
             delta={
                 "reference": 100,
@@ -1273,7 +1273,7 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
                 "suffix": " pp",
                 "increasing": {"color": "#16a34a"},
                 "decreasing": {"color": "#dc2626"},
-                "font": {"size": 11},
+                "font": {"size": 9 if compact else 11},
             },
             title={
                 "text": (
@@ -1281,7 +1281,7 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
                     f"<span style='font-size:11px;color:#64748b'>"
                     f"Actual {actual:,.2f}{unit} | Target {target:,.2f}{unit}</span>"
                 ),
-                "font": {"size": 14, "color": "#334155"},
+                "font": {"size": 10 if compact else 14, "color": "#334155"},
             },
             gauge={
                 "axis": {
@@ -1289,7 +1289,7 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
                     "tickmode": "array",
                     "tickvals": [0, 50, 80, 100, 120, 150],
                     "ticktext": ["0", "50", "80", "100", "120", "150%"],
-                    "tickfont": {"size": 9, "color": "#64748b"},
+                    "tickfont": {"size": 7 if compact else 9, "color": "#64748b"},
                 },
                 "bar": {"color": status_color, "thickness": 0.28},
                 "bgcolor": "#f8fafc",
@@ -1309,8 +1309,8 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
         )
     )
     fig.update_layout(
-        height=250,
-        margin=dict(l=18, r=18, t=55, b=20),
+        height=96 if compact else 250,
+        margin=(dict(l=2, r=2, t=24, b=0) if compact else dict(l=18, r=18, t=55, b=20)),
         paper_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Arial"),
         annotations=[
@@ -2216,45 +2216,34 @@ def show_overview():
                         load_branch_monthly_targets.clear()
                         st.rerun()
 
-                gauge_col, target_cards_col = st.columns([1.05, 2.25], gap="small")
-
-                with gauge_col:
-                    create_target_speedometer(
-                        actual=revenue / revenue_divisor,
-                        target=revenue_target,
+                target_cols = st.columns(3, gap="small")
+                with target_cols[0]:
+                    create_target_card(
+                        "Business",
+                        revenue / revenue_divisor,
+                        revenue_target,
                         unit=f" {revenue_unit}",
-                        title="Overall Target Achievement",
+                        decimals=2,
+                        icon="💰",
                     )
-
-                with target_cards_col:
-                    target_cols = st.columns(3, gap="small")
-                    with target_cols[0]:
-                        create_target_card(
-                            "Business",
-                            revenue / revenue_divisor,
-                            revenue_target,
-                            unit=f" {revenue_unit}",
-                            decimals=2,
-                            icon="💰",
-                        )
-                    with target_cols[1]:
-                        create_target_card(
-                            "FTL Business",
-                            ftl / revenue_divisor,
-                            ftl_target,
-                            unit=f" {revenue_unit}",
-                            decimals=2,
-                            icon="🚛",
-                        )
-                    with target_cols[2]:
-                        create_target_card(
-                            "LTL Business",
-                            ltl / revenue_divisor,
-                            ltl_target,
-                            unit=f" {revenue_unit}",
-                            decimals=2,
-                            icon="🚚",
-                        )
+                with target_cols[1]:
+                    create_target_card(
+                        "FTL Business",
+                        ftl / revenue_divisor,
+                        ftl_target,
+                        unit=f" {revenue_unit}",
+                        decimals=2,
+                        icon="🚛",
+                    )
+                with target_cols[2]:
+                    create_target_card(
+                        "LTL Business",
+                        ltl / revenue_divisor,
+                        ltl_target,
+                        unit=f" {revenue_unit}",
+                        decimals=2,
+                        icon="🚚",
+                    )
 
                 with st.expander("View Matched Branch Targets", expanded=False):
                     if matched_target_df.empty:
@@ -2314,7 +2303,9 @@ def show_overview():
 
     with row1:
         with st.container(border=True):
-            title_col, filter_col = st.columns([2, 2])
+            title_col, filter_col, meter_col = st.columns(
+                [1.55, 2.15, 0.75], gap="small", vertical_alignment="top"
+            )
 
             with title_col:
                 _trend_badge_color = "#166534" if revenue_growth >= 0 else "#dc2626"
@@ -2333,6 +2324,9 @@ def show_overview():
                     label_visibility="collapsed",
                     key="revenue_trend_type",
                 ) or "Monthly"
+
+            with meter_col:
+                trend_meter_placeholder = st.empty()
 
             # Build trend data (Current FY vs LY) for the selected granularity
             DATE_COL = "grdt"   # change if your date column is different
@@ -2374,6 +2368,18 @@ def show_overview():
                 ),
                 axis=1,
             )
+
+            # Compact overall target meter in the Business Trend header.
+            trend_actual = float(pd.to_numeric(yoy_df["Business Cr"], errors="coerce").fillna(0).sum())
+            trend_target = float(pd.to_numeric(yoy_df["Target"], errors="coerce").fillna(0).sum())
+            with trend_meter_placeholder.container():
+                create_target_speedometer(
+                    actual=trend_actual,
+                    target=trend_target,
+                    unit=f" {revenue_unit}",
+                    title="Target",
+                    compact=True,
+                )
 
             # Business trend: Last Year, Current Year and Target.
             fig_yoy = go.Figure()
