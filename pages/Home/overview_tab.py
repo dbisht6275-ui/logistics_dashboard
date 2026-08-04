@@ -3482,8 +3482,8 @@ def show_overview():
         with branch_achievement_col:
             with st.container(border=True):
                 st.markdown(
-                    "<div style='font-size:13px;font-weight:500;color:#0f172a;margin-bottom:2px;'>"
-                    "Branch Wise Target Achievement</div>",
+                    "<div style='font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;'>"
+                    "BRANCH WISE TARGET ACHIEVEMENT (Top 5)</div>",
                     unsafe_allow_html=True,
                 )
                 try:
@@ -3504,59 +3504,54 @@ def show_overview():
                     ].copy()
                     _branch_ach_df = _branch_ach_df.sort_values(
                         ["Achievement_Pct", "Business"], ascending=[False, False]
-                    ).head(5).sort_values("Achievement_Pct", ascending=True)
+                    ).head(5)
 
                     if _branch_ach_df.empty:
                         st.info("No matched branch targets for the active filters.")
                     else:
-                        _ach_colors = [
-                            "#16a34a" if v >= 100 else "#f59e0b" if v >= 80 else "#dc2626"
-                            for v in _branch_ach_df["Achievement_Pct"]
-                        ]
-                        _ach_fig = go.Figure(
-                            go.Bar(
-                                y=_branch_ach_df["branch"],
-                                x=_branch_ach_df["Achievement_Pct"],
-                                orientation="h",
-                                marker_color=_ach_colors,
-                                text=[f"{v:.1f}%" for v in _branch_ach_df["Achievement_Pct"]],
-                                textposition="outside",
-                                cliponaxis=False,
-                                customdata=_branch_ach_df[["Business", "Target_Rs", "Variance_Rs"]],
-                                hovertemplate=(
-                                    "<b>%{y}</b><br>Achievement: %{x:.1f}%"
-                                    "<br>Actual: ₹%{customdata[0]:,.0f}"
-                                    "<br>Target: ₹%{customdata[1]:,.0f}"
-                                    "<br>Variance: ₹%{customdata[2]:+,.0f}<extra></extra>"
-                                ),
+                        _rows_html = []
+                        for _, _row in _branch_ach_df.iterrows():
+                            _ach = float(_row["Achievement_Pct"] or 0)
+                            _actual_display = float(_row["Business"]) / revenue_divisor
+                            _target_display = float(_row["Target_Rs"]) / revenue_divisor
+                            _bar_width = max(0.0, min(_ach, 100.0))
+                            _status_color = (
+                                "#16a34a" if _ach >= 100
+                                else "#f59e0b" if _ach >= 80
+                                else "#dc2626"
                             )
-                        )
-                        _ach_fig.add_vline(
-                            x=100, line_width=1.5, line_dash="dash", line_color="#64748b"
-                        )
-                        _ach_fig.update_layout(
-                            height=235,
-                            margin=dict(l=5, r=38, t=22, b=8),
-                            xaxis=dict(
-                                title=None,
-                                range=[0, max(120, float(_branch_ach_df["Achievement_Pct"].max()) * 1.22)],
-                                ticksuffix="%",
-                                showgrid=True,
-                                gridcolor="#eef2f7",
-                                zeroline=False,
-                            ),
-                            yaxis=dict(title=None, automargin=True),
-                            showlegend=False,
-                            plot_bgcolor="white",
-                            paper_bgcolor="rgba(0,0,0,0)",
-                            font=dict(size=10),
-                        )
-                        st.plotly_chart(
-                            _ach_fig,
-                            width="stretch",
-                            config={"displayModeBar": False, "responsive": True},
-                            key="compact_branch_target_achievement",
-                        )
+                            _rows_html.append(
+                                f"""
+                                <div style='display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;'
+                                     "align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #eef2f7;"
+                                     "font-size:10.5px;color:#0f172a;'>
+                                    <div style='font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
+                                         title='{escape(str(_row["branch"]))}'>{escape(str(_row["branch"]))}</div>
+                                    <div style='text-align:right;'>{_actual_display:,.2f}</div>
+                                    <div style='text-align:right;'>{_target_display:,.2f}</div>
+                                    <div style='text-align:right;font-weight:700;color:{_status_color};'>{_ach:,.2f}%</div>
+                                    <div style='height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;'>
+                                        <div style='height:100%;width:{_bar_width:.1f}%;background:{_status_color};border-radius:999px;'></div>
+                                    </div>
+                                </div>
+                                """
+                            )
+
+                        _table_html = f"""
+                        <div style='width:100%;'>
+                            <div style='display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;'
+                                 "gap:7px;padding:2px 0 6px 0;border-bottom:1px solid #dbe3ec;"
+                                 "font-size:9.5px;font-weight:700;color:#334155;'>
+                                <div>Branch</div>
+                                <div style='text-align:right;'>Actual ({revenue_unit})</div>
+                                <div style='text-align:right;'>Target ({revenue_unit})</div>
+                                <div style='text-align:right;'>Achievement %</div>
+                                <div style='text-align:center;'>Achievement Bar</div>
+                            </div>
+                            {''.join(_rows_html)}
+                        </div>
+                        """
+                        st.markdown(_table_html, unsafe_allow_html=True)
                 except Exception as _branch_achievement_exc:
                     st.info(f"Branch target achievement unavailable: {_branch_achievement_exc}")
 
