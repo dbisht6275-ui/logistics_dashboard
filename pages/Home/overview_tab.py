@@ -3482,7 +3482,7 @@ def show_overview():
         with branch_achievement_col:
             with st.container(border=True):
                 _view_col, _title_col, _top_col = st.columns(
-                    [1.55, 2.25, 0.75], vertical_alignment="center"
+                    [1.30, 2.25, 0.75], vertical_alignment="center"
                 )
                 with _view_col:
                     _achievement_level = st.radio(
