@@ -1,12 +1,10 @@
-import io
 from pathlib import Path
 
 import streamlit as st
 import pandas as pd
+from html import escape
 import plotly.graph_objects as go
 import plotly.express as px
-
-from html import escape
 from services.data_loader import load_booking_data_pair, get_date_range
 from services.branch_agency_mast import load_stationmast_data
 
@@ -1443,7 +1441,11 @@ def _render_operational_highlights(current_df, previous_df):
         st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
 
 
-TARGET_FILE_PATH = Path("services/branch_monthly_targets.csv")
+TARGET_FILE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "services"
+    / "branch_monthly_targets.csv"
+)
 
 
 def _normalise_target_text(values):
@@ -1621,6 +1623,98 @@ def calculate_filtered_branch_targets(
 def convert_target_lac(target_lac, conversion_type):
     """Convert target stored in lakhs to the dashboard display unit."""
     return float(target_lac or 0) if conversion_type == "Lac" else float(target_lac or 0) / 100
+
+
+
+def get_monthly_target_for_filtered_branches(filtered_df, selected_loadtype):
+    """Return one-month target in lakhs for branches in the filtered dataset."""
+    target_master = load_branch_monthly_targets()
+
+    if filtered_df is None or filtered_df.empty:
+        return 0.0
+    if "branch" not in filtered_df.columns:
+        raise ValueError("Booking data does not contain the branch column.")
+
+    actual_branches = filtered_df.copy()
+    actual_branches["BRANCH_KEY"] = _normalise_target_text(actual_branches["branch"])
+    selected_branch_names = set(
+        actual_branches.loc[actual_branches["BRANCH_KEY"].ne(""), "BRANCH_KEY"]
+    )
+
+    branch_code_col = _find_target_branch_code_column(actual_branches)
+    selected_branch_codes = set()
+    if branch_code_col is not None:
+        selected_branch_codes = set(
+            pd.to_numeric(actual_branches[branch_code_col], errors="coerce")
+            .dropna()
+            .astype(int)
+        )
+
+    if selected_branch_codes:
+        matched = target_master[
+            target_master["BRANCHCODE"].isin(selected_branch_codes)
+        ].copy()
+    else:
+        matched = target_master[
+            target_master["BRANCH_KEY"].isin(selected_branch_names)
+        ].copy()
+
+    loadtype_value = str(selected_loadtype or "All").strip().upper()
+    if loadtype_value == "LTL":
+        return float(matched["TARGETLTL"].sum())
+    if loadtype_value == "FTL":
+        return float(matched["TARGETFTL"].sum())
+    return float(matched["TARGETTOTAL"].sum())
+
+
+def build_target_trend(
+    filtered_df,
+    trend_type,
+    date_col,
+    monthly_target_lac,
+    conversion_type,
+    month_map,
+):
+    """Build target values aligned with Daily/Weekly/Monthly/Quarterly trend periods."""
+    if filtered_df is None or filtered_df.empty or date_col not in filtered_df.columns:
+        return pd.DataFrame(columns=["Period", "Target"])
+
+    data = filtered_df[[date_col, "FIN_MONTH"]].copy()
+    data[date_col] = pd.to_datetime(data[date_col], errors="coerce")
+    data = data.dropna(subset=[date_col]).drop_duplicates(subset=[date_col])
+    if data.empty:
+        return pd.DataFrame(columns=["Period", "Target"])
+
+    display_target = convert_target_lac(monthly_target_lac, conversion_type)
+
+    if trend_type == "Daily":
+        result = data[[date_col]].copy()
+        result["Period"] = result[date_col].dt.date
+        result["Target"] = display_target / result[date_col].dt.days_in_month
+        return result[["Period", "Target"]].groupby("Period", as_index=False).sum()
+
+    if trend_type == "Weekly":
+        result = data[[date_col]].copy()
+        result["Week"] = result[date_col].dt.to_period("W")
+        result["Target"] = display_target / result[date_col].dt.days_in_month
+        result = result.groupby("Week", as_index=False)["Target"].sum()
+        result["Period"] = result["Week"].astype(str)
+        return result[["Period", "Target"]]
+
+    if trend_type == "Quarterly":
+        result = data[["FIN_MONTH"]].dropna().drop_duplicates().copy()
+        result["Quarter"] = result["FIN_MONTH"].map(QUARTER_MAP)
+        result = result.dropna(subset=["Quarter"])
+        result = result.groupby("Quarter", as_index=False).size()
+        result["Target"] = result["size"] * display_target
+        result["Period"] = result["Quarter"]
+        return result[["Period", "Target"]]
+
+    result = data[["FIN_MONTH"]].dropna().drop_duplicates().copy()
+    result["Period"] = result["FIN_MONTH"].map(month_map)
+    result = result.dropna(subset=["Period"])
+    result["Target"] = display_target
+    return result[["Period", "Target"]]
 
 def show_overview():
     """Compact overview dashboard page."""
@@ -2151,7 +2245,34 @@ def show_overview():
                     if revenue_col in yoy_df.columns:
                         yoy_df[revenue_col] = yoy_df[revenue_col] * 100
 
-            # Business trend in the same visual format as Weight Trend
+            # Add the branch-wise monthly target to the same trend insight.
+            monthly_target_lac = get_monthly_target_for_filtered_branches(
+                df, loadtype
+            )
+            target_trend_df = build_target_trend(
+                filtered_df=df,
+                trend_type=trend_type,
+                date_col=DATE_COL,
+                monthly_target_lac=monthly_target_lac,
+                conversion_type=conversion_type,
+                month_map=month_map,
+            )
+            if not target_trend_df.empty:
+                yoy_df = yoy_df.merge(target_trend_df, on="Period", how="left")
+            else:
+                yoy_df["Target"] = 0.0
+            yoy_df["Target"] = pd.to_numeric(
+                yoy_df.get("Target", 0.0), errors="coerce"
+            ).fillna(0.0)
+            yoy_df["Target Achievement %"] = yoy_df.apply(
+                lambda row: (
+                    row["Business Cr"] / row["Target"] * 100
+                    if row["Target"] > 0 else None
+                ),
+                axis=1,
+            )
+
+            # Business trend: Last Year, Current Year and Target.
             fig_yoy = go.Figure()
 
             fig_yoy.add_trace(
@@ -2184,10 +2305,33 @@ def show_overview():
                 )
             )
 
+            fig_yoy.add_trace(
+                go.Scatter(
+                    x=yoy_df["Period"],
+                    y=yoy_df["Target"],
+                    name="Target",
+                    mode="lines+markers+text",
+                    line=dict(color="#f59e0b", width=3, dash="dash"),
+                    marker=dict(color="#f59e0b", size=7, symbol="diamond"),
+                    text=yoy_df["Target"],
+                    texttemplate="%{text:.2f}",
+                    textposition="top center",
+                    textfont=dict(size=11, color="#b45309", family="Arial"),
+                    cliponaxis=False,
+                    customdata=yoy_df[["Target Achievement %"]],
+                    hovertemplate=(
+                        "<b>%{x}</b><br>Target: ₹%{y:.2f} "
+                        + revenue_unit
+                        + "<br>Achievement: %{customdata[0]:.1f}%<extra></extra>"
+                    ),
+                )
+            )
+
             yoy_max = pd.concat(
                 [
                     pd.to_numeric(yoy_df["Business Cr"], errors="coerce"),
                     pd.to_numeric(yoy_df["Prev Business Cr"], errors="coerce"),
+                    pd.to_numeric(yoy_df["Target"], errors="coerce"),
                 ],
                 ignore_index=True,
             ).max()
@@ -2204,12 +2348,17 @@ def show_overview():
                             r["Prev Business Cr"] if pd.notna(r["Prev Business Cr"]) else 0,
                         )
                         growth_gap = 0.24 if trend_type == "Monthly" else 0.16
+                        target_achievement = r.get("Target Achievement %")
+                        target_text = (
+                            f" · 🎯 {target_achievement:.1f}%"
+                            if pd.notna(target_achievement) else ""
+                        )
                         fig_yoy.add_annotation(
                             x=r["Period"],
-                            y=bar_top + (yoy_max * growth_gap),
-                            text=r["Growth Label"],
+                            y=max(bar_top, r.get("Target", 0) or 0) + (yoy_max * growth_gap),
+                            text=f"{r['Growth Label']}{target_text}",
                             showarrow=False,
-                            font=dict(size=12, color=label_color, family="Arial"),
+                            font=dict(size=11, color=label_color, family="Arial"),
                         )
 
             fig_yoy.update_layout(
