@@ -4026,9 +4026,9 @@ def show_overview():
                     'minmax(180px,2.1fr) 95px 95px 72px 78px;gap:8px;align-items:center;'
                     'padding:0 8px 7px 8px;border-bottom:1px solid #dbe4ef;color:#52667d;'
                     'font-size:10px;font-weight:700;">'
-                    '<div style="text-align:center;">#</div><div>Branch</div><div>P&amp;L Scale</div>'
-                    '<div style="text-align:right;">CY P&amp;L</div>'
-                    '<div style="text-align:right;">LY P&amp;L</div>'
+                    '<div style="text-align:center;">#</div><div>Branch</div><div>Scale</div>'
+                    '<div style="text-align:right;">CY</div>'
+                    '<div style="text-align:right;">LY</div>'
                     '<div style="text-align:right;">Share</div>'
                     '<div style="text-align:right;">Growth</div></div>'
                 )
