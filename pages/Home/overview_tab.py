@@ -3942,7 +3942,7 @@ def show_overview():
     ).round(2)
 
     # Keep only Top Branches and Operational Highlights in one balanced row.
-    b1, b2 = st.columns([1.15, 1], gap="small")
+    b1, b2 = st.columns([1.25, 1], gap="small")
 
     with b1:
         with st.container(border=True):
