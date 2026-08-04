@@ -2404,16 +2404,19 @@ def show_overview():
             )
 
             fig_yoy.add_trace(
-                go.Scatter(
+                go.Bar(
                     x=yoy_df["Period"],
                     y=yoy_df["Target"],
                     name="Target",
-                    mode="lines+markers+text",
-                    line=dict(color="#f59e0b", width=3, dash="dash"),
-                    marker=dict(color="#f59e0b", size=7, symbol="diamond"),
+                    marker=dict(
+                        color="#f59e0b",
+                        line=dict(color="#b45309", width=1.3),
+                        pattern=dict(shape="/", solidity=0.22),
+                    ),
+                    opacity=0.88,
                     text=yoy_df["Target"],
                     texttemplate="%{text:.2f}",
-                    textposition="top center",
+                    textposition="outside",
                     textfont=dict(size=11, color="#b45309", family="Arial"),
                     cliponaxis=False,
                     customdata=yoy_df[["Target Achievement %"]],
@@ -2422,6 +2425,7 @@ def show_overview():
                         + revenue_unit
                         + "<br>Achievement: %{customdata[0]:.1f}%<extra></extra>"
                     ),
+                    offsetgroup="target",
                 )
             )
 
