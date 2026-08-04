@@ -2304,134 +2304,6 @@ def show_overview():
         create_card("T.B.B", format_revenue(tbb, conversion_type), "#2563eb", "🚚", tbb_growth,
                     format_revenue(prev_kpis["tbb"], conversion_type))
 
-    # =====================================================
-    # Automatic Actual vs Monthly Branch Target
-    # =====================================================
-    target_toggle_key = "show_actual_vs_target"
-    if target_toggle_key not in st.session_state:
-        st.session_state[target_toggle_key] = False
-
-    target_button_label = (
-        "✕ Hide Actual vs Target"
-        if st.session_state[target_toggle_key]
-        else "🎯 Actual vs Target"
-    )
-
-    if st.button(target_button_label, key="actual_vs_target_button", width="content"):
-        st.session_state[target_toggle_key] = not st.session_state[target_toggle_key]
-        st.rerun()
-
-    if st.session_state[target_toggle_key]:
-        with st.container(border=True):
-            st.markdown(
-                "<div style='font-size:13px;font-weight:900;color:#0f172a;'>Actual vs Target</div>"
-                "<div style='font-size:10px;color:#64748b;margin-bottom:8px;'>"
-                "Monthly targets are loaded automatically from "
-                "<b>services/branch_monthly_targets.csv</b> and aggregated for the active filters."
-                "</div>",
-                unsafe_allow_html=True,
-            )
-
-            try:
-                (
-                    total_target_lac,
-                    ftl_target_lac,
-                    ltl_target_lac,
-                    matched_target_df,
-                    target_months,
-                    unmatched_target_branches,
-                ) = calculate_filtered_branch_targets(
-                    filtered_df=df,
-                    selected_month=month,
-                    selected_quarter=quarter,
-                    selected_loadtype=loadtype,
-                )
-
-                revenue_target = convert_target_lac(total_target_lac, conversion_type)
-                ftl_target = convert_target_lac(ftl_target_lac, conversion_type)
-                ltl_target = convert_target_lac(ltl_target_lac, conversion_type)
-                target_period = ", ".join(target_months) if target_months else "No actual month available"
-
-                summary_col, refresh_col = st.columns(
-                    [4, 1], gap="small", vertical_alignment="center"
-                )
-                with summary_col:
-                    st.markdown(
-                        f"<div style='font-size:10px;color:#475569;'>"
-                        f"<b>Target period:</b> {target_period} &nbsp;|&nbsp; "
-                        f"<b>Matched target rows:</b> {len(matched_target_df):,} &nbsp;|&nbsp; "
-                        f"<b>Monthly multiplier:</b> {len(target_months)}"
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
-                with refresh_col:
-                    if st.button(
-                        "↻ Refresh Targets",
-                        key="refresh_branch_target_master",
-                        width="stretch",
-                    ):
-                        load_branch_monthly_targets.clear()
-                        st.rerun()
-
-                target_cols = st.columns(3, gap="small")
-                with target_cols[0]:
-                    create_target_card(
-                        "Business",
-                        revenue / revenue_divisor,
-                        revenue_target,
-                        unit=f" {revenue_unit}",
-                        decimals=2,
-                        icon="💰",
-                    )
-                with target_cols[1]:
-                    create_target_card(
-                        "FTL Business",
-                        ftl / revenue_divisor,
-                        ftl_target,
-                        unit=f" {revenue_unit}",
-                        decimals=2,
-                        icon="🚛",
-                    )
-                with target_cols[2]:
-                    create_target_card(
-                        "LTL Business",
-                        ltl / revenue_divisor,
-                        ltl_target,
-                        unit=f" {revenue_unit}",
-                        decimals=2,
-                        icon="🚚",
-                    )
-
-                with st.expander("View Matched Branch Targets", expanded=False):
-                    if matched_target_df.empty:
-                        st.warning("No branch target matched the active dashboard filters.")
-                    else:
-                        target_detail_df = matched_target_df[
-                            ["BRANCHCODE", "BRANCH", "TARGETLTL", "TARGETFTL", "TARGETTOTAL"]
-                        ].copy()
-                        multiplier = len(target_months)
-                        target_detail_df["TARGET_MONTHS"] = multiplier
-                        target_detail_df["PERIOD_LTL_LAC"] = target_detail_df["TARGETLTL"] * multiplier
-                        target_detail_df["PERIOD_FTL_LAC"] = target_detail_df["TARGETFTL"] * multiplier
-                        target_detail_df["PERIOD_TOTAL_LAC"] = target_detail_df["TARGETTOTAL"] * multiplier
-                        st.dataframe(target_detail_df, width="stretch", hide_index=True)
-
-                if unmatched_target_branches:
-                    with st.expander(
-                        f"Unmatched Booking Branches ({len(unmatched_target_branches)})",
-                        expanded=False,
-                    ):
-                        st.warning(
-                            "These booking branches were not found in the target CSV. "
-                            "Check their branch names or branch codes."
-                        )
-                        st.write(", ".join(unmatched_target_branches))
-
-            except (FileNotFoundError, ValueError) as exc:
-                st.error(str(exc))
-            except Exception as exc:
-                st.error(f"Unable to calculate branch targets: {exc}")
-
     # Small separator before charts
     compact_spacer()
 
@@ -2676,9 +2548,10 @@ def show_overview():
         # Revenue by Load Type — larger and clearer values
         # ==============================================================
         with st.container(border=True):
+            # Keep the heading tightly attached to the donut area.
             st.markdown(
                 f'<div style="font-size:{LOAD_TITLE_FONT}px;font-weight:600;'
-                f'color:#0f172a;margin:0 0 5px 0;line-height:1.1;">'
+                f'color:#0f172a;margin:0 0 -7px 0;line-height:1;position:relative;z-index:2;">'
                 f'Business by Load Type (CY)</div>',
                 unsafe_allow_html=True,
             )
@@ -2705,6 +2578,7 @@ def show_overview():
                             labels=["FTL", "LTL"],
                             values=[ftl, ltl],
                             hole=0.66,
+                            domain=dict(x=[0.0, 1.0], y=[0.08, 1.0]),
                             sort=False,
                             rotation=0,
                             direction="clockwise",
