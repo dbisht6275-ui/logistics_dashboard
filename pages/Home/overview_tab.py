@@ -1,4 +1,3 @@
-import io
 import streamlit as st
 import pandas as pd
 from html import escape
@@ -1439,6 +1438,186 @@ def _render_operational_highlights(current_df, previous_df):
         )
         st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
 
+
+TARGET_FILE_PATH = Path("services/branch_monthly_targets.csv")
+
+
+def _normalise_target_text(values):
+    """Normalise branch text for reliable target-master matching."""
+    return (
+        values
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.upper()
+        .str.replace(r"\s+", " ", regex=True)
+    )
+
+
+@st.cache_data(show_spinner=False)
+def load_branch_monthly_targets():
+    """Load monthly branch-wise LTL and FTL targets stored in lakhs."""
+    required_columns = {"BRANCHCODE", "BRANCH", "TARGETLTL", "TARGETFTL"}
+
+    if not TARGET_FILE_PATH.exists():
+        raise FileNotFoundError(
+            f"Target file not found: {TARGET_FILE_PATH}. "
+            "Place branch_monthly_targets.csv inside the services folder."
+        )
+
+    target_df = pd.read_csv(TARGET_FILE_PATH, encoding="utf-8-sig")
+    target_df.columns = [str(col).strip().upper() for col in target_df.columns]
+
+    missing_columns = sorted(required_columns.difference(target_df.columns))
+    if missing_columns:
+        raise ValueError(
+            "Target CSV is missing required columns: " + ", ".join(missing_columns)
+        )
+
+    target_df = target_df[
+        ["BRANCHCODE", "BRANCH", "TARGETLTL", "TARGETFTL"]
+    ].copy()
+
+    target_df["BRANCHCODE"] = pd.to_numeric(
+        target_df["BRANCHCODE"], errors="coerce"
+    ).astype("Int64")
+    target_df["BRANCH"] = target_df["BRANCH"].fillna("").astype(str).str.strip()
+    target_df["BRANCH_KEY"] = _normalise_target_text(target_df["BRANCH"])
+
+    for col in ["TARGETLTL", "TARGETFTL"]:
+        target_df[col] = pd.to_numeric(target_df[col], errors="coerce").fillna(0.0)
+
+    # Consolidate repeated rows, such as repeated branch codes in the source CSV.
+    target_df = (
+        target_df.groupby(
+            ["BRANCHCODE", "BRANCH", "BRANCH_KEY"],
+            as_index=False,
+            dropna=False,
+        )[["TARGETLTL", "TARGETFTL"]]
+        .sum()
+    )
+    target_df["TARGETTOTAL"] = target_df["TARGETLTL"] + target_df["TARGETFTL"]
+    return target_df
+
+
+def _find_target_branch_code_column(data):
+    """Find a branch-code field in booking data, if one is available."""
+    if data is None:
+        return None
+
+    normalized = {
+        str(col).replace("_", "").replace(" ", "").replace("-", "").casefold(): col
+        for col in data.columns
+    }
+    for candidate in [
+        "branchcode", "branchcd", "stationcode", "stationcd",
+        "bookingbranchcode", "originbranchcode",
+    ]:
+        if candidate in normalized:
+            return normalized[candidate]
+    return None
+
+
+def _selected_target_months(filtered_df, selected_month, selected_quarter):
+    """Return financial months for which monthly targets should be applied."""
+    if selected_month != "All":
+        return [selected_month]
+
+    available_months = []
+    if filtered_df is not None and not filtered_df.empty and "Month" in filtered_df.columns:
+        present = set(filtered_df["Month"].dropna().astype(str))
+        available_months = [m for m in MONTH_ORDER if m in present]
+
+    if selected_quarter != "All":
+        quarter_months = {
+            "Q1": ["Apr", "May", "Jun"],
+            "Q2": ["Jul", "Aug", "Sep"],
+            "Q3": ["Oct", "Nov", "Dec"],
+            "Q4": ["Jan", "Feb", "Mar"],
+        }.get(selected_quarter, [])
+        months_with_actual = [m for m in quarter_months if m in available_months]
+        return months_with_actual or quarter_months
+
+    return available_months
+
+
+def calculate_filtered_branch_targets(
+    filtered_df,
+    selected_month,
+    selected_quarter,
+    selected_loadtype,
+):
+    """Calculate monthly branch targets for the active dashboard selection."""
+    target_master = load_branch_monthly_targets()
+
+    if filtered_df is None or filtered_df.empty:
+        return 0.0, 0.0, 0.0, pd.DataFrame(), [], []
+    if "branch" not in filtered_df.columns:
+        raise ValueError("Booking data does not contain the branch column.")
+
+    actual_branches = filtered_df.copy()
+    actual_branches["BRANCH_KEY"] = _normalise_target_text(actual_branches["branch"])
+    selected_branch_names = set(
+        actual_branches.loc[actual_branches["BRANCH_KEY"].ne(""), "BRANCH_KEY"]
+    )
+
+    branch_code_col = _find_target_branch_code_column(actual_branches)
+    selected_branch_codes = set()
+    if branch_code_col is not None:
+        selected_branch_codes = set(
+            pd.to_numeric(actual_branches[branch_code_col], errors="coerce")
+            .dropna()
+            .astype(int)
+        )
+
+    if selected_branch_codes:
+        matched = target_master[
+            target_master["BRANCHCODE"].isin(selected_branch_codes)
+        ].copy()
+    else:
+        matched = target_master[
+            target_master["BRANCH_KEY"].isin(selected_branch_names)
+        ].copy()
+
+    target_months = _selected_target_months(
+        filtered_df, selected_month, selected_quarter
+    )
+    month_multiplier = len(target_months)
+
+    # No actual month means no period target should be shown.
+    if month_multiplier == 0:
+        return 0.0, 0.0, 0.0, matched, target_months, sorted(selected_branch_names)
+
+    ltl_target_lac = float(matched["TARGETLTL"].sum()) * month_multiplier
+    ftl_target_lac = float(matched["TARGETFTL"].sum()) * month_multiplier
+
+    selected_loadtype = str(selected_loadtype or "All").strip().upper()
+    if selected_loadtype == "LTL":
+        ftl_target_lac = 0.0
+        total_target_lac = ltl_target_lac
+    elif selected_loadtype == "FTL":
+        ltl_target_lac = 0.0
+        total_target_lac = ftl_target_lac
+    else:
+        total_target_lac = ltl_target_lac + ftl_target_lac
+
+    matched_keys = set(matched["BRANCH_KEY"].dropna())
+    unmatched = sorted(selected_branch_names.difference(matched_keys))
+
+    return (
+        total_target_lac,
+        ftl_target_lac,
+        ltl_target_lac,
+        matched,
+        target_months,
+        unmatched,
+    )
+
+
+def convert_target_lac(target_lac, conversion_type):
+    """Convert target stored in lakhs to the dashboard display unit."""
+    return float(target_lac or 0) if conversion_type == "Lac" else float(target_lac or 0) / 100
+
 def show_overview():
     """Compact overview dashboard page."""
 
@@ -1779,7 +1958,7 @@ def show_overview():
                     format_revenue(prev_kpis["tbb"], conversion_type))
 
     # =====================================================
-    # Actual vs Target (shown only when user clicks the button)
+    # Automatic Actual vs Monthly Branch Target
     # =====================================================
     target_toggle_key = "show_actual_vs_target"
     if target_toggle_key not in st.session_state:
@@ -1800,213 +1979,111 @@ def show_overview():
             st.markdown(
                 "<div style='font-size:13px;font-weight:900;color:#0f172a;'>Actual vs Target</div>"
                 "<div style='font-size:10px;color:#64748b;margin-bottom:8px;'>"
-                "Enter temporary targets for the currently selected dashboard filters."
+                "Monthly targets are loaded automatically from "
+                "<b>services/branch_monthly_targets.csv</b> and aggregated for the active filters."
                 "</div>",
                 unsafe_allow_html=True,
             )
 
-            target_source = st.radio(
-                "Target Source",
-                ["Manual Entry", "Upload Excel"],
-                horizontal=True,
-                key=f"target_source_{fy}",
-                help="Choose manual entry or upload a target file for the selected hierarchy.",
-            )
-
-            revenue_target_cr = 0.0
-            ftl_target_cr = 0.0
-            ltl_target_cr = 0.0
-            gr_target = 0
-            weight_target_mt = 0.0
-
-            if target_source == "Manual Entry":
-                with st.expander("Enter Target Values", expanded=True):
-                    target_input_cols = st.columns(5)
-
-                    with target_input_cols[0]:
-                        revenue_target_cr = st.number_input(
-                            f"Business Target ({revenue_unit})",
-                            min_value=0.0,
-                            value=st.session_state.get(f"target_revenue_{fy}", 0.0),
-                            step=0.10,
-                            key=f"target_revenue_{fy}",
-                        )
-                    with target_input_cols[1]:
-                        ftl_target_cr = st.number_input(
-                            f"FTL Target ({revenue_unit})",
-                            min_value=0.0,
-                            value=st.session_state.get(f"target_ftl_{fy}", 0.0),
-                            step=0.10,
-                            key=f"target_ftl_{fy}",
-                        )
-                    with target_input_cols[2]:
-                        ltl_target_cr = st.number_input(
-                            f"LTL Target ({revenue_unit})",
-                            min_value=0.0,
-                            value=st.session_state.get(f"target_ltl_{fy}", 0.0),
-                            step=0.10,
-                            key=f"target_ltl_{fy}",
-                        )
-                    with target_input_cols[3]:
-                        gr_target = st.number_input(
-                            "GR Target",
-                            min_value=0,
-                            value=int(st.session_state.get(f"target_gr_{fy}", 0)),
-                            step=100,
-                            key=f"target_gr_{fy}",
-                        )
-                    with target_input_cols[4]:
-                        weight_target_mt = st.number_input(
-                            "Weight Target (MT)",
-                            min_value=0.0,
-                            value=float(st.session_state.get(f"target_weight_{fy}", 0.0)),
-                            step=100.0,
-                            key=f"target_weight_{fy}",
-                        )
-            else:
-                st.markdown(
-                    "<div style='font-size:10px;color:#64748b;margin:2px 0 7px 0;'>"
-                    "Excel columns required: <b>zone, circle, branch, month, ltl, ftl, total</b>. "
-                    "Business values must be entered in the selected conversion unit. Use <b>All</b> where a target applies to the complete hierarchy."
-                    "</div>",
-                    unsafe_allow_html=True,
+            try:
+                (
+                    total_target_lac,
+                    ftl_target_lac,
+                    ltl_target_lac,
+                    matched_target_df,
+                    target_months,
+                    unmatched_target_branches,
+                ) = calculate_filtered_branch_targets(
+                    filtered_df=df,
+                    selected_month=month,
+                    selected_quarter=quarter,
+                    selected_loadtype=loadtype,
                 )
 
-                template_df = pd.DataFrame(
-                    [
-                        {
-                            "zone": "NORTH ZONE",
-                            "circle": "NCR CIRCLE",
-                            "branch": "NOIDA",
-                            "month": "Apr",
-                            "ltl": 2.50,
-                            "ftl": 4.50,
-                            "total": 7.00,
-                        },
-                        {
-                            "zone": "All",
-                            "circle": "All",
-                            "branch": "All",
-                            "month": "May",
-                            "ltl": 20.00,
-                            "ftl": 35.00,
-                            "total": 55.00,
-                        },
-                    ]
-                )
-                template_buffer = io.BytesIO()
-                with pd.ExcelWriter(template_buffer, engine="openpyxl") as writer:
-                    template_df.to_excel(writer, index=False, sheet_name="Targets")
-                template_buffer.seek(0)
+                revenue_target = convert_target_lac(total_target_lac, conversion_type)
+                ftl_target = convert_target_lac(ftl_target_lac, conversion_type)
+                ltl_target = convert_target_lac(ltl_target_lac, conversion_type)
+                target_period = ", ".join(target_months) if target_months else "No actual month available"
 
-                upload_col, template_col = st.columns([2.5, 1])
-                with upload_col:
-                    target_file = st.file_uploader(
-                        "Upload Target Excel",
-                        type=["xlsx", "xls"],
-                        key=f"target_excel_{fy}",
+                summary_col, refresh_col = st.columns(
+                    [4, 1], gap="small", vertical_alignment="center"
+                )
+                with summary_col:
+                    st.markdown(
+                        f"<div style='font-size:10px;color:#475569;'>"
+                        f"<b>Target period:</b> {target_period} &nbsp;|&nbsp; "
+                        f"<b>Matched target rows:</b> {len(matched_target_df):,} &nbsp;|&nbsp; "
+                        f"<b>Monthly multiplier:</b> {len(target_months)}"
+                        f"</div>",
+                        unsafe_allow_html=True,
                     )
-                with template_col:
-                    st.download_button(
-                        "Download Template",
-                        data=template_buffer.getvalue(),
-                        file_name="target_upload_template.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                with refresh_col:
+                    if st.button(
+                        "↻ Refresh Targets",
+                        key="refresh_branch_target_master",
                         width="stretch",
-                    )
+                    ):
+                        load_branch_monthly_targets.clear()
+                        st.rerun()
 
-                if target_file is not None:
-                    try:
-                        target_df = pd.read_excel(target_file)
-                        target_df.columns = [str(col).strip().lower() for col in target_df.columns]
-                        required_cols = ["zone", "circle", "branch", "month", "ltl", "ftl", "total"]
-                        missing_cols = [col for col in required_cols if col not in target_df.columns]
-
-                        if missing_cols:
-                            st.error("Missing required columns: " + ", ".join(missing_cols))
-                        else:
-                            for col in ["zone", "circle", "branch", "month"]:
-                                target_df[col] = target_df[col].fillna("All").astype(str).str.strip()
-                            for col in ["ltl", "ftl", "total"]:
-                                target_df[col] = pd.to_numeric(target_df[col], errors="coerce").fillna(0)
-
-                            selected_values = {
-                                "zone": zone,
-                                "circle": circle,
-                                "branch": branch,
-                                "month": month,
-                            }
-                            matched_targets = target_df.copy()
-                            for col, selected_value in selected_values.items():
-                                if matched_targets.empty:
-                                    break
-
-                                normalized_values = matched_targets[col].str.casefold()
-                                if selected_value != "All":
-                                    normalized_selected = str(selected_value).strip().casefold()
-                                    exact_rows = normalized_values.eq(normalized_selected)
-                                    fallback_rows = normalized_values.eq("all")
-
-                                    # Prefer the exact hierarchy target. Use an All row only
-                                    # when no exact target exists at the selected level.
-                                    if exact_rows.any():
-                                        matched_targets = matched_targets[exact_rows]
-                                    else:
-                                        matched_targets = matched_targets[fallback_rows]
-                                else:
-                                    detailed_rows = ~normalized_values.eq("all")
-
-                                    # For an All dashboard selection, aggregate detailed
-                                    # rows when available. Otherwise use the All summary row.
-                                    if detailed_rows.any():
-                                        matched_targets = matched_targets[detailed_rows]
-                                    else:
-                                        matched_targets = matched_targets[~detailed_rows]
-
-                            revenue_target_cr = float(matched_targets["total"].sum())
-                            ftl_target_cr = float(matched_targets["ftl"].sum())
-                            ltl_target_cr = float(matched_targets["ltl"].sum())
-
-                            st.success(
-                                f"Target loaded: Total ₹{revenue_target_cr:.2f} {revenue_unit} | "
-                                f"FTL ₹{ftl_target_cr:.2f} {revenue_unit} | LTL ₹{ltl_target_cr:.2f} {revenue_unit}"
-                            )
-                            with st.expander("View Matched Target Rows", expanded=False):
-                                st.dataframe(
-                                    matched_targets[required_cols],
-                                    width="stretch",
-                                    hide_index=True,
-                                )
-                    except Exception as exc:
-                        st.error(f"Unable to read target Excel file: {exc}")
-
-            target_cols = st.columns(5 if target_source == "Manual Entry" else 3)
-            with target_cols[0]:
-                create_target_card(
-                    "Business", revenue / 10000000, revenue_target_cr,
-                    unit=f" {revenue_unit}", decimals=2, icon="💰",
-                )
-            with target_cols[1]:
-                create_target_card(
-                    "FTL Business", ftl / 10000000, ftl_target_cr,
-                    unit=f" {revenue_unit}", decimals=2, icon="🚛",
-                )
-            with target_cols[2]:
-                create_target_card(
-                    "LTL Business", ltl / 10000000, ltl_target_cr,
-                    unit=f" {revenue_unit}", decimals=2, icon="🚚",
-                )
-            if target_source == "Manual Entry":
-                with target_cols[3]:
+                target_cols = st.columns(3, gap="small")
+                with target_cols[0]:
                     create_target_card(
-                        "Total GR", total_gr, gr_target,
-                        unit="", decimals=0, icon="📦",
+                        "Business",
+                        revenue / revenue_divisor,
+                        revenue_target,
+                        unit=f" {revenue_unit}",
+                        decimals=2,
+                        icon="💰",
                     )
-                with target_cols[4]:
+                with target_cols[1]:
                     create_target_card(
-                        "Weight", aweight, weight_target_mt,
-                        unit=" MT", decimals=0, icon="⚓",
+                        "FTL Business",
+                        ftl / revenue_divisor,
+                        ftl_target,
+                        unit=f" {revenue_unit}",
+                        decimals=2,
+                        icon="🚛",
                     )
+                with target_cols[2]:
+                    create_target_card(
+                        "LTL Business",
+                        ltl / revenue_divisor,
+                        ltl_target,
+                        unit=f" {revenue_unit}",
+                        decimals=2,
+                        icon="🚚",
+                    )
+
+                with st.expander("View Matched Branch Targets", expanded=False):
+                    if matched_target_df.empty:
+                        st.warning("No branch target matched the active dashboard filters.")
+                    else:
+                        target_detail_df = matched_target_df[
+                            ["BRANCHCODE", "BRANCH", "TARGETLTL", "TARGETFTL", "TARGETTOTAL"]
+                        ].copy()
+                        multiplier = len(target_months)
+                        target_detail_df["TARGET_MONTHS"] = multiplier
+                        target_detail_df["PERIOD_LTL_LAC"] = target_detail_df["TARGETLTL"] * multiplier
+                        target_detail_df["PERIOD_FTL_LAC"] = target_detail_df["TARGETFTL"] * multiplier
+                        target_detail_df["PERIOD_TOTAL_LAC"] = target_detail_df["TARGETTOTAL"] * multiplier
+                        st.dataframe(target_detail_df, width="stretch", hide_index=True)
+
+                if unmatched_target_branches:
+                    with st.expander(
+                        f"Unmatched Booking Branches ({len(unmatched_target_branches)})",
+                        expanded=False,
+                    ):
+                        st.warning(
+                            "These booking branches were not found in the target CSV. "
+                            "Check their branch names or branch codes."
+                        )
+                        st.write(", ".join(unmatched_target_branches))
+
+            except (FileNotFoundError, ValueError) as exc:
+                st.error(str(exc))
+            except Exception as exc:
+                st.error(f"Unable to calculate branch targets: {exc}")
 
     # Small separator before charts
     compact_spacer()
