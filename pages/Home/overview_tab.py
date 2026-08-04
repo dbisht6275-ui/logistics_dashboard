@@ -1152,43 +1152,14 @@ def build_weight_yoy_trend(current_df, previous_df, trend_type, date_col, fy_sta
 
     return trend_df
 
-def create_card(
-    title,
-    value,
-    color,
-    icon,
-    growth_value=0.0,
-    previous_value=None,
-    actual_for_target=None,
-    target_value=None,
-    target_unit="",
-):
-    """Render a compact KPI card with LY growth and an optional target bar."""
+def create_card(title, value, color, icon, growth_value=0.0, previous_value=None):
+    """Render a compact KPI card with LY value and YoY growth."""
     positive = growth_value >= 0
     growth_color = "#15803d" if positive else "#dc2626"
     growth_bg = "#ffffff"
     growth_border = "#86efac" if positive else "#fda4af"
     growth_text = growth_label(growth_value)
     previous_text = previous_value if previous_value is not None else "N/A"
-
-    target_html = ""
-    if target_value is not None and actual_for_target is not None:
-        target_num = float(target_value or 0)
-        actual_num = float(actual_for_target or 0)
-        achievement = (actual_num / target_num * 100.0) if target_num > 0 else 0.0
-        bar_width = min(max(achievement, 0.0), 100.0)
-        bar_color = "#16a34a" if achievement >= 100 else "#f59e0b" if achievement >= 80 else "#dc2626"
-        target_label = f"Target: {target_num:,.2f}{target_unit}" if target_num > 0 else "Target: N/A"
-        achievement_label = f"{achievement:,.1f}%" if target_num > 0 else "N/A"
-        target_html = (
-            f'<div style="margin-top:5px;">'
-            f'<div style="display:flex;justify-content:space-between;gap:5px;font-size:8px;color:#475569;line-height:1.1;">'
-            f'<span>{target_label}</span><span style="font-weight:800;color:{bar_color};">{achievement_label}</span>'
-            f'</div>'
-            f'<div style="height:4px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin-top:3px;">'
-            f'<div style="height:100%;width:{bar_width:.1f}%;background:{bar_color};border-radius:999px;"></div>'
-            f'</div></div>'
-        )
 
     # Keep the complete HTML on one logical line. Blank lines or indented lines
     # inside st.markdown can be interpreted by Markdown as a fenced code block.
@@ -1208,7 +1179,6 @@ def create_card(
         f'{growth_text}'
         f'</span>'
         f'</div>'
-        f'{target_html}'
         f'</div>'
     )
 
@@ -2225,60 +2195,20 @@ def show_overview():
     paid_growth = pct_growth(paid, prev_kpis["paid"])
     tbb_growth = pct_growth(tbb, prev_kpis["tbb"])
 
-    # Targets for the three business KPI cards. Fail softly if the target file
-    # is temporarily unavailable, so the remaining dashboard still loads.
-    kpi_total_target = 0.0
-    kpi_ftl_target = 0.0
-    kpi_ltl_target = 0.0
-    try:
-        (
-            _kpi_total_target_lac,
-            _kpi_ftl_target_lac,
-            _kpi_ltl_target_lac,
-            _kpi_matched_targets,
-            _kpi_target_months,
-            _kpi_unmatched_targets,
-        ) = calculate_filtered_branch_targets(
-            filtered_df=df,
-            selected_month=month,
-            selected_quarter=quarter,
-            selected_loadtype=loadtype,
-        )
-        kpi_total_target = convert_target_lac(_kpi_total_target_lac, conversion_type)
-        kpi_ftl_target = convert_target_lac(_kpi_ftl_target_lac, conversion_type)
-        kpi_ltl_target = convert_target_lac(_kpi_ltl_target_lac, conversion_type)
-    except Exception:
-        pass
-
     # KPI Cards
     k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     with k1:
-        create_card(
-            "Business", format_revenue(revenue, conversion_type), "#2563eb", "💰",
-            revenue_growth, format_revenue(prev_kpis["revenue"], conversion_type),
-            actual_for_target=revenue / revenue_divisor,
-            target_value=kpi_total_target,
-            target_unit=f" {revenue_unit}",
-        )
+        create_card("Business", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth,
+                    format_revenue(prev_kpis["revenue"], conversion_type))
 
     with k2:
-        create_card(
-            "FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛",
-            ftl_growth, format_revenue(prev_kpis["ftl"], conversion_type),
-            actual_for_target=ftl / revenue_divisor,
-            target_value=kpi_ftl_target,
-            target_unit=f" {revenue_unit}",
-        )
+        create_card("FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth,
+                    format_revenue(prev_kpis["ftl"], conversion_type))
 
     with k3:
-        create_card(
-            "LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚",
-            ltl_growth, format_revenue(prev_kpis["ltl"], conversion_type),
-            actual_for_target=ltl / revenue_divisor,
-            target_value=kpi_ltl_target,
-            target_unit=f" {revenue_unit}",
-        )
+        create_card("LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth,
+                    format_revenue(prev_kpis["ltl"], conversion_type))
 
     with k4:
         create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth,
@@ -2303,6 +2233,134 @@ def show_overview():
     with k9:
         create_card("T.B.B", format_revenue(tbb, conversion_type), "#2563eb", "🚚", tbb_growth,
                     format_revenue(prev_kpis["tbb"], conversion_type))
+
+    # =====================================================
+    # Automatic Actual vs Monthly Branch Target
+    # =====================================================
+    target_toggle_key = "show_actual_vs_target"
+    if target_toggle_key not in st.session_state:
+        st.session_state[target_toggle_key] = False
+
+    target_button_label = (
+        "✕ Hide Actual vs Target"
+        if st.session_state[target_toggle_key]
+        else "🎯 Actual vs Target"
+    )
+
+    if st.button(target_button_label, key="actual_vs_target_button", width="content"):
+        st.session_state[target_toggle_key] = not st.session_state[target_toggle_key]
+        st.rerun()
+
+    if st.session_state[target_toggle_key]:
+        with st.container(border=True):
+            st.markdown(
+                "<div style='font-size:13px;font-weight:900;color:#0f172a;'>Actual vs Target</div>"
+                "<div style='font-size:10px;color:#64748b;margin-bottom:8px;'>"
+                "Monthly targets are loaded automatically from "
+                "<b>services/branch_monthly_targets.csv</b> and aggregated for the active filters."
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
+            try:
+                (
+                    total_target_lac,
+                    ftl_target_lac,
+                    ltl_target_lac,
+                    matched_target_df,
+                    target_months,
+                    unmatched_target_branches,
+                ) = calculate_filtered_branch_targets(
+                    filtered_df=df,
+                    selected_month=month,
+                    selected_quarter=quarter,
+                    selected_loadtype=loadtype,
+                )
+
+                revenue_target = convert_target_lac(total_target_lac, conversion_type)
+                ftl_target = convert_target_lac(ftl_target_lac, conversion_type)
+                ltl_target = convert_target_lac(ltl_target_lac, conversion_type)
+                target_period = ", ".join(target_months) if target_months else "No actual month available"
+
+                summary_col, refresh_col = st.columns(
+                    [4, 1], gap="small", vertical_alignment="center"
+                )
+                with summary_col:
+                    st.markdown(
+                        f"<div style='font-size:10px;color:#475569;'>"
+                        f"<b>Target period:</b> {target_period} &nbsp;|&nbsp; "
+                        f"<b>Matched target rows:</b> {len(matched_target_df):,} &nbsp;|&nbsp; "
+                        f"<b>Monthly multiplier:</b> {len(target_months)}"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                with refresh_col:
+                    if st.button(
+                        "↻ Refresh Targets",
+                        key="refresh_branch_target_master",
+                        width="stretch",
+                    ):
+                        load_branch_monthly_targets.clear()
+                        st.rerun()
+
+                target_cols = st.columns(3, gap="small")
+                with target_cols[0]:
+                    create_target_card(
+                        "Business",
+                        revenue / revenue_divisor,
+                        revenue_target,
+                        unit=f" {revenue_unit}",
+                        decimals=2,
+                        icon="💰",
+                    )
+                with target_cols[1]:
+                    create_target_card(
+                        "FTL Business",
+                        ftl / revenue_divisor,
+                        ftl_target,
+                        unit=f" {revenue_unit}",
+                        decimals=2,
+                        icon="🚛",
+                    )
+                with target_cols[2]:
+                    create_target_card(
+                        "LTL Business",
+                        ltl / revenue_divisor,
+                        ltl_target,
+                        unit=f" {revenue_unit}",
+                        decimals=2,
+                        icon="🚚",
+                    )
+
+                with st.expander("View Matched Branch Targets", expanded=False):
+                    if matched_target_df.empty:
+                        st.warning("No branch target matched the active dashboard filters.")
+                    else:
+                        target_detail_df = matched_target_df[
+                            ["BRANCHCODE", "BRANCH", "TARGETLTL", "TARGETFTL", "TARGETTOTAL"]
+                        ].copy()
+                        multiplier = len(target_months)
+                        target_detail_df["TARGET_MONTHS"] = multiplier
+                        target_detail_df["PERIOD_LTL_LAC"] = target_detail_df["TARGETLTL"] * multiplier
+                        target_detail_df["PERIOD_FTL_LAC"] = target_detail_df["TARGETFTL"] * multiplier
+                        target_detail_df["PERIOD_TOTAL_LAC"] = target_detail_df["TARGETTOTAL"] * multiplier
+                        st.dataframe(target_detail_df, width="stretch", hide_index=True)
+
+                if unmatched_target_branches:
+                    with st.expander(
+                        f"Unmatched Booking Branches ({len(unmatched_target_branches)})",
+                        expanded=False,
+                    ):
+                        st.warning(
+                            "These booking branches were not found in the target CSV. "
+                            "Check their branch names or branch codes."
+                        )
+                        st.write(", ".join(unmatched_target_branches))
+
+            except (FileNotFoundError, ValueError) as exc:
+                st.error(str(exc))
+            except Exception as exc:
+                st.error(f"Unable to calculate branch targets: {exc}")
 
     # Small separator before charts
     compact_spacer()
@@ -2548,10 +2606,9 @@ def show_overview():
         # Revenue by Load Type — larger and clearer values
         # ==============================================================
         with st.container(border=True):
-            # Reserve clear vertical space below the heading so the donut never overlaps it.
             st.markdown(
                 f'<div style="font-size:{LOAD_TITLE_FONT}px;font-weight:600;'
-                f'color:#0f172a;margin:0 0 6px 0;line-height:1.2;position:relative;z-index:2;">'
+                f'color:#0f172a;margin:0 0 5px 0;line-height:1.1;">'
                 f'Business by Load Type (CY)</div>',
                 unsafe_allow_html=True,
             )
@@ -2578,7 +2635,6 @@ def show_overview():
                             labels=["FTL", "LTL"],
                             values=[ftl, ltl],
                             hole=0.66,
-                            domain=dict(x=[0.0, 1.0], y=[0.02, 0.92]),
                             sort=False,
                             rotation=0,
                             direction="clockwise",
@@ -2597,8 +2653,8 @@ def show_overview():
                 )
 
                 fig_load.update_layout(
-                    height=172,
-                    margin=dict(l=0, r=0, t=6, b=0),
+                    height=165,
+                    margin=dict(l=0, r=0, t=0, b=0),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     showlegend=False,
@@ -3383,7 +3439,7 @@ def show_overview():
 
         # Three compact insights in one row: MoM, branch achievement, overall gauge.
         mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
-            [1.45, 0.82, 0.48], gap="small", vertical_alignment="top"
+            [1.20, 1.00, 0.60], gap="small", vertical_alignment="top"
         )
 
         with mom_chart_col:
@@ -3425,35 +3481,21 @@ def show_overview():
 
         with branch_achievement_col:
             with st.container(border=True):
-                _view_col, _title_col, _top_col = st.columns(
-                    [1.55, 2.25, 0.75], vertical_alignment="center"
-                )
-                with _view_col:
-                    _achievement_level = st.radio(
-                        "Achievement level",
-                        options=["Zone", "Circle", "Branch"],
-                        index=2,
-                        horizontal=True,
-                        key="target_achievement_level",
-                        label_visibility="collapsed",
-                    )
-                with _top_col:
-                    _achievement_top_n = st.selectbox(
-                        "Top records",
+                _branch_title_col, _branch_top_col = st.columns([3.2, 1.0], vertical_alignment="center")
+                with _branch_top_col:
+                    _branch_achievement_top_n = st.selectbox(
+                        "Top branches",
                         options=[5, 10, 20, 30],
                         index=0,
-                        key="target_achievement_top_n",
+                        key="branch_achievement_top_n",
                         label_visibility="collapsed",
                     )
-                with _title_col:
+                with _branch_title_col:
                     st.markdown(
-                        f"<div style='font-size:12px;font-weight:700;color:#0f172a;"
-                        f"margin:0 0 6px 0;text-align:center;'>"
-                        f"{_achievement_level.upper()} WISE TARGET ACHIEVEMENT "
-                        f"(Top {_achievement_top_n})</div>",
+                        f"<div style='font-size:13px;font-weight:700;color:#0f172a;margin:0 0 6px 0;'>"
+                        f"BRANCH WISE TARGET ACHIEVEMENT (Top {_branch_achievement_top_n})</div>",
                         unsafe_allow_html=True,
                     )
-
                 try:
                     _branch_summary_compact = (
                         df.groupby("branch", dropna=False)["REVENUE"]
@@ -3470,59 +3512,15 @@ def show_overview():
                     _branch_ach_df = _branch_ach_df[
                         _branch_ach_df["Matched_Target"] & (_branch_ach_df["Target_Rs"] > 0)
                     ].copy()
-
-                    # Add the active Zone/Circle mapping to every branch record.
-                    _branch_mapping = (
-                        df[["branch", "zone", "circle"]]
-                        .dropna(subset=["branch"])
-                        .drop_duplicates(subset=["branch"], keep="first")
-                    )
-                    _achievement_df = _branch_ach_df.merge(
-                        _branch_mapping, on="branch", how="left"
-                    )
-
-                    if _achievement_level == "Branch":
-                        _group_column = "branch"
-                        _label_column = "Branch"
-                        _achievement_df = _achievement_df.rename(
-                            columns={"branch": _label_column}
-                        )
-                    else:
-                        _source_group = _achievement_level.lower()
-                        _label_column = _achievement_level
-                        _achievement_df[_source_group] = (
-                            _achievement_df[_source_group]
-                            .fillna("Unmapped")
-                            .astype(str)
-                        )
-                        _achievement_df = (
-                            _achievement_df.groupby(_source_group, dropna=False)
-                            .agg(
-                                Business=("Business", "sum"),
-                                Target_Rs=("Target_Rs", "sum"),
-                            )
-                            .reset_index()
-                            .rename(columns={_source_group: _label_column})
-                        )
-                        _achievement_df["Variance_Rs"] = (
-                            _achievement_df["Business"] - _achievement_df["Target_Rs"]
-                        )
-                        _achievement_df["Achievement_Pct"] = (
-                            _achievement_df["Business"]
-                            .div(_achievement_df["Target_Rs"].replace(0, pd.NA))
-                            .mul(100)
-                            .fillna(0)
-                        )
-
-                    _achievement_df = _achievement_df.sort_values(
+                    _branch_ach_df = _branch_ach_df.sort_values(
                         ["Achievement_Pct", "Business"], ascending=[False, False]
-                    ).head(_achievement_top_n)
+                    ).head(_branch_achievement_top_n)
 
-                    if _achievement_df.empty:
-                        st.info("No matched targets for the active filters.")
+                    if _branch_ach_df.empty:
+                        st.info("No matched branch targets for the active filters.")
                     else:
                         _rows_html = []
-                        for _, _row in _achievement_df.iterrows():
+                        for _, _row in _branch_ach_df.iterrows():
                             _ach = float(_row["Achievement_Pct"] or 0)
                             _actual_display = float(_row["Business"]) / revenue_divisor
                             _target_display = float(_row["Target_Rs"]) / revenue_divisor
@@ -3532,10 +3530,10 @@ def show_overview():
                                 else "#f59e0b" if _ach >= 80
                                 else "#dc2626"
                             )
-                            _record_name = escape(str(_row[_label_column]))
+                            _branch_name = escape(str(_row["branch"]))
                             _rows_html.append(
                                 f'<div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #eef2f7;font-size:10.5px;color:#0f172a;">'
-                                f'<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{_record_name}">{_record_name}</div>'
+                                f'<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{_branch_name}">{_branch_name}</div>'
                                 f'<div style="text-align:right;">{_actual_display:,.2f}</div>'
                                 f'<div style="text-align:right;">{_target_display:,.2f}</div>'
                                 f'<div style="text-align:right;font-weight:700;color:{_status_color};">{_ach:,.2f}%</div>'
@@ -3547,7 +3545,7 @@ def show_overview():
                         _table_html = (
                             '<div style="width:100%;">'
                             '<div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;gap:7px;padding:2px 0 6px 0;border-bottom:1px solid #dbe3ec;font-size:9.5px;font-weight:700;color:#334155;">'
-                            f'<div>{_label_column}</div>'
+                            '<div>Branch</div>'
                             f'<div style="text-align:right;">Actual ({revenue_unit})</div>'
                             f'<div style="text-align:right;">Target ({revenue_unit})</div>'
                             '<div style="text-align:right;">Achievement %</div>'
@@ -3558,8 +3556,8 @@ def show_overview():
                             + '</div></div>'
                         )
                         st.markdown(_table_html, unsafe_allow_html=True)
-                except Exception as _achievement_exc:
-                    st.info(f"Target achievement unavailable: {_achievement_exc}")
+                except Exception as _branch_achievement_exc:
+                    st.info(f"Branch target achievement unavailable: {_branch_achievement_exc}")
 
         with target_meter_col:
             with st.container(border=True):
@@ -4080,6 +4078,124 @@ def show_overview():
         )
         .reset_index()
     )
+
+    # =====================================================
+    # Branches by Business insight
+    # =====================================================
+    with st.container(border=True):
+        branch_title_col, branch_filter_col = st.columns(
+            [1.35, 2.15], gap="small", vertical_alignment="center"
+        )
+
+        with branch_title_col:
+            st.markdown(
+                "<div style='font-size:16px;font-weight:600;color:#0f2744;'>"
+                "Branches by Business</div>"
+                "<div style='font-size:10px;color:#64748b;margin-top:2px;'>"
+                "Branch-wise revenue ranking for the active dashboard filters</div>",
+                unsafe_allow_html=True,
+            )
+
+        with branch_filter_col:
+            branch_business_slab = st.segmented_control(
+                "Branch business slab",
+                ["Top 10", "Top 20", "Top 30", "All"],
+                default="Top 10",
+                label_visibility="collapsed",
+                key="top_branch_business_slab",
+            ) or "Top 10"
+
+        branch_business_df = branch_summary.copy()
+        branch_business_df["Business"] = pd.to_numeric(
+            branch_business_df["Business"], errors="coerce"
+        ).fillna(0.0)
+        branch_business_df["FTL"] = pd.to_numeric(
+            branch_business_df["FTL"], errors="coerce"
+        ).fillna(0.0)
+        branch_business_df["LTL"] = pd.to_numeric(
+            branch_business_df["LTL"], errors="coerce"
+        ).fillna(0.0)
+        branch_business_df["GR_Count"] = pd.to_numeric(
+            branch_business_df["GR_Count"], errors="coerce"
+        ).fillna(0).astype(int)
+
+        branch_total_business = float(branch_business_df["Business"].sum())
+        branch_business_df["Contribution %"] = (
+            branch_business_df["Business"] / branch_total_business * 100
+            if branch_total_business > 0
+            else 0.0
+        )
+        branch_business_df["FTL %"] = branch_business_df.apply(
+            lambda row: row["FTL"] / row["Business"] * 100
+            if row["Business"] > 0 else 0.0,
+            axis=1,
+        )
+        branch_business_df["LTL %"] = branch_business_df.apply(
+            lambda row: row["LTL"] / row["Business"] * 100
+            if row["Business"] > 0 else 0.0,
+            axis=1,
+        )
+        branch_business_df = branch_business_df.sort_values(
+            "Business", ascending=False
+        ).reset_index(drop=True)
+
+        branch_limit = {
+            "Top 10": 10,
+            "Top 20": 20,
+            "Top 30": 30,
+        }.get(branch_business_slab)
+        if branch_limit is not None:
+            branch_business_df = branch_business_df.head(branch_limit)
+
+        if branch_business_df.empty:
+            st.info("No branch business is available for the selected filters.")
+        else:
+            max_branch_business = float(branch_business_df["Business"].max() or 1)
+            branch_rows = []
+
+            for idx, row in branch_business_df.iterrows():
+                rank = idx + 1
+                branch_name = escape(str(row["branch"]))
+                business_value = float(row["Business"] or 0)
+                contribution = float(row["Contribution %"] or 0)
+                ftl_value = float(row["FTL"] or 0)
+                ltl_value = float(row["LTL"] or 0)
+                gr_count = int(row["GR_Count"] or 0)
+                width_pct = min(business_value / max_branch_business * 100, 100)
+
+                branch_rows.append(
+                    f'<div style="display:grid;grid-template-columns:34px minmax(150px,1.45fr) '
+                    f'minmax(120px,1fr) minmax(92px,.72fr) minmax(76px,.58fr);'
+                    f'align-items:center;gap:9px;padding:8px 4px;border-bottom:1px solid #edf2f7;">'
+                    f'<div style="text-align:center;font-size:12px;font-weight:700;color:#64748b;">{rank}</div>'
+                    f'<div title="{branch_name}" style="min-width:0;">'
+                    f'<div style="font-size:12px;font-weight:600;color:#243b53;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{branch_name}</div>'
+                    f'<div style="font-size:9px;color:#64748b;margin-top:2px;">{gr_count:,} GR</div></div>'
+                    f'<div><div style="font-size:11px;font-weight:700;color:#0f172a;margin-bottom:4px;">₹{business_value / revenue_divisor:.2f} {revenue_unit}</div>'
+                    f'<div style="height:6px;background:#e8eef5;border-radius:999px;overflow:hidden;">'
+                    f'<div style="height:6px;width:{width_pct:.2f}%;background:linear-gradient(90deg,#2563eb,#0f766e);border-radius:999px;"></div></div></div>'
+                    f'<div style="font-size:10px;color:#475569;line-height:1.35;">'
+                    f'<span style="color:#2563eb;font-weight:700;">FTL ₹{ftl_value / revenue_divisor:.2f}</span><br>'
+                    f'<span style="color:#0f766e;font-weight:700;">LTL ₹{ltl_value / revenue_divisor:.2f}</span></div>'
+                    f'<div style="font-size:12px;font-weight:700;color:#334155;text-align:right;white-space:nowrap;">{contribution:.1f}%</div>'
+                    f'</div>'
+                )
+
+            branch_table_html = (
+                '<div style="display:grid;grid-template-columns:34px minmax(150px,1.45fr) '
+                'minmax(120px,1fr) minmax(92px,.72fr) minmax(76px,.58fr);'
+                'gap:9px;padding:0 4px 6px;border-bottom:1px solid #dbe4ef;'
+                'font-size:10px;font-weight:700;color:#64748b;">'
+                '<div style="text-align:center;">#</div><div>Branch</div>'
+                f'<div>Business ({revenue_unit})</div><div>Load Mix</div>'
+                '<div style="text-align:right;">Share</div></div>'
+                + ''.join(branch_rows)
+            )
+
+            if hasattr(st, "html"):
+                st.html(branch_table_html)
+            else:
+                st.markdown(branch_table_html, unsafe_allow_html=True)
 
     # Branch Wise Target Achievement is displayed only in the compact middle panel
     # between the MoM chart and the overall target gauge.
