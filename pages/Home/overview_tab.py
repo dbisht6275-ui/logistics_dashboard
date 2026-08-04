@@ -3439,7 +3439,7 @@ def show_overview():
 
         # Three compact insights in one row: MoM, branch achievement, overall gauge.
         mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
-            [1.20, 1.00, 0.60], gap="small", vertical_alignment="top"
+            [1.45, 0.82, 0.48], gap="small", vertical_alignment="top"
         )
 
         with mom_chart_col:
@@ -3481,11 +3481,21 @@ def show_overview():
 
         with branch_achievement_col:
             with st.container(border=True):
-                st.markdown(
-                    "<div style='font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;'>"
-                    "BRANCH WISE TARGET ACHIEVEMENT (Top 5)</div>",
-                    unsafe_allow_html=True,
-                )
+                _branch_title_col, _branch_top_col = st.columns([3.2, 1.0], vertical_alignment="center")
+                with _branch_top_col:
+                    _branch_achievement_top_n = st.selectbox(
+                        "Top branches",
+                        options=[5, 10, 20, 30],
+                        index=0,
+                        key="branch_achievement_top_n",
+                        label_visibility="collapsed",
+                    )
+                with _branch_title_col:
+                    st.markdown(
+                        f"<div style='font-size:13px;font-weight:700;color:#0f172a;margin:0 0 6px 0;'>"
+                        f"BRANCH WISE TARGET ACHIEVEMENT (Top {_branch_achievement_top_n})</div>",
+                        unsafe_allow_html=True,
+                    )
                 try:
                     _branch_summary_compact = (
                         df.groupby("branch", dropna=False)["REVENUE"]
@@ -3504,7 +3514,7 @@ def show_overview():
                     ].copy()
                     _branch_ach_df = _branch_ach_df.sort_values(
                         ["Achievement_Pct", "Business"], ascending=[False, False]
-                    ).head(5)
+                    ).head(_branch_achievement_top_n)
 
                     if _branch_ach_df.empty:
                         st.info("No matched branch targets for the active filters.")
@@ -3541,8 +3551,9 @@ def show_overview():
                             '<div style="text-align:right;">Achievement %</div>'
                             '<div style="text-align:center;">Achievement Bar</div>'
                             '</div>'
+                            '<div style="height:148px;overflow-y:auto;overflow-x:hidden;padding-right:3px;scrollbar-gutter:stable;">'
                             + ''.join(_rows_html)
-                            + '</div>'
+                            + '</div></div>'
                         )
                         st.markdown(_table_html, unsafe_allow_html=True)
                 except Exception as _branch_achievement_exc:
