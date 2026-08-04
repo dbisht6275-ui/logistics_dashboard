@@ -2548,10 +2548,10 @@ def show_overview():
         # Revenue by Load Type — larger and clearer values
         # ==============================================================
         with st.container(border=True):
-            # Keep the heading tightly attached to the donut area.
+            # Reserve clear vertical space below the heading so the donut never overlaps it.
             st.markdown(
                 f'<div style="font-size:{LOAD_TITLE_FONT}px;font-weight:600;'
-                f'color:#0f172a;margin:0 0 -7px 0;line-height:1;position:relative;z-index:2;">'
+                f'color:#0f172a;margin:0 0 6px 0;line-height:1.2;position:relative;z-index:2;">'
                 f'Business by Load Type (CY)</div>',
                 unsafe_allow_html=True,
             )
@@ -2578,7 +2578,7 @@ def show_overview():
                             labels=["FTL", "LTL"],
                             values=[ftl, ltl],
                             hole=0.66,
-                            domain=dict(x=[0.0, 1.0], y=[0.08, 1.0]),
+                            domain=dict(x=[0.0, 1.0], y=[0.02, 0.92]),
                             sort=False,
                             rotation=0,
                             direction="clockwise",
@@ -2597,8 +2597,8 @@ def show_overview():
                 )
 
                 fig_load.update_layout(
-                    height=165,
-                    margin=dict(l=0, r=0, t=0, b=0),
+                    height=172,
+                    margin=dict(l=0, r=0, t=6, b=0),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     showlegend=False,
