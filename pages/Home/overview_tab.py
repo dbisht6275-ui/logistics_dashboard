@@ -3243,7 +3243,7 @@ def show_overview():
                 with _top_col:
                     _branch_achievement_top_n = st.selectbox(
                         "Top branches",
-                        options=[10, 20, 30],
+                        options=[5, 10, 20, 30],
                         index=0,
                         key="branch_achievement_top_n",
                         label_visibility="collapsed",
