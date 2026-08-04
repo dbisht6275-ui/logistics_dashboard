@@ -1717,6 +1717,93 @@ def convert_target_lac(target_lac, conversion_type):
     return float(target_lac or 0) if conversion_type == "Lac" else float(target_lac or 0) / 100
 
 
+def calculate_branch_target_achievement(
+    filtered_df,
+    branch_summary,
+    selected_month,
+    selected_quarter,
+    selected_loadtype,
+):
+    """Return branch-wise actual, target, achievement and variance for active filters."""
+    columns = [
+        "branch", "Business", "Target_Lac", "Achievement_Pct", "Variance_Rs",
+        "Status", "Matched_Target",
+    ]
+    if filtered_df is None or filtered_df.empty or branch_summary is None or branch_summary.empty:
+        return pd.DataFrame(columns=columns), []
+
+    target_master = load_branch_monthly_targets().copy()
+    month_list = _selected_target_months(
+        filtered_df, selected_month, selected_quarter
+    )
+    month_multiplier = len(month_list)
+
+    result = branch_summary.copy()
+    result["BRANCH_KEY"] = _normalise_target_text(result["branch"])
+
+    # Prefer branch-code matching when the booking data exposes a code column.
+    branch_code_col = _find_target_branch_code_column(filtered_df)
+    if branch_code_col is not None:
+        code_map = filtered_df[["branch", branch_code_col]].copy()
+        code_map[branch_code_col] = pd.to_numeric(
+            code_map[branch_code_col], errors="coerce"
+        ).astype("Int64")
+        code_map = (
+            code_map.dropna(subset=[branch_code_col])
+            .drop_duplicates(subset=["branch"], keep="first")
+        )
+        result = result.merge(code_map, on="branch", how="left")
+        result = result.merge(
+            target_master[
+                ["BRANCHCODE", "TARGETLTL", "TARGETFTL", "TARGETTOTAL"]
+            ],
+            left_on=branch_code_col,
+            right_on="BRANCHCODE",
+            how="left",
+        )
+    else:
+        result = result.merge(
+            target_master[
+                ["BRANCH_KEY", "TARGETLTL", "TARGETFTL", "TARGETTOTAL"]
+            ],
+            on="BRANCH_KEY",
+            how="left",
+        )
+
+    for col in ["TARGETLTL", "TARGETFTL", "TARGETTOTAL"]:
+        if col not in result.columns:
+            result[col] = 0.0
+        result[col] = pd.to_numeric(result[col], errors="coerce")
+
+    result["Matched_Target"] = result["TARGETTOTAL"].notna()
+    result[["TARGETLTL", "TARGETFTL", "TARGETTOTAL"]] = result[
+        ["TARGETLTL", "TARGETFTL", "TARGETTOTAL"]
+    ].fillna(0.0)
+
+    loadtype_value = str(selected_loadtype or "All").strip().upper()
+    if loadtype_value == "FTL":
+        result["Target_Lac"] = result["TARGETFTL"] * month_multiplier
+    elif loadtype_value == "LTL":
+        result["Target_Lac"] = result["TARGETLTL"] * month_multiplier
+    else:
+        result["Target_Lac"] = result["TARGETTOTAL"] * month_multiplier
+
+    result["Target_Rs"] = result["Target_Lac"] * 100000.0
+    result["Variance_Rs"] = result["Business"] - result["Target_Rs"]
+    result["Achievement_Pct"] = result.apply(
+        lambda row: (
+            row["Business"] / row["Target_Rs"] * 100.0
+            if row["Target_Rs"] > 0 else 0.0
+        ),
+        axis=1,
+    )
+    result["Status"] = result["Achievement_Pct"].map(
+        lambda value: "Achieved" if value >= 100 else ("Near Target" if value >= 80 else "Below Target")
+    )
+
+    return result, month_list
+
+
 
 def get_monthly_target_for_filtered_branches(filtered_df, selected_loadtype):
     """Return one-month target in lakhs for branches in the filtered dataset."""
@@ -3350,8 +3437,9 @@ def show_overview():
         monthly_chart = monthly_chart.dropna(subset=["Month"]).copy()
         monthly_chart["Month"] = monthly_chart["Month"].astype(str)
 
-        mom_chart_col, target_meter_col = st.columns(
-            [1.72, 0.48], gap="small", vertical_alignment="top"
+        # Three compact insights in one row: MoM, branch achievement, overall gauge.
+        mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
+            [1.45, 0.82, 0.48], gap="small", vertical_alignment="top"
         )
 
         with mom_chart_col:
@@ -3390,6 +3478,87 @@ def show_overview():
                 fig_mom.update_yaxes(showline=False)
                 st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False, "responsive": True})
 
+
+        with branch_achievement_col:
+            with st.container(border=True):
+                st.markdown(
+                    "<div style='font-size:13px;font-weight:500;color:#0f172a;margin-bottom:2px;'>"
+                    "Branch Wise Target Achievement</div>",
+                    unsafe_allow_html=True,
+                )
+                try:
+                    _branch_summary_compact = (
+                        df.groupby("branch", dropna=False)["REVENUE"]
+                        .sum()
+                        .reset_index(name="Business")
+                    )
+                    _branch_ach_df, _branch_ach_months = calculate_branch_target_achievement(
+                        filtered_df=df,
+                        branch_summary=_branch_summary_compact,
+                        selected_month=month,
+                        selected_quarter=quarter,
+                        selected_loadtype=loadtype,
+                    )
+                    _branch_ach_df = _branch_ach_df[
+                        _branch_ach_df["Matched_Target"] & (_branch_ach_df["Target_Rs"] > 0)
+                    ].copy()
+                    _branch_ach_df = _branch_ach_df.sort_values(
+                        ["Achievement_Pct", "Business"], ascending=[False, False]
+                    ).head(5).sort_values("Achievement_Pct", ascending=True)
+
+                    if _branch_ach_df.empty:
+                        st.info("No matched branch targets for the active filters.")
+                    else:
+                        _ach_colors = [
+                            "#16a34a" if v >= 100 else "#f59e0b" if v >= 80 else "#dc2626"
+                            for v in _branch_ach_df["Achievement_Pct"]
+                        ]
+                        _ach_fig = go.Figure(
+                            go.Bar(
+                                y=_branch_ach_df["branch"],
+                                x=_branch_ach_df["Achievement_Pct"],
+                                orientation="h",
+                                marker_color=_ach_colors,
+                                text=[f"{v:.1f}%" for v in _branch_ach_df["Achievement_Pct"]],
+                                textposition="outside",
+                                cliponaxis=False,
+                                customdata=_branch_ach_df[["Business", "Target_Rs", "Variance_Rs"]],
+                                hovertemplate=(
+                                    "<b>%{y}</b><br>Achievement: %{x:.1f}%"
+                                    "<br>Actual: ₹%{customdata[0]:,.0f}"
+                                    "<br>Target: ₹%{customdata[1]:,.0f}"
+                                    "<br>Variance: ₹%{customdata[2]:+,.0f}<extra></extra>"
+                                ),
+                            )
+                        )
+                        _ach_fig.add_vline(
+                            x=100, line_width=1.5, line_dash="dash", line_color="#64748b"
+                        )
+                        _ach_fig.update_layout(
+                            height=235,
+                            margin=dict(l=5, r=38, t=22, b=8),
+                            xaxis=dict(
+                                title=None,
+                                range=[0, max(120, float(_branch_ach_df["Achievement_Pct"].max()) * 1.22)],
+                                ticksuffix="%",
+                                showgrid=True,
+                                gridcolor="#eef2f7",
+                                zeroline=False,
+                            ),
+                            yaxis=dict(title=None, automargin=True),
+                            showlegend=False,
+                            plot_bgcolor="white",
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            font=dict(size=10),
+                        )
+                        st.plotly_chart(
+                            _ach_fig,
+                            width="stretch",
+                            config={"displayModeBar": False, "responsive": True},
+                            key="compact_branch_target_achievement",
+                        )
+                except Exception as _branch_achievement_exc:
+                    st.info(f"Branch target achievement unavailable: {_branch_achievement_exc}")
 
         with target_meter_col:
             with st.container(border=True):
@@ -3911,145 +4080,145 @@ def show_overview():
         .reset_index()
     )
 
-    # Top-branch business slab selector. Thresholds always remain in rupees,
-    # irrespective of whether the dashboard display unit is Lac or Crore.
-    business_slab_options = [
-        "All",
-        "₹0–5 Lac",
-        "₹5–10 Lac",
-        "₹10–15 Lac",
-        "₹15–25 Lac",
-        "₹25–50 Lac",
-        "₹50 Lac & Above",
-    ]
+    # Branch-wise Actual vs Target and target-achievement insights.
+    try:
+        branch_target_df, branch_target_months = calculate_branch_target_achievement(
+            filtered_df=df,
+            branch_summary=branch_summary,
+            selected_month=month,
+            selected_quarter=quarter,
+            selected_loadtype=loadtype,
+        )
+    except Exception as exc:
+        branch_target_df = branch_summary.copy()
+        branch_target_df["Target_Lac"] = 0.0
+        branch_target_df["Target_Rs"] = 0.0
+        branch_target_df["Achievement_Pct"] = 0.0
+        branch_target_df["Variance_Rs"] = branch_target_df["Business"]
+        branch_target_df["Status"] = "Target unavailable"
+        branch_target_df["Matched_Target"] = False
+        branch_target_months = []
+        st.warning(f"Branch target insights could not be fully calculated: {exc}")
 
-    selected_business_slab = st.session_state.get(
-        "top_branch_business_slab",
-        "All",
-    )
-
-    slab_ranges = {
-        "All": (None, None),
-        "₹0–5 Lac": (0, 500000),
-        "₹5–10 Lac": (500000, 1000000),
-        "₹10–15 Lac": (1000000, 1500000),
-        "₹15–25 Lac": (1500000, 2500000),
-        "₹25–50 Lac": (2500000, 5000000),
-        "₹50 Lac & Above": (5000000, None),
-    }
-
-    # Streamlit segmented_control may temporarily store None during the first
-    # render, after a code reload, or when an older session-state value becomes
-    # invalid. Always normalise it before using it as a dictionary key.
-    if selected_business_slab not in slab_ranges:
-        selected_business_slab = "All"
-        st.session_state["top_branch_business_slab"] = "All"
-
-    slab_min, slab_max = slab_ranges.get(selected_business_slab, (None, None))
-    top_branch_pool = branch_summary.copy()
-
-    if slab_min is not None:
-        top_branch_pool = top_branch_pool[top_branch_pool["Business"] >= slab_min]
-    if slab_max is not None:
-        # Upper limit is exclusive so one branch cannot fall into two slabs.
-        top_branch_pool = top_branch_pool[top_branch_pool["Business"] < slab_max]
-
-    branch_rank_df = (
-        top_branch_pool
-        .sort_values("Business", ascending=False)
-        .copy()
-    )
-    branch_rank_df["Business Cr"] = (
-        branch_rank_df["Business"] / revenue_divisor
+    branch_target_df["Actual_Display"] = (
+        branch_target_df["Business"] / revenue_divisor
+    ).round(2)
+    branch_target_df["Target_Display"] = (
+        branch_target_df["Target_Rs"] / revenue_divisor
+    ).round(2)
+    branch_target_df["Variance_Display"] = (
+        branch_target_df["Variance_Rs"] / revenue_divisor
     ).round(2)
 
-    # Keep only Top Branches and Operational Highlights in one balanced row.
-    b1, b2 = st.columns([1.15, 1], gap="small")
+    top_n_options = [10, 20, 30]
+    current_top_n = st.session_state.get("branch_target_top_n", 10)
+    if current_top_n not in top_n_options:
+        current_top_n = 10
+        st.session_state["branch_target_top_n"] = 10
 
-    with b1:
-        with st.container(border=True):
+    # Existing Business by Branches insight, now enhanced with target bars.
+    with st.container(border=True):
+        title_col, selector_col = st.columns(
+            [3.2, 1.1], gap="small", vertical_alignment="center"
+        )
+        with title_col:
             st.markdown(
-                "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
-                "Branches by Business</div>",
+                "<div style='font-size:16px;font-weight:500;color:#0f2744;'>"
+                "Business by Branches — Actual vs Target</div>"
+                "<div style='font-size:10px;color:#64748b;'>"
+                "Actual and target business by branch for the active dashboard filters.</div>",
                 unsafe_allow_html=True,
             )
-
-            selected_business_slab = st.segmented_control(
-                "Branch business slab",
-                business_slab_options,
-                default=selected_business_slab,
-                key="top_branch_business_slab",
+        with selector_col:
+            selected_top_n = st.segmented_control(
+                "Top branches",
+                top_n_options,
+                default=current_top_n,
+                key="branch_target_top_n",
                 label_visibility="collapsed",
                 width="stretch",
-            ) or "All"
+            ) or 10
 
-            # Recalculate immediately from the selected button value because the
-            # widget is rendered inside this card.
-            slab_min, slab_max = slab_ranges.get(selected_business_slab, (None, None))
-            top_branch_pool = branch_summary.copy()
-            if slab_min is not None:
-                top_branch_pool = top_branch_pool[top_branch_pool["Business"] >= slab_min]
-            if slab_max is not None:
-                top_branch_pool = top_branch_pool[top_branch_pool["Business"] < slab_max]
+        ranked_branch_df = (
+            branch_target_df
+            .sort_values("Business", ascending=False)
+            .head(int(selected_top_n))
+            .sort_values("Business", ascending=True)
+            .copy()
+        )
 
-            branch_rank_df = (
-                top_branch_pool
-                .sort_values("Business", ascending=False)
-                .copy()
+        if ranked_branch_df.empty:
+            st.info("No branch business is available for the active filters.")
+        else:
+            chart_height = max(320, min(620, 150 + len(ranked_branch_df) * 18))
+            branch_fig = go.Figure()
+            branch_fig.add_trace(
+                go.Bar(
+                    y=ranked_branch_df["branch"],
+                    x=ranked_branch_df["Actual_Display"],
+                    name="Actual",
+                    orientation="h",
+                    marker_color="#2563eb",
+                    offsetgroup="actual",
+                    customdata=ranked_branch_df[
+                        ["Target_Display", "Achievement_Pct", "Variance_Display"]
+                    ],
+                    hovertemplate=(
+                        "<b>%{y}</b><br>Actual: %{x:,.2f} " + revenue_unit +
+                        "<br>Target: %{customdata[0]:,.2f} " + revenue_unit +
+                        "<br>Achievement: %{customdata[1]:,.1f}%"
+                        "<br>Variance: %{customdata[2]:+,.2f} " + revenue_unit +
+                        "<extra></extra>"
+                    ),
+                )
             )
-            branch_rank_df["Business Cr"] = (
-                branch_rank_df["Business"] / revenue_divisor
-            ).round(2)
-
-            if branch_rank_df.empty:
-                st.info(f"No branch falls in the {selected_business_slab} business slab.")
-            else:
-                total_branch_business = float(branch_summary["Business"].sum())
-                selected_branch_business = float(branch_rank_df["Business"].sum())
-                selected_business_share = (
-                    selected_branch_business / total_branch_business * 100
-                    if total_branch_business else 0.0
+            branch_fig.add_trace(
+                go.Bar(
+                    y=ranked_branch_df["branch"],
+                    x=ranked_branch_df["Target_Display"],
+                    name="Target",
+                    orientation="h",
+                    marker=dict(
+                        color="#f97316",
+                        pattern=dict(shape="/", solidity=0.22),
+                    ),
+                    offsetgroup="target",
+                    customdata=ranked_branch_df[["Achievement_Pct"]],
+                    hovertemplate=(
+                        "<b>%{y}</b><br>Target: %{x:,.2f} " + revenue_unit +
+                        "<br>Achievement: %{customdata[0]:,.1f}%"
+                        "<extra></extra>"
+                    ),
                 )
-                selected_business_display = format_revenue(
-                    selected_branch_business, conversion_type
-                )
+            )
+            branch_fig.update_layout(
+                barmode="group",
+                bargap=0.26,
+                bargroupgap=0.08,
+                height=chart_height,
+                margin=dict(l=8, r=12, t=22, b=25),
+                legend=dict(
+                    orientation="h", yanchor="bottom", y=1.01,
+                    xanchor="left", x=0,
+                ),
+                xaxis=dict(
+                    title=f"Business ({revenue_unit})",
+                    gridcolor="#e8eef6",
+                    zeroline=False,
+                ),
+                yaxis=dict(title=None, automargin=True),
+                plot_bgcolor="white",
+                paper_bgcolor="white",
+                font=dict(size=11),
+            )
+            st.plotly_chart(
+                branch_fig,
+                width="stretch",
+                config={"displayModeBar": False},
+                key="branch_actual_target_chart",
+            )
 
-                st.markdown(
-                    f'<div style="color:#2563eb;font-size:12px;font-weight:500;margin:2px 0 7px 1px;">'
-                    f'Showing {len(branch_rank_df)} branches in {selected_business_slab}. '
-                    f'Selected business: ₹{selected_business_display} '
-                    f'({selected_business_share:.2f}% of total branch business). '
-                    f'Scroll to view all.'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-                max_top = branch_rank_df["Business Cr"].max()
-
-                branch_rows_html = []
-                for i, row in branch_rank_df.reset_index(drop=True).iterrows():
-                    branch_rows_html.append(
-                        mini_rank_card(
-                            i + 1,
-                            row["branch"],
-                            row["Business Cr"],
-                            max_top,
-                            "#22c55e",
-                            render=False,
-                        )
-                    )
-
-                branch_scroll_html = (
-                    '<div style="height:285px;overflow-y:auto;overflow-x:hidden;'
-                    'padding:1px 5px 1px 0;scrollbar-gutter:stable;">'
-                    + "".join(branch_rows_html)
-                    + '</div>'
-                )
-                if hasattr(st, "html"):
-                    st.html(branch_scroll_html)
-                else:
-                    st.markdown(branch_scroll_html, unsafe_allow_html=True)
-
-    with b2:
+    with st.expander("Operational Highlights", expanded=False):
         _render_operational_highlights(df, prev_df)
 
     compact_spacer()
