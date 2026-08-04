@@ -1,5 +1,4 @@
 from pathlib import Path
-
 import streamlit as st
 import pandas as pd
 from html import escape
@@ -17,11 +16,9 @@ RANKING_CHART_HEIGHT = 330
 # User-selectable ranking sizes for Customer and Route insights.
 TOP_N_OPTIONS = [10, 20, 30, 40]
 
-
 def compact_spacer(height=SPACER_HEIGHT):
     """Render a consistent, minimal vertical gap between sections."""
     st.markdown(f"<div aria-hidden='true' style='height:{height}px'></div>", unsafe_allow_html=True)
-
 
 # =========================
 # Compact dashboard styling
@@ -815,28 +812,23 @@ def _inject_overview_css():
         unsafe_allow_html=True,
     )
 
-
 def get_revenue_conversion(conversion_type):
     """Display-only conversion; business calculations remain in rupees."""
     return (100000, "Lac") if conversion_type == "Lac" else (10000000, "Cr")
 
-
 def format_revenue(v, conversion_type):
     divisor, unit = get_revenue_conversion(conversion_type)
     return f"{v / divisor:.2f} {unit}"
-
 
 def _hex_to_rgb(hex_color):
     """Convert #RRGGBB into an RGB tuple."""
     value = hex_color.lstrip("#")
     return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
 
-
 def _shade(hex_color, factor=0.78):
     """Create a darker shade used for the visual side/depth of 3D bars."""
     r, g, b = _hex_to_rgb(hex_color)
     return f"rgb({int(r * factor)},{int(g * factor)},{int(b * factor)})"
-
 
 def add_3d_bar(fig, x, y, name, color, text=None, texttemplate=None,
                textposition="outside", textfont=None, orientation="v",
