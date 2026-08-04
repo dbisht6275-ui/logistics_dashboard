@@ -3522,31 +3522,26 @@ def show_overview():
                             )
                             _rows_html.append(
                                 f"""
-                                <div style='display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;'
-                                     "align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #eef2f7;"
-                                     "font-size:10.5px;color:#0f172a;'>
-                                    <div style='font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'
-                                         title='{escape(str(_row["branch"]))}'>{escape(str(_row["branch"]))}</div>
-                                    <div style='text-align:right;'>{_actual_display:,.2f}</div>
-                                    <div style='text-align:right;'>{_target_display:,.2f}</div>
-                                    <div style='text-align:right;font-weight:700;color:{_status_color};'>{_ach:,.2f}%</div>
-                                    <div style='height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;'>
-                                        <div style='height:100%;width:{_bar_width:.1f}%;background:{_status_color};border-radius:999px;'></div>
+                                <div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #eef2f7;font-size:10.5px;color:#0f172a;">
+                                    <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{escape(str(_row['branch']))}">{escape(str(_row['branch']))}</div>
+                                    <div style="text-align:right;">{_actual_display:,.2f}</div>
+                                    <div style="text-align:right;">{_target_display:,.2f}</div>
+                                    <div style="text-align:right;font-weight:700;color:{_status_color};">{_ach:,.2f}%</div>
+                                    <div style="height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;">
+                                        <div style="height:100%;width:{_bar_width:.1f}%;background:{_status_color};border-radius:999px;"></div>
                                     </div>
                                 </div>
                                 """
                             )
 
                         _table_html = f"""
-                        <div style='width:100%;'>
-                            <div style='display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;'
-                                 "gap:7px;padding:2px 0 6px 0;border-bottom:1px solid #dbe3ec;"
-                                 "font-size:9.5px;font-weight:700;color:#334155;'>
+                        <div style="width:100%;">
+                            <div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;gap:7px;padding:2px 0 6px 0;border-bottom:1px solid #dbe3ec;font-size:9.5px;font-weight:700;color:#334155;">
                                 <div>Branch</div>
-                                <div style='text-align:right;'>Actual ({revenue_unit})</div>
-                                <div style='text-align:right;'>Target ({revenue_unit})</div>
-                                <div style='text-align:right;'>Achievement %</div>
-                                <div style='text-align:center;'>Achievement Bar</div>
+                                <div style="text-align:right;">Actual ({revenue_unit})</div>
+                                <div style="text-align:right;">Target ({revenue_unit})</div>
+                                <div style="text-align:right;">Achievement %</div>
+                                <div style="text-align:center;">Achievement Bar</div>
                             </div>
                             {''.join(_rows_html)}
                         </div>
