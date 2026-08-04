@@ -3231,25 +3231,27 @@ def show_overview():
 
         with branch_achievement_col:
             with st.container(border=True):
-                _achievement_level = st.segmented_control(
-                    "Target achievement level",
-                    options=["Zone", "Circle", "Branch"],
-                    default="Branch",
-                    key="target_achievement_level",
-                    label_visibility="collapsed",
-                ) or "Branch"
-
-                # Keep the Top selector compact and left-aligned directly below
-                # the Zone / Circle / Branch control.
-                _top_label_col, _top_dropdown_col, _top_spacer_col = st.columns(
-                    [0.12, 0.24, 0.64], gap="small", vertical_alignment="center"
+                # Keep Zone / Circle / Branch and Top selector on the same row.
+                _level_col, _top_label_col, _top_dropdown_col = st.columns(
+                    [0.58, 0.10, 0.22], gap="small", vertical_alignment="center"
                 )
+
+                with _level_col:
+                    _achievement_level = st.segmented_control(
+                        "Target achievement level",
+                        options=["Zone", "Circle", "Branch"],
+                        default="Branch",
+                        key="target_achievement_level",
+                        label_visibility="collapsed",
+                    ) or "Branch"
+
                 with _top_label_col:
                     st.markdown(
                         "<div style='font-size:12px;font-weight:600;color:#334155;"
-                        "padding-top:2px;white-space:nowrap;'>Top</div>",
+                        "text-align:right;white-space:nowrap;'>Top</div>",
                         unsafe_allow_html=True,
                     )
+
                 with _top_dropdown_col:
                     _branch_achievement_top_n = st.selectbox(
                         "",
