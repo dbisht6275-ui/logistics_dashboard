@@ -1188,55 +1188,6 @@ def create_card(title, value, color, icon, growth_value=0.0, previous_value=None
     else:
         st.markdown(html, unsafe_allow_html=True)
 
-def create_target_card(title, actual, target, unit="", decimals=2, icon="🎯"):
-    """Render a compact Target vs Actual card.
-
-    A target of zero means that the target has not yet been configured. Targets
-    entered through the dashboard are stored only in the current Streamlit
-    session and can later be replaced with database/config values.
-    """
-    actual = float(actual or 0)
-    target = float(target or 0)
-
-    if target > 0:
-        achievement = (actual / target) * 100
-        gap = actual - target
-        progress_width = min(max(achievement, 0), 100)
-        status_color = "#16a34a" if achievement >= 100 else "#f59e0b" if achievement >= 80 else "#dc2626"
-        gap_label = f"{gap:+,.{decimals}f}{unit} gap"
-        target_label = f"Target {target:,.{decimals}f}{unit}"
-        achievement_label = f"{achievement:,.1f}% achieved"
-    else:
-        progress_width = 0
-        status_color = "#94a3b8"
-        gap_label = "Enter target to calculate gap"
-        target_label = "Target not set"
-        achievement_label = "Waiting for target"
-
-    html = f"""
-    <div style="background:linear-gradient(145deg,#ffffff 0%,#f8fafc 60%,#e5edf7 100%);border:1px solid #d7e0eb;border-radius:15px;
-                padding:11px 12px;box-shadow:0 8px 0 #d6deea,0 13px 22px rgba(15,23,42,.14),inset 1px 1px 0 rgba(255,255,255,.95);min-height:114px;transform:translateY(-3px);">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-            <div style="font-size:11px;font-weight:800;color:#334155;">{title}</div>
-            <div style="font-size:17px;">{icon}</div>
-        </div>
-        <div style="font-size:18px;font-weight:900;color:#0f172a;line-height:1.1;">
-            {actual:,.{decimals}f}{unit}
-        </div>
-        <div style="display:flex;justify-content:space-between;gap:6px;margin-top:4px;
-                    font-size:10px;color:#64748b;">
-            <span>{target_label}</span>
-            <span style="font-weight:800;color:{status_color};">{achievement_label}</span>
-        </div>
-        <div style="height:7px;background:#e2e8f0;border-radius:999px;overflow:hidden;margin-top:7px;">
-            <div style="height:7px;width:{progress_width:.1f}%;background:{status_color};border-radius:999px;"></div>
-        </div>
-        <div style="font-size:10px;font-weight:700;color:{status_color};margin-top:5px;">{gap_label}</div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
-
-
 def create_target_speedometer(actual, target, unit="", title="Target Achievement", compact=False):
     """Render a Plotly speedometer. Compact mode is designed for chart headers."""
     actual = float(actual or 0)
@@ -1637,79 +1588,6 @@ def _selected_target_months(filtered_df, selected_month, selected_quarter):
         return months_with_actual or quarter_months
 
     return available_months
-
-
-def calculate_filtered_branch_targets(
-    filtered_df,
-    selected_month,
-    selected_quarter,
-    selected_loadtype,
-):
-    """Calculate monthly branch targets for the active dashboard selection."""
-    target_master = load_branch_monthly_targets()
-
-    if filtered_df is None or filtered_df.empty:
-        return 0.0, 0.0, 0.0, pd.DataFrame(), [], []
-    if "branch" not in filtered_df.columns:
-        raise ValueError("Booking data does not contain the branch column.")
-
-    actual_branches = filtered_df.copy()
-    actual_branches["BRANCH_KEY"] = _normalise_target_text(actual_branches["branch"])
-    selected_branch_names = set(
-        actual_branches.loc[actual_branches["BRANCH_KEY"].ne(""), "BRANCH_KEY"]
-    )
-
-    branch_code_col = _find_target_branch_code_column(actual_branches)
-    selected_branch_codes = set()
-    if branch_code_col is not None:
-        selected_branch_codes = set(
-            pd.to_numeric(actual_branches[branch_code_col], errors="coerce")
-            .dropna()
-            .astype(int)
-        )
-
-    if selected_branch_codes:
-        matched = target_master[
-            target_master["BRANCHCODE"].isin(selected_branch_codes)
-        ].copy()
-    else:
-        matched = target_master[
-            target_master["BRANCH_KEY"].isin(selected_branch_names)
-        ].copy()
-
-    target_months = _selected_target_months(
-        filtered_df, selected_month, selected_quarter
-    )
-    month_multiplier = len(target_months)
-
-    # No actual month means no period target should be shown.
-    if month_multiplier == 0:
-        return 0.0, 0.0, 0.0, matched, target_months, sorted(selected_branch_names)
-
-    ltl_target_lac = float(matched["TARGETLTL"].sum()) * month_multiplier
-    ftl_target_lac = float(matched["TARGETFTL"].sum()) * month_multiplier
-
-    selected_loadtype = str(selected_loadtype or "All").strip().upper()
-    if selected_loadtype == "LTL":
-        ftl_target_lac = 0.0
-        total_target_lac = ltl_target_lac
-    elif selected_loadtype == "FTL":
-        ltl_target_lac = 0.0
-        total_target_lac = ftl_target_lac
-    else:
-        total_target_lac = ltl_target_lac + ftl_target_lac
-
-    matched_keys = set(matched["BRANCH_KEY"].dropna())
-    unmatched = sorted(selected_branch_names.difference(matched_keys))
-
-    return (
-        total_target_lac,
-        ftl_target_lac,
-        ltl_target_lac,
-        matched,
-        target_months,
-        unmatched,
-    )
 
 
 def convert_target_lac(target_lac, conversion_type):
@@ -2233,134 +2111,6 @@ def show_overview():
     with k9:
         create_card("T.B.B", format_revenue(tbb, conversion_type), "#2563eb", "🚚", tbb_growth,
                     format_revenue(prev_kpis["tbb"], conversion_type))
-
-    # =====================================================
-    # Automatic Actual vs Monthly Branch Target
-    # =====================================================
-    target_toggle_key = "show_actual_vs_target"
-    if target_toggle_key not in st.session_state:
-        st.session_state[target_toggle_key] = False
-
-    target_button_label = (
-        "✕ Hide Actual vs Target"
-        if st.session_state[target_toggle_key]
-        else "🎯 Actual vs Target"
-    )
-
-    if st.button(target_button_label, key="actual_vs_target_button", width="content"):
-        st.session_state[target_toggle_key] = not st.session_state[target_toggle_key]
-        st.rerun()
-
-    if st.session_state[target_toggle_key]:
-        with st.container(border=True):
-            st.markdown(
-                "<div style='font-size:13px;font-weight:900;color:#0f172a;'>Actual vs Target</div>"
-                "<div style='font-size:10px;color:#64748b;margin-bottom:8px;'>"
-                "Monthly targets are loaded automatically from "
-                "<b>services/branch_monthly_targets.csv</b> and aggregated for the active filters."
-                "</div>",
-                unsafe_allow_html=True,
-            )
-
-            try:
-                (
-                    total_target_lac,
-                    ftl_target_lac,
-                    ltl_target_lac,
-                    matched_target_df,
-                    target_months,
-                    unmatched_target_branches,
-                ) = calculate_filtered_branch_targets(
-                    filtered_df=df,
-                    selected_month=month,
-                    selected_quarter=quarter,
-                    selected_loadtype=loadtype,
-                )
-
-                revenue_target = convert_target_lac(total_target_lac, conversion_type)
-                ftl_target = convert_target_lac(ftl_target_lac, conversion_type)
-                ltl_target = convert_target_lac(ltl_target_lac, conversion_type)
-                target_period = ", ".join(target_months) if target_months else "No actual month available"
-
-                summary_col, refresh_col = st.columns(
-                    [4, 1], gap="small", vertical_alignment="center"
-                )
-                with summary_col:
-                    st.markdown(
-                        f"<div style='font-size:10px;color:#475569;'>"
-                        f"<b>Target period:</b> {target_period} &nbsp;|&nbsp; "
-                        f"<b>Matched target rows:</b> {len(matched_target_df):,} &nbsp;|&nbsp; "
-                        f"<b>Monthly multiplier:</b> {len(target_months)}"
-                        f"</div>",
-                        unsafe_allow_html=True,
-                    )
-                with refresh_col:
-                    if st.button(
-                        "↻ Refresh Targets",
-                        key="refresh_branch_target_master",
-                        width="stretch",
-                    ):
-                        load_branch_monthly_targets.clear()
-                        st.rerun()
-
-                target_cols = st.columns(3, gap="small")
-                with target_cols[0]:
-                    create_target_card(
-                        "Business",
-                        revenue / revenue_divisor,
-                        revenue_target,
-                        unit=f" {revenue_unit}",
-                        decimals=2,
-                        icon="💰",
-                    )
-                with target_cols[1]:
-                    create_target_card(
-                        "FTL Business",
-                        ftl / revenue_divisor,
-                        ftl_target,
-                        unit=f" {revenue_unit}",
-                        decimals=2,
-                        icon="🚛",
-                    )
-                with target_cols[2]:
-                    create_target_card(
-                        "LTL Business",
-                        ltl / revenue_divisor,
-                        ltl_target,
-                        unit=f" {revenue_unit}",
-                        decimals=2,
-                        icon="🚚",
-                    )
-
-                with st.expander("View Matched Branch Targets", expanded=False):
-                    if matched_target_df.empty:
-                        st.warning("No branch target matched the active dashboard filters.")
-                    else:
-                        target_detail_df = matched_target_df[
-                            ["BRANCHCODE", "BRANCH", "TARGETLTL", "TARGETFTL", "TARGETTOTAL"]
-                        ].copy()
-                        multiplier = len(target_months)
-                        target_detail_df["TARGET_MONTHS"] = multiplier
-                        target_detail_df["PERIOD_LTL_LAC"] = target_detail_df["TARGETLTL"] * multiplier
-                        target_detail_df["PERIOD_FTL_LAC"] = target_detail_df["TARGETFTL"] * multiplier
-                        target_detail_df["PERIOD_TOTAL_LAC"] = target_detail_df["TARGETTOTAL"] * multiplier
-                        st.dataframe(target_detail_df, width="stretch", hide_index=True)
-
-                if unmatched_target_branches:
-                    with st.expander(
-                        f"Unmatched Booking Branches ({len(unmatched_target_branches)})",
-                        expanded=False,
-                    ):
-                        st.warning(
-                            "These booking branches were not found in the target CSV. "
-                            "Check their branch names or branch codes."
-                        )
-                        st.write(", ".join(unmatched_target_branches))
-
-            except (FileNotFoundError, ValueError) as exc:
-                st.error(str(exc))
-            except Exception as exc:
-                st.error(f"Unable to calculate branch targets: {exc}")
 
     # Small separator before charts
     compact_spacer()
@@ -3481,11 +3231,21 @@ def show_overview():
 
         with branch_achievement_col:
             with st.container(border=True):
-                st.markdown(
-                    "<div style='font-size:13px;font-weight:700;color:#0f172a;margin-bottom:8px;'>"
-                    "BRANCH WISE TARGET ACHIEVEMENT (Top 5)</div>",
-                    unsafe_allow_html=True,
-                )
+                _branch_title_col, _branch_top_col = st.columns([3.2, 1.0], vertical_alignment="center")
+                with _branch_top_col:
+                    _branch_achievement_top_n = st.selectbox(
+                        "Top branches",
+                        options=[5, 10, 20, 30],
+                        index=0,
+                        key="branch_achievement_top_n",
+                        label_visibility="collapsed",
+                    )
+                with _branch_title_col:
+                    st.markdown(
+                        f"<div style='font-size:13px;font-weight:700;color:#0f172a;margin:0 0 6px 0;'>"
+                        f"BRANCH WISE TARGET ACHIEVEMENT (Top {_branch_achievement_top_n})</div>",
+                        unsafe_allow_html=True,
+                    )
                 try:
                     _branch_summary_compact = (
                         df.groupby("branch", dropna=False)["REVENUE"]
@@ -3504,7 +3264,7 @@ def show_overview():
                     ].copy()
                     _branch_ach_df = _branch_ach_df.sort_values(
                         ["Achievement_Pct", "Business"], ascending=[False, False]
-                    ).head(5)
+                    ).head(_branch_achievement_top_n)
 
                     if _branch_ach_df.empty:
                         st.info("No matched branch targets for the active filters.")
