@@ -3247,7 +3247,7 @@ def show_overview():
 
                 with _top_dropdown_col:
                     _branch_achievement_top_n = st.selectbox(
-                        "Number of records",
+                        "",
                         options=[5, 10, 20, 30],
                         index=0,
                         key="branch_achievement_top_n",
@@ -3874,6 +3874,21 @@ def show_overview():
         .reset_index()
     )
 
+    # Previous-year branch business for CY/LY comparison in Branches by Business.
+    if prev_df is not None and not prev_df.empty and "branch" in prev_df.columns:
+        prev_branch_summary = (
+            prev_df.groupby("branch", dropna=False)["REVENUE"]
+            .sum()
+            .reset_index(name="LY_Business")
+        )
+    else:
+        prev_branch_summary = pd.DataFrame(columns=["branch", "LY_Business"])
+
+    branch_summary = branch_summary.merge(prev_branch_summary, on="branch", how="left")
+    branch_summary["LY_Business"] = pd.to_numeric(
+        branch_summary["LY_Business"], errors="coerce"
+    ).fillna(0.0)
+
     # Top-branch business slab selector. Thresholds always remain in rupees,
     # irrespective of whether the dashboard display unit is Lac or Crore.
     business_slab_options = [
@@ -3969,43 +3984,84 @@ def show_overview():
             else:
                 total_branch_business = float(branch_summary["Business"].sum())
                 selected_branch_business = float(branch_rank_df["Business"].sum())
+                selected_ly_business = float(branch_rank_df["LY_Business"].sum())
                 selected_business_share = (
                     selected_branch_business / total_branch_business * 100
                     if total_branch_business else 0.0
                 )
+                selected_growth = pct_growth(selected_branch_business, selected_ly_business)
                 selected_business_display = format_revenue(
                     selected_branch_business, conversion_type
                 )
+                selected_ly_display = format_revenue(
+                    selected_ly_business, conversion_type
+                )
+                selected_growth_arrow = "▲" if selected_growth >= 0 else "▼"
+                selected_growth_color = "#16a34a" if selected_growth >= 0 else "#dc2626"
 
                 st.markdown(
                     f'<div style="color:#2563eb;font-size:12px;font-weight:500;margin:2px 0 7px 1px;">'
                     f'Showing {len(branch_rank_df)} branches in {selected_business_slab}. '
-                    f'Selected business: ₹{selected_business_display} '
-                    f'({selected_business_share:.2f}% of total branch business). '
-                    f'Scroll to view all.'
+                    f'CY P&amp;L: ₹{selected_business_display} · LY P&amp;L: ₹{selected_ly_display} · '
+                    f'Share: {selected_business_share:.2f}% · '
+                    f'<span style="color:{selected_growth_color};font-weight:700;">'
+                    f'Growth: {selected_growth_arrow} {abs(selected_growth):.1f}%</span>. Scroll to view all.'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
-                max_top = branch_rank_df["Business Cr"].max()
 
-                branch_rows_html = []
+                branch_rank_df["CY_Display"] = branch_rank_df["Business"] / revenue_divisor
+                branch_rank_df["LY_Display"] = branch_rank_df["LY_Business"] / revenue_divisor
+                branch_rank_df["Share_Pct"] = (
+                    branch_rank_df["Business"] / total_branch_business * 100
+                    if total_branch_business else 0.0
+                )
+                branch_rank_df["Growth_Pct"] = branch_rank_df.apply(
+                    lambda row: pct_growth(row["Business"], row["LY_Business"]), axis=1
+                )
+                max_cy = float(branch_rank_df["CY_Display"].max() or 1)
+
+                header_html = (
+                    '<div style="display:grid;grid-template-columns:42px minmax(155px,1.15fr) '
+                    'minmax(180px,2.1fr) 95px 95px 72px 78px;gap:8px;align-items:center;'
+                    'padding:0 8px 7px 8px;border-bottom:1px solid #dbe4ef;color:#52667d;'
+                    'font-size:10px;font-weight:700;">'
+                    '<div style="text-align:center;">#</div><div>Branch</div><div>P&amp;L Scale</div>'
+                    '<div style="text-align:right;">CY P&amp;L</div>'
+                    '<div style="text-align:right;">LY P&amp;L</div>'
+                    '<div style="text-align:right;">Share</div>'
+                    '<div style="text-align:right;">Growth</div></div>'
+                )
+
+                rows = []
                 for i, row in branch_rank_df.reset_index(drop=True).iterrows():
-                    branch_rows_html.append(
-                        mini_rank_card(
-                            i + 1,
-                            row["branch"],
-                            row["Business Cr"],
-                            max_top,
-                            "#22c55e",
-                            render=False,
-                        )
+                    cy_value = float(row["CY_Display"] or 0)
+                    ly_value = float(row["LY_Display"] or 0)
+                    share_value = float(row["Share_Pct"] or 0)
+                    growth_value = float(row["Growth_Pct"] or 0)
+                    bar_width = min((cy_value / max_cy * 100), 100) if max_cy else 0
+                    growth_arrow = "▲" if growth_value >= 0 else "▼"
+                    growth_color = "#16a34a" if growth_value >= 0 else "#dc2626"
+                    rows.append(
+                        f'<div style="display:grid;grid-template-columns:42px minmax(155px,1.15fr) '
+                        f'minmax(180px,2.1fr) 95px 95px 72px 78px;gap:8px;align-items:center;'
+                        f'padding:9px 8px;margin:0 0 6px 0;border:1px solid #e1e7ef;border-radius:11px;'
+                        f'background:#fbfdff;font-size:11px;">'
+                        f'<div style="text-align:center;color:#52667d;">{i + 1}</div>'
+                        f'<div title="{escape(str(row["branch"]))}" style="font-weight:600;color:#102a43;'
+                        f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{escape(str(row["branch"]))}</div>'
+                        f'<div style="height:7px;background:#e8edf4;border-radius:999px;overflow:hidden;">'
+                        f'<div style="height:100%;width:{bar_width:.1f}%;background:#7c3aed;border-radius:999px;"></div></div>'
+                        f'<div style="text-align:right;font-weight:700;color:#0f172a;">₹{cy_value:.2f} {revenue_unit}</div>'
+                        f'<div style="text-align:right;color:#64748b;">₹{ly_value:.2f} {revenue_unit}</div>'
+                        f'<div style="text-align:right;font-weight:700;color:#6d28d9;">{share_value:.2f}%</div>'
+                        f'<div style="text-align:right;font-weight:700;color:{growth_color};white-space:nowrap;">'
+                        f'{growth_arrow} {abs(growth_value):.1f}%</div></div>'
                     )
 
                 branch_scroll_html = (
-                    '<div style="height:285px;overflow-y:auto;overflow-x:hidden;'
-                    'padding:1px 5px 1px 0;scrollbar-gutter:stable;">'
-                    + "".join(branch_rows_html)
-                    + '</div>'
+                    '<div style="height:285px;overflow-y:auto;overflow-x:auto;padding:1px 5px 1px 0;'
+                    'scrollbar-gutter:stable;">' + header_html + ''.join(rows) + '</div>'
                 )
                 if hasattr(st, "html"):
                     st.html(branch_scroll_html)
