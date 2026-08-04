@@ -3439,7 +3439,7 @@ def show_overview():
 
         # Three compact insights in one row: MoM, branch achievement, overall gauge.
         mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
-            [1.20, 1.00, 0.60], gap="small", vertical_alignment="top"
+            [1.45, 0.82, 0.48], gap="small", vertical_alignment="top"
         )
 
         with mom_chart_col:
@@ -3481,21 +3481,35 @@ def show_overview():
 
         with branch_achievement_col:
             with st.container(border=True):
-                _branch_title_col, _branch_top_col = st.columns([3.2, 1.0], vertical_alignment="center")
-                with _branch_top_col:
-                    _branch_achievement_top_n = st.selectbox(
-                        "Top branches",
-                        options=[5, 10, 20, 30],
-                        index=0,
-                        key="branch_achievement_top_n",
+                _view_col, _title_col, _top_col = st.columns(
+                    [1.55, 2.25, 0.75], vertical_alignment="center"
+                )
+                with _view_col:
+                    _achievement_level = st.radio(
+                        "Achievement level",
+                        options=["Zone", "Circle", "Branch"],
+                        index=2,
+                        horizontal=True,
+                        key="target_achievement_level",
                         label_visibility="collapsed",
                     )
-                with _branch_title_col:
+                with _top_col:
+                    _achievement_top_n = st.selectbox(
+                        "Top records",
+                        options=[5, 10, 20, 30],
+                        index=0,
+                        key="target_achievement_top_n",
+                        label_visibility="collapsed",
+                    )
+                with _title_col:
                     st.markdown(
-                        f"<div style='font-size:13px;font-weight:700;color:#0f172a;margin:0 0 6px 0;'>"
-                        f"BRANCH WISE TARGET ACHIEVEMENT (Top {_branch_achievement_top_n})</div>",
+                        f"<div style='font-size:12px;font-weight:700;color:#0f172a;"
+                        f"margin:0 0 6px 0;text-align:center;'>"
+                        f"{_achievement_level.upper()} WISE TARGET ACHIEVEMENT "
+                        f"(Top {_achievement_top_n})</div>",
                         unsafe_allow_html=True,
                     )
+
                 try:
                     _branch_summary_compact = (
                         df.groupby("branch", dropna=False)["REVENUE"]
@@ -3512,15 +3526,59 @@ def show_overview():
                     _branch_ach_df = _branch_ach_df[
                         _branch_ach_df["Matched_Target"] & (_branch_ach_df["Target_Rs"] > 0)
                     ].copy()
-                    _branch_ach_df = _branch_ach_df.sort_values(
-                        ["Achievement_Pct", "Business"], ascending=[False, False]
-                    ).head(_branch_achievement_top_n)
 
-                    if _branch_ach_df.empty:
-                        st.info("No matched branch targets for the active filters.")
+                    # Add the active Zone/Circle mapping to every branch record.
+                    _branch_mapping = (
+                        df[["branch", "zone", "circle"]]
+                        .dropna(subset=["branch"])
+                        .drop_duplicates(subset=["branch"], keep="first")
+                    )
+                    _achievement_df = _branch_ach_df.merge(
+                        _branch_mapping, on="branch", how="left"
+                    )
+
+                    if _achievement_level == "Branch":
+                        _group_column = "branch"
+                        _label_column = "Branch"
+                        _achievement_df = _achievement_df.rename(
+                            columns={"branch": _label_column}
+                        )
+                    else:
+                        _source_group = _achievement_level.lower()
+                        _label_column = _achievement_level
+                        _achievement_df[_source_group] = (
+                            _achievement_df[_source_group]
+                            .fillna("Unmapped")
+                            .astype(str)
+                        )
+                        _achievement_df = (
+                            _achievement_df.groupby(_source_group, dropna=False)
+                            .agg(
+                                Business=("Business", "sum"),
+                                Target_Rs=("Target_Rs", "sum"),
+                            )
+                            .reset_index()
+                            .rename(columns={_source_group: _label_column})
+                        )
+                        _achievement_df["Variance_Rs"] = (
+                            _achievement_df["Business"] - _achievement_df["Target_Rs"]
+                        )
+                        _achievement_df["Achievement_Pct"] = (
+                            _achievement_df["Business"]
+                            .div(_achievement_df["Target_Rs"].replace(0, pd.NA))
+                            .mul(100)
+                            .fillna(0)
+                        )
+
+                    _achievement_df = _achievement_df.sort_values(
+                        ["Achievement_Pct", "Business"], ascending=[False, False]
+                    ).head(_achievement_top_n)
+
+                    if _achievement_df.empty:
+                        st.info("No matched targets for the active filters.")
                     else:
                         _rows_html = []
-                        for _, _row in _branch_ach_df.iterrows():
+                        for _, _row in _achievement_df.iterrows():
                             _ach = float(_row["Achievement_Pct"] or 0)
                             _actual_display = float(_row["Business"]) / revenue_divisor
                             _target_display = float(_row["Target_Rs"]) / revenue_divisor
@@ -3530,10 +3588,10 @@ def show_overview():
                                 else "#f59e0b" if _ach >= 80
                                 else "#dc2626"
                             )
-                            _branch_name = escape(str(_row["branch"]))
+                            _record_name = escape(str(_row[_label_column]))
                             _rows_html.append(
                                 f'<div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #eef2f7;font-size:10.5px;color:#0f172a;">'
-                                f'<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{_branch_name}">{_branch_name}</div>'
+                                f'<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{_record_name}">{_record_name}</div>'
                                 f'<div style="text-align:right;">{_actual_display:,.2f}</div>'
                                 f'<div style="text-align:right;">{_target_display:,.2f}</div>'
                                 f'<div style="text-align:right;font-weight:700;color:{_status_color};">{_ach:,.2f}%</div>'
@@ -3545,7 +3603,7 @@ def show_overview():
                         _table_html = (
                             '<div style="width:100%;">'
                             '<div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;gap:7px;padding:2px 0 6px 0;border-bottom:1px solid #dbe3ec;font-size:9.5px;font-weight:700;color:#334155;">'
-                            '<div>Branch</div>'
+                            f'<div>{_label_column}</div>'
                             f'<div style="text-align:right;">Actual ({revenue_unit})</div>'
                             f'<div style="text-align:right;">Target ({revenue_unit})</div>'
                             '<div style="text-align:right;">Achievement %</div>'
@@ -3556,8 +3614,8 @@ def show_overview():
                             + '</div></div>'
                         )
                         st.markdown(_table_html, unsafe_allow_html=True)
-                except Exception as _branch_achievement_exc:
-                    st.info(f"Branch target achievement unavailable: {_branch_achievement_exc}")
+                except Exception as _achievement_exc:
+                    st.info(f"Target achievement unavailable: {_achievement_exc}")
 
         with target_meter_col:
             with st.container(border=True):
