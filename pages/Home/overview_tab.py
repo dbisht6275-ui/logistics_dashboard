@@ -4002,7 +4002,7 @@ def show_overview():
                 st.markdown(
                     f'<div style="color:#2563eb;font-size:12px;font-weight:500;margin:2px 0 7px 1px;">'
                     f'Showing {len(branch_rank_df)} branches in {selected_business_slab}. '
-                    f'CY P&amp;L: ₹{selected_business_display} · LY P&amp;L: ₹{selected_ly_display} · '
+                    f'CY: ₹{selected_business_display} · LY: ₹{selected_ly_display} · '
                     f'Share: {selected_business_share:.2f}% · '
                     f'<span style="color:{selected_growth_color};font-weight:700;">'
                     f'Growth: {selected_growth_arrow} {abs(selected_growth):.1f}%</span>. Scroll to view all.'
