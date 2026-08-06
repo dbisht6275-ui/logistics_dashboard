@@ -114,7 +114,7 @@ WHERE D.FTL = 'N'
 # Increment this value whenever the SQL source or returned columns change.
 # It is part of the Streamlit cache key and prevents an old query result from
 # being reused after deployment.
-EDD_DATA_CACHE_VERSION = "8.5.9"
+EDD_DATA_CACHE_VERSION = "8.6.0"
 
 
 
@@ -235,6 +235,63 @@ def calculate_monthly_summary(detail: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("MONTH_START").drop(columns="MONTH_START")[columns]
 
 
+
+def calculate_unmapped_branch_summary(detail: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "Booking Zone",
+        "Booking Circle",
+        "Origin Branch",
+        "Total CN",
+        "TAT Not Mapped CN",
+        "TAT Not Mapped %",
+    ]
+
+    if detail.empty:
+        return pd.DataFrame(columns=columns)
+
+    required = ["BOOKING ZONE", "BOOKING CIRCLE", "ORIGIN", "TAT_MAPPED"]
+    missing = [column for column in required if column not in detail.columns]
+    if missing:
+        raise KeyError(
+            "Branch-wise TAT mapping view cannot be prepared because these columns "
+            f"are missing: {missing}"
+        )
+
+    rows = []
+    grouped = detail.groupby(
+        ["BOOKING ZONE", "BOOKING CIRCLE", "ORIGIN"],
+        dropna=False,
+    )
+
+    for (zone, circle, origin), group in grouped:
+        total_cn = len(group)
+        unmapped_cn = int((~group["TAT_MAPPED"]).sum())
+
+        if unmapped_cn == 0:
+            continue
+
+        rows.append({
+            "Booking Zone": "" if pd.isna(zone) else str(zone),
+            "Booking Circle": "" if pd.isna(circle) else str(circle),
+            "Origin Branch": "" if pd.isna(origin) else str(origin),
+            "Total CN": int(total_cn),
+            "TAT Not Mapped CN": unmapped_cn,
+            "TAT Not Mapped %": round(unmapped_cn / total_cn * 100, 1) if total_cn else 0.0,
+        })
+
+    if not rows:
+        return pd.DataFrame(columns=columns)
+
+    return (
+        pd.DataFrame(rows)
+        .sort_values(
+            ["TAT Not Mapped CN", "TAT Not Mapped %", "Origin Branch"],
+            ascending=[False, False, True],
+        )
+        .reset_index(drop=True)[columns]
+    )
+
+
 def fmt_integer(value):
     return "" if value == "" or pd.isna(value) else f"{int(round(float(value))):,}"
 
@@ -260,11 +317,12 @@ def display_frame(summary: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def dataframe_to_excel(summary: pd.DataFrame, detail: pd.DataFrame) -> bytes:
+def dataframe_to_excel(summary: pd.DataFrame, detail: pd.DataFrame, unmapped_branches: pd.DataFrame) -> bytes:
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         summary.to_excel(writer, index=False, sheet_name="Monthly Summary")
         detail.to_excel(writer, index=False, sheet_name="Raw Data")
+        unmapped_branches.to_excel(writer, index=False, sheet_name="TAT Not Mapped Branches")
         for ws in writer.sheets.values():
             ws.freeze_panes = "A2"
             ws.auto_filter.ref = ws.dimensions
@@ -356,6 +414,7 @@ def show_monthly_trend_edd():
             raw_df = load_sql_data(from_date, to_date)
         detail_df = prepare_detail_data(raw_df)
         final_summary = calculate_monthly_summary(detail_df)
+        unmapped_branch_summary = calculate_unmapped_branch_summary(detail_df)
 
         if final_summary.empty:
             st.warning("No records were found for the selected date range.")
@@ -371,10 +430,32 @@ def show_monthly_trend_edd():
             st.markdown(build_html_table(final_summary), unsafe_allow_html=True)
             st.download_button(
                 "Download Excel",
-                data=dataframe_to_excel(final_summary, detail_df),
+                data=dataframe_to_excel(final_summary, detail_df, unmapped_branch_summary),
                 file_name=f"Monthly_Trend_EDD_{from_date:%Y%m%d}_{to_date:%Y%m%d}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
+
+            st.subheader("Branches Where TAT E.D.D Is Not Mapped")
+            if unmapped_branch_summary.empty:
+                st.success("TAT E.D.D is mapped for all branches in the selected period.")
+            else:
+                unmapped_display = unmapped_branch_summary.copy()
+                unmapped_display["Total CN"] = unmapped_display["Total CN"].map(fmt_integer)
+                unmapped_display["TAT Not Mapped CN"] = unmapped_display["TAT Not Mapped CN"].map(fmt_integer)
+                unmapped_display["TAT Not Mapped %"] = unmapped_display["TAT Not Mapped %"].map(fmt_percent)
+                st.dataframe(
+                    unmapped_display,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                st.download_button(
+                    "Download TAT Not Mapped Branches",
+                    data=unmapped_branch_summary.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"TAT_Not_Mapped_Branches_{from_date:%Y%m%d}_{to_date:%Y%m%d}.csv",
+                    mime="text/csv",
+                    key="download_tat_unmapped_branches",
+                )
 
             with st.expander("View consignment-level data"):
                 st.dataframe(detail_df, use_container_width=True, hide_index=True)
@@ -389,6 +470,7 @@ def show_monthly_trend_edd():
     - **Avg Delay:** Average positive delay among breached consignments.
     - **Charged Wt (MT):** Maximum CWEIGHT per GRNO, summed and divided by 1,000.
     - **TAT Mapped %:** Rows where TAT_E.D.D is available / Total CN.
+    - **TAT Not Mapped Branches:** Origin branches having at least one row where TAT_E.D.D is blank.
     """)
     except Exception as exc:
         st.error("The report could not be loaded.")
