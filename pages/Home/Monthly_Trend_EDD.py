@@ -1,12 +1,12 @@
-import os
 from io import BytesIO
 from datetime import date
 
 import numpy as np
 import pandas as pd
 import streamlit as st
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import URL
+from sqlalchemy import text
+
+from services.database import get_engine
 
 LIVE_DATA_START = pd.Timestamp("2026-04-01")
 
@@ -90,75 +90,6 @@ AND D.GRDT >= :from_date
 AND D.GRDT < DATEADD(DAY, 1, :to_date)
 """)
 
-
-def _secret_value(*names: str, default: str = "") -> str:
-    """Read existing project credentials from Streamlit secrets or environment variables."""
-    for name in names:
-        try:
-            if name in st.secrets and st.secrets[name] not in (None, ""):
-                return str(st.secrets[name])
-        except Exception:
-            pass
-
-        value = os.getenv(name)
-        if value not in (None, ""):
-            return str(value)
-
-    # Also support nested [database] / [sql] sections in secrets.toml.
-    for section_name in ("database", "sql", "mssql", "db"):
-        try:
-            section = st.secrets.get(section_name, {})
-            for name in names:
-                if name in section and section[name] not in (None, ""):
-                    return str(section[name])
-        except Exception:
-            pass
-
-    return default
-
-
-@st.cache_resource(show_spinner=False)
-def get_engine():
-    """Create a SQLAlchemy engine using pymssql already installed in the project."""
-    server = _secret_value("DB_SERVER", "SERVER", "SQL_SERVER", "host")
-    database = _secret_value("DB_DATABASE", "DATABASE", "SQL_DATABASE", "database")
-    username = _secret_value("DB_USERNAME", "DB_USER", "UID", "USERNAME", "user")
-    password = _secret_value("DB_PASSWORD", "PWD", "PASSWORD", "password")
-    port_text = _secret_value("DB_PORT", "PORT", "SQL_PORT", "port", default="1433")
-
-    if not all([server, database, username, password]):
-        raise ValueError(
-            "Existing SQL credentials were not found. Expected DB_SERVER, "
-            "DB_DATABASE, DB_USERNAME and DB_PASSWORD in Streamlit secrets "
-            "or environment variables."
-        )
-
-    # Supports values such as server,1433 or server:1433.
-    port = int(port_text or 1433)
-    if "," in server:
-        server, embedded_port = server.rsplit(",", 1)
-        if embedded_port.isdigit():
-            port = int(embedded_port)
-    elif server.count(":") == 1:
-        host_part, embedded_port = server.rsplit(":", 1)
-        if embedded_port.isdigit():
-            server = host_part
-            port = int(embedded_port)
-
-    connection_url = URL.create(
-        drivername="mssql+pymssql",
-        username=username,
-        password=password,
-        host=server,
-        port=port,
-        database=database,
-    )
-
-    return create_engine(
-        connection_url,
-        pool_pre_ping=True,
-        pool_recycle=1800,
-    )
 
 
 @st.cache_data(ttl=900, show_spinner=False)
