@@ -26,20 +26,69 @@ def load_sql_data(from_date: date, to_date: date) -> pd.DataFrame:
         return pd.read_sql_query(SQL_QUERY, connection, params={"from_date": from_date, "to_date": to_date})
 
 
+def _normalise_column_name(value: str) -> str:
+    """Normalise SQL column labels so spaces, dots and underscores do not matter."""
+    return "".join(character for character in str(value).strip().casefold() if character.isalnum())
+
+
+def _resolve_column(df: pd.DataFrame, *candidates: str) -> str:
+    """Return the actual DataFrame column matching one of the requested labels."""
+    actual_by_normalised = {
+        _normalise_column_name(column): column
+        for column in df.columns
+    }
+
+    for candidate in candidates:
+        actual = actual_by_normalised.get(_normalise_column_name(candidate))
+        if actual is not None:
+            return actual
+
+    raise KeyError(
+        f"Required column not returned by SQL function. Expected one of {candidates}. "
+        f"Available columns: {list(df.columns)}"
+    )
+
+
 def prepare_detail_data(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df.copy()
+
     out = df.copy()
-    out["GRDT"] = pd.to_datetime(out["GRDT"], errors="coerce")
-    out["E.D.D"] = pd.to_datetime(out["E.D.D"], errors="coerce")
-    out["TAT_E.D.D"] = pd.to_datetime(out["TAT_E.D.D"], errors="coerce")
-    out["FINAL ARRIVAL DT"] = pd.to_datetime(out["FINAL ARRIVAL DT"], errors="coerce")
-    out["CWEIGHT"] = pd.to_numeric(out["CWEIGHT"], errors="coerce").fillna(0)
+    out.columns = [str(column).strip() for column in out.columns]
+
+    grdt_col = _resolve_column(out, "GRDT", "GR DT")
+    edd_col = _resolve_column(out, "E.D.D", "EDD")
+    tat_edd_col = _resolve_column(
+        out,
+        "TAT_E.D.D",
+        "TAT E.D.D",
+        "TAT_EDD",
+        "TAT EDD",
+    )
+    final_arrival_col = _resolve_column(
+        out,
+        "FINAL ARRIVAL DT",
+        "Final Arrival Dt",
+        "finalarrival",
+    )
+    cweight_col = _resolve_column(out, "CWEIGHT", "C WEIGHT", "CHARGED WEIGHT")
+
+    # Keep stable canonical names for all downstream calculations and exports.
+    out["GRDT"] = pd.to_datetime(out[grdt_col], errors="coerce")
+    out["E.D.D"] = pd.to_datetime(out[edd_col], errors="coerce")
+    out["TAT_E.D.D"] = pd.to_datetime(out[tat_edd_col], errors="coerce")
+    out["FINAL ARRIVAL DT"] = pd.to_datetime(out[final_arrival_col], errors="coerce")
+    out["CWEIGHT"] = pd.to_numeric(out[cweight_col], errors="coerce").fillna(0)
+
     out["MONTH_START"] = out["GRDT"].dt.to_period("M").dt.to_timestamp()
     out["TAT_MAPPED"] = out["TAT_E.D.D"].notna()
     out["ON_TIME"] = out["TAT_MAPPED"] & (out["FINAL ARRIVAL DT"] <= out["E.D.D"])
     out["BREACHED"] = out["TAT_MAPPED"] & (out["FINAL ARRIVAL DT"] > out["E.D.D"])
-    delay = (out["FINAL ARRIVAL DT"].dt.normalize() - out["E.D.D"].dt.normalize()).dt.days
+
+    delay = (
+        out["FINAL ARRIVAL DT"].dt.normalize()
+        - out["E.D.D"].dt.normalize()
+    ).dt.days
     out["DELAY_DAYS"] = np.where(out["BREACHED"], delay, np.nan)
     return out
 
@@ -229,7 +278,7 @@ def show_monthly_trend_edd():
     - **Breach %:** Breached CN / Total CN.
     - **Avg Delay:** Average positive delay among breached consignments.
     - **Charged Wt (MT):** Maximum CWEIGHT per GRNO, summed and divided by 1,000.
-    - **TAT Mapped %:** Distinct GRNO with TAT_E.D.D / Total CN.
+    - **TAT Mapped %:** Rows where TAT_E.D.D is available / Total CN.
     """)
     except Exception as exc:
         st.error("The report could not be loaded.")
