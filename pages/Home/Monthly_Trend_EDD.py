@@ -32,10 +32,11 @@ def prepare_detail_data(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out["GRDT"] = pd.to_datetime(out["GRDT"], errors="coerce")
     out["E.D.D"] = pd.to_datetime(out["E.D.D"], errors="coerce")
+    out["TAT_E.D.D"] = pd.to_datetime(out["TAT_E.D.D"], errors="coerce")
     out["FINAL ARRIVAL DT"] = pd.to_datetime(out["FINAL ARRIVAL DT"], errors="coerce")
     out["CWEIGHT"] = pd.to_numeric(out["CWEIGHT"], errors="coerce").fillna(0)
     out["MONTH_START"] = out["GRDT"].dt.to_period("M").dt.to_timestamp()
-    out["TAT_MAPPED"] = out["E.D.D"].notna() & out["FINAL ARRIVAL DT"].notna()
+    out["TAT_MAPPED"] = out["TAT_E.D.D"].notna()
     out["ON_TIME"] = out["TAT_MAPPED"] & (out["FINAL ARRIVAL DT"] <= out["E.D.D"])
     out["BREACHED"] = out["TAT_MAPPED"] & (out["FINAL ARRIVAL DT"] > out["E.D.D"])
     delay = (out["FINAL ARRIVAL DT"].dt.normalize() - out["E.D.D"].dt.normalize()).dt.days
@@ -50,10 +51,12 @@ def calculate_monthly_summary(detail: pd.DataFrame) -> pd.DataFrame:
 
     rows = []
     for month_start, group in detail.groupby("MONTH_START", dropna=True):
-        total_cn = group["GRNO"].nunique()
-        on_time_cn = group.loc[group["ON_TIME"], "GRNO"].nunique()
-        breached_cn = group.loc[group["BREACHED"], "GRNO"].nunique()
-        mapped_cn = group.loc[group["TAT_MAPPED"], "GRNO"].nunique()
+        # The SQL function already returns one distinct row per GRNO.
+        # Therefore, row counts are the consignment counts.
+        total_cn = len(group)
+        on_time_cn = int(group["ON_TIME"].sum())
+        breached_cn = int(group["BREACHED"].sum())
+        mapped_cn = int(group["TAT_MAPPED"].sum())
         avg_delay = group.loc[group["BREACHED"], "DELAY_DAYS"].mean()
         charged_weight_mt = group.groupby("GRNO")["CWEIGHT"].max().sum() / 1000
 
@@ -219,14 +222,14 @@ def show_monthly_trend_edd():
 
             with st.expander("Metric definitions used"):
                 st.markdown("""
-    - **Total CN:** Distinct GRNO.
+    - **Total CN:** Total rows returned by the SQL function (one row per distinct GRNO).
     - **On-Time CN:** Final Arrival DT is on or before E.D.D.
     - **OTD %:** On-Time CN / Total CN.
     - **Breached CN:** Final Arrival DT is after E.D.D.
     - **Breach %:** Breached CN / Total CN.
     - **Avg Delay:** Average positive delay among breached consignments.
     - **Charged Wt (MT):** Maximum CWEIGHT per GRNO, summed and divided by 1,000.
-    - **TAT Mapped %:** GRNO with both E.D.D and Final Arrival DT / Total CN.
+    - **TAT Mapped %:** Distinct GRNO with TAT_E.D.D / Total CN.
     """)
     except Exception as exc:
         st.error("The report could not be loaded.")
