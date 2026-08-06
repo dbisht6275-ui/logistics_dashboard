@@ -1,12 +1,12 @@
 import os
 from io import BytesIO
 from datetime import date
-from urllib.parse import quote_plus
 
 import numpy as np
 import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
 
 LIVE_DATA_START = pd.Timestamp("2026-04-01")
 
@@ -91,36 +91,74 @@ AND D.GRDT < DATEADD(DAY, 1, :to_date)
 """)
 
 
-def get_setting(name: str, default: str = "") -> str:
-    try:
-        value = st.secrets.get(name, None)
-        if value is not None:
+def _secret_value(*names: str, default: str = "") -> str:
+    """Read existing project credentials from Streamlit secrets or environment variables."""
+    for name in names:
+        try:
+            if name in st.secrets and st.secrets[name] not in (None, ""):
+                return str(st.secrets[name])
+        except Exception:
+            pass
+
+        value = os.getenv(name)
+        if value not in (None, ""):
             return str(value)
-    except Exception:
-        pass
-    return os.getenv(name, default)
+
+    # Also support nested [database] / [sql] sections in secrets.toml.
+    for section_name in ("database", "sql", "mssql", "db"):
+        try:
+            section = st.secrets.get(section_name, {})
+            for name in names:
+                if name in section and section[name] not in (None, ""):
+                    return str(section[name])
+        except Exception:
+            pass
+
+    return default
 
 
 @st.cache_resource(show_spinner=False)
 def get_engine():
-    server = get_setting("DB_SERVER")
-    database = get_setting("DB_DATABASE")
-    username = get_setting("DB_USERNAME")
-    password = get_setting("DB_PASSWORD")
-    driver = get_setting("DB_DRIVER", "ODBC Driver 17 for SQL Server")
-    trusted = get_setting("DB_TRUSTED_CONNECTION", "no").strip().lower() in {"1", "true", "yes", "y"}
+    """Create a SQLAlchemy engine using pymssql already installed in the project."""
+    server = _secret_value("DB_SERVER", "SERVER", "SQL_SERVER", "host")
+    database = _secret_value("DB_DATABASE", "DATABASE", "SQL_DATABASE", "database")
+    username = _secret_value("DB_USERNAME", "DB_USER", "UID", "USERNAME", "user")
+    password = _secret_value("DB_PASSWORD", "PWD", "PASSWORD", "password")
+    port_text = _secret_value("DB_PORT", "PORT", "SQL_PORT", "port", default="1433")
 
-    if not server or not database:
-        raise ValueError("Set DB_SERVER and DB_DATABASE in .streamlit/secrets.toml or environment variables.")
+    if not all([server, database, username, password]):
+        raise ValueError(
+            "Existing SQL credentials were not found. Expected DB_SERVER, "
+            "DB_DATABASE, DB_USERNAME and DB_PASSWORD in Streamlit secrets "
+            "or environment variables."
+        )
 
-    if trusted:
-        odbc = f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};Trusted_Connection=yes;TrustServerCertificate=yes;"
-    else:
-        if not username or not password:
-            raise ValueError("Set DB_USERNAME and DB_PASSWORD, or use DB_TRUSTED_CONNECTION=yes.")
-        odbc = f"DRIVER={{{driver}}};SERVER={server};DATABASE={database};UID={username};PWD={password};TrustServerCertificate=yes;"
+    # Supports values such as server,1433 or server:1433.
+    port = int(port_text or 1433)
+    if "," in server:
+        server, embedded_port = server.rsplit(",", 1)
+        if embedded_port.isdigit():
+            port = int(embedded_port)
+    elif server.count(":") == 1:
+        host_part, embedded_port = server.rsplit(":", 1)
+        if embedded_port.isdigit():
+            server = host_part
+            port = int(embedded_port)
 
-    return create_engine("mssql+pyodbc:///?odbc_connect=" + quote_plus(odbc), pool_pre_ping=True, fast_executemany=True)
+    connection_url = URL.create(
+        drivername="mssql+pymssql",
+        username=username,
+        password=password,
+        host=server,
+        port=port,
+        database=database,
+    )
+
+    return create_engine(
+        connection_url,
+        pool_pre_ping=True,
+        pool_recycle=1800,
+    )
 
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -288,7 +326,7 @@ def show_monthly_trend_edd():
         to_date = st.date_input("Live data to", value=date.today(), min_value=date(2026, 4, 1))
         include_baseline = st.checkbox("Include Jan-Mar baseline", value=True)
         st.button("Refresh Report", type="primary", use_container_width=True)
-        st.caption("Set database values in .streamlit/secrets.toml or environment variables.")
+        st.caption("Uses the SQL credentials already configured in this dashboard.")
 
     if from_date > to_date:
         st.error("The From date cannot be later than the To date.")
@@ -337,4 +375,4 @@ def show_monthly_trend_edd():
     except Exception as exc:
         st.error("The report could not be loaded.")
         st.exception(exc)
-        st.info("Check SQL Server settings, ODBC driver, permissions, and database object names.")
+        st.info("Check the existing SQL credentials, database permissions, and database object names.")

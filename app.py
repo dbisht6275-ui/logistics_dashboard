@@ -510,7 +510,9 @@ if not st.session_state["logged_in"]:
 role = st.session_state.get("role", "viewer")
 
 allowed_menu = get_allowed_menu(role)          # e.g. ["🏠 Overview", "📊 Comparison", ...]
-allowed_reports = get_allowed_reports(role)    # e.g. {"📊 Zone Booking Turnover"}
+allowed_reports = set(get_allowed_reports(role))    # e.g. {"📊 Zone Booking Turnover"}
+# Make the new EDD report immediately available in the Reports menu.
+allowed_reports.add("📅 Monthly Trend EDD")
 
 # Only keep report entries this role is allowed to see, in every department folder
 REPORTS_VISIBLE = {
