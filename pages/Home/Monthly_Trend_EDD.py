@@ -8,16 +8,6 @@ from sqlalchemy import text
 
 from services.database import get_engine
 
-LIVE_DATA_START = pd.Timestamp("2026-04-01")
-
-BASELINE_Q1 = pd.DataFrame([
-    {"Month": "Jan 2026", "Total CN": 10688, "On-Time CN": 3548, "OTD %": 33.2, "Breached CN": 5679, "Breach %": 53.1, "Avg Delay (days)": 3.0, "Charged Wt (MT)": 7118, "TAT Mapped %": 85.0},
-    {"Month": "Feb 2026", "Total CN": 9962, "On-Time CN": 2997, "OTD %": 30.1, "Breached CN": 5420, "Breach %": 54.4, "Avg Delay (days)": 3.6, "Charged Wt (MT)": 7118, "TAT Mapped %": 83.0},
-    {"Month": "Mar 2026", "Total CN": 4134, "On-Time CN": 1367, "OTD %": 33.1, "Breached CN": 1992, "Breach %": 48.2, "Avg Delay (days)": 2.1, "Charged Wt (MT)": 3179, "TAT Mapped %": 80.0},
-])
-
-Q1_GOAL = {"Month": "Q1 Goal", "Total CN": "", "On-Time CN": "", "OTD %": 41.8, "Breached CN": "", "Breach %": 20.0, "Avg Delay (days)": 1.5, "Charged Wt (MT)": "", "TAT Mapped %": ""}
-
 SQL_QUERY = text(r"""
 SELECT
     '_' + CAST(YEAR(D.GRDT) AS VARCHAR) + '_' +
@@ -145,16 +135,6 @@ def calculate_monthly_summary(detail: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("MONTH_START").drop(columns="MONTH_START")[columns]
 
 
-def combine_baseline_and_live(live_summary: pd.DataFrame) -> pd.DataFrame:
-    live = live_summary.copy()
-    if not live.empty:
-        live_dates = pd.to_datetime(live["Month"], format="%b %Y", errors="coerce")
-        live = live.loc[live_dates >= LIVE_DATA_START]
-    combined = pd.concat([BASELINE_Q1, live], ignore_index=True)
-    combined["_sort"] = pd.to_datetime(combined["Month"], format="%b %Y", errors="coerce")
-    return combined.sort_values("_sort").drop(columns="_sort").reset_index(drop=True)
-
-
 def fmt_integer(value):
     return "" if value == "" or pd.isna(value) else f"{int(round(float(value))):,}"
 
@@ -199,8 +179,7 @@ def build_html_table(summary: pd.DataFrame) -> str:
     headers = "".join(f"<th>{col}</th>" for col in shown.columns)
     rows = []
     for _, row in shown.iterrows():
-        month_date = pd.to_datetime(row["Month"], format="%b %Y", errors="coerce")
-        tr_class = "live-row" if pd.notna(month_date) and month_date >= LIVE_DATA_START else "baseline-row"
+        tr_class = "live-row"
         cells = []
         for col in shown.columns:
             css = ""
@@ -212,16 +191,7 @@ def build_html_table(summary: pd.DataFrame) -> str:
             cells.append(f'<td class="{css}">{row[col]}</td>')
         rows.append(f'<tr class="{tr_class}">{"".join(cells)}</tr>')
 
-    goal_cells = []
-    for col in shown.columns:
-        value = Q1_GOAL.get(col, "")
-        if col in ("OTD %", "Breach %"): value = fmt_percent(value)
-        elif col == "Avg Delay (days)": value = fmt_delay(value)
-        css = "goal-label" if col == "Month" else ""
-        if col in ("OTD %", "Breach %", "Avg Delay (days)"): css += " goal-value"
-        goal_cells.append(f'<td class="{css.strip()}">{value}</td>')
-
-    return f'<div class="table-wrap"><table class="edd-table"><thead><tr>{headers}</tr></thead><tbody>{"".join(rows)}<tr class="spacer-row"><td colspan="9"></td></tr><tr class="goal-row">{"".join(goal_cells)}</tr></tbody></table></div>'
+    return f'<div class="table-wrap"><table class="edd-table"><thead><tr>{headers}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
 
 
 
@@ -240,24 +210,42 @@ def show_monthly_trend_edd():
     .edd-table .month-cell{background:#f1f5fa;color:#24344d;font-weight:800}.edd-table .live-row .month-cell{background:#a9e9f6;color:#00799c}
     .edd-table .good-cell{background:#d0f2e6;color:#008b4c;font-weight:800}.edd-table .bad-cell{background:#ffc9cf;color:#cf202b;font-weight:800}
     .edd-table .delay-cell{background:#ffedbc;color:#c88200;font-weight:800}.edd-table .mapped-cell{background:#a9e9f6;color:#047eaa}
-    .edd-table .spacer-row td{height:18px;padding:0;background:#fff;border-left:none;border-right:none}.edd-table .goal-row td{background:#f0f3f8;color:#d92772;font-weight:800}
-    .edd-table .goal-row .goal-label{background:#f52c7b;color:white}.edd-table .goal-row .goal-value{background:#ffc4de}
-    #MainMenu,footer{visibility:hidden}
+        #MainMenu,footer{visibility:hidden}
     </style>
     """, unsafe_allow_html=True)
 
     st.markdown("""
     <div class="title-panel"><h1>Monthly Trend EDD · Where we were and where we are</h1></div>
-    <div class="subtitle-panel">Q4 FY26 (Jan–Mar 2026) baseline hardcoded. Apr 2026 onwards = live from current data. Q1 Goal at bottom.</div>
+    <div class="subtitle-panel">Select any From Date and To Date to view the monthly EDD trend from live SQL data.</div>
     """, unsafe_allow_html=True)
 
-    with st.sidebar:
-        st.header("Report Filters")
-        from_date = st.date_input("Live data from", value=date(2026, 4, 1), min_value=date(2026, 4, 1))
-        to_date = st.date_input("Live data to", value=date.today(), min_value=date(2026, 4, 1))
-        include_baseline = st.checkbox("Include Jan-Mar baseline", value=True)
-        st.button("Refresh Report", type="primary", use_container_width=True)
-        st.caption("Uses the SQL credentials already configured in this dashboard.")
+    today = date.today()
+    default_from = today.replace(day=1)
+
+    filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 0.7])
+    with filter_col1:
+        from_date = st.date_input(
+            "From Date",
+            value=default_from,
+            key="monthly_trend_edd_from_date",
+        )
+    with filter_col2:
+        to_date = st.date_input(
+            "To Date",
+            value=today,
+            key="monthly_trend_edd_to_date",
+        )
+    with filter_col3:
+        st.write("")
+        st.write("")
+        if st.button(
+            "Refresh Report",
+            type="primary",
+            use_container_width=True,
+            key="monthly_trend_edd_refresh",
+        ):
+            load_sql_data.clear()
+            st.rerun()
 
     if from_date > to_date:
         st.error("The From date cannot be later than the To date.")
@@ -267,8 +255,7 @@ def show_monthly_trend_edd():
         with st.spinner("Loading EDD data from SQL Server..."):
             raw_df = load_sql_data(from_date, to_date)
         detail_df = prepare_detail_data(raw_df)
-        live_summary = calculate_monthly_summary(detail_df)
-        final_summary = combine_baseline_and_live(live_summary) if include_baseline else live_summary
+        final_summary = calculate_monthly_summary(detail_df)
 
         if final_summary.empty:
             st.warning("No records were found for the selected date range.")
