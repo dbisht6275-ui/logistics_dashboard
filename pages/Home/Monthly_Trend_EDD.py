@@ -8,8 +8,6 @@ import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
 
-st.set_page_config(page_title="Monthly Trend EDD", page_icon="📊", layout="wide")
-
 LIVE_DATA_START = pd.Timestamp("2026-04-01")
 
 BASELINE_Q1 = pd.DataFrame([
@@ -257,83 +255,86 @@ def build_html_table(summary: pd.DataFrame) -> str:
     return f'<div class="table-wrap"><table class="edd-table"><thead><tr>{headers}</tr></thead><tbody>{"".join(rows)}<tr class="spacer-row"><td colspan="9"></td></tr><tr class="goal-row">{"".join(goal_cells)}</tr></tbody></table></div>'
 
 
-st.markdown("""
-<style>
-.stApp {background:#fff}.main .block-container{padding-top:.7rem;max-width:1600px}
-.title-panel{background:#071629;border-top:5px solid #2f69d8;border-bottom:2px solid #2f69d8;padding:12px 10px 10px}
-.title-panel h1{color:white;margin:0;font-size:28px;font-weight:800}
-.subtitle-panel{background:#071629;color:#7891ba;font-style:italic;padding:8px 10px 10px;margin-bottom:20px;font-size:15px}
-.table-wrap{overflow-x:auto;border-left:1px solid #c7d0dd;border-right:1px solid #c7d0dd}
-table.edd-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;text-align:center}
-.edd-table th{background:#071629;color:#00d9ff;padding:12px 8px;border:1px solid #c9d1dc;font-weight:800}
-.edd-table td{padding:10px 8px;border:1px solid #c9d1dc;background:#f7f9fc;font-weight:600;white-space:nowrap}
-.edd-table .month-cell{background:#f1f5fa;color:#24344d;font-weight:800}.edd-table .live-row .month-cell{background:#a9e9f6;color:#00799c}
-.edd-table .good-cell{background:#d0f2e6;color:#008b4c;font-weight:800}.edd-table .bad-cell{background:#ffc9cf;color:#cf202b;font-weight:800}
-.edd-table .delay-cell{background:#ffedbc;color:#c88200;font-weight:800}.edd-table .mapped-cell{background:#a9e9f6;color:#047eaa}
-.edd-table .spacer-row td{height:18px;padding:0;background:#fff;border-left:none;border-right:none}.edd-table .goal-row td{background:#f0f3f8;color:#d92772;font-weight:800}
-.edd-table .goal-row .goal-label{background:#f52c7b;color:white}.edd-table .goal-row .goal-value{background:#ffc4de}
-#MainMenu,footer{visibility:hidden}
-</style>
-""", unsafe_allow_html=True)
 
-st.markdown("""
-<div class="title-panel"><h1>Monthly Trend EDD · Where we were and where we are</h1></div>
-<div class="subtitle-panel">Q4 FY26 (Jan–Mar 2026) baseline hardcoded. Apr 2026 onwards = live from current data. Q1 Goal at bottom.</div>
-""", unsafe_allow_html=True)
 
-with st.sidebar:
-    st.header("Report Filters")
-    from_date = st.date_input("Live data from", value=date(2026, 4, 1), min_value=date(2026, 4, 1))
-    to_date = st.date_input("Live data to", value=date.today(), min_value=date(2026, 4, 1))
-    include_baseline = st.checkbox("Include Jan-Mar baseline", value=True)
-    st.button("Refresh Report", type="primary", use_container_width=True)
-    st.caption("Set database values in .streamlit/secrets.toml or environment variables.")
+def show_monthly_trend_edd():
+    st.markdown("""
+    <style>
+    .stApp {background:#fff}.main .block-container{padding-top:.7rem;max-width:1600px}
+    .title-panel{background:#071629;border-top:5px solid #2f69d8;border-bottom:2px solid #2f69d8;padding:12px 10px 10px}
+    .title-panel h1{color:white;margin:0;font-size:28px;font-weight:800}
+    .subtitle-panel{background:#071629;color:#7891ba;font-style:italic;padding:8px 10px 10px;margin-bottom:20px;font-size:15px}
+    .table-wrap{overflow-x:auto;border-left:1px solid #c7d0dd;border-right:1px solid #c7d0dd}
+    table.edd-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;text-align:center}
+    .edd-table th{background:#071629;color:#00d9ff;padding:12px 8px;border:1px solid #c9d1dc;font-weight:800}
+    .edd-table td{padding:10px 8px;border:1px solid #c9d1dc;background:#f7f9fc;font-weight:600;white-space:nowrap}
+    .edd-table .month-cell{background:#f1f5fa;color:#24344d;font-weight:800}.edd-table .live-row .month-cell{background:#a9e9f6;color:#00799c}
+    .edd-table .good-cell{background:#d0f2e6;color:#008b4c;font-weight:800}.edd-table .bad-cell{background:#ffc9cf;color:#cf202b;font-weight:800}
+    .edd-table .delay-cell{background:#ffedbc;color:#c88200;font-weight:800}.edd-table .mapped-cell{background:#a9e9f6;color:#047eaa}
+    .edd-table .spacer-row td{height:18px;padding:0;background:#fff;border-left:none;border-right:none}.edd-table .goal-row td{background:#f0f3f8;color:#d92772;font-weight:800}
+    .edd-table .goal-row .goal-label{background:#f52c7b;color:white}.edd-table .goal-row .goal-value{background:#ffc4de}
+    #MainMenu,footer{visibility:hidden}
+    </style>
+    """, unsafe_allow_html=True)
 
-if from_date > to_date:
-    st.error("The From date cannot be later than the To date.")
-    st.stop()
+    st.markdown("""
+    <div class="title-panel"><h1>Monthly Trend EDD · Where we were and where we are</h1></div>
+    <div class="subtitle-panel">Q4 FY26 (Jan–Mar 2026) baseline hardcoded. Apr 2026 onwards = live from current data. Q1 Goal at bottom.</div>
+    """, unsafe_allow_html=True)
 
-try:
-    with st.spinner("Loading EDD data from SQL Server..."):
-        raw_df = load_sql_data(from_date, to_date)
-    detail_df = prepare_detail_data(raw_df)
-    live_summary = calculate_monthly_summary(detail_df)
-    final_summary = combine_baseline_and_live(live_summary) if include_baseline else live_summary
+    with st.sidebar:
+        st.header("Report Filters")
+        from_date = st.date_input("Live data from", value=date(2026, 4, 1), min_value=date(2026, 4, 1))
+        to_date = st.date_input("Live data to", value=date.today(), min_value=date(2026, 4, 1))
+        include_baseline = st.checkbox("Include Jan-Mar baseline", value=True)
+        st.button("Refresh Report", type="primary", use_container_width=True)
+        st.caption("Set database values in .streamlit/secrets.toml or environment variables.")
 
-    if final_summary.empty:
-        st.warning("No records were found for the selected date range.")
-    else:
-        latest = final_summary.iloc[-1]
-        cols = st.columns(5)
-        cols[0].metric("Latest Month", latest["Month"])
-        cols[1].metric("Total CN", fmt_integer(latest["Total CN"]))
-        cols[2].metric("OTD", fmt_percent(latest["OTD %"]))
-        cols[3].metric("Breach", fmt_percent(latest["Breach %"]))
-        cols[4].metric("TAT Mapped", fmt_percent(latest["TAT Mapped %"]))
+    if from_date > to_date:
+        st.error("The From date cannot be later than the To date.")
+        st.stop()
 
-        st.markdown(build_html_table(final_summary), unsafe_allow_html=True)
-        st.download_button(
-            "Download Excel",
-            data=dataframe_to_excel(final_summary, detail_df),
-            file_name=f"Monthly_Trend_EDD_{from_date:%Y%m%d}_{to_date:%Y%m%d}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+    try:
+        with st.spinner("Loading EDD data from SQL Server..."):
+            raw_df = load_sql_data(from_date, to_date)
+        detail_df = prepare_detail_data(raw_df)
+        live_summary = calculate_monthly_summary(detail_df)
+        final_summary = combine_baseline_and_live(live_summary) if include_baseline else live_summary
 
-        with st.expander("View consignment-level data"):
-            st.dataframe(detail_df, use_container_width=True, hide_index=True)
+        if final_summary.empty:
+            st.warning("No records were found for the selected date range.")
+        else:
+            latest = final_summary.iloc[-1]
+            cols = st.columns(5)
+            cols[0].metric("Latest Month", latest["Month"])
+            cols[1].metric("Total CN", fmt_integer(latest["Total CN"]))
+            cols[2].metric("OTD", fmt_percent(latest["OTD %"]))
+            cols[3].metric("Breach", fmt_percent(latest["Breach %"]))
+            cols[4].metric("TAT Mapped", fmt_percent(latest["TAT Mapped %"]))
 
-        with st.expander("Metric definitions used"):
-            st.markdown("""
-- **Total CN:** Distinct GRNO.
-- **On-Time CN:** Final Arrival DT is on or before E.D.D.
-- **OTD %:** On-Time CN / Total CN.
-- **Breached CN:** Final Arrival DT is after E.D.D.
-- **Breach %:** Breached CN / Total CN.
-- **Avg Delay:** Average positive delay among breached consignments.
-- **Charged Wt (MT):** Maximum CWEIGHT per GRNO, summed and divided by 1,000.
-- **TAT Mapped %:** GRNO with both E.D.D and Final Arrival DT / Total CN.
-""")
-except Exception as exc:
-    st.error("The report could not be loaded.")
-    st.exception(exc)
-    st.info("Check SQL Server settings, ODBC driver, permissions, and database object names.")
+            st.markdown(build_html_table(final_summary), unsafe_allow_html=True)
+            st.download_button(
+                "Download Excel",
+                data=dataframe_to_excel(final_summary, detail_df),
+                file_name=f"Monthly_Trend_EDD_{from_date:%Y%m%d}_{to_date:%Y%m%d}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+            with st.expander("View consignment-level data"):
+                st.dataframe(detail_df, use_container_width=True, hide_index=True)
+
+            with st.expander("Metric definitions used"):
+                st.markdown("""
+    - **Total CN:** Distinct GRNO.
+    - **On-Time CN:** Final Arrival DT is on or before E.D.D.
+    - **OTD %:** On-Time CN / Total CN.
+    - **Breached CN:** Final Arrival DT is after E.D.D.
+    - **Breach %:** Breached CN / Total CN.
+    - **Avg Delay:** Average positive delay among breached consignments.
+    - **Charged Wt (MT):** Maximum CWEIGHT per GRNO, summed and divided by 1,000.
+    - **TAT Mapped %:** GRNO with both E.D.D and Final Arrival DT / Total CN.
+    """)
+    except Exception as exc:
+        st.error("The report could not be loaded.")
+        st.exception(exc)
+        st.info("Check SQL Server settings, ODBC driver, permissions, and database object names.")
