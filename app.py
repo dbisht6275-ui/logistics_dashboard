@@ -9,6 +9,7 @@ from pages.Home.comparison_tab import show_comparison
 from pages.Home.Customer_Analysis import show_CustomerAnalysis
 from pages.Home.Service_Analysis import show_service_level
 from pages.Home.Outstanding_Analysis import show_OutstandingAnalysis
+from pages.Home.Monthly_Trend_EDD import show_monthly_trend_edd
 from pages.IT.zone_booking_turnover import show_ZoneBookingTurnover
 from pages.IT.Bangladesh_Delivery_Turnover import show_bangladesh_delivery_turnover
 from pages.IT.BookingSummaryTurnover import show_booking_summary_turnover
@@ -478,6 +479,7 @@ REPORTS = {
         "📊 Delivery Summary Turnover": show_delivery_summary_turnover,
         "📊 Branch Wise Booking Turnover": show_branch_wise_booking_turnover,
         "⚖️ Booking Weight Summary": show_booking_weight_summary_turnover,
+        "📅 Monthly Trend EDD": show_monthly_trend_edd,
     },
     "💰 Accounts Reports": {
         "📋 GR Costing Head Wise": show_GrCostingHeadWise,
