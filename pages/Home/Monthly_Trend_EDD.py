@@ -9,21 +9,40 @@ from sqlalchemy import text
 from services.database import get_engine
 
 SQL_QUERY = text(r"""
-SELECT
-    F.*,
-    F.[Final Arrival Dt] AS [FINAL ARRIVAL DT]
-FROM dbo.FN_ALLCOMPANIESGATEPASSBYGRDT(
-    :from_date,
-    :to_date
-) AS F
+SELECT D.*
+FROM dbo.FN_ALLCOMPANIESGATEPASSBYGRDT(NULL, NULL) AS D
+INNER JOIN VIEWALLCOMPANIESCNMT AS CN
+    ON CN.GRNO = D.GRNO
+   AND CN.COMPANYID IN ('26498133')
+   AND CN.GRTYPE <> 'N'
+WHERE D.GRDT >= :from_date
+  AND D.GRDT < DATEADD(DAY, 1, :to_date)
 """)
+
+
+# Increment this value whenever the SQL source or returned columns change.
+# It is part of the Streamlit cache key and prevents an old query result from
+# being reused after deployment.
+EDD_DATA_CACHE_VERSION = "8.5.8"
 
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def load_sql_data(from_date: date, to_date: date) -> pd.DataFrame:
+def load_sql_data(
+    from_date: date,
+    to_date: date,
+    cache_version: str = EDD_DATA_CACHE_VERSION,
+) -> pd.DataFrame:
+    # cache_version is intentionally unused by SQL. It only invalidates stale
+    # Streamlit cache entries when this page's data source changes.
+    del cache_version
+
     with get_engine().connect() as connection:
-        return pd.read_sql_query(SQL_QUERY, connection, params={"from_date": from_date, "to_date": to_date})
+        return pd.read_sql_query(
+            SQL_QUERY,
+            connection,
+            params={"from_date": from_date, "to_date": to_date},
+        )
 
 
 def _normalise_column_name(value: str) -> str:
