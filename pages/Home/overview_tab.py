@@ -1877,6 +1877,7 @@ def show_overview():
     locked_zone = data_scope.get("zone")
     locked_circle = data_scope.get("circle")
     locked_branch = data_scope.get("branch")
+
     if locked_branch:
         branch_row = df[df["branch"] == locked_branch]
         if not branch_row.empty:
@@ -1897,47 +1898,114 @@ def show_overview():
     if company != "All":
         df = df[df["compname"] == company]
 
+    # Use one common source for independent checkbox filters.
+    # Any enabled filters are combined with AND logic.
+    filter_source_df = df.copy()
+
     with filter_cols[3]:
         if locked_zone:
+            use_zone_filter = True
+            st.checkbox("Apply", value=True, disabled=True, key="overview_use_zone_locked")
             zone = locked_zone
             st.selectbox("◉ Zone", [zone], disabled=True, key="overview_zone_locked")
         else:
-            zone = st.selectbox("◉ Zone", ["All"] + sorted(df["zone"].dropna().unique().tolist()), key="overview_zone")
-    if zone != "All":
-        df = df[df["zone"] == zone]
+            use_zone_filter = st.checkbox(
+                "Apply", value=False, key="overview_use_zone",
+                help="Check to apply the Zone filter."
+            )
+            zone = st.selectbox(
+                "◉ Zone",
+                ["All"] + sorted(filter_source_df["zone"].dropna().unique().tolist()),
+                key="overview_zone",
+                disabled=not use_zone_filter,
+            )
 
     with filter_cols[4]:
         if locked_circle:
+            use_circle_filter = True
+            st.checkbox("Apply", value=True, disabled=True, key="overview_use_circle_locked")
             circle = locked_circle
             st.selectbox("◎ Circle", [circle], disabled=True, key="overview_circle_locked")
         else:
-            circle = st.selectbox("◎ Circle", ["All"] + sorted(df["circle"].dropna().unique().tolist()), key="overview_circle")
-    if circle != "All":
-        df = df[df["circle"] == circle]
+            use_circle_filter = st.checkbox(
+                "Apply", value=False, key="overview_use_circle",
+                help="Check to apply the Circle filter."
+            )
+            circle = st.selectbox(
+                "◎ Circle",
+                ["All"] + sorted(filter_source_df["circle"].dropna().unique().tolist()),
+                key="overview_circle",
+                disabled=not use_circle_filter,
+            )
 
     with filter_cols[5]:
         if locked_branch:
+            use_branch_filter = True
+            st.checkbox("Apply", value=True, disabled=True, key="overview_use_branch_locked")
             branch = locked_branch
             st.selectbox("⌂ Branch", [branch], disabled=True, key="overview_branch_locked")
         else:
-            branch = st.selectbox("⌂ Branch", ["All"] + sorted(df["branch"].dropna().unique().tolist()), key="overview_branch")
-    if branch != "All":
-        df = df[df["branch"] == branch]
+            use_branch_filter = st.checkbox(
+                "Apply", value=False, key="overview_use_branch",
+                help="Check to apply the Branch filter."
+            )
+            branch = st.selectbox(
+                "⌂ Branch",
+                ["All"] + sorted(filter_source_df["branch"].dropna().unique().tolist()),
+                key="overview_branch",
+                disabled=not use_branch_filter,
+            )
 
     with filter_cols[6]:
-        available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().unique().tolist()]
-        quarter = st.selectbox("▦ Quarter", ["All"] + available_quarters, key="overview_quarter")
-    if quarter != "All":
-        df = df[df["Quarter"] == quarter]
+        use_quarter_filter = st.checkbox(
+            "Apply", value=False, key="overview_use_quarter",
+            help="Check to apply the Quarter filter."
+        )
+        available_quarters = [
+            q for q in QUARTER_ORDER
+            if q in filter_source_df["Quarter"].dropna().unique().tolist()
+        ]
+        quarter = st.selectbox(
+            "▦ Quarter",
+            ["All"] + available_quarters,
+            key="overview_quarter",
+            disabled=not use_quarter_filter,
+        )
 
     with filter_cols[7]:
-        available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().unique().tolist()]
-        month = st.selectbox("▣ Month", ["All"] + available_months, key="overview_month")
-    if month != "All":
+        use_month_filter = st.checkbox(
+            "Apply", value=False, key="overview_use_month",
+            help="Check to apply the Month filter."
+        )
+        available_months = [
+            m for m in MONTH_ORDER
+            if m in filter_source_df["Month"].dropna().unique().tolist()
+        ]
+        month = st.selectbox(
+            "▣ Month",
+            ["All"] + available_months,
+            key="overview_month",
+            disabled=not use_month_filter,
+        )
+
+    # Apply only checked filters. If two are checked, both conditions must match.
+    if use_zone_filter and zone != "All":
+        df = df[df["zone"] == zone]
+    if use_circle_filter and circle != "All":
+        df = df[df["circle"] == circle]
+    if use_branch_filter and branch != "All":
+        df = df[df["branch"] == branch]
+    if use_quarter_filter and quarter != "All":
+        df = df[df["Quarter"] == quarter]
+    if use_month_filter and month != "All":
         df = df[df["Month"] == month]
 
     with filter_cols[8]:
-        loadtype = st.selectbox("▤ Load Type", ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()), key="overview_loadtype")
+        loadtype = st.selectbox(
+            "▤ Load Type",
+            ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()),
+            key="overview_loadtype",
+        )
     if loadtype != "All":
         df = df[df["LOADTYPE"] == loadtype]
 
@@ -1953,8 +2021,16 @@ def show_overview():
     compact_spacer(0)
 
     active_filter_items = [
-        ("FY", fy), ("View", view_type), ("Company", company), ("Zone", zone), ("Circle", circle),
-        ("Branch", branch), ("Quarter", quarter), ("Month", month), ("Load", loadtype), ("Unit", conversion_type),
+        ("FY", fy),
+        ("View", view_type),
+        ("Company", company),
+        ("Zone", zone if use_zone_filter else "All"),
+        ("Circle", circle if use_circle_filter else "All"),
+        ("Branch", branch if use_branch_filter else "All"),
+        ("Quarter", quarter if use_quarter_filter else "All"),
+        ("Month", month if use_month_filter else "All"),
+        ("Load", loadtype),
+        ("Unit", conversion_type),
     ]
     active_filter_html = "".join(
         f'<span class="filter-chip">{label}: {value}</span>'
@@ -2018,15 +2094,15 @@ def show_overview():
     if not prev_df.empty:
         if company != "All" and "compname" in prev_df.columns:
             prev_df = prev_df[prev_df["compname"] == company]
-        if zone != "All":
+        if use_zone_filter and zone != "All":
             prev_df = prev_df[prev_df["zone"] == zone]
-        if circle != "All":
+        if use_circle_filter and circle != "All":
             prev_df = prev_df[prev_df["circle"] == circle]
-        if branch != "All":
+        if use_branch_filter and branch != "All":
             prev_df = prev_df[prev_df["branch"] == branch]
-        if quarter != "All":
+        if use_quarter_filter and quarter != "All":
             prev_df = prev_df[prev_df["Quarter"] == quarter]
-        if month != "All":
+        if use_month_filter and month != "All":
             prev_df = prev_df[prev_df["Month"] == month]
         if loadtype != "All":
             prev_df = prev_df[prev_df["LOADTYPE"] == loadtype]
