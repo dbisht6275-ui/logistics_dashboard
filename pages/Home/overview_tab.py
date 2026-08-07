@@ -1765,6 +1765,58 @@ def build_target_trend(
     result["Target"] = display_target
     return result[["Period", "Target"]]
 
+
+def _checkbox_slicer(label, options, key, locked_values=None):
+    """Compact Power-BI-style slicer: one dropdown/popover with a checkbox per record.
+
+    Empty selection means All. Selected values remain inside the popover, so the
+    filter row never grows into multiple chips/tags.
+    """
+    options = [x for x in options if pd.notna(x)]
+    options = list(dict.fromkeys(options))
+
+    if locked_values:
+        locked_values = [x for x in locked_values if x in options or x is not None]
+        summary = str(locked_values[0]) if len(locked_values) == 1 else f"{len(locked_values)} selected"
+        with st.popover(f"{summary} ▾", use_container_width=True):
+            st.caption(label)
+            for value in locked_values:
+                st.checkbox(str(value), value=True, disabled=True, key=f"{key}__locked__{value}")
+        return locked_values
+
+    def state_key(value):
+        return f"{key}__item__{str(value)}"
+
+    selected_before = [value for value in options if st.session_state.get(state_key(value), False)]
+    if not selected_before:
+        summary = "All"
+    elif len(selected_before) == 1:
+        summary = str(selected_before[0])
+    else:
+        summary = f"{len(selected_before)} selected"
+
+    with st.popover(f"{summary} ▾", use_container_width=True):
+        st.caption(label)
+        action_cols = st.columns(2, gap="small")
+        with action_cols[0]:
+            if st.button("Select all", key=f"{key}__select_all", use_container_width=True):
+                for value in options:
+                    st.session_state[state_key(value)] = True
+                st.rerun()
+        with action_cols[1]:
+            if st.button("Clear", key=f"{key}__clear", use_container_width=True):
+                for value in options:
+                    st.session_state[state_key(value)] = False
+                st.rerun()
+
+        if not options:
+            st.caption("No values available")
+        else:
+            for value in options:
+                st.checkbox(str(value), key=state_key(value))
+
+    return [value for value in options if st.session_state.get(state_key(value), False)]
+
 def show_overview():
     """Compact overview dashboard page."""
 
@@ -1899,86 +1951,48 @@ def show_overview():
     if company != "All":
         df = df[df["compname"] == company]
 
-    # Power-BI-style multi-select filters:
-    # users can tick one or many records from each dropdown.
-    # Empty selection means "All".
+    # Power-BI-style checkbox slicers.
+    # Each dropdown keeps its selected records inside the popover, preventing
+    # the filter row from expanding into multiple multiselect chips.
+    # Empty selection means All.
     filter_source_df = df.copy()
 
     with filter_cols[3]:
-        if locked_zone:
-            selected_zones = [locked_zone]
-            st.multiselect(
-                "◉ Zone",
-                [locked_zone],
-                default=[locked_zone],
-                disabled=True,
-                key="overview_zone_multi_locked",
-            )
-        else:
-            zone_options = sorted(filter_source_df["zone"].dropna().unique().tolist())
-            selected_zones = st.multiselect(
-                "◉ Zone",
-                zone_options,
-                default=[],
-                key="overview_zone_multi",
-                placeholder="All",
-                help="Select one or more Zones. Blank means All.",
-            )
+        zone_options = sorted(filter_source_df["zone"].dropna().unique().tolist())
+        selected_zones = _checkbox_slicer(
+            "◉ Zone",
+            zone_options,
+            key="overview_zone_slicer",
+            locked_values=[locked_zone] if locked_zone else None,
+        )
 
     with filter_cols[4]:
-        if locked_circle:
-            selected_circles = [locked_circle]
-            st.multiselect(
-                "◎ Circle",
-                [locked_circle],
-                default=[locked_circle],
-                disabled=True,
-                key="overview_circle_multi_locked",
-            )
-        else:
-            circle_options = sorted(filter_source_df["circle"].dropna().unique().tolist())
-            selected_circles = st.multiselect(
-                "◎ Circle",
-                circle_options,
-                default=[],
-                key="overview_circle_multi",
-                placeholder="All",
-                help="Select one or more Circles. Blank means All.",
-            )
+        circle_options = sorted(filter_source_df["circle"].dropna().unique().tolist())
+        selected_circles = _checkbox_slicer(
+            "◎ Circle",
+            circle_options,
+            key="overview_circle_slicer",
+            locked_values=[locked_circle] if locked_circle else None,
+        )
 
     with filter_cols[5]:
-        if locked_branch:
-            selected_branches = [locked_branch]
-            st.multiselect(
-                "⌂ Branch",
-                [locked_branch],
-                default=[locked_branch],
-                disabled=True,
-                key="overview_branch_multi_locked",
-            )
-        else:
-            branch_options = sorted(filter_source_df["branch"].dropna().unique().tolist())
-            selected_branches = st.multiselect(
-                "⌂ Branch",
-                branch_options,
-                default=[],
-                key="overview_branch_multi",
-                placeholder="All",
-                help="Select one or more Branches. Blank means All.",
-            )
+        branch_options = sorted(filter_source_df["branch"].dropna().unique().tolist())
+        selected_branches = _checkbox_slicer(
+            "⌂ Branch",
+            branch_options,
+            key="overview_branch_slicer",
+            locked_values=[locked_branch] if locked_branch else None,
+        )
 
     with filter_cols[6]:
         available_quarters = [
             q for q in QUARTER_ORDER
             if q in filter_source_df["Quarter"].dropna().unique().tolist()
         ]
-        selected_quarters = st.multiselect(
+        selected_quarters = _checkbox_slicer(
             "▦ Quarter",
             available_quarters,
-            default=[],
-            key="overview_quarter_multi",
-            placeholder="All",
-            help="Select one or more Quarters. Blank means All.",
+            key="overview_quarter_slicer",
         )
 
     with filter_cols[7]:
@@ -1986,13 +2000,10 @@ def show_overview():
             m for m in MONTH_ORDER
             if m in filter_source_df["Month"].dropna().unique().tolist()
         ]
-        selected_months = st.multiselect(
+        selected_months = _checkbox_slicer(
             "▣ Month",
             available_months,
-            default=[],
-            key="overview_month_multi",
-            placeholder="All",
-            help="Select one or more Months. Blank means All.",
+            key="overview_month_slicer",
         )
 
     # Apply all selected filters together using AND between filter groups,
