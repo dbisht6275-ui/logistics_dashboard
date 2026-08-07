@@ -807,6 +807,98 @@ def _inject_overview_css():
                 opacity: 1 !important;
             }
 
+
+            /* ============================================================
+               Power-BI checkbox slicers - preserve the EXISTING filter UI.
+               The closed slicer is styled like the existing st.selectbox:
+               same height, grey fill, border radius and one-row footprint.
+               ============================================================ */
+            .checkbox-slicer-label {
+                display: block;
+                min-height: 22px;
+                margin: 0 0 2px 2px;
+                padding: 0;
+                line-height: 22px;
+                color: #243b53;
+                font-size: 10px;
+                font-family: "Segoe UI", Arial, sans-serif;
+                font-weight: 400;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            /* Keep popover widget in the same compact footprint as selectbox. */
+            div[data-testid="stPopover"] {
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            div[data-testid="stPopover"] > div {
+                width: 100% !important;
+            }
+
+            /* Closed slicer button = existing grey select control. */
+            div[data-testid="stPopover"] > div > button {
+                width: 100% !important;
+                min-height: 40px !important;
+                height: 40px !important;
+                padding: 0 9px !important;
+                margin: 0 !important;
+                border: 1px solid #cbd9ea !important;
+                border-radius: 10px !important;
+                background: linear-gradient(180deg, #ffffff 0%, #f5f8fc 100%) !important;
+                box-shadow: inset 0 1px 2px rgba(15,23,42,.06) !important;
+                color: #102a43 !important;
+                font-size: 11px !important;
+                font-weight: 800 !important;
+                justify-content: space-between !important;
+                transform: none !important;
+            }
+
+            div[data-testid="stPopover"] > div > button:hover,
+            div[data-testid="stPopover"] > div > button:focus {
+                border-color: #cbd9ea !important;
+                background: linear-gradient(180deg, #ffffff 0%, #f5f8fc 100%) !important;
+                box-shadow: inset 0 1px 2px rgba(15,23,42,.06) !important;
+                transform: none !important;
+            }
+
+            /* Popover contents can scroll; the dashboard filter row never expands. */
+            div[data-testid="stPopoverBody"] {
+                max-height: 360px !important;
+                overflow-y: auto !important;
+            }
+
+            @media (max-width: 1500px) {
+                .checkbox-slicer-label {
+                    min-height: 21px !important;
+                    line-height: 21px !important;
+                    font-size: 9px !important;
+                }
+                div[data-testid="stPopover"] > div > button {
+                    min-height: 38px !important;
+                    height: 38px !important;
+                    padding-left: 7px !important;
+                    padding-right: 6px !important;
+                    font-size: 10px !important;
+                }
+            }
+
+            @media (max-width: 1180px) {
+                .checkbox-slicer-label {
+                    font-size: 8.5px !important;
+                }
+                div[data-testid="stPopover"] > div > button {
+                    min-height: 36px !important;
+                    height: 36px !important;
+                    padding-left: 6px !important;
+                    padding-right: 5px !important;
+                    font-size: 9px !important;
+                }
+            }
+
         </style>
         """,
         unsafe_allow_html=True,
@@ -1767,27 +1859,41 @@ def build_target_trend(
 
 
 def _checkbox_slicer(label, options, key, locked_values=None):
-    """Compact Power-BI-style slicer: one dropdown/popover with a checkbox per record.
+    """Checkbox dropdown with the same closed appearance/height as existing filters.
 
-    Empty selection means All. Selected values remain inside the popover, so the
-    filter row never grows into multiple chips/tags.
+    Empty selection means All. Multiple values stay in the dropdown and the closed
+    control shows only a compact summary, so the dashboard filter row never expands.
     """
     options = [x for x in options if pd.notna(x)]
     options = list(dict.fromkeys(options))
 
+    # Keep the visible label in the same position as the original selectbox label.
+    st.markdown(
+        f'<div class="checkbox-slicer-label">{escape(str(label))}</div>',
+        unsafe_allow_html=True,
+    )
+
     if locked_values:
-        locked_values = [x for x in locked_values if x in options or x is not None]
+        locked_values = [x for x in locked_values if x is not None]
         summary = str(locked_values[0]) if len(locked_values) == 1 else f"{len(locked_values)} selected"
-        with st.popover(f"{summary} ▾", use_container_width=True):
-            st.caption(label)
+        with st.popover(summary, use_container_width=True):
             for value in locked_values:
-                st.checkbox(str(value), value=True, disabled=True, key=f"{key}__locked__{value}")
+                st.checkbox(
+                    str(value),
+                    value=True,
+                    disabled=True,
+                    key=f"{key}__locked__{value}",
+                )
         return locked_values
 
     def state_key(value):
         return f"{key}__item__{str(value)}"
 
-    selected_before = [value for value in options if st.session_state.get(state_key(value), False)]
+    selected_before = [
+        value for value in options
+        if st.session_state.get(state_key(value), False)
+    ]
+
     if not selected_before:
         summary = "All"
     elif len(selected_before) == 1:
@@ -1795,16 +1901,24 @@ def _checkbox_slicer(label, options, key, locked_values=None):
     else:
         summary = f"{len(selected_before)} selected"
 
-    with st.popover(f"{summary} ▾", use_container_width=True):
-        st.caption(label)
+    with st.popover(summary, use_container_width=True):
         action_cols = st.columns(2, gap="small")
         with action_cols[0]:
-            if st.button("Select all", key=f"{key}__select_all", use_container_width=True):
+            if st.button(
+                "Select all",
+                key=f"{key}__select_all",
+                use_container_width=True,
+            ):
                 for value in options:
                     st.session_state[state_key(value)] = True
                 st.rerun()
+
         with action_cols[1]:
-            if st.button("Clear", key=f"{key}__clear", use_container_width=True):
+            if st.button(
+                "Clear",
+                key=f"{key}__clear",
+                use_container_width=True,
+            ):
                 for value in options:
                     st.session_state[state_key(value)] = False
                 st.rerun()
@@ -1815,7 +1929,10 @@ def _checkbox_slicer(label, options, key, locked_values=None):
             for value in options:
                 st.checkbox(str(value), key=state_key(value))
 
-    return [value for value in options if st.session_state.get(state_key(value), False)]
+    return [
+        value for value in options
+        if st.session_state.get(state_key(value), False)
+    ]
 
 def show_overview():
     """Compact overview dashboard page."""
