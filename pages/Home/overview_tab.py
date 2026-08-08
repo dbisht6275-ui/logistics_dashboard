@@ -4774,3 +4774,4 @@ def show_overview():
                     if c in closed_df.columns
                 ]
                 st.dataframe(closed_df[closed_columns], width="stretch", hide_index=True)
+                
