@@ -489,6 +489,63 @@ def apply_dashboard_style() -> None:
             white-space: nowrap;
             color: #334155;
         }
+
+        /* ---------- Regular customer consistency matrix ---------- */
+        .regular-customer-wrap {
+            width: 100%;
+            overflow-x: auto;
+            padding-bottom: 2px;
+        }
+        .regular-customer-table {
+            min-width: 1180px;
+            width: 100%;
+            font-size: 10.5px;
+            color: #0f2742;
+        }
+        .regular-customer-head,
+        .regular-customer-row {
+            display: grid;
+            align-items: center;
+            column-gap: 8px;
+        }
+        .regular-customer-head {
+            font-weight: 850;
+            padding: 7px 5px;
+            border-bottom: 1px solid #cbd9e8;
+            background: #f8fbff;
+            color: #17365d;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .regular-customer-row {
+            min-height: 35px;
+            padding: 4px 5px;
+            border-bottom: 1px solid #edf2f7;
+        }
+        .regular-customer-row:hover { background: #f8fbff; }
+        .regular-customer-month {
+            text-align: right;
+            white-space: nowrap;
+            color: #334155;
+        }
+        .regular-customer-total {
+            text-align: right;
+            white-space: nowrap;
+            font-weight: 850;
+            color: #15803d;
+        }
+        .regular-customer-consistency {
+            text-align: center;
+            white-space: nowrap;
+            font-weight: 850;
+            color: #15803d;
+        }
+        .regular-customer-muted {
+            text-align: center;
+            white-space: nowrap;
+            color: #64748b;
+        }
         .customer-name-cell {
             font-weight: 750;
             overflow: hidden;
@@ -1615,6 +1672,152 @@ def render_overview_tab(
                     f'</div>'
                 )
                 st.markdown(lost_table_html, unsafe_allow_html=True)
+
+    dashboard_spacer()
+
+    # Regular / consistent customers: customers with business in every month of
+    # the selected trailing period. This is an additional insight only and does
+    # not alter any existing customer calculations.
+    with st.container(border=True):
+        regular_title_col, regular_period_col, regular_top_col = st.columns(
+            [5.0, 1.15, 1.0], gap="small", vertical_alignment="center"
+        )
+        with regular_title_col:
+            st.markdown(
+                f"<div style='font-size:16px;font-weight:800;color:#0f2744;margin:1px 0 1px 0;'>REGULAR (CONSISTENT) {customer_label.upper()}S</div>"
+                f"<div style='font-size:11px;color:#64748b;margin-bottom:7px;'>Customers who have given business in every month of the selected trailing period.</div>",
+                unsafe_allow_html=True,
+            )
+        with regular_period_col:
+            regular_period = st.selectbox(
+                "Consistency period",
+                [3, 6, 9, 12],
+                index=3,
+                format_func=lambda value: f"Last {value} Months",
+                key=f"regular_customer_period_{customer_label.lower()}",
+                label_visibility="collapsed",
+            )
+        with regular_top_col:
+            regular_top_n = st.selectbox(
+                "Regular customers to display",
+                TOP_N_OPTIONS,
+                index=0,
+                format_func=lambda value: f"Top {value}",
+                key=f"regular_customer_top_n_{customer_label.lower()}",
+                label_visibility="collapsed",
+            )
+
+        history_parts = []
+        if not prev_df.empty:
+            py = prev_df.copy()
+            py["__abs_month"] = pd.to_numeric(py["FIN_MONTH"], errors="coerce").fillna(0).astype(int) - 12
+            history_parts.append(py)
+        if not df.empty:
+            cy = df.copy()
+            cy["__abs_month"] = pd.to_numeric(cy["FIN_MONTH"], errors="coerce").fillna(0).astype(int)
+            history_parts.append(cy)
+
+        if not history_parts:
+            st.info(f"No {customer_label.lower()} history available for consistency analysis.")
+        else:
+            regular_history = pd.concat(history_parts, ignore_index=True, sort=False)
+            current_months = pd.to_numeric(df.get("FIN_MONTH", pd.Series(dtype=float)), errors="coerce").dropna()
+            as_of_month = int(current_months.max()) if not current_months.empty else 12
+            period_months = list(range(as_of_month - regular_period + 1, as_of_month + 1))
+            period_history = regular_history[regular_history["__abs_month"].isin(period_months)].copy()
+
+            if period_history.empty:
+                st.info("No business data available for the selected consistency period.")
+            else:
+                monthly_customer = (
+                    period_history.groupby([code_col, name_col, "__abs_month"], as_index=False)
+                    .agg(month_business=("Revenue", "sum"))
+                )
+                activity = (
+                    monthly_customer[monthly_customer["month_business"] > 0]
+                    .groupby([code_col, name_col], as_index=False)
+                    .agg(months_active=("__abs_month", "nunique"), total_business=("month_business", "sum"))
+                )
+                regular_customers = activity[activity["months_active"] == regular_period].copy()
+
+                if regular_customers.empty:
+                    st.info(
+                        f"No {customer_label.lower()} has business in all {regular_period} months under the selected filters."
+                    )
+                else:
+                    regular_customers["avg_month_business"] = regular_customers["total_business"] / regular_period
+                    growth_lookup = customer_summary[[code_col, "growth_%"]].drop_duplicates(code_col)
+                    regular_customers = regular_customers.merge(growth_lookup, on=code_col, how="left")
+                    regular_customers["growth_%"] = regular_customers["growth_%"].fillna(0)
+                    regular_customers = regular_customers.sort_values("total_business", ascending=False).head(regular_top_n)
+
+                    pivot = monthly_customer.pivot_table(
+                        index=[code_col, name_col],
+                        columns="__abs_month",
+                        values="month_business",
+                        aggfunc="sum",
+                        fill_value=0,
+                    )
+                    pivot = pivot.reset_index()
+                    regular_customers = regular_customers.merge(pivot, on=[code_col, name_col], how="left")
+
+                    def _month_label(abs_month: int) -> str:
+                        fin_month = ((int(abs_month) - 1) % 12) + 1
+                        return MONTH_MAP.get(fin_month, str(fin_month))
+
+                    month_labels = [_month_label(m) for m in period_months]
+                    month_cols_css = " ".join(["0.68fr"] * regular_period)
+                    grid_template = f"minmax(175px,1.55fr) {month_cols_css} 0.88fr 0.78fr 0.70fr 0.72fr 0.72fr"
+
+                    head_cells = [f"<div>{html.escape(customer_label)}</div>"]
+                    head_cells += [f"<div style='text-align:right;'>{html.escape(lbl)}</div>" for lbl in month_labels]
+                    head_cells += [
+                        "<div style='text-align:right;'>Total Business</div>",
+                        "<div style='text-align:right;'>Avg / Month</div>",
+                        "<div style='text-align:center;'>Months Active</div>",
+                        "<div style='text-align:center;'>Consistency</div>",
+                        "<div style='text-align:right;'>Growth %</div>",
+                    ]
+
+                    regular_rows_html = []
+                    for _, row in regular_customers.iterrows():
+                        customer_name = html.escape(str(row.get(name_col, "")))
+                        row_cells = [f'<div class="customer-name-cell">{customer_name}</div>']
+                        for abs_month in period_months:
+                            value = float(row.get(abs_month, 0) or 0)
+                            row_cells.append(f'<div class="regular-customer-month">{_fmt_business(value)}</div>')
+
+                        total_business = float(row.get("total_business", 0) or 0)
+                        avg_business = float(row.get("avg_month_business", 0) or 0)
+                        growth = float(row.get("growth_%", 0) or 0)
+                        growth_color = "#16a34a" if growth >= 0 else "#ef4444"
+                        growth_arrow = "▲" if growth >= 0 else "▼"
+                        row_cells += [
+                            f'<div class="regular-customer-total">{_fmt_business(total_business)}</div>',
+                            f'<div class="customer-num-cell">{_fmt_business(avg_business)}</div>',
+                            f'<div class="regular-customer-muted">{regular_period}/{regular_period}</div>',
+                            '<div class="regular-customer-consistency">100%</div>',
+                            f'<div class="customer-num-cell" style="color:{growth_color};font-weight:850;">{growth_arrow} {abs(growth):.1f}%</div>',
+                        ]
+                        regular_rows_html.append(
+                            f'<div class="regular-customer-row" style="grid-template-columns:{grid_template};">'
+                            + "".join(row_cells)
+                            + "</div>"
+                        )
+
+                    regular_table_html = (
+                        '<div class="regular-customer-wrap">'
+                        '<div class="regular-customer-table">'
+                        f'<div class="regular-customer-head" style="grid-template-columns:{grid_template};">'
+                        + "".join(head_cells)
+                        + "</div>"
+                        + "".join(regular_rows_html)
+                        + "</div></div>"
+                    )
+                    st.markdown(regular_table_html, unsafe_allow_html=True)
+                    st.caption(
+                        f"Showing {len(regular_customers):,} of the top regular {customer_label.lower()}s with business in all {regular_period} months. Growth % uses the dashboard's existing CY vs LY comparison."
+                    )
 
 
 def render_growth_tab(growth_df: pd.DataFrame, name_col: str, customer_label: str, conversion_type: str) -> None:
