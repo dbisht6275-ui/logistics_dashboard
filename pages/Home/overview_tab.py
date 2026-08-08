@@ -447,17 +447,53 @@ def _inject_overview_css():
                             inset -2px -2px 4px rgba(255,255,255,.95) !important;
             }
 
-            .stButton > button, .stDownloadButton > button {
+            /* Unified dashboard button style. Matches the attractive branch-slab buttons. */
+            .stButton > button {
+                min-height: 36px !important;
+                padding: 5px 12px !important;
+                border: 1px solid #cbd5e1 !important;
                 border-radius: 10px !important;
-                background: linear-gradient(145deg, #ffffff, #dfe7f2) !important;
-                box-shadow: 0 5px 0 #cbd5e1, 0 8px 14px rgba(15,23,42,.14) !important;
-                transform: translateY(-2px);
-                transition: all .12s ease;
+                background: linear-gradient(180deg,#ffffff 0%,#f8fafc 100%) !important;
+                color: #334155 !important;
+                box-shadow: 0 2px 5px rgba(15,23,42,.07) !important;
+                transform: none !important;
+                font-size: 11px !important;
+                font-weight: 650 !important;
+                transition: all .14s ease !important;
             }
 
-            .stButton > button:active, .stDownloadButton > button:active {
-                transform: translateY(2px);
-                box-shadow: 0 1px 0 #cbd5e1, 0 3px 7px rgba(15,23,42,.12) !important;
+            .stButton > button:hover {
+                border-color: #60a5fa !important;
+                background: #eff6ff !important;
+                color: #1d4ed8 !important;
+                box-shadow: 0 4px 10px rgba(37,99,235,.13) !important;
+                transform: translateY(-1px) !important;
+            }
+
+            .stButton > button[data-testid="stBaseButton-primary"] {
+                border-color: #2563eb !important;
+                background: linear-gradient(135deg,#3b82f6 0%,#2563eb 58%,#1d4ed8 100%) !important;
+                color: #ffffff !important;
+                box-shadow: 0 4px 11px rgba(37,99,235,.22), inset 0 1px 0 rgba(255,255,255,.25) !important;
+            }
+
+            .stButton > button[data-testid="stBaseButton-primary"] p,
+            .stButton > button[data-testid="stBaseButton-primary"] span {
+                color: #ffffff !important;
+            }
+
+            .stButton > button p,
+            .stButton > button span {
+                margin: 0 !important;
+                padding: 0 !important;
+                color: inherit !important;
+                font-size: inherit !important;
+                font-weight: inherit !important;
+            }
+
+            .stButton > button:active {
+                transform: translateY(0) !important;
+                box-shadow: 0 1px 3px rgba(15,23,42,.10) !important;
             }
 
 
@@ -1104,6 +1140,19 @@ def _inject_overview_css():
             div[data-testid="stPopoverBody"] div[data-testid="stTextInput"] input:focus {
                 border-color: #60a5fa !important;
                 box-shadow: 0 0 0 2px rgba(37,99,235,.10) !important;
+            }
+
+            /* Instant-search multiselect used inside Circle and Branch popovers. */
+            div[data-testid="stPopoverBody"] div[data-testid="stMultiSelect"] {
+                margin-top: 7px !important;
+            }
+
+            div[data-testid="stPopoverBody"] div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+                min-height: 36px !important;
+                border: 1px solid #cbd9ea !important;
+                border-radius: 8px !important;
+                background: #ffffff !important;
+                box-shadow: inset 0 1px 2px rgba(15,23,42,.05) !important;
             }
 
             div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button p {
@@ -2111,17 +2160,15 @@ def build_target_trend(
 
 
 def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
-    """Checkbox dropdown with the same closed appearance/height as existing filters.
+    """Checkbox-style dropdown with optional instant client-side search.
 
-    Empty selection means All. Multiple values stay in the dropdown and the closed
-    control shows only a compact summary, so the dashboard filter row never expands.
-    When ``searchable`` is True, a compact text search filters the visible choices
-    without changing the underlying selected-value logic.
+    Empty selection means All. Circle and Branch use Streamlit's native multiselect
+    inside the popover because its option search filters immediately while typing,
+    without requiring Enter. Non-searchable slicers keep the existing checkbox UI.
     """
     options = [x for x in options if pd.notna(x)]
     options = list(dict.fromkeys(options))
 
-    # Keep the visible label in the same position as the original selectbox label.
     st.markdown(
         f'<div class="checkbox-slicer-label">{escape(str(label))}</div>',
         unsafe_allow_html=True,
@@ -2143,6 +2190,71 @@ def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
     def state_key(value):
         return f"{key}__item__{str(value)}"
 
+    # Searchable Circle/Branch slicers use st.multiselect. Its built-in search is
+    # filtered in the browser on every keystroke, so Enter is not required.
+    if searchable:
+        selection_key = f"{key}__instant_selected"
+
+        # Migrate any selections from the earlier checkbox implementation once.
+        legacy_selected = [
+            value for value in options
+            if st.session_state.get(state_key(value), False)
+        ]
+        if selection_key not in st.session_state:
+            st.session_state[selection_key] = legacy_selected
+        else:
+            st.session_state[selection_key] = [
+                value for value in st.session_state.get(selection_key, [])
+                if value in options
+            ]
+
+        selected_before = st.session_state.get(selection_key, [])
+        if not selected_before:
+            summary = "All"
+        elif len(selected_before) == 1:
+            summary = str(selected_before[0])
+        else:
+            summary = f"{len(selected_before)} selected"
+
+        with st.popover(summary, use_container_width=True):
+            action_cols = st.columns(2, gap="small")
+            with action_cols[0]:
+                if st.button(
+                    "Select all",
+                    key=f"{key}__select_all",
+                    use_container_width=False,
+                ):
+                    st.session_state[selection_key] = list(options)
+                    st.rerun()
+
+            with action_cols[1]:
+                if st.button(
+                    "Clear",
+                    key=f"{key}__clear",
+                    use_container_width=False,
+                ):
+                    st.session_state[selection_key] = []
+                    st.rerun()
+
+            selected_values = st.multiselect(
+                f"Search {str(label).replace('◎', '').replace('⌂', '').strip()}",
+                options=options,
+                key=selection_key,
+                placeholder="Type to search...",
+                label_visibility="collapsed",
+            )
+
+            if not options:
+                st.caption("No values available")
+
+        # Keep legacy item states synchronised for compatibility with any code
+        # that may still inspect those keys elsewhere.
+        selected_set = set(selected_values)
+        for value in options:
+            st.session_state[state_key(value)] = value in selected_set
+        return selected_values
+
+    # Existing checkbox slicer behaviour for Zone / Quarter / Month.
     selected_before = [
         value for value in options
         if st.session_state.get(state_key(value), False)
@@ -2156,20 +2268,6 @@ def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
         summary = f"{len(selected_before)} selected"
 
     with st.popover(summary, use_container_width=True):
-        visible_options = options
-        if searchable:
-            search_text = st.text_input(
-                f"Search {str(label).replace('◎', '').replace('⌂', '').strip()}",
-                key=f"{key}__search",
-                placeholder="Search...",
-                label_visibility="collapsed",
-            ).strip().casefold()
-            if search_text:
-                visible_options = [
-                    value for value in options
-                    if search_text in str(value).casefold()
-                ]
-
         action_cols = st.columns(2, gap="small")
         with action_cols[0]:
             if st.button(
@@ -2177,9 +2275,7 @@ def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
                 key=f"{key}__select_all",
                 use_container_width=False,
             ):
-                # With an active search, select only the visible matches.
-                # With no search, preserve the original Select all behaviour.
-                for value in visible_options:
+                for value in options:
                     st.session_state[state_key(value)] = True
                 st.rerun()
 
@@ -2189,18 +2285,14 @@ def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
                 key=f"{key}__clear",
                 use_container_width=False,
             ):
-                # With an active search, clear only the visible matches.
-                # With no search, preserve the original Clear behaviour.
-                for value in visible_options:
+                for value in options:
                     st.session_state[state_key(value)] = False
                 st.rerun()
 
         if not options:
             st.caption("No values available")
-        elif searchable and not visible_options:
-            st.caption("No matching values")
         else:
-            for value in visible_options:
+            for value in options:
                 st.checkbox(str(value), key=state_key(value))
 
     return [
