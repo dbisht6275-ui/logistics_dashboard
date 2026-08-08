@@ -294,6 +294,93 @@ def apply_dashboard_style() -> None:
                 font-size: 18px !important;
             }
         }
+
+        /* ---------- Overview-style filter slicers ---------- */
+        .checkbox-slicer-label {
+            display:block !important;
+            height:22px !important;
+            min-height:22px !important;
+            margin:0 0 9px 2px !important;
+            padding:0 !important;
+            line-height:22px !important;
+            color:#243b53 !important;
+            font-size:10px !important;
+            font-family:"Segoe UI",Arial,sans-serif !important;
+            font-weight:400 !important;
+            white-space:nowrap !important;
+            overflow:hidden !important;
+            text-overflow:ellipsis !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(.checkbox-slicer-label) { gap:0 !important; }
+        div[data-testid="stElementContainer"]:has(.checkbox-slicer-label) {
+            min-height:31px !important;
+            height:31px !important;
+            margin:0 !important;
+            padding:0 !important;
+            overflow:visible !important;
+        }
+        div[data-testid="stPopover"] { width:100% !important; margin:0 !important; padding:0 !important; }
+        div[data-testid="stPopover"] > div { width:100% !important; }
+        div[data-testid="stPopover"] > div > button {
+            width:100% !important;
+            min-height:40px !important;
+            height:40px !important;
+            padding:0 9px !important;
+            margin:0 !important;
+            border:1px solid #cbd9ea !important;
+            border-radius:10px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f5f8fc 100%) !important;
+            box-shadow:inset 0 1px 2px rgba(15,23,42,.06) !important;
+            color:#102a43 !important;
+            font-size:11px !important;
+            font-weight:800 !important;
+            justify-content:space-between !important;
+            transform:none !important;
+        }
+        div[data-testid="stPopover"] > div > button:hover,
+        div[data-testid="stPopover"] > div > button:focus {
+            border-color:#cbd9ea !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f5f8fc 100%) !important;
+            box-shadow:inset 0 1px 2px rgba(15,23,42,.06) !important;
+            transform:none !important;
+        }
+        div[data-testid="stPopoverBody"] { max-height:360px !important; overflow-y:auto !important; }
+        div[data-testid="stPopoverBody"] div[data-testid="stButton"] { width:auto !important; margin:0 !important; padding:0 !important; }
+        div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button {
+            width:auto !important;
+            min-width:0 !important;
+            min-height:26px !important;
+            height:26px !important;
+            padding:2px 8px !important;
+            margin:0 !important;
+            border:1px solid #dbe4ef !important;
+            border-radius:6px !important;
+            background:#ffffff !important;
+            color:#2563eb !important;
+            box-shadow:none !important;
+            transform:none !important;
+            font-size:10px !important;
+            font-weight:600 !important;
+            line-height:1 !important;
+        }
+        div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button:hover {
+            border-color:#93c5fd !important;
+            background:#eff6ff !important;
+            color:#1d4ed8 !important;
+        }
+        div[data-testid="stPopoverBody"] div[data-testid="stMultiSelect"] { margin-top:7px !important; }
+        div[data-testid="stPopoverBody"] div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+            min-height:36px !important;
+            border:1px solid #cbd9ea !important;
+            border-radius:8px !important;
+            background:#ffffff !important;
+            box-shadow:inset 0 1px 2px rgba(15,23,42,.05) !important;
+        }
+        @media (max-width:1500px) {
+            .checkbox-slicer-label { min-height:21px !important; height:21px !important; line-height:21px !important; font-size:9px !important; }
+            div[data-testid="stPopover"] > div > button { min-height:38px !important; height:38px !important; padding-left:7px !important; padding-right:6px !important; font-size:10px !important; }
+        }
+
 </style>
         """,
         unsafe_allow_html=True,
@@ -437,23 +524,34 @@ def get_customer_config(view_type: str) -> dict:
 
 def apply_filters(
     df: pd.DataFrame,
-    zone: str,
-    circle: str,
-    branch: str,
-    quarter: str,
-    month: str,
+    zone,
+    circle,
+    branch,
+    quarter,
+    month,
     load_type: str,
     customer: str,
     customer_name_col: str,
 ) -> pd.DataFrame:
     filtered = df.copy()
-    if zone      != "All" and "Zone"     in filtered.columns: filtered = filtered[filtered["Zone"]     == zone]
-    if circle    != "All" and "Circle"   in filtered.columns: filtered = filtered[filtered["Circle"]   == circle]
-    if branch    != "All" and "Branch"   in filtered.columns: filtered = filtered[filtered["Branch"]   == branch]
-    if quarter   != "All" and "Quarter"  in filtered.columns: filtered = filtered[filtered["Quarter"]  == quarter]
-    if month     != "All" and "Month"    in filtered.columns: filtered = filtered[filtered["Month"]    == month]
-    if load_type != "All" and "LoadType" in filtered.columns: filtered = filtered[filtered["LoadType"] == load_type]
-    if customer  != "All" and customer_name_col in filtered.columns:
+
+    def apply_multi(frame, column, selected):
+        if column not in frame.columns:
+            return frame
+        if selected is None or selected == "All" or selected == []:
+            return frame
+        values = selected if isinstance(selected, (list, tuple, set)) else [selected]
+        return frame[frame[column].isin(values)]
+
+    filtered = apply_multi(filtered, "Zone", zone)
+    filtered = apply_multi(filtered, "Circle", circle)
+    filtered = apply_multi(filtered, "Branch", branch)
+    filtered = apply_multi(filtered, "Quarter", quarter)
+    filtered = apply_multi(filtered, "Month", month)
+
+    if load_type != "All" and "LoadType" in filtered.columns:
+        filtered = filtered[filtered["LoadType"] == load_type]
+    if customer != "All" and customer_name_col in filtered.columns:
         filtered = filtered[filtered[customer_name_col] == customer]
     return filtered
 
@@ -649,30 +747,108 @@ def render_dashboard_header():
     return export_placeholder
 
 
-def render_filter_row_start():
-    """Create the complete single-row filter layout and render FY/View Type first.
+def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
+    options = [x for x in options if pd.notna(x)]
+    options = list(dict.fromkeys(options))
 
-    The remaining column objects are reused after the selected FY/View Type data is loaded,
-    allowing every dashboard filter to stay on one visual row without changing any logic.
-    """
+    st.markdown(
+        f'<div class="checkbox-slicer-label">{label}</div>',
+        unsafe_allow_html=True,
+    )
+
+    if locked_values:
+        locked_values = [x for x in locked_values if x is not None]
+        summary = str(locked_values[0]) if len(locked_values) == 1 else f"{len(locked_values)} selected"
+        with st.popover(summary, use_container_width=True):
+            for value in locked_values:
+                st.checkbox(str(value), value=True, disabled=True, key=f"{key}__locked__{value}")
+        return locked_values
+
+    def state_key(value):
+        return f"{key}__item__{str(value)}"
+
+    if searchable:
+        selection_key = f"{key}__instant_selected"
+        legacy_selected = [value for value in options if st.session_state.get(state_key(value), False)]
+        if selection_key not in st.session_state:
+            st.session_state[selection_key] = legacy_selected
+        else:
+            st.session_state[selection_key] = [
+                value for value in st.session_state.get(selection_key, []) if value in options
+            ]
+
+        selected_before = st.session_state.get(selection_key, [])
+        summary = "All" if not selected_before else (str(selected_before[0]) if len(selected_before) == 1 else f"{len(selected_before)} selected")
+
+        with st.popover(summary, use_container_width=True):
+            action_cols = st.columns(2, gap="small")
+            with action_cols[0]:
+                if st.button("Select all", key=f"{key}__select_all", use_container_width=False):
+                    st.session_state[selection_key] = list(options)
+                    st.rerun()
+            with action_cols[1]:
+                if st.button("Clear", key=f"{key}__clear", use_container_width=False):
+                    st.session_state[selection_key] = []
+                    st.rerun()
+            selected_values = st.multiselect(
+                f"Search {str(label).replace('◎', '').replace('⌂', '').strip()}",
+                options=options,
+                key=selection_key,
+                placeholder="Type to search...",
+                label_visibility="collapsed",
+            )
+            if not options:
+                st.caption("No values available")
+
+        selected_set = set(selected_values)
+        for value in options:
+            st.session_state[state_key(value)] = value in selected_set
+        return selected_values
+
+    selected_before = [value for value in options if st.session_state.get(state_key(value), False)]
+    summary = "All" if not selected_before else (str(selected_before[0]) if len(selected_before) == 1 else f"{len(selected_before)} selected")
+
+    with st.popover(summary, use_container_width=True):
+        action_cols = st.columns(2, gap="small")
+        with action_cols[0]:
+            if st.button("Select all", key=f"{key}__select_all", use_container_width=False):
+                for value in options:
+                    st.session_state[state_key(value)] = True
+                st.rerun()
+        with action_cols[1]:
+            if st.button("Clear", key=f"{key}__clear", use_container_width=False):
+                for value in options:
+                    st.session_state[state_key(value)] = False
+                st.rerun()
+        if not options:
+            st.caption("No values available")
+        else:
+            for value in options:
+                st.checkbox(str(value), key=state_key(value))
+
+    return [value for value in options if st.session_state.get(state_key(value), False)]
+
+
+def render_filter_row_start():
+    """Create the Overview-style single filter row with View Type first, then FY."""
     filter_columns = st.columns(
-        [1.10, 1.00, 0.82, 0.92, 1.00, 0.72, 0.82, 0.92, 1.25, 0.82],
+        [1.00, 1.10, 0.82, 0.92, 1.00, 0.72, 0.82, 0.92, 1.25, 0.82],
         gap="small",
     )
 
     with filter_columns[0]:
-        fin_year = st.selectbox(
-            "Financial Year",
-            FINANCIAL_YEARS,
-            key="customer_financial_year",
-        )
-
-    with filter_columns[1]:
         view_type = st.selectbox(
-            "View Type",
+            "⇄ View Type",
             ["origin", "destination"],
             format_func=lambda x: "Origin" if x == "origin" else "Destination",
             key="customer_view_type",
+        )
+
+    with filter_columns[1]:
+        fin_year = st.selectbox(
+            "◷ Financial Year",
+            FINANCIAL_YEARS,
+            key="customer_financial_year",
         )
 
     return filter_columns, fin_year, view_type
@@ -684,75 +860,95 @@ def render_data_filters(
     customer_name_col: str,
     filter_columns,
 ):
-    data_scope    = st.session_state.get("data_scope", {})
-    locked_zone   = data_scope.get("zone")
+    data_scope = st.session_state.get("data_scope", {}) or {}
+    locked_zone = data_scope.get("zone")
     locked_circle = data_scope.get("circle")
     locked_branch = data_scope.get("branch")
 
     if locked_branch:
-        row = df[df["Branch"] == locked_branch]
+        row = df[df["Branch"].astype(str).str.casefold() == str(locked_branch).casefold()]
+        if not row.empty:
+            locked_branch = row["Branch"].iloc[0]
+            locked_circle = row["Circle"].iloc[0]
+            locked_zone = row["Zone"].iloc[0]
+    elif locked_circle:
+        row = df[df["Circle"].astype(str).str.casefold() == str(locked_circle).casefold()]
         if not row.empty:
             locked_circle = row["Circle"].iloc[0]
-            locked_zone   = row["Zone"].iloc[0]
-    elif locked_circle:
-        row = df[df["Circle"] == locked_circle]
-        if not row.empty:
             locked_zone = row["Zone"].iloc[0]
 
-    # Financial Year and View Type occupy the first two columns.
-    # These eight columns complete the same single filter row.
     f1, f2, f3, f4, f5, f6, f7, f8 = filter_columns[2:]
+    filter_source_df = df.copy()
 
     with f1:
-        if locked_zone:
-            zone = locked_zone
-            st.selectbox("Zone", [zone], disabled=True, key="customer_zone_locked")
-        else:
-            zone_list = ["All"] + (sorted(df["Zone"].dropna().unique()) if "Zone" in df.columns else [])
-            zone = st.selectbox("Zone", zone_list, key="customer_zone")
-    zone_df = df if zone == "All" else df[df["Zone"] == zone]
+        zone_options = sorted(filter_source_df["Zone"].dropna().unique().tolist()) if "Zone" in filter_source_df.columns else []
+        selected_zones = _checkbox_slicer(
+            "◉ Zone", zone_options, key="customer_zone_slicer",
+            locked_values=[locked_zone] if locked_zone else None,
+        )
 
     with f2:
-        if locked_circle:
-            circle = locked_circle
-            st.selectbox("Circle", [circle], disabled=True, key="customer_circle_locked")
-        else:
-            circle_list = ["All"] + (sorted(zone_df["Circle"].dropna().unique()) if "Circle" in zone_df.columns else [])
-            circle = st.selectbox("Circle", circle_list, key="customer_circle")
-    circle_df = zone_df if circle == "All" else zone_df[zone_df["Circle"] == circle]
+        circle_options = sorted(filter_source_df["Circle"].dropna().unique().tolist()) if "Circle" in filter_source_df.columns else []
+        selected_circles = _checkbox_slicer(
+            "◎ Circle", circle_options, key="customer_circle_slicer",
+            locked_values=[locked_circle] if locked_circle else None,
+            searchable=True,
+        )
 
     with f3:
-        if locked_branch:
-            branch = locked_branch
-            st.selectbox("Branch", [branch], disabled=True, key="customer_branch_locked")
-        else:
-            branch_list = ["All"] + (sorted(circle_df["Branch"].dropna().unique()) if "Branch" in circle_df.columns else [])
-            branch = st.selectbox("Branch", branch_list, key="customer_branch")
-    branch_df = circle_df if branch == "All" else circle_df[circle_df["Branch"] == branch]
+        branch_options = sorted(filter_source_df["Branch"].dropna().unique().tolist()) if "Branch" in filter_source_df.columns else []
+        selected_branches = _checkbox_slicer(
+            "⌂ Branch", branch_options, key="customer_branch_slicer",
+            locked_values=[locked_branch] if locked_branch else None,
+            searchable=True,
+        )
 
     with f4:
-        available_quarters = [q for q in QUARTER_ORDER if q in branch_df["Quarter"].dropna().unique().tolist()]
-        quarter = st.selectbox("Quarter", ["All"] + available_quarters, key="customer_quarter")
-    quarter_df = branch_df if quarter == "All" else branch_df[branch_df["Quarter"] == quarter]
+        available_quarters = [
+            q for q in QUARTER_ORDER
+            if q in filter_source_df["Quarter"].dropna().unique().tolist()
+        ]
+        selected_quarters = _checkbox_slicer(
+            "▦ Quarter", available_quarters, key="customer_quarter_slicer"
+        )
 
     with f5:
-        available_months = [m for m in MONTH_ORDER if m in quarter_df["Month"].dropna().unique().tolist()]
-        month = st.selectbox("Month", ["All"] + available_months, key="customer_month")
-    month_df = quarter_df if month == "All" else quarter_df[quarter_df["Month"] == month]
+        month_source_df = filter_source_df
+        if selected_quarters:
+            month_source_df = month_source_df[month_source_df["Quarter"].isin(selected_quarters)]
+        available_months = [
+            m for m in MONTH_ORDER
+            if m in month_source_df["Month"].dropna().unique().tolist()
+        ]
+        selected_months = _checkbox_slicer(
+            "▣ Month", available_months, key="customer_month_slicer"
+        )
+
+    selection_df = filter_source_df
+    if selected_zones:
+        selection_df = selection_df[selection_df["Zone"].isin(selected_zones)]
+    if selected_circles:
+        selection_df = selection_df[selection_df["Circle"].isin(selected_circles)]
+    if selected_branches:
+        selection_df = selection_df[selection_df["Branch"].isin(selected_branches)]
+    if selected_quarters:
+        selection_df = selection_df[selection_df["Quarter"].isin(selected_quarters)]
+    if selected_months:
+        selection_df = selection_df[selection_df["Month"].isin(selected_months)]
 
     with f6:
-        loadtype_list = ["All"] + (sorted(month_df["LoadType"].dropna().unique()) if "LoadType" in month_df.columns else [])
-        load_type = st.selectbox("Load Type", loadtype_list, key="customer_loadtype")
-    loadtype_df = month_df if load_type == "All" else month_df[month_df["LoadType"] == load_type]
+        loadtype_list = ["All"] + (sorted(selection_df["LoadType"].dropna().unique()) if "LoadType" in selection_df.columns else [])
+        load_type = st.selectbox("▤ Load Type", loadtype_list, key="customer_loadtype")
+    loadtype_df = selection_df if load_type == "All" else selection_df[selection_df["LoadType"] == load_type]
 
     with f7:
         customer_list = ["All"] + (sorted(loadtype_df[customer_name_col].dropna().unique()) if customer_name_col in loadtype_df.columns else [])
-        customer = st.selectbox(customer_label, customer_list, key="customer_name_filter")
+        customer = st.selectbox(f"👤 {customer_label}", customer_list, key="customer_name_filter")
 
     with f8:
-        conversion_type = st.selectbox("Conversion", ["Crore", "Lac"], key="customer_conversion_type")
+        conversion_type = st.selectbox("₹ Conversion", ["Crore", "Lac"], key="customer_conversion_type")
 
-    return zone, circle, branch, quarter, month, load_type, customer, conversion_type
+    return selected_zones, selected_circles, selected_branches, selected_quarters, selected_months, load_type, customer, conversion_type
 
 
 # =====================================================
