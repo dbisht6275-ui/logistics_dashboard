@@ -5,3 +5,4 @@ venv/
 .env
 .vscode/settings.json
 .vs/
+.streamlit/secrets.toml
