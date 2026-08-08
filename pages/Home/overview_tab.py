@@ -915,6 +915,41 @@ def _inject_overview_css():
                 column-gap: 0.85rem !important;
             }
 
+            /* ============================================================
+               VISUAL / INSIGHT GAP FIX
+               Apply spacing only to rows that actually contain bordered
+               dashboard visuals. This avoids disturbing the filter strip
+               while ensuring chart/table/insight cards never touch.
+               ============================================================ */
+            div[data-testid="stHorizontalBlock"]:has(div[data-testid="stVerticalBlockBorderWrapper"]) {
+                column-gap: 1rem !important;
+                margin-top: 0.28rem !important;
+                margin-bottom: 0.72rem !important;
+            }
+
+            /* Every bordered visual gets a small clear buffer below it. */
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                margin-bottom: 0.72rem !important;
+            }
+
+            /* Plotly charts should not visually sit on the card edge or the next insight. */
+            div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPlotlyChart"] {
+                margin-top: 0.18rem !important;
+                margin-bottom: 0.22rem !important;
+            }
+
+            /* Dataframes/tables inside visual cards also receive a small bottom buffer. */
+            div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stDataFrame"] {
+                margin-bottom: 0.18rem !important;
+            }
+
+            @media (max-width: 1500px) {
+                div[data-testid="stHorizontalBlock"]:has(div[data-testid="stVerticalBlockBorderWrapper"]) {
+                    column-gap: 0.75rem !important;
+                    margin-bottom: 0.60rem !important;
+                }
+            }
+
             @media (max-width: 1180px) {
                 .checkbox-slicer-label {
                     font-size: 8.5px !important;
