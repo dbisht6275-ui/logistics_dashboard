@@ -930,6 +930,50 @@ def _inject_overview_css():
                 padding: 0 !important;
             }
 
+            /* Compact Select all / Clear actions inside slicer popovers.
+               This only changes appearance; checkbox/filter logic is untouched. */
+            div[data-testid="stPopoverBody"] div[data-testid="stButton"] {
+                width: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button {
+                width: auto !important;
+                min-width: 0 !important;
+                min-height: 26px !important;
+                height: 26px !important;
+                padding: 2px 8px !important;
+                margin: 0 !important;
+                border: 1px solid #dbe4ef !important;
+                border-radius: 6px !important;
+                background: #ffffff !important;
+                color: #2563eb !important;
+                box-shadow: none !important;
+                transform: none !important;
+                font-size: 10px !important;
+                font-weight: 600 !important;
+                line-height: 1 !important;
+            }
+
+            div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button:hover {
+                border-color: #93c5fd !important;
+                background: #eff6ff !important;
+                color: #1d4ed8 !important;
+                box-shadow: none !important;
+                transform: none !important;
+            }
+
+            div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button p {
+                margin: 0 !important;
+                padding: 0 !important;
+                color: inherit !important;
+                font-size: 10px !important;
+                font-weight: 600 !important;
+                line-height: 1 !important;
+                white-space: nowrap !important;
+            }
+
             @media (min-width: 1800px) {
                 div[data-testid="stElementContainer"]:has(.checkbox-slicer-label) {
                     min-height: 31px !important;
@@ -1980,7 +2024,7 @@ def _checkbox_slicer(label, options, key, locked_values=None):
             if st.button(
                 "Select all",
                 key=f"{key}__select_all",
-                use_container_width=True,
+                use_container_width=False,
             ):
                 for value in options:
                     st.session_state[state_key(value)] = True
@@ -1990,7 +2034,7 @@ def _checkbox_slicer(label, options, key, locked_values=None):
             if st.button(
                 "Clear",
                 key=f"{key}__clear",
-                use_container_width=True,
+                use_container_width=False,
             ):
                 for value in options:
                     st.session_state[state_key(value)] = False
