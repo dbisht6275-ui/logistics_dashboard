@@ -3757,204 +3757,204 @@ def show_overview():
             else:
                 st.markdown(matrix_html, unsafe_allow_html=True)
 
-        compact_spacer()
+    compact_spacer()
 
-        monthly_chart = monthly.copy()
-        monthly_chart["Growth %"] = monthly_chart["Business Cr"].pct_change().mul(100).round(2)
-        monthly_chart = monthly_chart.dropna(subset=["Month"]).copy()
-        monthly_chart["Month"] = monthly_chart["Month"].astype(str)
+    monthly_chart = monthly.copy()
+    monthly_chart["Growth %"] = monthly_chart["Business Cr"].pct_change().mul(100).round(2)
+    monthly_chart = monthly_chart.dropna(subset=["Month"]).copy()
+    monthly_chart["Month"] = monthly_chart["Month"].astype(str)
 
-        mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
-            [1.20, 1.20, 0.60], gap="medium", vertical_alignment="top"
-        )
+    mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
+        [1.20, 1.20, 0.60], gap="medium", vertical_alignment="top"
+    )
 
-        with mom_chart_col:
-            with st.container(border=True):
-                st.markdown("<div style='font-size:13px;font-weight:400;color:#0f172a;margin-bottom:2px;'>Month on Month Business & Growth</div>", unsafe_allow_html=True)
-                fig_mom = go.Figure()
-                fig_mom.add_trace(go.Bar(
-                    x=monthly_chart["Month"], y=monthly_chart["Business Cr"], name="Business",
-                                                                                           
-                    marker=dict(
-                        color="#bfdbfe",
-                        line=dict(color="#2563eb", width=1.3),
-                    ),
-                    opacity=0.92,
-                    text=monthly_chart["Business Cr"], texttemplate=f"₹%{{text:.2f}} {revenue_unit}",
-                    textposition="outside",
-                    textfont=dict(size=10, color="#1e3a8a", family="Arial"),
-                    cliponaxis=False,
-                    hovertemplate=f"<b>%{{x}}</b><br>Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
-                ))
-                growth_colors = ["#16a34a" if pd.notna(v) and v >= 0 else "#dc2626" for v in monthly_chart["Growth %"]]
-                fig_mom.add_trace(go.Scatter(
-                    x=monthly_chart["Month"], y=monthly_chart["Growth %"], name="MoM Growth",
-                    mode="lines+markers+text", yaxis="y2", line=dict(color="#f59e0b", width=3),
-                    marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
-                    text=["" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%" for v in monthly_chart["Growth %"]],
-                    textposition="top center",
-                    textfont=dict(size=11, color=growth_colors, family="Arial"),
-                    cliponaxis=False,
-                    hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
-                ))
-                revenue_max = pd.to_numeric(monthly_chart["Business Cr"], errors="coerce").max()
-                revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
-                growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
-                growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
-                fig_mom.update_layout(
-                    height=235, margin=dict(l=8, r=8, t=28, b=6), plot_bgcolor="#f8fafc",
-                    paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=1.10, x=0), bargap=0.35,
-                    yaxis=dict(title=f"Business ({revenue_unit})", range=[0, revenue_max * 1.30], showgrid=False, zeroline=False),
-                    yaxis2=dict(title="Growth (%)", overlaying="y", side="right", range=[-growth_abs_max * 1.35, growth_abs_max * 1.35], showgrid=False, zeroline=True, zerolinecolor="#cbd5e1"),
-                    xaxis=dict(showgrid=False, title=""),
-                )
-                apply_3d_chart_layout(fig_mom, height=235, margin=dict(l=8, r=8, t=30, b=6))
-                fig_mom.update_xaxes(showline=False, zeroline=False)
-                fig_mom.update_yaxes(showline=False)
-                st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False, "responsive": True})
+    with mom_chart_col:
+        with st.container(border=True):
+            st.markdown("<div style='font-size:13px;font-weight:400;color:#0f172a;margin-bottom:2px;'>Month on Month Business & Growth</div>", unsafe_allow_html=True)
+            fig_mom = go.Figure()
+            fig_mom.add_trace(go.Bar(
+                x=monthly_chart["Month"], y=monthly_chart["Business Cr"], name="Business",
+                                                                                       
+                marker=dict(
+                    color="#bfdbfe",
+                    line=dict(color="#2563eb", width=1.3),
+                ),
+                opacity=0.92,
+                text=monthly_chart["Business Cr"], texttemplate=f"₹%{{text:.2f}} {revenue_unit}",
+                textposition="outside",
+                textfont=dict(size=10, color="#1e3a8a", family="Arial"),
+                cliponaxis=False,
+                hovertemplate=f"<b>%{{x}}</b><br>Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
+            ))
+            growth_colors = ["#16a34a" if pd.notna(v) and v >= 0 else "#dc2626" for v in monthly_chart["Growth %"]]
+            fig_mom.add_trace(go.Scatter(
+                x=monthly_chart["Month"], y=monthly_chart["Growth %"], name="MoM Growth",
+                mode="lines+markers+text", yaxis="y2", line=dict(color="#f59e0b", width=3),
+                marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
+                text=["" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%" for v in monthly_chart["Growth %"]],
+                textposition="top center",
+                textfont=dict(size=11, color=growth_colors, family="Arial"),
+                cliponaxis=False,
+                hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
+            ))
+            revenue_max = pd.to_numeric(monthly_chart["Business Cr"], errors="coerce").max()
+            revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
+            growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
+            growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
+            fig_mom.update_layout(
+                height=235, margin=dict(l=8, r=8, t=28, b=6), plot_bgcolor="#f8fafc",
+                paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=1.10, x=0), bargap=0.35,
+                yaxis=dict(title=f"Business ({revenue_unit})", range=[0, revenue_max * 1.30], showgrid=False, zeroline=False),
+                yaxis2=dict(title="Growth (%)", overlaying="y", side="right", range=[-growth_abs_max * 1.35, growth_abs_max * 1.35], showgrid=False, zeroline=True, zerolinecolor="#cbd5e1"),
+                xaxis=dict(showgrid=False, title=""),
+            )
+            apply_3d_chart_layout(fig_mom, height=235, margin=dict(l=8, r=8, t=30, b=6))
+            fig_mom.update_xaxes(showline=False, zeroline=False)
+            fig_mom.update_yaxes(showline=False)
+            st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False, "responsive": True})
 
-        with branch_achievement_col:
-            with st.container(border=True):
-                                                                                           
-                _target_title_col, _top_dropdown_col = st.columns(
-                    [0.74, 0.26], gap="small", vertical_alignment="center"
-                )
+    with branch_achievement_col:
+        with st.container(border=True):
+                                                                                       
+            _target_title_col, _top_dropdown_col = st.columns(
+                [0.74, 0.26], gap="small", vertical_alignment="center"
+            )
 
-                with _target_title_col:
-                    st.markdown(
-                        "<div style='font-size:13px;font-weight:700;color:#0f172a;margin:2px 0 4px 0;'>"
-                        "TARGET ACHIEVEMENT</div>",
-                        unsafe_allow_html=True,
-                    )
-
-                with _top_dropdown_col:
-                    _branch_achievement_top_n = st.selectbox(
-                        "Number of records",
-                        options=[5, 10, 20, 30],
-                        index=0,
-                        key="branch_achievement_top_n",
-                        label_visibility="collapsed",
-                    )
-
-                _achievement_level = _button_selector(
-                    ["Zone", "Circle", "Branch"],
-                    "target_achievement_level",
-                    "target_level_btn",
-                    "Branch",
-                )
-
+            with _target_title_col:
                 st.markdown(
-                    f"<div style='font-size:11px;font-weight:600;color:#475569;margin:2px 0 8px 0;'>"
-                    f"{_achievement_level} wise · Top {_branch_achievement_top_n}</div>",
+                    "<div style='font-size:13px;font-weight:700;color:#0f172a;margin:2px 0 4px 0;'>"
+                    "TARGET ACHIEVEMENT</div>",
                     unsafe_allow_html=True,
                 )
 
-                try:
-                    _branch_summary_compact = (
-                        df.groupby("branch", dropna=False)["REVENUE"]
-                        .sum()
-                        .reset_index(name="Business")
-                    )
-                    _branch_ach_df, _branch_ach_months = calculate_branch_target_achievement(
-                        filtered_df=df,
-                        branch_summary=_branch_summary_compact,
-                        selected_month=month,
-                        selected_quarter=quarter,
-                        selected_loadtype=loadtype,
-                    )
-                    _branch_ach_df = _branch_ach_df[
-                        _branch_ach_df["Matched_Target"] & (_branch_ach_df["Target_Rs"] > 0)
-                    ].copy()
-
-                    _level_column = {
-                        "Zone": "zone",
-                        "Circle": "circle",
-                        "Branch": "branch",
-                    }[_achievement_level]
-
-                    if _achievement_level != "Branch":
-                        _hierarchy_map = (
-                            df[["branch", _level_column]]
-                            .dropna(subset=["branch", _level_column])
-                            .drop_duplicates(subset=["branch"], keep="first")
-                        )
-                        _branch_ach_df = _branch_ach_df.merge(
-                            _hierarchy_map, on="branch", how="left"
-                        )
-                        _branch_ach_df = (
-                            _branch_ach_df.dropna(subset=[_level_column])
-                            .groupby(_level_column, as_index=False)
-                            .agg(Business=("Business", "sum"), Target_Rs=("Target_Rs", "sum"))
-                        )
-                        _branch_ach_df["Achievement_Pct"] = _branch_ach_df.apply(
-                            lambda _r: (_r["Business"] / _r["Target_Rs"] * 100)
-                            if _r["Target_Rs"] > 0 else 0.0,
-                            axis=1,
-                        )
-                        _branch_ach_df = _branch_ach_df.rename(columns={_level_column: "Display_Name"})
-                    else:
-                        _branch_ach_df = _branch_ach_df.rename(columns={"branch": "Display_Name"})
-
-                    _branch_ach_df = _branch_ach_df.sort_values(
-                        ["Achievement_Pct", "Business"], ascending=[False, False]
-                    ).head(_branch_achievement_top_n)
-
-                    if _branch_ach_df.empty:
-                        st.info("No matched targets for the active filters.")
-                    else:
-                        _rows_html = []
-                        for _, _row in _branch_ach_df.iterrows():
-                            _ach = float(_row["Achievement_Pct"] or 0)
-                            _actual_display = float(_row["Business"]) / revenue_divisor
-                            _target_display = float(_row["Target_Rs"]) / revenue_divisor
-                            _bar_width = max(0.0, min(_ach, 100.0))
-                            _status_color = (
-                                "#16a34a" if _ach >= 100
-                                else "#f59e0b" if _ach >= 80
-                                else "#dc2626"
-                            )
-                            _name = escape(str(_row["Display_Name"]))
-                            _rows_html.append(
-                                f'<div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #eef2f7;font-size:10.5px;color:#0f172a;">'
-                                f'<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{_name}">{_name}</div>'
-                                f'<div style="text-align:right;">{_actual_display:,.2f}</div>'
-                                f'<div style="text-align:right;">{_target_display:,.2f}</div>'
-                                f'<div style="text-align:right;font-weight:700;color:{_status_color};">{_ach:,.2f}%</div>'
-                                f'<div style="height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;">'
-                                f'<div style="height:100%;width:{_bar_width:.1f}%;background:{_status_color};border-radius:999px;"></div>'
-                                f'</div></div>'
-                            )
-
-                        _first_header = _achievement_level
-                        _table_html = (
-                            '<div style="width:100%;">'
-                            '<div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;gap:7px;padding:2px 0 6px 0;border-bottom:1px solid #dbe3ec;font-size:9.5px;font-weight:700;color:#334155;">'
-                            f'<div>{_first_header}</div>'
-                            f'<div style="text-align:right;">Actual ({revenue_unit})</div>'
-                            f'<div style="text-align:right;">Target ({revenue_unit})</div>'
-                            '<div style="text-align:right;">Achievement %</div>'
-                            '<div style="text-align:center;">Achievement Bar</div>'
-                            '</div>' + ''.join(_rows_html) + '</div>'
-                        )
-                        if hasattr(st, "html"):
-                            st.html(_table_html)
-                        else:
-                            st.markdown(_table_html, unsafe_allow_html=True)
-                except Exception as _branch_achievement_exc:
-                    st.info(f"Target achievement unavailable: {_branch_achievement_exc}")
-
-        with target_meter_col:
-            with st.container(border=True):
-                create_target_speedometer(
-                    actual=trend_actual,
-                    target=trend_target,
-                    unit=f" {revenue_unit}",
-                    title="Target Achievement",
-                    compact=False,
+            with _top_dropdown_col:
+                _branch_achievement_top_n = st.selectbox(
+                    "Number of records",
+                    options=[5, 10, 20, 30],
+                    index=0,
+                    key="branch_achievement_top_n",
+                    label_visibility="collapsed",
                 )
 
-                                                                
-                                                           
+            _achievement_level = _button_selector(
+                ["Zone", "Circle", "Branch"],
+                "target_achievement_level",
+                "target_level_btn",
+                "Branch",
+            )
+
+            st.markdown(
+                f"<div style='font-size:11px;font-weight:600;color:#475569;margin:2px 0 8px 0;'>"
+                f"{_achievement_level} wise · Top {_branch_achievement_top_n}</div>",
+                unsafe_allow_html=True,
+            )
+
+            try:
+                _branch_summary_compact = (
+                    df.groupby("branch", dropna=False)["REVENUE"]
+                    .sum()
+                    .reset_index(name="Business")
+                )
+                _branch_ach_df, _branch_ach_months = calculate_branch_target_achievement(
+                    filtered_df=df,
+                    branch_summary=_branch_summary_compact,
+                    selected_month=month,
+                    selected_quarter=quarter,
+                    selected_loadtype=loadtype,
+                )
+                _branch_ach_df = _branch_ach_df[
+                    _branch_ach_df["Matched_Target"] & (_branch_ach_df["Target_Rs"] > 0)
+                ].copy()
+
+                _level_column = {
+                    "Zone": "zone",
+                    "Circle": "circle",
+                    "Branch": "branch",
+                }[_achievement_level]
+
+                if _achievement_level != "Branch":
+                    _hierarchy_map = (
+                        df[["branch", _level_column]]
+                        .dropna(subset=["branch", _level_column])
+                        .drop_duplicates(subset=["branch"], keep="first")
+                    )
+                    _branch_ach_df = _branch_ach_df.merge(
+                        _hierarchy_map, on="branch", how="left"
+                    )
+                    _branch_ach_df = (
+                        _branch_ach_df.dropna(subset=[_level_column])
+                        .groupby(_level_column, as_index=False)
+                        .agg(Business=("Business", "sum"), Target_Rs=("Target_Rs", "sum"))
+                    )
+                    _branch_ach_df["Achievement_Pct"] = _branch_ach_df.apply(
+                        lambda _r: (_r["Business"] / _r["Target_Rs"] * 100)
+                        if _r["Target_Rs"] > 0 else 0.0,
+                        axis=1,
+                    )
+                    _branch_ach_df = _branch_ach_df.rename(columns={_level_column: "Display_Name"})
+                else:
+                    _branch_ach_df = _branch_ach_df.rename(columns={"branch": "Display_Name"})
+
+                _branch_ach_df = _branch_ach_df.sort_values(
+                    ["Achievement_Pct", "Business"], ascending=[False, False]
+                ).head(_branch_achievement_top_n)
+
+                if _branch_ach_df.empty:
+                    st.info("No matched targets for the active filters.")
+                else:
+                    _rows_html = []
+                    for _, _row in _branch_ach_df.iterrows():
+                        _ach = float(_row["Achievement_Pct"] or 0)
+                        _actual_display = float(_row["Business"]) / revenue_divisor
+                        _target_display = float(_row["Target_Rs"]) / revenue_divisor
+                        _bar_width = max(0.0, min(_ach, 100.0))
+                        _status_color = (
+                            "#16a34a" if _ach >= 100
+                            else "#f59e0b" if _ach >= 80
+                            else "#dc2626"
+                        )
+                        _name = escape(str(_row["Display_Name"]))
+                        _rows_html.append(
+                            f'<div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;align-items:center;gap:7px;padding:6px 0;border-bottom:1px solid #eef2f7;font-size:10.5px;color:#0f172a;">'
+                            f'<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{_name}">{_name}</div>'
+                            f'<div style="text-align:right;">{_actual_display:,.2f}</div>'
+                            f'<div style="text-align:right;">{_target_display:,.2f}</div>'
+                            f'<div style="text-align:right;font-weight:700;color:{_status_color};">{_ach:,.2f}%</div>'
+                            f'<div style="height:8px;background:#e5e7eb;border-radius:999px;overflow:hidden;">'
+                            f'<div style="height:100%;width:{_bar_width:.1f}%;background:{_status_color};border-radius:999px;"></div>'
+                            f'</div></div>'
+                        )
+
+                    _first_header = _achievement_level
+                    _table_html = (
+                        '<div style="width:100%;">'
+                        '<div style="display:grid;grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr;gap:7px;padding:2px 0 6px 0;border-bottom:1px solid #dbe3ec;font-size:9.5px;font-weight:700;color:#334155;">'
+                        f'<div>{_first_header}</div>'
+                        f'<div style="text-align:right;">Actual ({revenue_unit})</div>'
+                        f'<div style="text-align:right;">Target ({revenue_unit})</div>'
+                        '<div style="text-align:right;">Achievement %</div>'
+                        '<div style="text-align:center;">Achievement Bar</div>'
+                        '</div>' + ''.join(_rows_html) + '</div>'
+                    )
+                    if hasattr(st, "html"):
+                        st.html(_table_html)
+                    else:
+                        st.markdown(_table_html, unsafe_allow_html=True)
+            except Exception as _branch_achievement_exc:
+                st.info(f"Target achievement unavailable: {_branch_achievement_exc}")
+
+    with target_meter_col:
+        with st.container(border=True):
+            create_target_speedometer(
+                actual=trend_actual,
+                target=trend_target,
+                unit=f" {revenue_unit}",
+                title="Target Achievement",
+                compact=False,
+            )
+
+                                                            
+                                                       
     compact_spacer()
 
     def _find_column(frame, candidates):
