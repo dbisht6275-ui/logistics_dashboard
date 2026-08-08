@@ -4308,8 +4308,22 @@ def show_overview():
         branch_summary["LY_Business"], errors="coerce"
     ).fillna(0.0)
 
-    # Top-branch business slab selector. Thresholds always remain in rupees,
-    # irrespective of whether the dashboard display unit is Lac or Crore.
+    # Branches by Business is shown as MONTHLY AVERAGE, not selected-period total.
+    # The denominator is the number of financial months represented by the active
+    # filters. Using one common month count for every branch means months in which a
+    # branch had zero business are still part of the average, making branch comparison fair.
+    current_month_count = max(int(df["FIN_MONTH"].dropna().nunique()), 1)
+    previous_month_count = (
+        max(int(prev_df["FIN_MONTH"].dropna().nunique()), 1)
+        if prev_df is not None and not prev_df.empty and "FIN_MONTH" in prev_df.columns
+        else current_month_count
+    )
+    branch_summary["Monthly_Avg_Business"] = branch_summary["Business"] / current_month_count
+    branch_summary["LY_Monthly_Avg_Business"] = branch_summary["LY_Business"] / previous_month_count
+
+    # Keep the ORIGINAL business-slab classification logic unchanged.
+    # Slabs are still assigned from selected-period branch Business totals.
+    # Only the displayed CY/LY values, ranking, scale and growth use monthly averages.
     business_slab_options = [
         "All",
         "₹0–5 Lac",
@@ -4353,11 +4367,11 @@ def show_overview():
 
     branch_rank_df = (
         top_branch_pool
-        .sort_values("Business", ascending=False)
+        .sort_values("Monthly_Avg_Business", ascending=False)
         .copy()
     )
     branch_rank_df["Business Cr"] = (
-        branch_rank_df["Business"] / revenue_divisor
+        branch_rank_df["Monthly_Avg_Business"] / revenue_divisor
     ).round(2)
 
     # Keep only Top Branches and Operational Highlights in one balanced row.
@@ -4391,19 +4405,19 @@ def show_overview():
 
             branch_rank_df = (
                 top_branch_pool
-                .sort_values("Business", ascending=False)
+                .sort_values("Monthly_Avg_Business", ascending=False)
                 .copy()
             )
             branch_rank_df["Business Cr"] = (
-                branch_rank_df["Business"] / revenue_divisor
+                branch_rank_df["Monthly_Avg_Business"] / revenue_divisor
             ).round(2)
 
             if branch_rank_df.empty:
                 st.info(f"No branch falls in the {selected_business_slab} business slab.")
             else:
-                total_branch_business = float(branch_summary["Business"].sum())
-                selected_branch_business = float(branch_rank_df["Business"].sum())
-                selected_ly_business = float(branch_rank_df["LY_Business"].sum())
+                total_branch_business = float(branch_summary["Monthly_Avg_Business"].sum())
+                selected_branch_business = float(branch_rank_df["Monthly_Avg_Business"].sum())
+                selected_ly_business = float(branch_rank_df["LY_Monthly_Avg_Business"].sum())
                 selected_business_share = (
                     selected_branch_business / total_branch_business * 100
                     if total_branch_business else 0.0
@@ -4421,7 +4435,7 @@ def show_overview():
                 st.markdown(
                     f'<div style="color:#2563eb;font-size:12px;font-weight:500;margin:2px 0 7px 1px;">'
                     f'Showing {len(branch_rank_df)} branches in {selected_business_slab}. '
-                    f'CY: ₹{selected_business_display} · LY: ₹{selected_ly_display} · '
+                    f'CY Monthly Avg: ₹{selected_business_display} · LY Monthly Avg: ₹{selected_ly_display} · '
                     f'Share: {selected_business_share:.2f}% · '
                     f'<span style="color:{selected_growth_color};font-weight:700;">'
                     f'Growth: {selected_growth_arrow} {abs(selected_growth):.1f}%</span>. Scroll to view all.'
@@ -4429,14 +4443,14 @@ def show_overview():
                     unsafe_allow_html=True,
                 )
 
-                branch_rank_df["CY_Display"] = branch_rank_df["Business"] / revenue_divisor
-                branch_rank_df["LY_Display"] = branch_rank_df["LY_Business"] / revenue_divisor
+                branch_rank_df["CY_Display"] = branch_rank_df["Monthly_Avg_Business"] / revenue_divisor
+                branch_rank_df["LY_Display"] = branch_rank_df["LY_Monthly_Avg_Business"] / revenue_divisor
                 branch_rank_df["Share_Pct"] = (
-                    branch_rank_df["Business"] / total_branch_business * 100
+                    branch_rank_df["Monthly_Avg_Business"] / total_branch_business * 100
                     if total_branch_business else 0.0
                 )
                 branch_rank_df["Growth_Pct"] = branch_rank_df.apply(
-                    lambda row: pct_growth(row["Business"], row["LY_Business"]), axis=1
+                    lambda row: pct_growth(row["Monthly_Avg_Business"], row["LY_Monthly_Avg_Business"]), axis=1
                 )
                 max_cy = float(branch_rank_df["CY_Display"].max() or 1)
 
@@ -4446,8 +4460,8 @@ def show_overview():
                     'padding:0 8px 7px 8px;border-bottom:1px solid #dbe4ef;color:#52667d;'
                     'font-size:10px;font-weight:700;">'
                     '<div style="text-align:center;">#</div><div>Branch</div><div>Scale</div>'
-                    '<div style="text-align:right;">CY</div>'
-                    '<div style="text-align:right;">LY</div>'
+                    '<div style="text-align:right;">CY Avg</div>'
+                    '<div style="text-align:right;">LY Avg</div>'
                     '<div style="text-align:right;">Share</div>'
                     '<div style="text-align:right;">Growth</div></div>'
                 )
@@ -4774,4 +4788,3 @@ def show_overview():
                     if c in closed_df.columns
                 ]
                 st.dataframe(closed_df[closed_columns], width="stretch", hide_index=True)
-                
