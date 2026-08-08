@@ -886,15 +886,17 @@ def _inject_overview_css():
                 }
             }
 
-            /* Operational Highlights compact expand/collapse metric button */
-            .st-key-operational_metrics_toggle div[data-testid="stButton"] {
+            /* Operational Highlights compact expand/collapse buttons */
+            .st-key-operational_metrics_toggle div[data-testid="stButton"],
+            .st-key-operational_conditions_toggle div[data-testid="stButton"] {
                 display: flex !important;
                 justify-content: flex-end !important;
                 margin: 0 !important;
                 padding: 0 !important;
             }
 
-            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button {
+            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button,
+            .st-key-operational_conditions_toggle div[data-testid="stButton"] > button {
                 width: auto !important;
                 min-width: 86px !important;
                 min-height: 28px !important;
@@ -912,14 +914,16 @@ def _inject_overview_css():
                 transform: none !important;
             }
 
-            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button:hover {
+            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button:hover,
+            .st-key-operational_conditions_toggle div[data-testid="stButton"] > button:hover {
                 border-color: #7aa7e8 !important;
                 background: #eef6ff !important;
                 box-shadow: none !important;
                 transform: none !important;
             }
 
-            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button p {
+            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button p,
+            .st-key-operational_conditions_toggle div[data-testid="stButton"] > button p {
                 margin: 0 !important;
                 color: #1d4ed8 !important;
                 font-size: 9px !important;
@@ -944,6 +948,16 @@ def _inject_overview_css():
             .st-key-branch_achievement_top_n div[data-testid="stSelectbox"] {
                 gap: 0 !important;
                 margin: 0 !important;
+            }
+
+            /* Keep dashboard cards visually separated so neighbouring visuals never touch. */
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                margin-bottom: 6px !important;
+            }
+
+            /* Slightly safer breathing room between columns on dense dashboard rows. */
+            div[data-testid="stHorizontalBlock"] {
+                column-gap: 0.65rem !important;
             }
 
             @media (max-width: 1180px) {
@@ -1690,16 +1704,21 @@ def _build_sla_metrics(current_df, previous_df):
 
 
 def _render_operational_highlights(current_df, previous_df):
-    """Render Operational Highlights with a compact metric expand/collapse control."""
+    """Render Operational Highlights with independent metric and condition expand/collapse controls."""
     current_col, previous_col, metrics = _build_sla_metrics(current_df, previous_df)
 
     # UI-only state. The underlying SLA calculations remain unchanged.
-    state_key = "operational_highlights_expanded"
-    if state_key not in st.session_state:
-        st.session_state[state_key] = True
+    metrics_state_key = "operational_highlights_expanded"
+    conditions_state_key = "operational_conditions_expanded"
+    if metrics_state_key not in st.session_state:
+        st.session_state[metrics_state_key] = True
+    if conditions_state_key not in st.session_state:
+        st.session_state[conditions_state_key] = False
 
     with st.container(border=True):
-        title_col, action_col = st.columns([1.0, 0.42], gap="small", vertical_alignment="center")
+        title_col, condition_col, metric_col = st.columns(
+            [1.0, 0.46, 0.42], gap="small", vertical_alignment="center"
+        )
 
         with title_col:
             st.markdown(
@@ -1708,34 +1727,55 @@ def _render_operational_highlights(current_df, previous_df):
                 unsafe_allow_html=True,
             )
 
-        with action_col:
-            toggle_label = "− HIDE METRICS" if st.session_state[state_key] else "＋ ADD METRIC"
+        with condition_col:
+            condition_label = (
+                "− HIDE CONDITIONS"
+                if st.session_state[conditions_state_key]
+                else "＋ SHOW CONDITIONS"
+            )
+            if st.button(
+                condition_label,
+                key="operational_conditions_toggle",
+                help="Show or hide the conditions used for On-Time Delivery, Before EDD, On EDD, After EDD, In Transit and Overdue.",
+                width="content",
+            ):
+                st.session_state[conditions_state_key] = not st.session_state[conditions_state_key]
+                st.rerun()
+
+        with metric_col:
+            toggle_label = "− HIDE METRICS" if st.session_state[metrics_state_key] else "＋ SHOW METRICS"
             if st.button(
                 toggle_label,
                 key="operational_metrics_toggle",
                 help="Expand or collapse Operational Highlights metrics.",
                 width="content",
             ):
-                st.session_state[state_key] = not st.session_state[state_key]
+                st.session_state[metrics_state_key] = not st.session_state[metrics_state_key]
+                st.rerun()
 
-        # Explain the SLA conditions used by Operational Highlights. This is UI-only;
-        # all existing calculations and thresholds below remain unchanged.
-        st.markdown(
-            "<div style='margin:2px 0 7px 2px;padding:6px 8px;border:1px solid #e2e8f0;"
-            "border-radius:8px;background:#f8fafc;color:#475569;font-size:9.5px;line-height:1.35;'>"
-            "<b>Condition:</b> On-Time Delivery = (Before EDD + On EDD) ÷ "
-            "(Before EDD + On EDD + After EDD + Overdue). "
-            "<span style='color:#15803d;font-weight:700;'>Green</span> means improvement vs LY; "
-            "<span style='color:#dc2626;font-weight:700;'>Red</span> means deterioration. "
-            "For After EDD, In Transit and Overdue, <b>lower is better</b>."
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-        if not st.session_state[state_key]:
+        # Condition explanation is hidden by default and opens only when requested.
+        if st.session_state[conditions_state_key]:
             st.markdown(
-                "<div style='font-size:10px;color:#64748b;margin:4px 0 2px 2px;'>"
-                "Metrics are collapsed. Use ADD METRIC to expand them.</div>",
+                "<div style='margin:5px 0 8px 2px;padding:8px 10px;border:1px solid #dbe5f0;"
+                "border-radius:9px;background:#f8fafc;color:#475569;font-size:9.5px;line-height:1.45;'>"
+                "<b>Conditions used</b><br>"
+                "• <b>On-Time Delivery %</b> = (Before EDD + On EDD) ÷ "
+                "(Before EDD + On EDD + After EDD + Overdue) × 100.<br>"
+                "• <b>Before EDD</b> = consignments delivered before expected delivery date.<br>"
+                "• <b>On EDD</b> = consignments delivered on expected delivery date.<br>"
+                "• <b>After EDD</b> = consignments delivered after expected delivery date.<br>"
+                "• <b>In Transit</b> = consignments currently marked In Transit.<br>"
+                "• <b>Overdue</b> = consignments currently marked Overdue.<br>"
+                "• <b>YoY colour rule:</b> Green = favourable vs LY, Red = unfavourable vs LY. "
+                "For After EDD, In Transit and Overdue, <b>lower is better</b>; for On-Time, Before EDD and On EDD, <b>higher is better</b>."
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
+        if not st.session_state[metrics_state_key]:
+            st.markdown(
+                "<div style='font-size:10px;color:#64748b;margin:5px 0 2px 2px;'>"
+                "Metrics are hidden. Use SHOW METRICS to expand them.</div>",
                 unsafe_allow_html=True,
             )
             return
@@ -1783,14 +1823,6 @@ def _render_operational_highlights(current_df, previous_df):
             "<div style='font-size:10px;color:#94a3b8;margin-top:5px;'>LY SLAStatus unavailable.</div>"
         )
         st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
-
-
-
-TARGET_FILE_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "services"
-    / "branch_monthly_targets.csv"
-)
 
 
 def _normalise_target_text(values):
