@@ -242,6 +242,34 @@ def _inject_pnl_css() -> None:
         div[class*="st-key-pnl_branch_slab_btn_"] button span {
             margin:0 !important;padding:0 !important;font-size:11px !important;font-weight:650 !important;white-space:nowrap !important;
         }
+
+        /* P&L Trend buttons - same real-button design as Business Overview */
+        div[class*="st-key-pnl_trend_btn_"] {margin:0 !important;padding:0 !important;}
+        div[class*="st-key-pnl_trend_btn_"] div[data-testid="stButton"] {width:100% !important;margin:0 !important;}
+        div[class*="st-key-pnl_trend_btn_"] button {
+            width:100% !important;min-height:34px !important;height:34px !important;padding:4px 8px !important;
+            margin:0 !important;border:1px solid #d8e2ee !important;border-radius:8px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%) !important;color:#334155 !important;
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 1px 2px rgba(15,23,42,.05) !important;
+            transform:none !important;font-size:11px !important;font-weight:650 !important;white-space:nowrap !important;
+            transition:border-color .14s ease,background .14s ease,color .14s ease,box-shadow .14s ease !important;
+        }
+        div[class*="st-key-pnl_trend_btn_"] button:hover {
+            border-color:#9bb7d8 !important;background:linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important;
+            color:#174a7e !important;box-shadow:inset 0 1px 0 #ffffff,0 2px 5px rgba(15,42,67,.08) !important;
+            transform:none !important;
+        }
+        div[class*="st-key-pnl_trend_btn_"] button[data-testid="stBaseButton-primary"] {
+            border-color:#123f73 !important;background:linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
+            color:#ffffff !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 2px 5px rgba(15,42,67,.18) !important;
+        }
+        div[class*="st-key-pnl_trend_btn_"] button[data-testid="stBaseButton-primary"] p,
+        div[class*="st-key-pnl_trend_btn_"] button[data-testid="stBaseButton-primary"] span {color:#ffffff !important;}
+        div[class*="st-key-pnl_trend_btn_"] button p,
+        div[class*="st-key-pnl_trend_btn_"] button span {
+            margin:0 !important;padding:0 !important;font-size:11px !important;font-weight:650 !important;
+            color:inherit !important;white-space:nowrap !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -1112,13 +1140,23 @@ def show_pnl_dashboard() -> None:
                 )
 
             with filter_col:
-                trend_type = st.segmented_control(
-                    "P&L trend period",
-                    ["Daily", "Weekly", "Monthly", "Quarterly"],
-                    default="Monthly",
-                    label_visibility="collapsed",
-                    key="pnl_trend_type",
-                ) or "Monthly"
+                trend_options = ["Daily", "Weekly", "Monthly", "Quarterly"]
+                trend_type = st.session_state.get("pnl_trend_type_value", "Monthly")
+                if trend_type not in trend_options:
+                    trend_type = "Monthly"
+                    st.session_state["pnl_trend_type_value"] = "Monthly"
+
+                trend_btn_cols = st.columns(len(trend_options), gap="small")
+                for trend_index, trend_label in enumerate(trend_options):
+                    with trend_btn_cols[trend_index]:
+                        if st.button(
+                            trend_label,
+                            key=f"pnl_trend_btn_{trend_index}",
+                            type="primary" if trend_type == trend_label else "secondary",
+                            use_container_width=True,
+                        ):
+                            st.session_state["pnl_trend_type_value"] = trend_label
+                            st.rerun()
 
             trend_df = build_pnl_yoy_trend(
                 df, prev_df, trend_type, "grdt", start_date, prev_start
