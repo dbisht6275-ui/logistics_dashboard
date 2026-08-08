@@ -447,34 +447,66 @@ def _inject_overview_css():
                             inset -2px -2px 4px rgba(255,255,255,.95) !important;
             }
 
-            /* Unified dashboard button style. Matches the attractive branch-slab buttons. */
+            /* ============================================================
+               MODERN DASHBOARD BUTTON SYSTEM
+               Flat executive navigation style: lighter inactive state,
+               strong selected state, and a small accent rail instead of
+               bulky floating/shadowed buttons.
+               ============================================================ */
             .stButton > button {
-                min-height: 36px !important;
-                padding: 5px 12px !important;
-                border: 1px solid #cbd5e1 !important;
-                border-radius: 10px !important;
-                background: linear-gradient(180deg,#ffffff 0%,#f8fafc 100%) !important;
+                position: relative !important;
+                overflow: hidden !important;
+                min-height: 34px !important;
+                padding: 5px 13px !important;
+                border: 1px solid #d8e2ee !important;
+                border-radius: 8px !important;
+                background: linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%) !important;
                 color: #334155 !important;
-                box-shadow: 0 2px 5px rgba(15,23,42,.07) !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 1px 2px rgba(15,23,42,.05) !important;
                 transform: none !important;
                 font-size: 11px !important;
                 font-weight: 650 !important;
-                transition: all .14s ease !important;
+                letter-spacing: .05px !important;
+                transition: border-color .14s ease, background .14s ease, color .14s ease, box-shadow .14s ease !important;
+            }
+
+            .stButton > button::after {
+                content: "";
+                position: absolute;
+                left: 14px;
+                right: 14px;
+                bottom: 0;
+                height: 2px;
+                border-radius: 2px 2px 0 0;
+                background: transparent;
+                transition: background .14s ease, left .14s ease, right .14s ease !important;
             }
 
             .stButton > button:hover {
-                border-color: #60a5fa !important;
-                background: #eff6ff !important;
-                color: #1d4ed8 !important;
-                box-shadow: 0 4px 10px rgba(37,99,235,.13) !important;
-                transform: translateY(-1px) !important;
+                border-color: #9bb7d8 !important;
+                background: linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important;
+                color: #174a7e !important;
+                box-shadow: inset 0 1px 0 #ffffff, 0 2px 5px rgba(15,42,67,.08) !important;
+                transform: none !important;
+            }
+
+            .stButton > button:hover::after {
+                left: 10px;
+                right: 10px;
+                background: #60a5fa;
             }
 
             .stButton > button[data-testid="stBaseButton-primary"] {
-                border-color: #2563eb !important;
-                background: linear-gradient(135deg,#3b82f6 0%,#2563eb 58%,#1d4ed8 100%) !important;
+                border-color: #123f73 !important;
+                background: linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
                 color: #ffffff !important;
-                box-shadow: 0 4px 11px rgba(37,99,235,.22), inset 0 1px 0 rgba(255,255,255,.25) !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 2px 5px rgba(15,42,67,.18) !important;
+            }
+
+            .stButton > button[data-testid="stBaseButton-primary"]::after {
+                left: 9px;
+                right: 9px;
+                background: #93c5fd;
             }
 
             .stButton > button[data-testid="stBaseButton-primary"] p,
@@ -492,8 +524,9 @@ def _inject_overview_css():
             }
 
             .stButton > button:active {
-                transform: translateY(0) !important;
-                box-shadow: 0 1px 3px rgba(15,23,42,.10) !important;
+                background: #e8f0fa !important;
+                box-shadow: inset 0 1px 3px rgba(15,23,42,.10) !important;
+                transform: none !important;
             }
 
 
@@ -837,35 +870,35 @@ def _inject_overview_css():
 
             div[class*="st-key-branch_slab_btn_"] button {
                 width: 100% !important;
-                min-height: 38px !important;
-                height: 38px !important;
-                padding: 5px 8px !important;
+                min-height: 34px !important;
+                height: 34px !important;
+                padding: 4px 8px !important;
                 margin: 0 !important;
-                border: 1px solid #cbd5e1 !important;
-                border-radius: 10px !important;
-                background: linear-gradient(180deg,#ffffff 0%,#f8fafc 100%) !important;
+                border: 1px solid #d8e2ee !important;
+                border-radius: 8px !important;
+                background: linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%) !important;
                 color: #334155 !important;
-                box-shadow: 0 2px 5px rgba(15,23,42,.07) !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 1px 2px rgba(15,23,42,.05) !important;
                 transform: none !important;
                 font-size: 11px !important;
                 font-weight: 650 !important;
                 white-space: nowrap !important;
-                transition: all .14s ease !important;
+                transition: border-color .14s ease, background .14s ease, color .14s ease, box-shadow .14s ease !important;
             }
 
             div[class*="st-key-branch_slab_btn_"] button:hover {
-                border-color: #60a5fa !important;
-                background: #eff6ff !important;
-                color: #1d4ed8 !important;
-                box-shadow: 0 4px 10px rgba(37,99,235,.13) !important;
-                transform: translateY(-1px) !important;
+                border-color: #9bb7d8 !important;
+                background: linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important;
+                color: #174a7e !important;
+                box-shadow: inset 0 1px 0 #ffffff, 0 2px 5px rgba(15,42,67,.08) !important;
+                transform: none !important;
             }
 
             div[class*="st-key-branch_slab_btn_"] button[data-testid="stBaseButton-primary"] {
-                border-color: #2563eb !important;
-                background: linear-gradient(135deg,#3b82f6 0%,#2563eb 58%,#1d4ed8 100%) !important;
+                border-color: #123f73 !important;
+                background: linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
                 color: #ffffff !important;
-                box-shadow: 0 4px 11px rgba(37,99,235,.22), inset 0 1px 0 rgba(255,255,255,.25) !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 2px 5px rgba(15,42,67,.18) !important;
             }
 
             div[class*="st-key-branch_slab_btn_"] button[data-testid="stBaseButton-primary"] p,
