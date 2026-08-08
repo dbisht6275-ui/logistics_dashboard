@@ -26,6 +26,15 @@ FY_OPTIONS = [
 # =====================================================
 # Styling
 # =====================================================
+ROW_GAP_HEIGHT = 12
+
+def compact_spacer(height=ROW_GAP_HEIGHT):
+    """Render a reliable small vertical gap between major dashboard rows."""
+    st.markdown(
+        f"<div class='dashboard-row-spacer' style='height:{int(height)}px;min-height:{int(height)}px;line-height:{int(height)}px;'>&nbsp;</div>",
+        unsafe_allow_html=True,
+    )
+
 def _inject_pnl_css() -> None:
     st.markdown(
         """
@@ -41,6 +50,7 @@ def _inject_pnl_css() -> None:
         .stApp { background:#ffffff !important; }
         .block-container { max-width:100% !important; padding:.35rem .75rem .75rem !important; }
         div[data-testid="stVerticalBlock"] { gap:.55rem !important; }
+        .dashboard-row-spacer { display:block !important; width:100% !important; margin:0 !important; padding:0 !important; }
         div[data-testid="stHorizontalBlock"] { gap:.5rem !important; align-items:flex-start !important; }
         div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] { min-width:0 !important; }
 
@@ -1120,7 +1130,7 @@ def show_pnl_dashboard() -> None:
     # =====================================================
     # STEP 1: Overview-style P&L Trend, Load Type and Company
     # =====================================================
-    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
+    compact_spacer()
 
     row1, row2 = st.columns([1.20, 0.80], gap="medium")
 
@@ -1521,7 +1531,7 @@ def show_pnl_dashboard() -> None:
     # =====================================================
     # Month-on-Month P&L and P&L by Zone — side by side
     # =====================================================
-    st.markdown("<div aria-hidden='true' style='height:8px'></div>", unsafe_allow_html=True)
+    compact_spacer()
     mom_col, zone_col = st.columns([1.35, 1.0], gap="medium")
 
     with mom_col:
@@ -1564,10 +1574,7 @@ def show_pnl_dashboard() -> None:
             if mom_df.empty:
                 st.info("No monthly P&L data is available for the selected filters.")
             else:
-                bar_colors = [
-                    "#2563eb" if value >= 0 else "#dc2626"
-                    for value in mom_df["P&L Display"]
-                ]
+                bar_colors = ["#bfdbfe"] * len(mom_df)
                 growth_colors = [
                     "#16a34a" if pd.notna(value) and value >= 0 else "#dc2626"
                     for value in mom_df["MoM Growth"]
@@ -1581,11 +1588,13 @@ def show_pnl_dashboard() -> None:
                         name="P&L",
                         marker=dict(
                             color=bar_colors,
-                            line=dict(color="#1d4ed8", width=1.0),
+                            line=dict(color="#2563eb", width=1.3),
                         ),
+                        opacity=0.92,
                         text=mom_df["P&L Display"],
                         texttemplate=f"₹%{{text:.2f}} {unit}",
                         textposition="outside",
+                        textfont=dict(size=10, color="#1e3a8a", family="Arial"),
                         cliponaxis=False,
                         hovertemplate=(
                             f"<b>%{{x}}</b><br>P&L: ₹%{{y:.2f}} {unit}<extra></extra>"
@@ -1791,7 +1800,7 @@ def show_pnl_dashboard() -> None:
                 config={"displayModeBar": False, "responsive": True},
             )
 
-    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
+    compact_spacer()
     if view_type == "Origin" and "COUNTRY" in df.columns:
         with st.container(border=True):
             st.markdown(
@@ -2034,7 +2043,7 @@ def show_pnl_dashboard() -> None:
         with st.container(border=True):
             st.info("Zone-wise Country P&L cannot be displayed because COUNTRY is missing from the P&L dataset.")
 
-    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
+    compact_spacer()
     # Use the same GR-wise P&L, but attribute it to the selected view dimension.
     # Origin view uses consignor/customer; Destination view uses consignee/customer.
     if view_type == "Destination":
@@ -2091,7 +2100,7 @@ def show_pnl_dashboard() -> None:
             else:
                 st.info("Route column not found.")
 
-    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
+    compact_spacer()
 
     # Reusable summaries for the branch section and detail tabs.
     branch_summary = build_group_summary(df, prev_df, "branch")
