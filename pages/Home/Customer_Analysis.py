@@ -308,6 +308,18 @@ def apply_dashboard_style() -> None:
             border:1px solid #dbe4ef !important; background:#ffffff !important;
         }
 
+        .business-movement-title {
+            color:#081a33 !important;
+            font-weight:850 !important;
+            font-size:15px !important;
+            opacity:1 !important;
+        }
+        .kpi-row-spacer {
+            height:16px !important;
+            min-height:16px !important;
+            display:block !important;
+        }
+
         /* ---------- Overview-style filter slicers ---------- */
         .checkbox-slicer-label {
             display:block !important;
@@ -840,6 +852,7 @@ def kpi_card(
 # =====================================================
 # Export
 # =====================================================
+@st.cache_data(show_spinner=False, ttl=600, max_entries=6)
 def export_to_excel(
     df: pd.DataFrame,
     customer_summary: pd.DataFrame,
@@ -1196,7 +1209,7 @@ def render_data_filters(
 # =====================================================
 def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> None:
     """Render all Customer Analysis KPIs using the Overview dashboard card style."""
-    cols = st.columns(8, gap="small")
+    cols = st.columns(7, gap="small")
 
     cards = [
         {
@@ -1234,13 +1247,6 @@ def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> Non
             "positive": metrics["revenue_growth"] >= 0,
         },
         {
-            "title": "Multi-Shipment Customers %",
-            "value": f"{metrics['repeat_rate']:.1f}%",
-            "delta": f"{format_delta(metrics['repeat_rate_growth'])}",
-            "icon": "🔁", "color": "#2563eb",
-            "positive": metrics["repeat_rate_growth"] >= 0,
-        },
-        {
             "title": f"At Risk {customer_label}s",
             "value": f"{metrics['at_risk_customers']:,}",
             "delta": "Business dropped above 25%",
@@ -1259,7 +1265,6 @@ def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> Non
         with col:
             kpi_card(**card)
 
-    st.markdown("<div class='kpi-row-spacer'></div>", unsafe_allow_html=True)
 
 
 def render_overview_tab(
@@ -1290,6 +1295,27 @@ def render_overview_tab(
 
     with c2:
         with st.container(border=True):
+            title_col, logic_col = st.columns([4.2, 1.2], gap="small", vertical_alignment="center")
+            with title_col:
+                st.markdown(
+                    "<div style='font-size:16px;font-weight:800;color:#0f2744;margin:1px 0 3px 0;'>Business Concentration</div>",
+                    unsafe_allow_html=True,
+                )
+            with logic_col:
+                with st.popover("ⓘ Metric Logic", use_container_width=True):
+                    st.markdown(
+                        "**What it shows**  \n"
+                        "How much of total selected business is contributed by the highest-value customers.\n\n"
+                        "**Calculation**  \n"
+                        "`Top-N Concentration % = Top-N Customer Business ÷ Total Business × 100`\n\n"
+                        "Customers are ranked by **CY Business**, highest to lowest. "
+                        "Top 20 includes Top 10, Top 50 includes Top 20, and Top 100 includes Top 50.\n\n"
+                        "**Example**  \n"
+                        "If total business is **₹100 Cr** and the Top 10 customers together contribute **₹8.70 Cr**, "
+                        "then **Top 10 Concentration = 8.70 ÷ 100 × 100 = 8.7%**.  \n"
+                        "Management meaning: **8.7% of business comes from the 10 largest customers** and the remaining **91.3%** comes from other customers."
+                    )
+
             revenue_rank = customer_summary.sort_values("revenue", ascending=False)
             total_revenue = revenue_rank["revenue"].sum()
             rows = []
@@ -1302,41 +1328,81 @@ def render_overview_tab(
                 concentration_df,
                 x="% of Total Business", y="Customer Group",
                 orientation="h", text="% of Total Business",
-                title="Business Concentration",
             )
-            fig.update_traces(texttemplate="%{text}%", textposition="outside")
+            concentration_colors = ["#2563EB", "#06B6D4", "#8B5CF6", "#F59E0B"]
+            fig.update_traces(
+                texttemplate="%{text}%",
+                textposition="outside",
+                marker_color=concentration_colors,
+            )
             fig.update_layout(
                 xaxis_title="% of Total Business", yaxis_title="",
-                height=330, margin=dict(t=45, b=20), plot_bgcolor="rgba(0,0,0,0)"
+                height=300, margin=dict(t=10, b=20), plot_bgcolor="rgba(0,0,0,0)"
             )
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     with c3:
         with st.container(border=True):
+            title_col, logic_col = st.columns([4.2, 1.35], gap="small", vertical_alignment="center")
+            with title_col:
+                st.markdown(
+                    f"<div style='font-size:16px;font-weight:800;color:#0f2744;margin:1px 0 3px 0;'>{html.escape(customer_label)} Segmentation</div>",
+                    unsafe_allow_html=True,
+                )
+            with logic_col:
+                with st.popover("ⓘ Segmentation Logic", use_container_width=True):
+                    st.markdown(
+                        "**Customer value segmentation by cumulative CY Business contribution**\n\n"
+                        "- **Champions:** first 29% of cumulative business\n"
+                        "- **Loyal:** above 29% up to 55%\n"
+                        "- **Potential:** above 55% up to 80%\n"
+                        "- **At Risk:** above 80% up to 92%\n"
+                        "- **Long Tail:** above 92%\n\n"
+                        "The donut displays the **number of customers** in each segment and their **share of total customers**. "
+                        "This is a value-contribution segmentation; it is separate from the dashboard's actual Lost Customer and At Risk KPI logic.\n\n"
+                        "**Example**  \n"
+                        "Assume total CY Business is **₹100 Cr** and customers are ranked from highest to lowest business. "
+                        "Customers contributing the first cumulative **₹29 Cr** are **Champions**. "
+                        "The customers taking cumulative business from **₹29 Cr to ₹55 Cr** are **Loyal**; **₹55–80 Cr** are **Potential**; "
+                        "**₹80–92 Cr** are **At Risk**; and customers contributing the remaining **₹8 Cr (92–100%)** are **Long Tail**.  \n"
+                        "The donut then shows how many customers fall into each value band and their percentage of total customers."
+                    )
+
             segmented = add_customer_segments(customer_summary)
-            segment_order = ["Champions", "Loyal", "Potential", "At Risk", "Lost"]
+            display_segment_map = {"Lost": "Long Tail"}
+            segment_order = ["Champions", "Loyal", "Potential", "At Risk", "Long Tail"]
             segment_colors = {
                 "Champions": "#14946b", "Loyal": "#0f6ec7", "Potential": "#5ab0e8",
-                "At Risk": "#f59e0b", "Lost": "#ef4444",
+                "At Risk": "#f59e0b", "Long Tail": "#ef4444",
             }
-            segment_df = segmented.groupby("segment", as_index=False).agg(revenue=("revenue", "sum"))
-            total_seg_rev = segment_df["revenue"].sum()
-            segment_df["Contribution %"] = (segment_df["revenue"] / total_seg_rev * 100).round(1) if total_seg_rev else 0
+            segmented["segment_display"] = segmented["segment"].replace(display_segment_map)
+            segment_df = (
+                segmented.groupby("segment_display", as_index=False)
+                .agg(Customers=("segment_display", "size"), Business=("revenue", "sum"))
+                .rename(columns={"segment_display": "segment"})
+            )
+            total_segment_customers = int(segment_df["Customers"].sum())
+            segment_df["Customer Share %"] = (
+                segment_df["Customers"] / total_segment_customers * 100
+            ).round(1) if total_segment_customers else 0
             segment_df["Legend Label"] = segment_df.apply(
-                lambda r: f"{r['segment']} {r['Contribution %']:.1f}%", axis=1
+                lambda r: f"{r['segment']} ({int(r['Customers']):,} | {r['Customer Share %']:.1f}%)", axis=1
             )
             segment_df["segment"] = pd.Categorical(segment_df["segment"], categories=segment_order, ordered=True)
             segment_df = segment_df.sort_values("segment")
             fig = px.pie(
-                segment_df, names="Legend Label", values="revenue", hole=0.55,
-                title=f"{customer_label} Segmentation", color="segment",
-                color_discrete_map=segment_colors,
+                segment_df, names="Legend Label", values="Customers", hole=0.55,
+                color="segment", color_discrete_map=segment_colors,
             )
-            fig.update_traces(textinfo="percent", textposition="inside")
+            fig.update_traces(
+                texttemplate="%{value:,}<br>%{percent:.1%}",
+                textposition="inside",
+                hovertemplate="%{label}<br>Customers: %{value:,}<br>Share: %{percent}<extra></extra>",
+            )
             fig.update_layout(
-                height=330, margin=dict(t=45, b=5),
+                height=300, margin=dict(t=10, b=5),
                 annotations=[dict(
-                    text=f"Total<br>{money_display(total_seg_rev, conversion_type)}",
+                    text=f"Total<br>{total_segment_customers:,}",
                     x=0.5, y=0.5, font_size=12, showarrow=False,
                 )],
                 legend=dict(orientation="v", y=0.95, yanchor="top", x=1.0, xanchor="left", font=dict(size=10)),
@@ -1828,42 +1894,20 @@ def render_growth_tab(growth_df: pd.DataFrame, name_col: str, customer_label: st
 
     display_df = growth_df.copy()
     divisor, unit = get_revenue_conversion(conversion_type)
-    display_df["Business Display"] = display_df["revenue"] / divisor
-    display_df["Previous Business Display"] = display_df["prev_revenue"] / divisor
-    display_df["Bubble Size"] = display_df["shipments"].clip(lower=1)
+    revenue_col = f"Business ({unit})"
+    previous_col = f"Previous Business ({unit})"
+    display_df[revenue_col] = (display_df["revenue"] / divisor).round(2)
+    display_df[previous_col] = (display_df["prev_revenue"] / divisor).round(2)
 
-    fig = px.scatter(
-        display_df,
-        x="Previous Business Display",
-        y="Business Display",
-        size="Bubble Size",
-        color="Customer Status",
-        hover_name=name_col,
-        hover_data={"growth_%": ":.1f", "shipments": ":,.0f", "Bubble Size": False},
-        size_max=34,
-        title="Current Business vs Previous Business",
+    st.dataframe(
+        display_df[[
+            name_col, revenue_col, previous_col, "growth_%", "Customer Status",
+            "shipments", "actual_weight", "charge_weight", "avg_delay", "max_delay",
+        ]].sort_values("growth_%", ascending=False),
+        use_container_width=True,
+        hide_index=True,
+        height=520,
     )
-    max_value = max(display_df["Business Display"].max(), display_df["Previous Business Display"].max(), 1)
-    fig.add_shape(type="line", x0=0, y0=0, x1=max_value, y1=max_value, line=dict(dash="dash", color="#64748b"))
-    fig.update_layout(
-        height=430, margin=dict(t=45, b=25),
-        xaxis_title=f"Previous Business ({unit})", yaxis_title=f"Current Business ({unit})",
-        plot_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    with st.expander("View detailed growth table"):
-        revenue_col = f"Business ({unit})"
-        previous_col = f"Previous Business ({unit})"
-        display_df[revenue_col] = display_df["Business Display"].round(2)
-        display_df[previous_col] = display_df["Previous Business Display"].round(2)
-        st.dataframe(
-            display_df[[
-                name_col, revenue_col, previous_col, "growth_%", "Customer Status",
-                "shipments", "actual_weight", "charge_weight", "avg_delay", "max_delay",
-            ]].sort_values("growth_%", ascending=True),
-            use_container_width=True, hide_index=True,
-        )
 
 
 def render_service_tab(service_df: pd.DataFrame, customer_label: str, conversion_type: str) -> None:
@@ -1874,63 +1918,18 @@ def render_service_tab(service_df: pd.DataFrame, customer_label: str, conversion
 
     display_df = service_df.copy()
     divisor, unit = get_revenue_conversion(conversion_type)
-    display_df["Business Display"] = display_df["revenue"] / divisor
-    shipment_col = "shipments" if "shipments" in display_df.columns else None
-    name_candidates = [c for c in display_df.columns if c not in {
-        "revenue", "Business Display", "avg_delay_days", "max_delay_days",
-        "shipments", "actual_weight", "charge_weight"
-    }]
-    hover_name = name_candidates[0] if name_candidates else None
-    display_df["Bubble Size"] = display_df[shipment_col].clip(lower=1) if shipment_col else 1
+    display_df[f"Business ({unit})"] = (display_df["revenue"] / divisor).round(2)
 
-    left, right = st.columns([1.35, 1], gap="small")
-    with left:
-        with st.container(border=True):
-            fig = px.scatter(
-                display_df,
-                x="avg_delay_days",
-                y="Business Display",
-                size="Bubble Size",
-                color="max_delay_days",
-                hover_name=hover_name,
-                hover_data={"Bubble Size": False},
-                color_continuous_scale="YlOrRd",
-                size_max=38,
-                title="Business vs Average Delay",
-            )
-            fig.update_layout(
-                height=390, margin=dict(t=45, b=25),
-                xaxis_title="Average Delay (Days)", yaxis_title=f"Business ({unit})",
-                plot_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    with right:
-        with st.container(border=True):
-            delayed = display_df.nlargest(12, "avg_delay_days").sort_values("avg_delay_days")
-            y_col = hover_name if hover_name else delayed.index.astype(str)
-            if hover_name is None:
-                delayed = delayed.assign(Customer=delayed.index.astype(str))
-                y_col = "Customer"
-            fig = px.bar(
-                delayed, x="avg_delay_days", y=y_col, orientation="h",
-                text="avg_delay_days", title="Highest Average Delay",
-            )
-            fig.update_traces(texttemplate="%{text:.1f} d", textposition="outside")
-            fig.update_layout(
-                height=390, margin=dict(l=5, r=25, t=45, b=25),
-                xaxis_title="Average Delay (Days)", yaxis_title="",
-                plot_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    with st.expander("View detailed service table"):
-        display_df[f"Business ({unit})"] = display_df["Business Display"].round(2)
-        st.dataframe(
-            display_df.drop(columns=["Business Display", "Bubble Size"], errors="ignore")
-            .sort_values("avg_delay_days", ascending=False),
-            use_container_width=True, hide_index=True,
-        )
+    service_columns = [
+        c for c in display_df.columns
+        if c not in {"revenue", "Business Display", "Bubble Size"}
+    ]
+    st.dataframe(
+        display_df[service_columns].sort_values("avg_delay_days", ascending=False),
+        use_container_width=True,
+        hide_index=True,
+        height=520,
+    )
 
 
 def render_revenue_bridge(metrics: dict, customer_label: str, conversion_type: str) -> None:
@@ -1975,9 +1974,25 @@ def render_revenue_bridge(metrics: dict, customer_label: str, conversion_type: s
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
-        xaxis=dict(title="", showgrid=False),
-        yaxis=dict(title=f"Business ({revenue_unit})", showgrid=False, zeroline=False),
-        font=dict(family="Arial", size=11, color="#334155"),
+        xaxis=dict(
+            title="",
+            showgrid=False,
+            tickfont=dict(family="Arial", size=12, color="#000000"),
+            linecolor="#000000",
+            tickcolor="#000000",
+        ),
+        yaxis=dict(
+            title=dict(
+                text=f"Business ({revenue_unit})",
+                font=dict(family="Arial", size=12, color="#000000"),
+            ),
+            showgrid=False,
+            zeroline=False,
+            tickfont=dict(family="Arial", size=11, color="#000000"),
+            linecolor="#000000",
+            tickcolor="#000000",
+        ),
+        font=dict(family="Arial", size=11, color="#000000"),
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
@@ -1992,7 +2007,7 @@ def render_zone_summary_table(
     customer_label: str,
     conversion_type: str,
 ) -> None:
-    """Zone comparison visual with both current-year and previous-year figures."""
+    """Executive zone comparison insight with current vs previous business and customer movement."""
     current_zone = df.groupby("Zone", as_index=False).agg(
         Active_Customers=(code_col, "nunique"),
         Revenue=("Revenue", "sum"),
@@ -2020,110 +2035,84 @@ def render_zone_summary_table(
         st.info("No zone performance data available.")
         return
 
-    divisor, unit = get_revenue_conversion(conversion_type)
-    cy_col = f"CY Business ({unit})"
-    py_col = f"PY Business ({unit})"
-    summary[cy_col] = (summary["Revenue"] / divisor).round(2)
-    summary[py_col] = (summary["Prev_Revenue"] / divisor).round(2)
     summary["Growth %"] = summary.apply(
         lambda row: growth_percentage(row["Revenue"], row["Prev_Revenue"]), axis=1
     )
+    summary["Customer Change"] = summary["Active_Customers"] - summary["Prev_Customers"]
     summary = summary.sort_values("Revenue", ascending=False).reset_index(drop=True)
-
-    total_cy_revenue = float(summary["Revenue"].sum())
-    summary["Share %"] = (summary["Revenue"] / total_cy_revenue * 100) if total_cy_revenue else 0.0
-    max_cy_display = max(float(summary[cy_col].abs().max()), 1.0)
 
     st.markdown(
         "<div class='section-header'>Zone Business: CY vs PY</div>",
         unsafe_allow_html=True,
     )
 
-    zone_rows = []
+    total_cy = float(summary["Revenue"].sum() or 0)
+    max_cy = max(float(summary["Revenue"].max() or 0), 1.0)
+    rows_html = []
+
     for idx, row in summary.iterrows():
-        cy_value = float(row[cy_col] or 0)
-        py_value = float(row[py_col] or 0)
-        share_value = float(row["Share %"] or 0)
-        growth_value = float(row["Growth %"] or 0)
-        width_pct = min(abs(cy_value) / max_cy_display * 100, 100)
-        growth_color = "#16a34a" if growth_value >= 0 else "#dc2626"
-        growth_arrow = "▲" if growth_value >= 0 else "▼"
-        zone_name = str(row["Zone"])
-        zone_rows.append(
-            f"<div class='zone-rank-row'>"
-            f"<div class='zone-rank'>{idx + 1}</div>"
-            f"<div class='zone-name-cell' title='{zone_name}'>{zone_name}</div>"
-            f"<div class='zone-scale'><div class='zone-scale-fill' style='width:{width_pct:.1f}%'></div></div>"
-            f"<div class='zone-cy'>₹{cy_value:,.2f} {unit}</div>"
-            f"<div class='zone-py'>₹{py_value:,.2f} {unit}</div>"
-            f"<div class='zone-share'>{share_value:.2f}%</div>"
-            f"<div class='zone-growth' style='color:{growth_color};'>{growth_arrow} {abs(growth_value):.1f}%</div>"
-            f"</div>"
+        zone_name = html.escape(str(row.get("Zone", "")))
+        cy = float(row.get("Revenue", 0) or 0)
+        py = float(row.get("Prev_Revenue", 0) or 0)
+        active = int(row.get("Active_Customers", 0) or 0)
+        new_count = int(row.get("New", 0) or 0)
+        lost_count = int(row.get("Lost", 0) or 0)
+        growth = float(row.get("Growth %", 0) or 0)
+        share = (cy / total_cy * 100.0) if total_cy > 0 else 0.0
+        scale_width = max(2.0, min(cy / max_cy * 100.0, 100.0)) if cy > 0 else 0.0
+
+        growth_color = "#16a34a" if growth >= 0 else "#ef4444"
+        growth_arrow = "▲" if growth >= 0 else "▼"
+        new_color = "#16a34a" if new_count > 0 else "#64748b"
+        lost_color = "#ef4444" if lost_count > 0 else "#64748b"
+
+        rows_html.append(
+            f'<div class="zone-rank-row">'
+            f'<div class="zone-rank-no">{idx + 1}</div>'
+            f'<div class="zone-rank-name">{zone_name}</div>'
+            f'<div class="zone-rank-scale"><div class="zone-rank-scale-fill" style="width:{scale_width:.1f}%;"></div></div>'
+            f'<div class="zone-rank-num zone-rank-cy">{money_display(cy, conversion_type)}</div>'
+            f'<div class="zone-rank-num zone-rank-py">{money_display(py, conversion_type)}</div>'
+            f'<div class="zone-rank-num zone-rank-share">{share:.1f}%</div>'
+            f'<div class="zone-rank-num">{active:,}</div>'
+            f'<div class="zone-rank-num" style="color:{new_color};font-weight:800;">+{new_count:,}</div>'
+            f'<div class="zone-rank-num" style="color:{lost_color};font-weight:800;">-{lost_count:,}</div>'
+            f'<div class="zone-rank-num" style="color:{growth_color};font-weight:850;">{growth_arrow} {abs(growth):.1f}%</div>'
+            f'</div>'
         )
 
-    zone_html = f"""
+    zone_table_html = f"""
     <style>
-        .zone-rank-wrap {{width:100%;padding:0 1px 2px 1px;}}
-        .zone-rank-header,.zone-rank-row {{
-            display:grid;grid-template-columns:34px minmax(95px,150px) minmax(120px,1fr) 105px 105px 72px 82px;
-            align-items:center;gap:10px;
-        }}
-        .zone-rank-header {{padding:2px 10px 6px;color:#64748b;font-size:10px;font-weight:700;border-bottom:1px solid #dbe4ef;}}
-        .zone-rank-row {{margin-top:7px;padding:9px 10px;border:1px solid #dbe4ef;border-radius:12px;background:#fbfdff;}}
-        .zone-rank {{text-align:center;color:#475569;font-size:12px;}}
-        .zone-name-cell {{font-size:12px;font-weight:650;color:#0f2744;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
-        .zone-scale {{height:7px;background:#e7edf5;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.08);}}
-        .zone-scale-fill {{height:7px;background:linear-gradient(90deg,#7c3aed,#2563eb);border-radius:999px;}}
-        .zone-cy {{text-align:right;color:#0f172a;font-size:12px;font-weight:750;white-space:nowrap;}}
-        .zone-py {{text-align:right;color:#64748b;font-size:12px;white-space:nowrap;}}
-        .zone-share {{text-align:right;color:#6d28d9;font-size:12px;font-weight:700;white-space:nowrap;}}
-        .zone-growth {{text-align:right;font-size:12px;font-weight:700;white-space:nowrap;}}
-        @media (max-width:1100px) {{
-            .zone-rank-header,.zone-rank-row {{grid-template-columns:30px minmax(85px,120px) minmax(90px,1fr) 88px 88px 62px 72px;gap:6px;}}
-        }}
+    .zone-rank-table {{width:100%;font-size:11px;color:#0f2742;}}
+    .zone-rank-head,.zone-rank-row {{display:grid;grid-template-columns:38px minmax(105px,.9fr) minmax(140px,1.25fr) .78fr .78fr .58fr .64fr .58fr .58fr .68fr;align-items:center;column-gap:10px;}}
+    .zone-rank-head {{font-weight:850;padding:7px 10px 8px;color:#17365d;border-bottom:1px solid #dbe5f0;}}
+    .zone-rank-row {{min-height:44px;padding:6px 10px;margin:6px 0;background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%);border:1px solid #dbe5f0;border-radius:10px;box-shadow:0 1px 3px rgba(15,23,42,.04);transition:transform .12s ease,box-shadow .12s ease;}}
+    .zone-rank-row:hover {{transform:translateY(-1px);box-shadow:0 4px 10px rgba(15,23,42,.08);}}
+    .zone-rank-no {{text-align:center;color:#64748b;font-weight:700;}}
+    .zone-rank-name {{font-weight:850;color:#0f2742;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
+    .zone-rank-scale {{height:9px;background:#e8eef6;border-radius:999px;overflow:hidden;}}
+    .zone-rank-scale-fill {{height:100%;background:linear-gradient(90deg,#0ea5e9,#2563eb);border-radius:999px;}}
+    .zone-rank-num {{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}}
+    .zone-rank-cy {{font-weight:850;color:#0f2742;}}
+    .zone-rank-py {{color:#64748b;}}
+    .zone-rank-share {{color:#7c3aed;font-weight:800;}}
+    @media (max-width:1450px) {{.zone-rank-head,.zone-rank-row {{grid-template-columns:32px minmax(90px,.8fr) minmax(110px,1fr) .68fr .68fr .52fr .58fr .52fr .52fr .62fr;column-gap:7px;}} .zone-rank-table {{font-size:10px;}}}}
     </style>
-    <div class='zone-rank-wrap'>
-        <div class='zone-rank-header'>
-            <div style='text-align:center;'>#</div><div>Zone</div><div>Scale</div>
-            <div style='text-align:right;'>CY</div><div style='text-align:right;'>PY</div>
-            <div style='text-align:right;'>Share</div><div style='text-align:right;'>Growth</div>
-        </div>
-        {''.join(zone_rows)}
+    <div class="zone-rank-table">
+      <div class="zone-rank-head">
+        <div>#</div><div>Zone</div><div>Scale</div>
+        <div style="text-align:right;">CY Business</div>
+        <div style="text-align:right;">PY Business</div>
+        <div style="text-align:right;">Share</div>
+        <div style="text-align:right;">{html.escape(customer_label)}s</div>
+        <div style="text-align:right;">New</div>
+        <div style="text-align:right;">Lost</div>
+        <div style="text-align:right;">Growth</div>
+      </div>
+      {''.join(rows_html)}
     </div>
     """
-    if hasattr(st, "html"):
-        st.html(zone_html)
-    else:
-        st.markdown(zone_html, unsafe_allow_html=True)
-
-    table_df = summary.rename(columns={
-        "Active_Customers": f"Active {customer_label}s CY",
-        "Prev_Customers": f"Active {customer_label}s PY",
-    })[[
-        "Zone",
-        f"Active {customer_label}s CY",
-        f"Active {customer_label}s PY",
-        "New",
-        "Lost",
-        cy_col,
-        py_col,
-        "Growth %",
-    ]].sort_values(cy_col, ascending=False)
-
-    with st.expander("View zone figures (CY and PY)", expanded=False):
-        st.dataframe(
-            table_df.style.format({
-                f"Active {customer_label}s CY": "{:,.0f}",
-                f"Active {customer_label}s PY": "{:,.0f}",
-                "New": "{:,.0f}",
-                "Lost": "{:,.0f}",
-                cy_col: "{:,.2f}",
-                py_col: "{:,.2f}",
-                "Growth %": "{:.1f}%",
-            }),
-            use_container_width=True,
-            hide_index=True,
-        )
+    st.markdown(zone_table_html, unsafe_allow_html=True)
 
 
 def render_branch_summary_table(
@@ -2133,7 +2122,7 @@ def render_branch_summary_table(
     customer_label: str,
     conversion_type: str,
 ) -> None:
-    """Top branches comparison visual retaining current-year and previous-year figures."""
+    """Top branches CY vs PY details table with user-selectable row count."""
     current = df.groupby("Branch", as_index=False).agg(
         Revenue=("Revenue", "sum"),
         Customers=(code_col, "nunique"),
@@ -2165,71 +2154,77 @@ def render_branch_summary_table(
     summary["Growth %"] = summary.apply(
         lambda row: growth_percentage(row["Revenue"], row["PrevRevenue"]), axis=1
     )
-    summary = summary.nlargest(10, "Revenue").sort_values("Revenue", ascending=True)
 
-    chart_df = summary[["Branch", cy_col, py_col]].melt(
-        id_vars="Branch",
-        var_name="Period",
-        value_name="Business Display",
-    )
-    st.markdown(
-        "<div class='section-header'>Top 10 Branches: CY vs PY</div>",
-        unsafe_allow_html=True,
-    )
-    fig = px.bar(
-        chart_df,
-        x="Business Display",
-        y="Branch",
-        color="Period",
-        barmode="group",
-        orientation="h",
-        text="Business Display",
-        category_orders={"Period": [py_col, cy_col]},
-    )
-    fig.update_traces(
-        texttemplate="%{text:.2f}",
-        textposition="outside",
-        cliponaxis=False,
-    )
-    fig.update_layout(
-        height=310,
-        margin=dict(l=5, r=30, t=8, b=5),
-        xaxis_title=f"Business ({unit})",
-        yaxis_title="",
-        legend_title_text="",
-        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    table_df = summary.rename(columns={
-        "Customers": f"{customer_label}s CY",
-        "PrevCustomers": f"{customer_label}s PY",
-        "NewCustomers": f"New {customer_label}s",
-    })[[
-        "Branch",
-        cy_col,
-        py_col,
-        f"{customer_label}s CY",
-        f"{customer_label}s PY",
-        f"New {customer_label}s",
-        "Growth %",
-    ]].sort_values(cy_col, ascending=False)
-
-    with st.expander("View branch figures (CY and PY)", expanded=False):
-        st.dataframe(
-            table_df.style.format({
-                cy_col: "{:,.2f}",
-                py_col: "{:,.2f}",
-                f"{customer_label}s CY": "{:,.0f}",
-                f"{customer_label}s PY": "{:,.0f}",
-                f"New {customer_label}s": "{:,.0f}",
-                "Growth %": "{:.1f}%",
-            }),
-            use_container_width=True,
-            hide_index=True,
+    header_left, header_right = st.columns([5, 1], vertical_alignment="center")
+    with header_right:
+        top_n = st.selectbox(
+            "Top",
+            [10, 20, 30, 40],
+            index=0,
+            format_func=lambda value: f"Top {value}",
+            key="customer_branch_top_n",
+            label_visibility="collapsed",
         )
+    with header_left:
+        st.markdown(
+            f"<div class='section-header'>Top {top_n} Branches: CY vs PY</div>",
+            unsafe_allow_html=True,
+        )
+
+    summary = summary.nlargest(top_n, "Revenue").sort_values("Revenue", ascending=False).reset_index(drop=True)
+
+    max_cy = max(float(summary["Revenue"].max()), 1.0)
+    rows_html = []
+    for idx, row in summary.iterrows():
+        branch_name = html.escape(str(row.get("Branch", "")))
+        cy = float(row.get("Revenue", 0) or 0)
+        py = float(row.get("PrevRevenue", 0) or 0)
+        customers_cy = int(row.get("Customers", 0) or 0)
+        new_customers = int(row.get("NewCustomers", 0) or 0)
+        growth = float(row.get("Growth %", 0) or 0)
+        scale_width = max(2.0, min(cy / max_cy * 100.0, 100.0)) if cy > 0 else 0.0
+        growth_color = "#16a34a" if growth >= 0 else "#ef4444"
+        growth_arrow = "▲" if growth >= 0 else "▼"
+        new_color = "#2563eb" if new_customers > 0 else "#64748b"
+
+        rows_html.append(
+            f'<div class="branch-rank-row">'
+            f'<div class="branch-rank-no">{idx + 1}</div>'
+            f'<div class="branch-rank-name">{branch_name}</div>'
+            f'<div class="branch-rank-scale"><div class="branch-rank-scale-fill" style="width:{scale_width:.1f}%;"></div></div>'
+            f'<div class="branch-rank-num branch-rank-cy">{money_display(cy, conversion_type)}</div>'
+            f'<div class="branch-rank-num branch-rank-py">{money_display(py, conversion_type)}</div>'
+            f'<div class="branch-rank-num">{customers_cy:,}</div>'
+            f'<div class="branch-rank-num" style="color:{new_color};font-weight:800;">+{new_customers:,}</div>'
+            f'<div class="branch-rank-num" style="color:{growth_color};font-weight:850;">{growth_arrow} {abs(growth):.1f}%</div>'
+            f'</div>'
+        )
+
+    branch_table_html = f"""
+    <style>
+    .branch-rank-table {{width:100%;font-size:11px;color:#0f2742;}}
+    .branch-rank-head,.branch-rank-row {{display:grid;grid-template-columns:42px minmax(155px,1.15fr) minmax(180px,1.45fr) .78fr .78fr .72fr .72fr .72fr;align-items:center;column-gap:12px;}}
+    .branch-rank-head {{font-weight:850;padding:7px 10px 8px;color:#17365d;border-bottom:1px solid #dbe5f0;}}
+    .branch-rank-row {{min-height:44px;padding:6px 10px;margin:6px 0;background:#fbfdff;border:1px solid #dbe5f0;border-radius:10px;box-shadow:0 1px 2px rgba(15,23,42,.03);}}
+    .branch-rank-no {{text-align:center;color:#64748b;font-weight:700;}}
+    .branch-rank-name {{font-weight:800;color:#0f2742;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
+    .branch-rank-scale {{height:9px;background:#e8eef6;border-radius:999px;overflow:hidden;}}
+    .branch-rank-scale-fill {{height:100%;background:linear-gradient(90deg,#7c3aed,#2563eb);border-radius:999px;}}
+    .branch-rank-num {{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}}
+    .branch-rank-cy {{font-weight:850;color:#0f2742;}}
+    .branch-rank-py {{color:#64748b;}}
+    @media (max-width:1400px) {{.branch-rank-head,.branch-rank-row {{grid-template-columns:34px minmax(130px,1.05fr) minmax(130px,1.15fr) .75fr .75fr .65fr .65fr .68fr;column-gap:8px;}} .branch-rank-table {{font-size:10px;}}}}
+    </style>
+    <div class="branch-rank-table">
+      <div class="branch-rank-head">
+        <div>#</div><div>Branch</div><div>Scale</div><div style="text-align:right;">CY Business</div>
+        <div style="text-align:right;">PY Business</div><div style="text-align:right;">{html.escape(customer_label)}s</div>
+        <div style="text-align:right;">New</div><div style="text-align:right;">Growth</div>
+      </div>
+      {''.join(rows_html)}
+    </div>
+    """
+    st.markdown(branch_table_html, unsafe_allow_html=True)
 
 
 def render_drilldown_tab(df: pd.DataFrame, name_col: str, customer_label: str, conversion_type: str) -> None:
@@ -2265,6 +2260,43 @@ def dashboard_spacer(height: int = 12) -> None:
 
 
 # =====================================================
+# Cached base data loader
+# =====================================================
+@st.cache_data(show_spinner=False, ttl=1800, max_entries=8)
+def load_customer_analysis_periods(fin_year: str, view_type: str):
+    """Load current, previous and older FY data once per FY/view.
+
+    Streamlit reruns the script whenever a filter widget changes. Without this
+    cache, the three database queries were executed again for every Zone, Circle,
+    Branch, Quarter, Month, Load Type, Customer or Conversion change.
+    """
+    start_date, end_date = get_date_range(fin_year)
+
+    previous_year = previous_financial_year(fin_year, 1)
+    prev_start, prev_end = get_date_range(previous_year)
+
+    older_year = previous_financial_year(fin_year, 2)
+    old_start, old_end = get_date_range(older_year)
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        current_future = executor.submit(
+            load_booking_data, start_date, end_date, view_type
+        )
+        previous_future = executor.submit(
+            load_booking_data, prev_start, prev_end, view_type
+        )
+        older_future = executor.submit(
+            load_booking_data, old_start, old_end, view_type
+        )
+
+        current_df = clean_booking_data(current_future.result())
+        previous_df = clean_booking_data(previous_future.result())
+        older_df = clean_booking_data(older_future.result())
+
+    return current_df, previous_df, older_df, previous_year, older_year
+
+
+# =====================================================
 # Main Dashboard
 # =====================================================
 def show_CustomerAnalysis() -> None:
@@ -2281,42 +2313,14 @@ def show_CustomerAnalysis() -> None:
     name_col       = config["name_col"]
     customer_label = config["label"]
 
-    start_date, end_date = get_date_range(fin_year)
-
-    previous_year = previous_financial_year(fin_year, 1)
-    prev_start, prev_end = get_date_range(previous_year)
-
-    older_year = previous_financial_year(fin_year, 2)
-    old_start, old_end = get_date_range(older_year)
-
-    # Load each financial year separately. The stored procedure does not need to
-    # return a YR column because the date range itself identifies the period.
-    # Three independent calls are executed in parallel to reduce wait time.
+    # Load the three financial-year datasets once per FY/View combination.
+    # Filter widget changes now work against cached in-memory DataFrames instead
+    # of executing the stored procedure three more times on every Streamlit rerun.
     try:
         with st.spinner("Loading customer summary data..."):
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                current_future = executor.submit(
-                    load_booking_data,
-                    start_date,
-                    end_date,
-                    view_type,
-                )
-                previous_future = executor.submit(
-                    load_booking_data,
-                    prev_start,
-                    prev_end,
-                    view_type,
-                )
-                older_future = executor.submit(
-                    load_booking_data,
-                    old_start,
-                    old_end,
-                    view_type,
-                )
-
-                df = clean_booking_data(current_future.result())
-                prev_df = clean_booking_data(previous_future.result())
-                old_df = clean_booking_data(older_future.result())
+            df, prev_df, old_df, previous_year, older_year = load_customer_analysis_periods(
+                fin_year, view_type
+            )
     except Exception as exc:
         st.error(f"Unable to load Customer Analysis data: {exc}")
         return
@@ -2380,11 +2384,37 @@ def show_CustomerAnalysis() -> None:
         filter_columns,
     )
 
+    def _chip_value(values, all_label="All"):
+        if values in (None, "All"):
+            return all_label
+        if isinstance(values, (list, tuple, set)):
+            vals = [str(v) for v in values if v not in (None, "", "All")]
+            if not vals:
+                return all_label
+            return vals[0] if len(vals) == 1 else f"{len(vals)} selected"
+        return str(values)
+
     header_items = [
         ("FY", fin_year),
         ("View", "Origin" if view_type == "origin" else "Destination"),
         ("Unit", conversion_type),
     ]
+
+    # Show active slicer selections in the header as compact chips.
+    # All/default selections are omitted so the header stays clean.
+    active_header_filters = [
+        ("Zone", zone),
+        ("Circle", circle),
+        ("Branch", branch),
+        ("Quarter", quarter),
+        ("Month", month),
+        ("Load", load_type),
+        (customer_label, customer),
+    ]
+    for label, value in active_header_filters:
+        chip_val = _chip_value(value)
+        if chip_val != "All":
+            header_items.append((label, chip_val))
     header_chips = "".join(
         f'<span class="header-filter-chip">{label}: {value}</span>'
         for label, value in header_items
@@ -2516,7 +2546,10 @@ def show_CustomerAnalysis() -> None:
 
     # --- KPIs ---
     render_kpis(metrics, customer_label, conversion_type)
-    dashboard_spacer()
+
+    # Real Streamlit spacer so the next insight row never touches the KPI cards.
+    with st.container(height=18, border=False):
+        st.markdown("&nbsp;", unsafe_allow_html=True)
 
     # --- Business and geography ---
     c1, c2 = st.columns([1.15, 0.85], gap="medium", vertical_alignment="top")
@@ -2525,7 +2558,7 @@ def show_CustomerAnalysis() -> None:
             render_zone_summary_table(df, prev_df, code_col, customer_label, conversion_type)
     with c2:
         with st.container(border=True):
-            st.markdown("<div class='section-header'>Business Movement</div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-header business-movement-title'>Business Movement</div>", unsafe_allow_html=True)
             render_revenue_bridge(metrics, customer_label, conversion_type)
 
     dashboard_spacer()
@@ -2537,17 +2570,11 @@ def show_CustomerAnalysis() -> None:
     dashboard_spacer()
 
     # --- Tabs ---
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2 = st.tabs([
         "Executive Overview",
-        "Customer Intelligence",
-        "Service Performance",
         "Detailed Analysis",
     ])
     with tab1:
         render_overview_tab(customer_summary, monthly, df, code_col, name_col, customer_label, prev_df, lost_customer_codes, conversion_type)
     with tab2:
-        render_growth_tab(growth_df, name_col, customer_label, conversion_type)
-    with tab3:
-        render_service_tab(service_df, customer_label, conversion_type)
-    with tab4:
         render_drilldown_tab(df, name_col, customer_label, conversion_type)
