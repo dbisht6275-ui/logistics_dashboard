@@ -464,7 +464,7 @@ def _inject_overview_css():
 
             /* Compact layout overrides */
             .block-container {max-width:100%;padding:.35rem .75rem .75rem!important;}
-            div[data-testid="stVerticalBlock"] {gap:.35rem!important;}
+            div[data-testid="stVerticalBlock"] {gap:.55rem!important;}
             div[data-testid="stHorizontalBlock"] {gap:.5rem!important;}
             div[data-testid="stVerticalBlockBorderWrapper"] {border-radius:11px!important;box-shadow:0 3px 10px rgba(15,42,67,.07)!important;}
             div[data-testid="stVerticalBlockBorderWrapper"] > div {padding:.55rem .65rem!important;}
@@ -886,51 +886,6 @@ def _inject_overview_css():
                 }
             }
 
-            /* Operational Highlights compact expand/collapse buttons */
-            .st-key-operational_metrics_toggle div[data-testid="stButton"],
-            .st-key-operational_conditions_toggle div[data-testid="stButton"] {
-                display: flex !important;
-                justify-content: flex-end !important;
-                margin: 0 !important;
-                padding: 0 !important;
-            }
-
-            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button,
-            .st-key-operational_conditions_toggle div[data-testid="stButton"] > button {
-                width: auto !important;
-                min-width: 86px !important;
-                min-height: 28px !important;
-                height: 28px !important;
-                padding: 3px 10px !important;
-                margin: 0 !important;
-                border: 1px solid #bfd2ea !important;
-                border-radius: 8px !important;
-                background: #f8fbff !important;
-                color: #1d4ed8 !important;
-                font-size: 9px !important;
-                font-weight: 750 !important;
-                line-height: 1 !important;
-                box-shadow: none !important;
-                transform: none !important;
-            }
-
-            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button:hover,
-            .st-key-operational_conditions_toggle div[data-testid="stButton"] > button:hover {
-                border-color: #7aa7e8 !important;
-                background: #eef6ff !important;
-                box-shadow: none !important;
-                transform: none !important;
-            }
-
-            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button p,
-            .st-key-operational_conditions_toggle div[data-testid="stButton"] > button p {
-                margin: 0 !important;
-                color: #1d4ed8 !important;
-                font-size: 9px !important;
-                font-weight: 750 !important;
-                white-space: nowrap !important;
-            }
-
             /* Target Achievement Top-N control: hide the selectbox label completely.
                Global selectbox CSS forces labels visible, so this key-specific rule
                keeps the compact dropdown in its own header slot with no "Top" text above it. */
@@ -952,12 +907,12 @@ def _inject_overview_css():
 
             /* Keep dashboard cards visually separated so neighbouring visuals never touch. */
             div[data-testid="stVerticalBlockBorderWrapper"] {
-                margin-bottom: 6px !important;
+                margin-bottom: 10px !important;
             }
 
             /* Slightly safer breathing room between columns on dense dashboard rows. */
             div[data-testid="stHorizontalBlock"] {
-                column-gap: 0.65rem !important;
+                column-gap: 0.85rem !important;
             }
 
             @media (max-width: 1180px) {
@@ -1704,81 +1659,15 @@ def _build_sla_metrics(current_df, previous_df):
 
 
 def _render_operational_highlights(current_df, previous_df):
-    """Render Operational Highlights with independent metric and condition expand/collapse controls."""
+    """Render Operational Highlights. SLA calculations remain unchanged."""
     current_col, previous_col, metrics = _build_sla_metrics(current_df, previous_df)
 
-    # UI-only state. The underlying SLA calculations remain unchanged.
-    metrics_state_key = "operational_highlights_expanded"
-    conditions_state_key = "operational_conditions_expanded"
-    if metrics_state_key not in st.session_state:
-        st.session_state[metrics_state_key] = True
-    if conditions_state_key not in st.session_state:
-        st.session_state[conditions_state_key] = False
-
     with st.container(border=True):
-        title_col, condition_col, metric_col = st.columns(
-            [1.0, 0.46, 0.42], gap="small", vertical_alignment="center"
+        st.markdown(
+            "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 8px 2px;'>"
+            "Operational Highlights</div>",
+            unsafe_allow_html=True,
         )
-
-        with title_col:
-            st.markdown(
-                "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 2px 2px;'>"
-                "Operational Highlights</div>",
-                unsafe_allow_html=True,
-            )
-
-        with condition_col:
-            condition_label = (
-                "− HIDE CONDITIONS"
-                if st.session_state[conditions_state_key]
-                else "＋ SHOW CONDITIONS"
-            )
-            if st.button(
-                condition_label,
-                key="operational_conditions_toggle",
-                help="Show or hide the conditions used for On-Time Delivery, Before EDD, On EDD, After EDD, In Transit and Overdue.",
-                width="content",
-            ):
-                st.session_state[conditions_state_key] = not st.session_state[conditions_state_key]
-                st.rerun()
-
-        with metric_col:
-            toggle_label = "− HIDE METRICS" if st.session_state[metrics_state_key] else "＋ SHOW METRICS"
-            if st.button(
-                toggle_label,
-                key="operational_metrics_toggle",
-                help="Expand or collapse Operational Highlights metrics.",
-                width="content",
-            ):
-                st.session_state[metrics_state_key] = not st.session_state[metrics_state_key]
-                st.rerun()
-
-        # Condition explanation is hidden by default and opens only when requested.
-        if st.session_state[conditions_state_key]:
-            st.markdown(
-                "<div style='margin:5px 0 8px 2px;padding:8px 10px;border:1px solid #dbe5f0;"
-                "border-radius:9px;background:#f8fafc;color:#475569;font-size:9.5px;line-height:1.45;'>"
-                "<b>Conditions used</b><br>"
-                "• <b>On-Time Delivery %</b> = (Before EDD + On EDD) ÷ "
-                "(Before EDD + On EDD + After EDD + Overdue) × 100.<br>"
-                "• <b>Before EDD</b> = consignments delivered before expected delivery date.<br>"
-                "• <b>On EDD</b> = consignments delivered on expected delivery date.<br>"
-                "• <b>After EDD</b> = consignments delivered after expected delivery date.<br>"
-                "• <b>In Transit</b> = consignments currently marked In Transit.<br>"
-                "• <b>Overdue</b> = consignments currently marked Overdue.<br>"
-                "• <b>YoY colour rule:</b> Green = favourable vs LY, Red = unfavourable vs LY. "
-                "For After EDD, In Transit and Overdue, <b>lower is better</b>; for On-Time, Before EDD and On EDD, <b>higher is better</b>."
-                "</div>",
-                unsafe_allow_html=True,
-            )
-
-        if not st.session_state[metrics_state_key]:
-            st.markdown(
-                "<div style='font-size:10px;color:#64748b;margin:5px 0 2px 2px;'>"
-                "Metrics are hidden. Use SHOW METRICS to expand them.</div>",
-                unsafe_allow_html=True,
-            )
-            return
 
         if current_col is None:
             st.info("SLAStatus column is missing.")
