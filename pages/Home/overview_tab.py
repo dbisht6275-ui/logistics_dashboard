@@ -8,7 +8,7 @@ from services.data_loader import load_booking_data_pair, get_date_range
 from services.branch_agency_mast import load_stationmast_data
 
 # Compact layout constants
-SPACER_HEIGHT = 4
+SPACER_HEIGHT = 10
 REVENUE_CHART_HEIGHT = 310
 ALIGNED_CHART_HEIGHT = 310
 RANKING_CHART_HEIGHT = 330
@@ -905,48 +905,52 @@ def _inject_overview_css():
                 margin: 0 !important;
             }
 
-            /* Keep dashboard cards visually separated so neighbouring visuals never touch. */
-            div[data-testid="stVerticalBlockBorderWrapper"] {
-                margin-bottom: 10px !important;
-            }
-
-            /* Slightly safer breathing room between columns on dense dashboard rows. */
-            div[data-testid="stHorizontalBlock"] {
-                column-gap: 0.85rem !important;
-            }
-
             /* ============================================================
-               VISUAL / INSIGHT GAP FIX
-               Apply spacing only to rows that actually contain bordered
-               dashboard visuals. This avoids disturbing the filter strip
-               while ensuring chart/table/insight cards never touch.
+               VISUAL / INSIGHT SPACING
+               Use real card margins plus Streamlit column gaps. The previous
+               :has()-only rule was browser/layout dependent, so spacing could
+               still look unchanged. These rules are intentionally stronger.
                ============================================================ */
-            div[data-testid="stHorizontalBlock"]:has(div[data-testid="stVerticalBlockBorderWrapper"]) {
-                column-gap: 1rem !important;
-                margin-top: 0.28rem !important;
-                margin-bottom: 0.72rem !important;
-            }
-
-            /* Every bordered visual gets a small clear buffer below it. */
             div[data-testid="stVerticalBlockBorderWrapper"] {
-                margin-bottom: 0.72rem !important;
+                margin-top: 4px !important;
+                margin-bottom: 12px !important;
+                box-sizing: border-box !important;
             }
 
-            /* Plotly charts should not visually sit on the card edge or the next insight. */
+            /* Rows that contain visual cards get a guaranteed horizontal gutter. */
+            div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]) {
+                gap: 16px !important;
+                column-gap: 16px !important;
+                margin-top: 4px !important;
+                margin-bottom: 8px !important;
+            }
+
+            /* Prevent the bordered surface from visually bleeding into the next column. */
+            div[data-testid="stHorizontalBlock"]:has(div[data-testid="stVerticalBlockBorderWrapper"])
+            > div[data-testid="stColumn"] {
+                padding-left: 2px !important;
+                padding-right: 2px !important;
+                box-sizing: border-box !important;
+            }
+
+            /* Plotly/dataframe content receives a small inner buffer too. */
             div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPlotlyChart"] {
-                margin-top: 0.18rem !important;
-                margin-bottom: 0.22rem !important;
+                margin-top: 3px !important;
+                margin-bottom: 5px !important;
             }
 
-            /* Dataframes/tables inside visual cards also receive a small bottom buffer. */
             div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stDataFrame"] {
-                margin-bottom: 0.18rem !important;
+                margin-bottom: 5px !important;
             }
 
             @media (max-width: 1500px) {
-                div[data-testid="stHorizontalBlock"]:has(div[data-testid="stVerticalBlockBorderWrapper"]) {
-                    column-gap: 0.75rem !important;
-                    margin-bottom: 0.60rem !important;
+                div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]) {
+                    gap: 12px !important;
+                    column-gap: 12px !important;
+                    margin-bottom: 7px !important;
+                }
+                div[data-testid="stVerticalBlockBorderWrapper"] {
+                    margin-bottom: 10px !important;
                 }
             }
 
@@ -2530,7 +2534,7 @@ def show_overview():
     ltl_pct = (ltl / revenue * 100) if revenue else 0
 
     # Business trend and load type charts
-    row1, row2 = st.columns([1.20, 0.80])
+    row1, row2 = st.columns([1.20, 0.80], gap="medium")
 
     with row1:
         with st.container(border=True):
@@ -3107,7 +3111,7 @@ def show_overview():
     # =====================================================
     # Weight Trend and Business by Zone in one aligned row
     # =====================================================
-    weight_zone_left, weight_zone_right = st.columns([1.55, 1], gap="small")
+    weight_zone_left, weight_zone_right = st.columns([1.55, 1], gap="medium")
     aligned_chart_height = ALIGNED_CHART_HEIGHT
 
     with weight_zone_left:
@@ -3587,7 +3591,7 @@ def show_overview():
 
         # Three compact insights in one row: MoM, branch achievement, overall gauge.
         mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
-            [1.20, 1.20, 0.60], gap="small", vertical_alignment="top"
+            [1.20, 1.20, 0.60], gap="medium", vertical_alignment="top"
         )
 
         with mom_chart_col:
@@ -4357,7 +4361,7 @@ def show_overview():
     ).round(2)
 
     # Keep only Top Branches and Operational Highlights in one balanced row.
-    b1, b2 = st.columns([1.25, 0.80], gap="small")
+    b1, b2 = st.columns([1.25, 0.80], gap="medium")
 
     with b1:
         with st.container(border=True):
