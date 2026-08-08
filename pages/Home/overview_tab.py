@@ -899,6 +899,79 @@ def _inject_overview_css():
                 }
             }
 
+            /* ============================================================
+               FILTER ALIGNMENT FIX
+               Custom checkbox slicers render their label and popover as two
+               Streamlit elements, while selectboxes keep both inside one
+               widget. Reserve the same label row so every control starts on
+               exactly the same horizontal line. Visual-only: no filter logic.
+               ============================================================ */
+            div[data-testid="stVerticalBlock"]:has(.checkbox-slicer-label) {
+                gap: 0 !important;
+            }
+
+            div[data-testid="stElementContainer"]:has(.checkbox-slicer-label) {
+                min-height: 31px !important;
+                height: 31px !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+            }
+
+            .checkbox-slicer-label {
+                height: 22px !important;
+                min-height: 22px !important;
+                margin: 0 0 9px 2px !important;
+                line-height: 22px !important;
+            }
+
+            div[data-testid="stVerticalBlock"]:has(.checkbox-slicer-label) div[data-testid="stPopover"] {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            @media (min-width: 1800px) {
+                div[data-testid="stElementContainer"]:has(.checkbox-slicer-label) {
+                    min-height: 31px !important;
+                    height: 31px !important;
+                }
+                .checkbox-slicer-label {
+                    height: 22px !important;
+                    min-height: 22px !important;
+                    line-height: 22px !important;
+                    margin-bottom: 9px !important;
+                    font-size: 11px !important;
+                }
+            }
+
+            @media (max-width: 1500px) {
+                div[data-testid="stElementContainer"]:has(.checkbox-slicer-label) {
+                    min-height: 29px !important;
+                    height: 29px !important;
+                }
+                .checkbox-slicer-label {
+                    height: 21px !important;
+                    min-height: 21px !important;
+                    line-height: 21px !important;
+                    margin-bottom: 8px !important;
+                    font-size: 9px !important;
+                }
+            }
+
+            @media (max-width: 1180px) {
+                div[data-testid="stElementContainer"]:has(.checkbox-slicer-label) {
+                    min-height: 29px !important;
+                    height: 29px !important;
+                }
+                .checkbox-slicer-label {
+                    height: 21px !important;
+                    min-height: 21px !important;
+                    line-height: 21px !important;
+                    margin-bottom: 8px !important;
+                    font-size: 8.5px !important;
+                }
+            }
+
         </style>
         """,
         unsafe_allow_html=True,
@@ -2578,10 +2651,14 @@ def show_overview():
         with st.container(border=True):
             st.markdown(
                 f'<div style="font-size:{LOAD_TITLE_FONT}px;font-weight:600;'
-                f'color:#0f172a;margin:0 0 5px 0;line-height:1.1;">'
+                f'color:#0f172a;margin:0;line-height:1.1;">'
                 f'Business by Load Type (CY)</div>',
                 unsafe_allow_html=True,
             )
+
+            # Keep a clean visual gap between the heading and donut chart.
+            # This is presentation-only and does not alter any calculation.
+            compact_spacer(10)
 
             prev_ftl = prev_kpis["ftl"]
             prev_ltl = prev_kpis["ltl"]
@@ -2624,7 +2701,7 @@ def show_overview():
 
                 fig_load.update_layout(
                     height=165,
-                    margin=dict(l=0, r=0, t=0, b=0),
+                    margin=dict(l=0, r=0, t=8, b=0),
                     paper_bgcolor="rgba(0,0,0,0)",
                     plot_bgcolor="rgba(0,0,0,0)",
                     showlegend=False,
