@@ -4320,9 +4320,8 @@ def show_overview():
     branch_summary["Monthly_Avg_Business"] = branch_summary["Business"] / current_month_count
     branch_summary["LY_Monthly_Avg_Business"] = branch_summary["LY_Business"] / previous_month_count
 
-    # Keep the ORIGINAL business-slab classification logic unchanged.
-    # Slabs are still assigned from selected-period branch Business totals.
-    # Only the displayed CY/LY values, ranking, scale and growth use monthly averages.
+    # Keep the SAME slab labels/ranges, but classify branches by Monthly Avg Business
+    # so the rows shown inside a slab match the displayed CY Avg values.
     business_slab_options = [
         "All",
         "₹0–5 Lac",
@@ -4359,10 +4358,10 @@ def show_overview():
     top_branch_pool = branch_summary.copy()
 
     if slab_min is not None:
-        top_branch_pool = top_branch_pool[top_branch_pool["Business"] >= slab_min]
+        top_branch_pool = top_branch_pool[top_branch_pool["Monthly_Avg_Business"] >= slab_min]
     if slab_max is not None:
         # Upper limit is exclusive so one branch cannot fall into two slabs.
-        top_branch_pool = top_branch_pool[top_branch_pool["Business"] < slab_max]
+        top_branch_pool = top_branch_pool[top_branch_pool["Monthly_Avg_Business"] < slab_max]
 
     branch_rank_df = (
         top_branch_pool
@@ -4398,9 +4397,9 @@ def show_overview():
             slab_min, slab_max = slab_ranges.get(selected_business_slab, (None, None))
             top_branch_pool = branch_summary.copy()
             if slab_min is not None:
-                top_branch_pool = top_branch_pool[top_branch_pool["Business"] >= slab_min]
+                top_branch_pool = top_branch_pool[top_branch_pool["Monthly_Avg_Business"] >= slab_min]
             if slab_max is not None:
-                top_branch_pool = top_branch_pool[top_branch_pool["Business"] < slab_max]
+                top_branch_pool = top_branch_pool[top_branch_pool["Monthly_Avg_Business"] < slab_max]
 
             branch_rank_df = (
                 top_branch_pool
