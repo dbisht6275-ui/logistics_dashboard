@@ -2575,15 +2575,15 @@ def show_overview():
     )
 
     header_filter_html = (
-        f'<div class="filter-summary" style="margin-top:7px;min-height:0;">'
+        f'<div class="filter-summary" style="width:auto;min-height:0;flex-wrap:nowrap;gap:6px;">'
         f'{active_filter_html}</div>'
         if active_filter_html else ''
     )
     with header_content_placeholder:
         st.markdown(
             f"""
-            <div style="padding:2px 0 3px 4px;">
-                <div class="executive-title">Business Overview</div>
+            <div style="padding:2px 0 3px 4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div class="executive-title" style="white-space:nowrap;">Business Overview</div>
                 {header_filter_html}
             </div>
             """,
