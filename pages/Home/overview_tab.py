@@ -929,6 +929,165 @@ def _inject_overview_css():
             }
 
             /* ============================================================
+               CHART CONTROL BUTTONS — same executive design as slab buttons
+               Business Trend, Weight Trend and Target Achievement hierarchy.
+               Visual-only; period/hierarchy logic is unchanged.
+               ============================================================ */
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"],
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"],
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] {
+                display: flex !important;
+                justify-content: flex-end !important;
+                width: 100% !important;
+            }
+
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] > div,
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] [role="radiogroup"],
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] > div,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] [role="radiogroup"],
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] > div,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] [role="radiogroup"] {
+                display: grid !important;
+                gap: 7px !important;
+                width: 100% !important;
+                padding: 0 !important;
+                border: 0 !important;
+                background: transparent !important;
+                box-shadow: none !important;
+            }
+
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] > div,
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] [role="radiogroup"],
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] > div,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] [role="radiogroup"] {
+                grid-template-columns: repeat(4, minmax(72px, 1fr)) !important;
+            }
+
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] > div,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] [role="radiogroup"] {
+                grid-template-columns: repeat(3, minmax(72px, 1fr)) !important;
+            }
+
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label,
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button {
+                position: relative !important;
+                overflow: hidden !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                min-width: 0 !important;
+                min-height: 34px !important;
+                height: 34px !important;
+                padding: 4px 8px !important;
+                margin: 0 !important;
+                border: 1px solid #d8e2ee !important;
+                border-radius: 8px !important;
+                background: linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%) !important;
+                color: #334155 !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 1px 2px rgba(15,23,42,.05) !important;
+                transform: none !important;
+                font-size: 11px !important;
+                font-weight: 650 !important;
+                white-space: nowrap !important;
+                transition: border-color .14s ease, background .14s ease, color .14s ease, box-shadow .14s ease !important;
+            }
+
+            /* Remove the old segmented-control gloss / top stripe for these controls. */
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label::before,
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label::after,
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button::before,
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button::after,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label::before,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label::after,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button::before,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button::after,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label::before,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label::after,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button::before,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button::after {
+                content: none !important;
+                display: none !important;
+            }
+
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label:hover,
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button:hover,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label:hover,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button:hover,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label:hover,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button:hover {
+                border-color: #9bb7d8 !important;
+                background: linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important;
+                color: #174a7e !important;
+                box-shadow: inset 0 1px 0 #ffffff, 0 2px 5px rgba(15,42,67,.08) !important;
+                transform: none !important;
+            }
+
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label:has(input:checked),
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button[aria-pressed="true"],
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label:has(input:checked),
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button[aria-pressed="true"],
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label:has(input:checked),
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
+                border-color: #123f73 !important;
+                background: linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
+                color: #ffffff !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 2px 5px rgba(15,42,67,.18) !important;
+                transform: none !important;
+            }
+
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label p,
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label span,
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button p,
+            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button span,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label p,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label span,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button p,
+            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button span,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label p,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label span,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button p,
+            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button span {
+                margin: 0 !important;
+                padding: 0 !important;
+                font-size: 11px !important;
+                font-weight: 650 !important;
+                color: inherit !important;
+                white-space: nowrap !important;
+            }
+
+            @media (max-width: 1500px) {
+                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label,
+                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button,
+                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label,
+                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button,
+                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label,
+                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button {
+                    min-height: 32px !important;
+                    height: 32px !important;
+                    padding: 3px 5px !important;
+                    font-size: 9.5px !important;
+                }
+                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label p,
+                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label span,
+                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button p,
+                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button span,
+                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label p,
+                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label span,
+                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button p,
+                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button span,
+                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label p,
+                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label span,
+                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button p,
+                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button span {
+                    font-size: 9.5px !important;
+                }
+            }
+
+            /* ============================================================
                Power-BI checkbox slicers - preserve the EXISTING filter UI.
                The closed slicer is styled like the existing st.selectbox:
                same height, grey fill, border radius and one-row footprint.
