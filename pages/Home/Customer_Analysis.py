@@ -267,12 +267,12 @@ def apply_dashboard_style() -> None:
 
         /* ---------- Prevent KPI / insight overlap ---------- */
         .kpi-row-spacer {
-            height: 14px;
+            height: 12px;
             width: 100%;
             clear: both;
         }
         .insight-section-spacer {
-            height: 6px;
+            height: 12px;
             width: 100%;
             clear: both;
         }
@@ -296,7 +296,9 @@ def apply_dashboard_style() -> None:
             }
         }
 
-        .dashboard-row-gap { height: 12px; width: 100%; clear: both; display:block; }
+        .dashboard-row-gap { height: 12px; min-height: 12px; width: 100%; clear: both; display:block; line-height:12px; font-size:1px; }
+        .header-filter-summary { display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-width:0; }
+        .header-filter-chip { display:inline-flex; align-items:center; min-height:26px; padding:4px 11px; border:1px solid #bfdbfe; border-radius:999px; background:#f8fbff; color:#1d4ed8; font-size:10px; font-weight:650; white-space:nowrap; box-shadow:0 1px 3px rgba(37,99,235,.06); }
         .section-header {
             border-bottom:0 !important; padding-bottom:0 !important; margin-bottom:7px !important;
             color:#0f2744 !important; font-weight:650 !important;
@@ -730,7 +732,7 @@ def add_customer_segments(customer_summary: pd.DataFrame) -> pd.DataFrame:
 # UI Sections
 # =====================================================
 def render_dashboard_header():
-    """Render the compact Overview-style heading and return the export placeholder."""
+    """Render the compact Overview-style header and return content/export placeholders."""
     with st.container(border=True):
         header_left, header_right = st.columns(
             [7, 1],
@@ -739,22 +741,21 @@ def render_dashboard_header():
         )
 
         with header_left:
-            st.markdown(
-                """
-                <div class="dashboard-header">
-                    <div class="dashboard-title">Customer Analysis</div>
-                    <div class="dashboard-subtitle">
-                        Analyze customer acquisition, retention, revenue and branch performance.
+            header_content_placeholder = st.empty()
+            with header_content_placeholder:
+                st.markdown(
+                    """
+                    <div class="dashboard-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <div class="dashboard-title" style="white-space:nowrap;">Customer Analysis</div>
                     </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
+                    """,
+                    unsafe_allow_html=True,
+                )
 
         with header_right:
             export_placeholder = st.empty()
 
-    return export_placeholder
+    return header_content_placeholder, export_placeholder
 
 
 def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
@@ -1523,43 +1524,73 @@ def render_zone_summary_table(
     summary["Growth %"] = summary.apply(
         lambda row: growth_percentage(row["Revenue"], row["Prev_Revenue"]), axis=1
     )
-    summary = summary.sort_values("Revenue", ascending=True)
+    summary = summary.sort_values("Revenue", ascending=False).reset_index(drop=True)
 
-    chart_df = summary[["Zone", cy_col, py_col]].melt(
-        id_vars="Zone",
-        var_name="Period",
-        value_name="Revenue Display",
-    )
+    total_cy_revenue = float(summary["Revenue"].sum())
+    summary["Share %"] = (summary["Revenue"] / total_cy_revenue * 100) if total_cy_revenue else 0.0
+    max_cy_display = max(float(summary[cy_col].abs().max()), 1.0)
+
     st.markdown(
-        f"<div class='section-header'>Zone Revenue: CY vs PY</div>",
+        "<div class='section-header'>Zone Revenue: CY vs PY</div>",
         unsafe_allow_html=True,
     )
-    fig = px.bar(
-        chart_df,
-        x="Revenue Display",
-        y="Zone",
-        color="Period",
-        barmode="group",
-        orientation="h",
-        text="Revenue Display",
-        category_orders={"Period": [py_col, cy_col]},
-    )
-    fig.update_traces(
-        texttemplate="%{text:.2f}",
-        textposition="outside",
-        cliponaxis=False,
-    )
-    fig.update_layout(
-        height=310,
-        margin=dict(l=5, r=30, t=8, b=5),
-        xaxis_title=f"Revenue ({unit})",
-        yaxis_title="",
-        legend_title_text="",
-        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    zone_rows = []
+    for idx, row in summary.iterrows():
+        cy_value = float(row[cy_col] or 0)
+        py_value = float(row[py_col] or 0)
+        share_value = float(row["Share %"] or 0)
+        growth_value = float(row["Growth %"] or 0)
+        width_pct = min(abs(cy_value) / max_cy_display * 100, 100)
+        growth_color = "#16a34a" if growth_value >= 0 else "#dc2626"
+        growth_arrow = "▲" if growth_value >= 0 else "▼"
+        zone_name = str(row["Zone"])
+        zone_rows.append(
+            f"<div class='zone-rank-row'>"
+            f"<div class='zone-rank'>{idx + 1}</div>"
+            f"<div class='zone-name-cell' title='{zone_name}'>{zone_name}</div>"
+            f"<div class='zone-scale'><div class='zone-scale-fill' style='width:{width_pct:.1f}%'></div></div>"
+            f"<div class='zone-cy'>₹{cy_value:,.2f} {unit}</div>"
+            f"<div class='zone-py'>₹{py_value:,.2f} {unit}</div>"
+            f"<div class='zone-share'>{share_value:.2f}%</div>"
+            f"<div class='zone-growth' style='color:{growth_color};'>{growth_arrow} {abs(growth_value):.1f}%</div>"
+            f"</div>"
+        )
+
+    zone_html = f"""
+    <style>
+        .zone-rank-wrap {{width:100%;padding:0 1px 2px 1px;}}
+        .zone-rank-header,.zone-rank-row {{
+            display:grid;grid-template-columns:34px minmax(95px,150px) minmax(120px,1fr) 105px 105px 72px 82px;
+            align-items:center;gap:10px;
+        }}
+        .zone-rank-header {{padding:2px 10px 6px;color:#64748b;font-size:10px;font-weight:700;border-bottom:1px solid #dbe4ef;}}
+        .zone-rank-row {{margin-top:7px;padding:9px 10px;border:1px solid #dbe4ef;border-radius:12px;background:#fbfdff;}}
+        .zone-rank {{text-align:center;color:#475569;font-size:12px;}}
+        .zone-name-cell {{font-size:12px;font-weight:650;color:#0f2744;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
+        .zone-scale {{height:7px;background:#e7edf5;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.08);}}
+        .zone-scale-fill {{height:7px;background:linear-gradient(90deg,#7c3aed,#2563eb);border-radius:999px;}}
+        .zone-cy {{text-align:right;color:#0f172a;font-size:12px;font-weight:750;white-space:nowrap;}}
+        .zone-py {{text-align:right;color:#64748b;font-size:12px;white-space:nowrap;}}
+        .zone-share {{text-align:right;color:#6d28d9;font-size:12px;font-weight:700;white-space:nowrap;}}
+        .zone-growth {{text-align:right;font-size:12px;font-weight:700;white-space:nowrap;}}
+        @media (max-width:1100px) {{
+            .zone-rank-header,.zone-rank-row {{grid-template-columns:30px minmax(85px,120px) minmax(90px,1fr) 88px 88px 62px 72px;gap:6px;}}
+        }}
+    </style>
+    <div class='zone-rank-wrap'>
+        <div class='zone-rank-header'>
+            <div style='text-align:center;'>#</div><div>Zone</div><div>Scale</div>
+            <div style='text-align:right;'>CY</div><div style='text-align:right;'>PY</div>
+            <div style='text-align:right;'>Share</div><div style='text-align:right;'>Growth</div>
+        </div>
+        {''.join(zone_rows)}
+    </div>
+    """
+    if hasattr(st, "html"):
+        st.html(zone_html)
+    else:
+        st.markdown(zone_html, unsafe_allow_html=True)
 
     table_df = summary.rename(columns={
         "Active_Customers": f"Active {customer_label}s CY",
@@ -1720,12 +1751,20 @@ def render_drilldown_tab(df: pd.DataFrame, name_col: str, customer_label: str, c
     st.dataframe(customer_df, use_container_width=True, hide_index=True)
 
 
+def dashboard_spacer(height: int = 12) -> None:
+    """Render a non-collapsing vertical gap between major dashboard rows."""
+    st.markdown(
+        f"<div aria-hidden='true' class='dashboard-row-gap' style='height:{height}px;min-height:{height}px;line-height:{height}px;'>&nbsp;</div>",
+        unsafe_allow_html=True,
+    )
+
+
 # =====================================================
 # Main Dashboard
 # =====================================================
 def show_CustomerAnalysis() -> None:
     apply_dashboard_style()
-    export_placeholder = render_dashboard_header()
+    header_content_placeholder, export_placeholder = render_dashboard_header()
 
     filter_columns, fin_year, view_type = render_filter_row_start()
     if fin_year == "Select FY":
@@ -1836,6 +1875,26 @@ def show_CustomerAnalysis() -> None:
         filter_columns,
     )
 
+    header_items = [
+        ("FY", fin_year),
+        ("View", "Origin" if view_type == "origin" else "Destination"),
+        ("Unit", conversion_type),
+    ]
+    header_chips = "".join(
+        f'<span class="header-filter-chip">{label}: {value}</span>'
+        for label, value in header_items
+    )
+    with header_content_placeholder:
+        st.markdown(
+            f"""
+            <div class="dashboard-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div class="dashboard-title" style="white-space:nowrap;">Customer Analysis</div>
+                <div class="header-filter-summary">{header_chips}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
     df      = apply_filters(df,      zone, circle, branch, quarter, month, load_type, customer, name_col)
     prev_df = apply_filters(prev_df, zone, circle, branch, quarter, month, load_type, customer, name_col)
     old_df  = apply_filters(old_df,  zone, circle, branch, quarter, month, load_type, customer, name_col)
@@ -1844,7 +1903,7 @@ def show_CustomerAnalysis() -> None:
         st.warning("No data found for selected filters.")
         return
 
-    st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
+    dashboard_spacer()
 
     # --- Customer sets ---
     current_customers    = set(df[code_col].dropna().unique())
@@ -1952,7 +2011,7 @@ def show_CustomerAnalysis() -> None:
 
     # --- KPIs ---
     render_kpis(metrics, customer_label, conversion_type)
-    st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
+    dashboard_spacer()
 
     # --- Revenue and geography ---
     c1, c2 = st.columns([1.15, 0.85], gap="medium", vertical_alignment="top")
@@ -1964,13 +2023,13 @@ def show_CustomerAnalysis() -> None:
             st.markdown("<div class='section-header'>Revenue Movement</div>", unsafe_allow_html=True)
             render_revenue_bridge(metrics, customer_label, conversion_type)
 
-    st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
+    dashboard_spacer()
 
     # --- Branch customer intelligence ---
     with st.container(border=True):
         render_branch_summary_table(df, prev_df, code_col, customer_label, conversion_type)
 
-    st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
+    dashboard_spacer()
 
     # --- Tabs ---
     tab1, tab2, tab3, tab4 = st.tabs([
