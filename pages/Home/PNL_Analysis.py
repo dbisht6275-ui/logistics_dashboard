@@ -176,6 +176,72 @@ def _inject_pnl_css() -> None:
             div[data-testid="stSelectbox"] > label, div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] { font-size:9px !important; }
             div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { min-height:38px !important; height:38px !important; }
         }
+
+
+        /* Overview-style checkbox slicers */
+        .checkbox-slicer-label {
+            display:block;height:22px;min-height:22px;margin:0 0 9px 2px;
+            padding:0;line-height:22px;color:#243b53;font-size:10px;
+            font-family:"Segoe UI",Arial,sans-serif;font-weight:400;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+        }
+        div[data-testid="stVerticalBlock"]:has(.checkbox-slicer-label) {gap:0 !important;}
+        div[data-testid="stElementContainer"]:has(.checkbox-slicer-label) {
+            min-height:31px !important;height:31px !important;margin:0 !important;
+            padding:0 !important;overflow:visible !important;
+        }
+        div[data-testid="stPopover"] {width:100% !important;margin:0 !important;padding:0 !important;}
+        div[data-testid="stPopover"] > div {width:100% !important;}
+        div[data-testid="stPopover"] > div > button {
+            width:100% !important;min-height:40px !important;height:40px !important;
+            padding:0 9px !important;margin:0 !important;border:1px solid #cbd9ea !important;
+            border-radius:10px !important;background:linear-gradient(180deg,#ffffff 0%,#f5f8fc 100%) !important;
+            box-shadow:inset 0 1px 2px rgba(15,23,42,.06) !important;color:#102a43 !important;
+            font-size:11px !important;font-weight:800 !important;justify-content:space-between !important;
+            transform:none !important;
+        }
+        div[data-testid="stPopover"] > div > button:hover,
+        div[data-testid="stPopover"] > div > button:focus {
+            border-color:#cbd9ea !important;background:linear-gradient(180deg,#ffffff 0%,#f5f8fc 100%) !important;
+            box-shadow:inset 0 1px 2px rgba(15,23,42,.06) !important;transform:none !important;
+        }
+        div[data-testid="stPopoverBody"] {max-height:360px !important;overflow-y:auto !important;}
+        div[data-testid="stPopoverBody"] div[data-testid="stButton"] {width:auto !important;margin:0 !important;padding:0 !important;}
+        div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button {
+            width:auto !important;min-width:0 !important;min-height:26px !important;height:26px !important;
+            padding:2px 8px !important;margin:0 !important;border:1px solid #dbe4ef !important;
+            border-radius:6px !important;background:#ffffff !important;color:#2563eb !important;
+            box-shadow:none !important;transform:none !important;font-size:10px !important;font-weight:600 !important;
+        }
+        div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button:hover {
+            border-color:#93c5fd !important;background:#eff6ff !important;color:#1d4ed8 !important;
+            box-shadow:none !important;transform:none !important;
+        }
+
+        /* Branch slab buttons - same design as Business Overview */
+        div[class*="st-key-pnl_branch_slab_btn_"] {margin:0 !important;padding:0 !important;}
+        div[class*="st-key-pnl_branch_slab_btn_"] div[data-testid="stButton"] {width:100% !important;margin:0 !important;}
+        div[class*="st-key-pnl_branch_slab_btn_"] button {
+            width:100% !important;min-height:34px !important;height:34px !important;padding:4px 8px !important;
+            margin:0 !important;border:1px solid #d8e2ee !important;border-radius:8px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%) !important;color:#334155 !important;
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 1px 2px rgba(15,23,42,.05) !important;
+            transform:none !important;font-size:11px !important;font-weight:650 !important;white-space:nowrap !important;
+        }
+        div[class*="st-key-pnl_branch_slab_btn_"] button:hover {
+            border-color:#9bb7d8 !important;background:linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important;
+            color:#174a7e !important;box-shadow:inset 0 1px 0 #ffffff,0 2px 5px rgba(15,42,67,.08) !important;
+        }
+        div[class*="st-key-pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] {
+            border-color:#123f73 !important;background:linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
+            color:#ffffff !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 2px 5px rgba(15,42,67,.18) !important;
+        }
+        div[class*="st-key-pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] p,
+        div[class*="st-key-pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] span {color:#ffffff !important;}
+        div[class*="st-key-pnl_branch_slab_btn_"] button p,
+        div[class*="st-key-pnl_branch_slab_btn_"] button span {
+            margin:0 !important;padding:0 !important;font-size:11px !important;font-weight:650 !important;white-space:nowrap !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -291,6 +357,91 @@ def _safe_options(df: pd.DataFrame, column: str) -> list[str]:
     values = df[column].dropna().astype(str).str.strip()
     values = values[values.ne("")]
     return sorted(values.unique().tolist(), key=str.casefold)
+
+
+
+def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
+    options = [x for x in options if pd.notna(x)]
+    options = list(dict.fromkeys(options))
+
+    st.markdown(
+        f'<div class="checkbox-slicer-label">{escape(str(label))}</div>',
+        unsafe_allow_html=True,
+    )
+
+    if locked_values:
+        locked_values = [x for x in locked_values if x is not None]
+        summary = str(locked_values[0]) if len(locked_values) == 1 else f"{len(locked_values)} selected"
+        with st.popover(summary, use_container_width=True):
+            for value in locked_values:
+                st.checkbox(str(value), value=True, disabled=True, key=f"{key}__locked__{value}")
+        return locked_values
+
+    def state_key(value):
+        return f"{key}__item__{str(value)}"
+
+    if searchable:
+        selection_key = f"{key}__instant_selected"
+        legacy_selected = [value for value in options if st.session_state.get(state_key(value), False)]
+        if selection_key not in st.session_state:
+            st.session_state[selection_key] = legacy_selected
+        else:
+            st.session_state[selection_key] = [
+                value for value in st.session_state.get(selection_key, []) if value in options
+            ]
+
+        selected_before = st.session_state.get(selection_key, [])
+        summary = "All" if not selected_before else (str(selected_before[0]) if len(selected_before) == 1 else f"{len(selected_before)} selected")
+
+        with st.popover(summary, use_container_width=True):
+            action_cols = st.columns(2, gap="small")
+            with action_cols[0]:
+                if st.button("Select all", key=f"{key}__select_all", use_container_width=False):
+                    st.session_state[selection_key] = list(options)
+                    st.rerun()
+            with action_cols[1]:
+                if st.button("Clear", key=f"{key}__clear", use_container_width=False):
+                    st.session_state[selection_key] = []
+                    st.rerun()
+
+            selected_values = st.multiselect(
+                f"Search {str(label).replace('◎', '').replace('⌂', '').strip()}",
+                options=options,
+                key=selection_key,
+                placeholder="Type to search...",
+                label_visibility="collapsed",
+            )
+            if not options:
+                st.caption("No values available")
+
+        selected_set = set(selected_values)
+        for value in options:
+            st.session_state[state_key(value)] = value in selected_set
+        return selected_values
+
+    selected_before = [value for value in options if st.session_state.get(state_key(value), False)]
+    summary = "All" if not selected_before else (str(selected_before[0]) if len(selected_before) == 1 else f"{len(selected_before)} selected")
+
+    with st.popover(summary, use_container_width=True):
+        action_cols = st.columns(2, gap="small")
+        with action_cols[0]:
+            if st.button("Select all", key=f"{key}__select_all", use_container_width=False):
+                for value in options:
+                    st.session_state[state_key(value)] = True
+                st.rerun()
+        with action_cols[1]:
+            if st.button("Clear", key=f"{key}__clear", use_container_width=False):
+                for value in options:
+                    st.session_state[state_key(value)] = False
+                st.rerun()
+
+        if not options:
+            st.caption("No values available")
+        else:
+            for value in options:
+                st.checkbox(str(value), key=state_key(value))
+
+    return [value for value in options if st.session_state.get(state_key(value), False)]
 
 
 def calculate_pnl_kpis(df: pd.DataFrame) -> dict:
@@ -770,47 +921,74 @@ def show_pnl_dashboard() -> None:
             locked_circle = circle_rows["circle"].iloc[0]
             locked_zone = circle_rows["zone"].iloc[0]
 
-    # Current-year cascading filters
+    # Overview-equivalent filter behavior.
+    # Company and Load Type remain single-select. Zone/Circle/Branch/Quarter/Month
+    # use checkbox slicers; Circle and Branch have instant search. Empty selection = All.
     with filter_cols[2]:
         company = st.selectbox("▥ Company", ["All"] + _safe_options(df, "COMPNAME"), key="pnl_company")
     df = _apply_filter(df, "COMPNAME", company)
 
+    filter_source_df = df.copy()
+
     with filter_cols[3]:
-        if locked_zone:
-            zone = locked_zone
-            st.selectbox("◉ Zone", [zone], disabled=True, key="pnl_zone_locked")
-        else:
-            zone = st.selectbox("◉ Zone", ["All"] + _safe_options(df, "zone"), key="pnl_zone")
-    df = _apply_filter(df, "zone", zone)
+        zone_options = _safe_options(filter_source_df, "zone")
+        selected_zones = _checkbox_slicer(
+            "◉ Zone", zone_options, key="pnl_zone_slicer",
+            locked_values=[locked_zone] if locked_zone else None,
+        )
 
     with filter_cols[4]:
-        if locked_circle:
-            circle = locked_circle
-            st.selectbox("◎ Circle", [circle], disabled=True, key="pnl_circle_locked")
-        else:
-            circle = st.selectbox("◎ Circle", ["All"] + _safe_options(df, "circle"), key="pnl_circle")
-    df = _apply_filter(df, "circle", circle)
+        circle_options = _safe_options(filter_source_df, "circle")
+        selected_circles = _checkbox_slicer(
+            "◎ Circle", circle_options, key="pnl_circle_slicer",
+            locked_values=[locked_circle] if locked_circle else None,
+            searchable=True,
+        )
 
     with filter_cols[5]:
-        if locked_branch:
-            branch = locked_branch
-            st.selectbox("⌂ Branch", [branch], disabled=True, key="pnl_branch_locked")
-        else:
-            branch = st.selectbox("⌂ Branch", ["All"] + _safe_options(df, "branch"), key="pnl_branch")
-    df = _apply_filter(df, "branch", branch)
+        branch_options = _safe_options(filter_source_df, "branch")
+        selected_branches = _checkbox_slicer(
+            "⌂ Branch", branch_options, key="pnl_branch_slicer",
+            locked_values=[locked_branch] if locked_branch else None,
+            searchable=True,
+        )
 
     with filter_cols[6]:
-        available_quarters = [q for q in QUARTER_ORDER if q in df["Quarter"].dropna().tolist()]
-        quarter = st.selectbox("▦ Quarter", ["All"] + available_quarters, key="pnl_quarter")
-    df = _apply_filter(df, "Quarter", quarter)
+        available_quarters = [
+            q for q in QUARTER_ORDER
+            if q in filter_source_df["Quarter"].dropna().unique().tolist()
+        ]
+        selected_quarters = _checkbox_slicer(
+            "▦ Quarter", available_quarters, key="pnl_quarter_slicer"
+        )
 
     with filter_cols[7]:
-        available_months = [m for m in MONTH_ORDER if m in df["Month"].dropna().tolist()]
-        month = st.selectbox("▣ Month", ["All"] + available_months, key="pnl_month")
-    df = _apply_filter(df, "Month", month)
+        month_source_df = filter_source_df
+        if selected_quarters:
+            month_source_df = month_source_df[month_source_df["Quarter"].isin(selected_quarters)]
+        available_months = [
+            m for m in MONTH_ORDER
+            if m in month_source_df["Month"].dropna().unique().tolist()
+        ]
+        selected_months = _checkbox_slicer(
+            "▣ Month", available_months, key="pnl_month_slicer"
+        )
+
+    if selected_zones:
+        df = df[df["zone"].isin(selected_zones)]
+    if selected_circles:
+        df = df[df["circle"].isin(selected_circles)]
+    if selected_branches:
+        df = df[df["branch"].isin(selected_branches)]
+    if selected_quarters:
+        df = df[df["Quarter"].isin(selected_quarters)]
+    if selected_months:
+        df = df[df["Month"].isin(selected_months)]
 
     with filter_cols[8]:
-        load_type = st.selectbox("▤ Load Type", ["All"] + _safe_options(df, "LOADTYPE"), key="pnl_loadtype")
+        load_type = st.selectbox(
+            "▤ Load Type", ["All"] + _safe_options(df, "LOADTYPE"), key="pnl_loadtype"
+        )
     df = _apply_filter(df, "LOADTYPE", load_type)
 
     with filter_cols[9]:
@@ -818,17 +996,38 @@ def show_pnl_dashboard() -> None:
 
     divisor, unit = get_conversion(conversion_type)
 
-    # Apply identical filters to LY data
-    for column, selected in [
-        ("COMPNAME", company), ("zone", zone), ("circle", circle), ("branch", branch),
-        ("Quarter", quarter), ("Month", month), ("LOADTYPE", load_type),
-    ]:
-        prev_df = _apply_filter(prev_df, column, selected)
+    # Compatibility aliases for existing downstream code.
+    zone = selected_zones[0] if len(selected_zones) == 1 else "All"
+    circle = selected_circles[0] if len(selected_circles) == 1 else "All"
+    branch = selected_branches[0] if len(selected_branches) == 1 else "All"
+    quarter = selected_quarters[0] if len(selected_quarters) == 1 else "All"
+    month = selected_months[0] if len(selected_months) == 1 else "All"
+
+    # Apply the same active selections to LY data.
+    if prev_df is not None and not prev_df.empty:
+        if company != "All":
+            prev_df = prev_df[prev_df["COMPNAME"].eq(company)]
+        if selected_zones:
+            prev_df = prev_df[prev_df["zone"].isin(selected_zones)]
+        if selected_circles:
+            prev_df = prev_df[prev_df["circle"].isin(selected_circles)]
+        if selected_branches:
+            prev_df = prev_df[prev_df["branch"].isin(selected_branches)]
+        if selected_quarters:
+            prev_df = prev_df[prev_df["Quarter"].isin(selected_quarters)]
+        if selected_months:
+            prev_df = prev_df[prev_df["Month"].isin(selected_months)]
+        if load_type != "All":
+            prev_df = prev_df[prev_df["LOADTYPE"].eq(load_type)]
 
     chips = [
-        ("FY", fy), ("View", view_type), ("Company", company), ("Zone", zone),
-        ("Circle", circle), ("Branch", branch), ("Quarter", quarter),
-        ("Month", month), ("Load", load_type), ("Unit", conversion_type),
+        ("FY", fy), ("View", view_type), ("Company", company),
+        ("Zone", ", ".join(map(str, selected_zones)) if selected_zones else "All"),
+        ("Circle", ", ".join(map(str, selected_circles)) if selected_circles else "All"),
+        ("Branch", ", ".join(map(str, selected_branches)) if selected_branches else "All"),
+        ("Quarter", ", ".join(map(str, selected_quarters)) if selected_quarters else "All"),
+        ("Month", ", ".join(map(str, selected_months)) if selected_months else "All"),
+        ("Load", load_type), ("Unit", conversion_type),
     ]
     chip_html = "".join(
         f'<span class="filter-chip">{escape(label)}: {escape(str(value))}</span>'
@@ -1860,90 +2059,83 @@ def show_pnl_dashboard() -> None:
     branch_summary = build_group_summary(df, prev_df, "branch")
     monthly = build_monthly_comparison(df, prev_df, divisor)
 
+    current_month_count = max(int(df["FIN_MONTH"].dropna().nunique()), 1)
+    previous_month_count = (
+        max(int(prev_df["FIN_MONTH"].dropna().nunique()), 1)
+        if prev_df is not None and not prev_df.empty and "FIN_MONTH" in prev_df.columns
+        else current_month_count
+    )
+
+    all_branch_pnl = branch_summary[["branch", "PNL", "PY_PNL"]].copy()
+    all_branch_pnl["branch"] = (
+        all_branch_pnl["branch"].fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
+    )
+    all_branch_pnl["PNL"] = pd.to_numeric(all_branch_pnl["PNL"], errors="coerce").fillna(0.0)
+    all_branch_pnl["PY_PNL"] = pd.to_numeric(all_branch_pnl["PY_PNL"], errors="coerce").fillna(0.0)
+    all_branch_pnl["Monthly_Avg_PNL"] = all_branch_pnl["PNL"] / current_month_count
+    all_branch_pnl["LY_Monthly_Avg_PNL"] = all_branch_pnl["PY_PNL"] / previous_month_count
+
+    branch_options = [
+        "All", "Loss", "₹0–5 Lac", "₹5–10 Lac", "₹10–15 Lac",
+        "₹15–25 Lac", "₹25–50 Lac", "₹50 Lac & Above",
+    ]
+    slab_ranges = {
+        "All": (None, None), "Loss": (None, 0),
+        "₹0–5 Lac": (0, 500_000), "₹5–10 Lac": (500_000, 1_000_000),
+        "₹10–15 Lac": (1_000_000, 1_500_000), "₹15–25 Lac": (1_500_000, 2_500_000),
+        "₹25–50 Lac": (2_500_000, 5_000_000), "₹50 Lac & Above": (5_000_000, None),
+    }
+
+    selected_branch_slab = st.session_state.get("pnl_branch_slab_value", "All")
+    if selected_branch_slab not in slab_ranges:
+        selected_branch_slab = "All"
+        st.session_state["pnl_branch_slab_value"] = "All"
+
     with st.container(border=True):
         st.markdown(
             "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
-            "Branches by P&amp;L</div>",
+            "Branches by Monthly Avg P&amp;L</div>",
             unsafe_allow_html=True,
         )
 
-        branch_options = [
-            "All",
-            "Loss",
-            "₹0–5 Lac",
-            "₹5–10 Lac",
-            "₹10–15 Lac",
-            "₹15–25 Lac",
-            "₹25–50 Lac",
-            "₹50 Lac & Above",
-        ]
-        selected_branch_slab = st.segmented_control(
-            "Branch P&L slab",
-            branch_options,
-            default="All",
-            key="top_branch_pnl_slab",
-            label_visibility="collapsed",
-            width="stretch",
-        ) or "All"
-
-        slab_ranges = {
-            "All": (None, None),
-            "Loss": (None, 0),
-            "₹0–5 Lac": (0, 500_000),
-            "₹5–10 Lac": (500_000, 1_000_000),
-            "₹10–15 Lac": (1_000_000, 1_500_000),
-            "₹15–25 Lac": (1_500_000, 2_500_000),
-            "₹25–50 Lac": (2_500_000, 5_000_000),
-            "₹50 Lac & Above": (5_000_000, None),
-        }
-
-        all_branch_pnl = branch_summary[["branch", "PNL", "PY_PNL"]].copy()
-        all_branch_pnl["branch"] = (
-            all_branch_pnl["branch"]
-            .fillna("Unknown")
-            .astype(str)
-            .str.strip()
-            .replace("", "Unknown")
-        )
-        all_branch_pnl["PNL"] = pd.to_numeric(
-            all_branch_pnl["PNL"], errors="coerce"
-        ).fillna(0.0)
-        all_branch_pnl["PY_PNL"] = pd.to_numeric(
-            all_branch_pnl["PY_PNL"], errors="coerce"
-        ).fillna(0.0)
-        all_branch_pnl = all_branch_pnl.sort_values(
-            "PNL", ascending=False
-        ).reset_index(drop=True)
+        slab_button_cols = st.columns(len(branch_options), gap="small")
+        for slab_index, slab_label in enumerate(branch_options):
+            with slab_button_cols[slab_index]:
+                is_active = slab_label == selected_branch_slab
+                if st.button(
+                    slab_label,
+                    key=f"pnl_branch_slab_btn_{slab_index}",
+                    type="primary" if is_active else "secondary",
+                    use_container_width=True,
+                ):
+                    st.session_state["pnl_branch_slab_value"] = slab_label
+                    selected_branch_slab = slab_label
+                    st.rerun()
 
         selected_branch_pnl = all_branch_pnl.copy()
         slab_low, slab_high = slab_ranges[selected_branch_slab]
-
         if selected_branch_slab == "Loss":
-            selected_branch_pnl = selected_branch_pnl[selected_branch_pnl["PNL"] < 0]
+            selected_branch_pnl = selected_branch_pnl[selected_branch_pnl["Monthly_Avg_PNL"] < 0]
         else:
             if slab_low is not None:
-                selected_branch_pnl = selected_branch_pnl[selected_branch_pnl["PNL"] >= slab_low]
+                selected_branch_pnl = selected_branch_pnl[selected_branch_pnl["Monthly_Avg_PNL"] >= slab_low]
             if slab_high is not None:
-                selected_branch_pnl = selected_branch_pnl[selected_branch_pnl["PNL"] < slab_high]
+                selected_branch_pnl = selected_branch_pnl[selected_branch_pnl["Monthly_Avg_PNL"] < slab_high]
 
         selected_branch_pnl = selected_branch_pnl.sort_values(
-            "PNL", ascending=False
+            "Monthly_Avg_PNL", ascending=False
         ).reset_index(drop=True)
 
-        total_abs_branch_pnl = float(all_branch_pnl["PNL"].abs().sum())
-        selected_pnl_total = float(selected_branch_pnl["PNL"].sum())
-        selected_ly_total = float(selected_branch_pnl["PY_PNL"].sum())
+        total_abs_branch_pnl = float(all_branch_pnl["Monthly_Avg_PNL"].abs().sum())
+        selected_pnl_total = float(selected_branch_pnl["Monthly_Avg_PNL"].sum())
+        selected_ly_total = float(selected_branch_pnl["LY_Monthly_Avg_PNL"].sum())
         selected_abs_share = (
-            float(selected_branch_pnl["PNL"].abs().sum())
-            / total_abs_branch_pnl
-            * 100
-            if total_abs_branch_pnl
-            else 0.0
+            float(selected_branch_pnl["Monthly_Avg_PNL"].abs().sum()) / total_abs_branch_pnl * 100
+            if total_abs_branch_pnl else 0.0
         )
         selected_growth = (
             ((selected_pnl_total - selected_ly_total) / abs(selected_ly_total)) * 100
-            if selected_ly_total != 0
-            else None
+            if selected_ly_total != 0 else None
         )
         if selected_growth is None:
             selected_growth_html = '<span style="color:#7c3aed;font-weight:700;">NEW</span>'
@@ -1956,36 +2148,29 @@ def show_pnl_dashboard() -> None:
             )
 
         st.markdown(
-            f'<div style="color:#6d28d9;font-size:12px;font-weight:500;'
-            f'margin:7px 0 8px 1px;">'
+            f'<div style="color:#31557d;font-size:12px;font-weight:500;margin:7px 0 8px 1px;">'
             f'Showing {len(selected_branch_pnl):,} branches in {escape(selected_branch_slab)}. '
-            f'CY P&amp;L: <b>₹{selected_pnl_total / divisor:,.2f} {escape(unit)}</b> · '
-            f'LY P&amp;L: <b>₹{selected_ly_total / divisor:,.2f} {escape(unit)}</b> · '
-            f'Share: <b>{selected_abs_share:.2f}%</b> · '
-            f'Growth: {selected_growth_html}. Scroll to view all.'
+            f'CY Avg P&amp;L: <b>₹{selected_pnl_total / divisor:,.2f} {escape(unit)}</b> · '
+            f'LY Avg P&amp;L: <b>₹{selected_ly_total / divisor:,.2f} {escape(unit)}</b> · '
+            f'Share: <b>{selected_abs_share:.2f}%</b> · Growth: {selected_growth_html}. Scroll to view all.'
             f'</div>',
             unsafe_allow_html=True,
         )
 
         if selected_branch_pnl.empty:
-            st.info(f"No branch falls in the {selected_branch_slab} P&L slab.")
+            st.info(f"No branch falls in the {selected_branch_slab} monthly-average P&L slab.")
         else:
-            max_abs_pnl = float(selected_branch_pnl["PNL"].abs().max()) or 1.0
+            max_abs_pnl = float(selected_branch_pnl["Monthly_Avg_PNL"].abs().max()) or 1.0
             branch_rows = []
-
             for index, branch_row in selected_branch_pnl.iterrows():
-                branch_value = float(branch_row["PNL"] or 0)
-                previous_value = float(branch_row["PY_PNL"] or 0)
+                branch_value = float(branch_row["Monthly_Avg_PNL"] or 0)
+                previous_value = float(branch_row["LY_Monthly_Avg_PNL"] or 0)
                 width_pct = min(abs(branch_value) / max_abs_pnl * 100, 100)
-                fill_color = "#7c3aed" if branch_value >= 0 else "#dc2626"
+                fill_color = "#2563eb" if branch_value >= 0 else "#dc2626"
                 amount_color = "#111827" if branch_value >= 0 else "#dc2626"
                 rank = index + 1
                 branch_name = escape(str(branch_row["branch"]))
-                share_pct = (
-                    abs(branch_value) / total_abs_branch_pnl * 100
-                    if total_abs_branch_pnl
-                    else 0.0
-                )
+                share_pct = abs(branch_value) / total_abs_branch_pnl * 100 if total_abs_branch_pnl else 0.0
 
                 if previous_value == 0:
                     growth_html = '<span style="color:#7c3aed;font-weight:700;">NEW</span>'
@@ -1999,37 +2184,25 @@ def show_pnl_dashboard() -> None:
                     )
 
                 branch_rows.append(
-                    f'<div style="margin-bottom:7px;padding:8px 10px;'
-                    f'border:1px solid #dbe4ef;border-radius:12px;background:#fbfdff;">'
-                    f'<div style="display:grid;'
-                    f'grid-template-columns:34px minmax(175px,280px) minmax(100px,1fr) '
-                    f'105px 105px 70px 82px;align-items:center;gap:10px;">'
+                    f'<div style="margin-bottom:7px;padding:8px 10px;border:1px solid #dbe4ef;border-radius:12px;background:#fbfdff;">'
+                    f'<div style="display:grid;grid-template-columns:34px minmax(175px,280px) minmax(100px,1fr) 105px 105px 70px 82px;align-items:center;gap:10px;">'
                     f'<div style="text-align:center;font-size:13px;color:#334155;">{rank}</div>'
-                    f'<div style="font-size:14px;color:#0f2744;white-space:nowrap;'
-                    f'overflow:hidden;text-overflow:ellipsis;">{branch_name}</div>'
-                    f'<div style="height:7px;background:#e8eef5;border-radius:999px;'
-                    f'overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.08);">'
-                    f'<div style="width:{width_pct:.1f}%;height:7px;background:{fill_color};'
-                    f'border-radius:999px;"></div></div>'
-                    f'<div style="text-align:right;color:{amount_color};font-size:13px;'
-                    f'font-weight:700;white-space:nowrap;">₹{branch_value / divisor:,.2f} {escape(unit)}</div>'
-                    f'<div style="text-align:right;color:#64748b;font-size:12px;'
-                    f'white-space:nowrap;">₹{previous_value / divisor:,.2f} {escape(unit)}</div>'
-                    f'<div style="text-align:right;color:#6d28d9;font-size:12px;'
-                    f'font-weight:600;white-space:nowrap;">{share_pct:.2f}%</div>'
+                    f'<div style="font-size:14px;color:#0f2744;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{branch_name}</div>'
+                    f'<div style="height:7px;background:#e8eef5;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.08);">'
+                    f'<div style="width:{width_pct:.1f}%;height:7px;background:{fill_color};border-radius:999px;"></div></div>'
+                    f'<div style="text-align:right;color:{amount_color};font-size:13px;font-weight:700;white-space:nowrap;">₹{branch_value / divisor:,.2f} {escape(unit)}</div>'
+                    f'<div style="text-align:right;color:#64748b;font-size:12px;white-space:nowrap;">₹{previous_value / divisor:,.2f} {escape(unit)}</div>'
+                    f'<div style="text-align:right;color:#31557d;font-size:12px;font-weight:600;white-space:nowrap;">{share_pct:.2f}%</div>'
                     f'<div style="text-align:right;font-size:12px;white-space:nowrap;">{growth_html}</div>'
                     f'</div></div>'
                 )
 
             branch_header = (
-                '<div style="display:grid;grid-template-columns:34px minmax(175px,280px) '
-                'minmax(100px,1fr) 105px 105px 70px 82px;align-items:center;gap:10px;'
+                '<div style="display:grid;grid-template-columns:34px minmax(175px,280px) minmax(100px,1fr) 105px 105px 70px 82px;align-items:center;gap:10px;'
                 'padding:0 10px 5px 10px;color:#64748b;font-size:10px;font-weight:700;">'
                 '<div style="text-align:center;">#</div><div>Branch</div><div>P&L Scale</div>'
-                '<div style="text-align:right;">CY P&L</div>'
-                '<div style="text-align:right;">LY P&L</div>'
-                '<div style="text-align:right;">Share</div>'
-                '<div style="text-align:right;">Growth</div></div>'
+                '<div style="text-align:right;">CY Avg</div><div style="text-align:right;">LY Avg</div>'
+                '<div style="text-align:right;">Share</div><div style="text-align:right;">Growth</div></div>'
             )
             branch_html = (
                 branch_header
