@@ -295,6 +295,30 @@ def apply_dashboard_style() -> None:
             }
         }
 
+        .dashboard-row-gap { height: 12px; width: 100%; clear: both; display:block; }
+        .executive-strip {
+            display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px;
+            padding:8px; border:1px solid #dbe4ef; border-radius:12px; background:#ffffff;
+            box-shadow:0 3px 10px rgba(15,42,67,.06);
+        }
+        .executive-item {
+            min-width:0; padding:8px 10px; border:1px solid #e2e8f0; border-radius:10px;
+            background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+        }
+        .executive-label {font-size:10px;color:#64748b;font-weight:650;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .executive-value {font-size:17px;color:#102a43;font-weight:850;line-height:1.1;}
+        .executive-sub {font-size:9.5px;color:#64748b;margin-top:3px;}
+        .executive-good {color:#15803d!important;}
+        .executive-bad {color:#dc2626!important;}
+        .executive-warn {color:#d97706!important;}
+        .section-header {
+            border-bottom:0 !important; padding-bottom:0 !important; margin-bottom:7px !important;
+            color:#0f2744 !important; font-weight:650 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border:1px solid #dbe4ef !important; background:#ffffff !important;
+        }
+
         /* ---------- Overview-style filter slicers ---------- */
         .checkbox-slicer-label {
             display:block !important;
@@ -963,65 +987,55 @@ def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> Non
             "title": f"Active {customer_label}s",
             "value": f"{metrics['active_customers']:,}",
             "delta": f"{format_delta(metrics['active_growth'])}",
-            "icon": "👥",
-            "color": "#2563eb",
+            "icon": "👥", "color": "#2563eb",
             "positive": metrics["active_growth"] >= 0,
         },
         {
             "title": f"New {customer_label}s",
             "value": f"{metrics['new_customers']:,}",
             "delta": "Current FY vs Previous FY",
-            "icon": "🆕",
-            "color": "#16a34a",
-            "positive": None,
+            "icon": "🆕", "color": "#16a34a", "positive": None,
         },
         {
             "title": f"Lost {customer_label}s",
             "value": f"{metrics['lost_customers']:,}",
             "delta": "Previous FY not active now",
-            "icon": "❌",
-            "color": "#dc2626",
+            "icon": "❌", "color": "#dc2626",
             "positive": False if metrics["lost_customers"] > 0 else None,
         },
         {
             "title": "Reactivated Customers",
             "value": f"{metrics['reactivated_customers']:,}",
             "delta": "Returned after inactive FY",
-            "icon": "🔄",
-            "color": "#0d9488",
+            "icon": "🔄", "color": "#16a34a",
             "positive": True if metrics["reactivated_customers"] > 0 else None,
-        },
-        {
-            "title": f"At Risk {customer_label}s",
-            "value": f"{metrics['at_risk_customers']:,}",
-            "delta": "Revenue dropped above 25%",
-            "icon": "⚠️",
-            "color": "#d97706",
-            "positive": False if metrics["at_risk_customers"] > 0 else None,
         },
         {
             "title": "Total Revenue",
             "value": money_display(metrics["total_revenue"], conversion_type),
             "delta": f"{format_delta(metrics['revenue_growth'])}",
-            "icon": "₹",
-            "color": "#7c3aed",
+            "icon": "₹", "color": "#2563eb",
             "positive": metrics["revenue_growth"] >= 0,
-        },
-        {
-            "title": "Current Yield",
-            "value": f"₹{metrics['current_yield']:.2f} /Kg",
-            "delta": "Revenue / Charge Weight",
-            "icon": "⚡",
-            "color": "#db2777",
-            "positive": None,
         },
         {
             "title": "Multi-Shipment Customers %",
             "value": f"{metrics['repeat_rate']:.1f}%",
             "delta": f"{format_delta(metrics['repeat_rate_growth'])}",
-            "icon": "🔁",
-            "color": "#0f766e",
+            "icon": "🔁", "color": "#2563eb",
             "positive": metrics["repeat_rate_growth"] >= 0,
+        },
+        {
+            "title": f"At Risk {customer_label}s",
+            "value": f"{metrics['at_risk_customers']:,}",
+            "delta": "Revenue dropped above 25%",
+            "icon": "⚠️", "color": "#d97706",
+            "positive": False if metrics["at_risk_customers"] > 0 else None,
+        },
+        {
+            "title": "Current Yield",
+            "value": f"₹{metrics['current_yield']:.2f} /Kg",
+            "delta": "Revenue / Charge Weight",
+            "icon": "⚡", "color": "#2563eb", "positive": None,
         },
     ]
 
@@ -1030,6 +1044,22 @@ def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> Non
             kpi_card(**card)
 
     st.markdown("<div class='kpi-row-spacer'></div>", unsafe_allow_html=True)
+
+
+def render_customer_health_strip(metrics: dict, customer_label: str, conversion_type: str) -> None:
+    revenue_growth = metrics["revenue_growth"]
+    retention = metrics["retention_percent"]
+    repeat_rate = metrics["repeat_rate"]
+    html = f"""
+    <div class="executive-strip">
+        <div class="executive-item"><div class="executive-label">Customer Base</div><div class="executive-value">{metrics['active_customers']:,}</div><div class="executive-sub">Active {customer_label.lower()}s</div></div>
+        <div class="executive-item"><div class="executive-label">Net Customer Movement</div><div class="executive-value {'executive-good' if metrics['new_customers'] + metrics['reactivated_customers'] >= metrics['lost_customers'] else 'executive-bad'}">{metrics['new_customers'] + metrics['reactivated_customers'] - metrics['lost_customers']:+,}</div><div class="executive-sub">New + reactivated − lost</div></div>
+        <div class="executive-item"><div class="executive-label">Retention</div><div class="executive-value {'executive-good' if retention >= 80 else 'executive-warn'}">{retention:.1f}%</div><div class="executive-sub">Existing customers retained</div></div>
+        <div class="executive-item"><div class="executive-label">Repeat Customer Rate</div><div class="executive-value {'executive-good' if repeat_rate >= 50 else ''}">{repeat_rate:.1f}%</div><div class="executive-sub">More than one shipment</div></div>
+        <div class="executive-item"><div class="executive-label">Revenue Growth</div><div class="executive-value {'executive-good' if revenue_growth >= 0 else 'executive-bad'}">{'▲' if revenue_growth >= 0 else '▼'} {abs(revenue_growth):.1f}%</div><div class="executive-sub">Current FY vs previous FY</div></div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def render_overview_tab(
@@ -1052,7 +1082,7 @@ def render_overview_tab(
                 monthly, x="FIN_MONTH", y="Revenue Display",
                 text="Revenue Display", title=f"Month-wise Revenue ({revenue_unit})",
             )
-            fig.update_traces(texttemplate=f"Rs.%{{text:.2f}} {revenue_unit}", textposition="outside")
+            fig.update_traces(texttemplate=f"Rs.%{{text:.2f}} {revenue_unit}", textposition="outside", marker_color="#60a5fa", marker_line_color="#2563eb", marker_line_width=1)
             fig.update_yaxes(title=f"Revenue ({revenue_unit})")
             fig.update_layout(height=330, margin=dict(t=45, b=20), plot_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
@@ -1831,7 +1861,7 @@ def show_CustomerAnalysis() -> None:
         st.warning("No data found for selected filters.")
         return
 
-    st.divider()
+    st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
 
     # --- Customer sets ---
     current_customers    = set(df[code_col].dropna().unique())
@@ -1939,9 +1969,14 @@ def show_CustomerAnalysis() -> None:
 
     # --- KPIs ---
     render_kpis(metrics, customer_label, conversion_type)
+    st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
 
-    # --- Visual insight row: Zone CY/PY | Revenue Bridge | Branch CY/PY ---
-    c1, c2, c3 = st.columns([1, 1, 1], gap="small", vertical_alignment="top")
+    # --- Executive customer health strip ---
+    render_customer_health_strip(metrics, customer_label, conversion_type)
+    st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
+
+    # --- Revenue and geography ---
+    c1, c2 = st.columns([1.15, 0.85], gap="medium", vertical_alignment="top")
     with c1:
         with st.container(border=True):
             render_zone_summary_table(df, prev_df, code_col, customer_label, conversion_type)
@@ -1949,18 +1984,21 @@ def show_CustomerAnalysis() -> None:
         with st.container(border=True):
             st.markdown("<div class='section-header'>Revenue Bridge</div>", unsafe_allow_html=True)
             render_revenue_bridge(metrics, customer_label, conversion_type)
-    with c3:
-        with st.container(border=True):
-            render_branch_summary_table(df, prev_df, code_col, customer_label, conversion_type)
 
-    st.markdown("<div class='insight-section-spacer'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
+
+    # --- Branch customer intelligence ---
+    with st.container(border=True):
+        render_branch_summary_table(df, prev_df, code_col, customer_label, conversion_type)
+
+    st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
 
     # --- Tabs ---
     tab1, tab2, tab3, tab4 = st.tabs([
-        f"{customer_label} Overview",
-        "Growth & Retention",
+        "Executive Overview",
+        "Customer Intelligence",
         "Service Performance",
-        f"{customer_label} Drill Down",
+        "Detailed Analysis",
     ])
     with tab1:
         render_overview_tab(customer_summary, monthly, code_col, name_col, customer_label, prev_df, lost_customer_codes, conversion_type)
