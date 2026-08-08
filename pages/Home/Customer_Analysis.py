@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from services.data_CustomerAnalysis import load_booking_data, get_date_range
@@ -296,21 +297,6 @@ def apply_dashboard_style() -> None:
         }
 
         .dashboard-row-gap { height: 12px; width: 100%; clear: both; display:block; }
-        .executive-strip {
-            display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px;
-            padding:8px; border:1px solid #dbe4ef; border-radius:12px; background:#ffffff;
-            box-shadow:0 3px 10px rgba(15,42,67,.06);
-        }
-        .executive-item {
-            min-width:0; padding:8px 10px; border:1px solid #e2e8f0; border-radius:10px;
-            background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
-        }
-        .executive-label {font-size:10px;color:#64748b;font-weight:650;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .executive-value {font-size:17px;color:#102a43;font-weight:850;line-height:1.1;}
-        .executive-sub {font-size:9.5px;color:#64748b;margin-top:3px;}
-        .executive-good {color:#15803d!important;}
-        .executive-bad {color:#dc2626!important;}
-        .executive-warn {color:#d97706!important;}
         .section-header {
             border-bottom:0 !important; padding-bottom:0 !important; margin-bottom:7px !important;
             color:#0f2744 !important; font-weight:650 !important;
@@ -1046,22 +1032,6 @@ def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> Non
     st.markdown("<div class='kpi-row-spacer'></div>", unsafe_allow_html=True)
 
 
-def render_customer_health_strip(metrics: dict, customer_label: str, conversion_type: str) -> None:
-    revenue_growth = metrics["revenue_growth"]
-    retention = metrics["retention_percent"]
-    repeat_rate = metrics["repeat_rate"]
-    html = f"""
-    <div class="executive-strip">
-        <div class="executive-item"><div class="executive-label">Customer Base</div><div class="executive-value">{metrics['active_customers']:,}</div><div class="executive-sub">Active {customer_label.lower()}s</div></div>
-        <div class="executive-item"><div class="executive-label">Net Customer Movement</div><div class="executive-value {'executive-good' if metrics['new_customers'] + metrics['reactivated_customers'] >= metrics['lost_customers'] else 'executive-bad'}">{metrics['new_customers'] + metrics['reactivated_customers'] - metrics['lost_customers']:+,}</div><div class="executive-sub">New + reactivated − lost</div></div>
-        <div class="executive-item"><div class="executive-label">Retention</div><div class="executive-value {'executive-good' if retention >= 80 else 'executive-warn'}">{retention:.1f}%</div><div class="executive-sub">Existing customers retained</div></div>
-        <div class="executive-item"><div class="executive-label">Repeat Customer Rate</div><div class="executive-value {'executive-good' if repeat_rate >= 50 else ''}">{repeat_rate:.1f}%</div><div class="executive-sub">More than one shipment</div></div>
-        <div class="executive-item"><div class="executive-label">Revenue Growth</div><div class="executive-value {'executive-good' if revenue_growth >= 0 else 'executive-bad'}">{'▲' if revenue_growth >= 0 else '▼'} {abs(revenue_growth):.1f}%</div><div class="executive-sub">Current FY vs previous FY</div></div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
-
-
 def render_overview_tab(
     customer_summary: pd.DataFrame,
     monthly: pd.DataFrame,
@@ -1459,37 +1429,50 @@ def render_service_tab(service_df: pd.DataFrame, customer_label: str, conversion
 
 
 def render_revenue_bridge(metrics: dict, customer_label: str, conversion_type: str) -> None:
-    bridge_df = pd.DataFrame({
-        "Metric": [
-            "Revenue PY",
-            f"New {customer_label}s",
-            "Reactivated",
-            "Lost Revenue",
-            "Revenue CY",
-        ],
-        "Value": [
-            metrics["prev_revenue"],
-            metrics["revenue_from_new_customers"],
-            metrics["reactivated_revenue"],
-            -metrics["lost_revenue"],
-            metrics["total_revenue"],
-        ],
-    })
     revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
-    fig = px.bar(
-        bridge_df,
-        x="Metric",
-        y=bridge_df["Value"] / revenue_divisor,
-        text=(bridge_df["Value"] / revenue_divisor).round(2),
+
+    py_revenue = metrics["prev_revenue"] / revenue_divisor
+    new_revenue = metrics["revenue_from_new_customers"] / revenue_divisor
+    reactivated_revenue = metrics["reactivated_revenue"] / revenue_divisor
+    lost_revenue = -metrics["lost_revenue"] / revenue_divisor
+    cy_revenue = metrics["total_revenue"] / revenue_divisor
+
+    fig = go.Figure(
+        go.Waterfall(
+            orientation="v",
+            measure=["absolute", "relative", "relative", "relative", "total"],
+            x=[
+                "Revenue PY",
+                f"New {customer_label}s",
+                "Reactivated",
+                "Lost Revenue",
+                "Revenue CY",
+            ],
+            y=[py_revenue, new_revenue, reactivated_revenue, lost_revenue, cy_revenue],
+            text=[
+                f"₹{py_revenue:.2f}",
+                f"+₹{new_revenue:.2f}",
+                f"+₹{reactivated_revenue:.2f}",
+                f"-₹{abs(lost_revenue):.2f}",
+                f"₹{cy_revenue:.2f}",
+            ],
+            textposition="outside",
+            connector={"line": {"color": "#cbd5e1", "width": 1}},
+            increasing={"marker": {"color": "#16a34a"}},
+            decreasing={"marker": {"color": "#dc2626"}},
+            totals={"marker": {"color": "#2563eb"}},
+            hovertemplate=f"%{{x}}<br>₹%{{y:.2f}} {revenue_unit}<extra></extra>",
+        )
     )
-    fig.update_traces(texttemplate=f"Rs. %{{text:.2f}} {revenue_unit}", textposition="outside")
-    fig.update_yaxes(title=f"Revenue ({revenue_unit})")
-    fig.update_xaxes(title="")
     fig.update_layout(
         height=330,
-        margin=dict(l=5, r=5, t=12, b=5),
+        margin=dict(l=8, r=8, t=18, b=8),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        xaxis=dict(title="", showgrid=False),
+        yaxis=dict(title=f"Revenue ({revenue_unit})", showgrid=False, zeroline=False),
+        font=dict(family="Arial", size=11, color="#334155"),
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
@@ -1971,10 +1954,6 @@ def show_CustomerAnalysis() -> None:
     render_kpis(metrics, customer_label, conversion_type)
     st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
 
-    # --- Executive customer health strip ---
-    render_customer_health_strip(metrics, customer_label, conversion_type)
-    st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
-
     # --- Revenue and geography ---
     c1, c2 = st.columns([1.15, 0.85], gap="medium", vertical_alignment="top")
     with c1:
@@ -1982,7 +1961,7 @@ def show_CustomerAnalysis() -> None:
             render_zone_summary_table(df, prev_df, code_col, customer_label, conversion_type)
     with c2:
         with st.container(border=True):
-            st.markdown("<div class='section-header'>Revenue Bridge</div>", unsafe_allow_html=True)
+            st.markdown("<div class='section-header'>Revenue Movement</div>", unsafe_allow_html=True)
             render_revenue_bridge(metrics, customer_label, conversion_type)
 
     st.markdown("<div class='dashboard-row-gap'></div>", unsafe_allow_html=True)
