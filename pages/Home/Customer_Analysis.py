@@ -2551,3 +2551,4 @@ def show_CustomerAnalysis() -> None:
         render_service_tab(service_df, customer_label, conversion_type)
     with tab4:
         render_drilldown_tab(df, name_col, customer_label, conversion_type)
+    
