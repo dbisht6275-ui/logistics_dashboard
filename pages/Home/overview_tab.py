@@ -1887,6 +1887,13 @@ def _render_operational_highlights(current_df, previous_df):
         )
         st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
 
+TARGET_FILE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "services"
+    / "branch_monthly_targets.csv"
+)
+
+
 def _normalise_target_text(values):
     """Normalise branch text for reliable target-master matching."""
     return (
