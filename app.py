@@ -9,7 +9,15 @@ from pages.Home.comparison_tab import show_comparison
 from pages.Home.Customer_Analysis import show_CustomerAnalysis
 from pages.Home.Service_Analysis import show_service_level
 from pages.Home.Outstanding_Analysis import show_OutstandingAnalysis
+from pages.Home.Monthly_Trend_EDD import show_monthly_trend_edd
 from pages.IT.zone_booking_turnover import show_ZoneBookingTurnover
+from pages.IT.Bangladesh_Delivery_Turnover import show_bangladesh_delivery_turnover
+from pages.IT.BookingSummaryTurnover import show_booking_summary_turnover
+from pages.IT.ZoneWiseDeliveryTurnover import show_zone_wise_delivery_turnover
+from pages.IT.BranchWiseDeliveryTurnover import show_branch_wise_delivery_turnover
+from pages.IT.DeliverySummaryTurnover import show_delivery_summary_turnover
+from pages.IT.BranchWiseBookingTurnover import show_branch_wise_booking_turnover
+from pages.IT.BookingWeightSummaryTurnover import show_booking_weight_summary_turnover
 
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
 from pages.Admin.user_management import show_UserManagement
@@ -440,6 +448,8 @@ section.main {
     margin: 10px 0 !important;
     border-color: rgba(255,255,255,.08) !important;
 }
+
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -462,7 +472,14 @@ FULL_MENU_ITEMS = [
 REPORTS = {
     "🖥️ IT Reports": {
         "📊 Zone Booking Turnover": show_ZoneBookingTurnover,
-
+        "📋 Bangladesh Delivery Turnover": show_bangladesh_delivery_turnover,
+        "📈 Booking Summary Turnover": show_booking_summary_turnover,
+        "📊 Zone Wise Delivery Turnover": show_zone_wise_delivery_turnover,
+        "📊 Branch Wise Delivery Turnover": show_branch_wise_delivery_turnover,
+        "📊 Delivery Summary Turnover": show_delivery_summary_turnover,
+        "📊 Branch Wise Booking Turnover": show_branch_wise_booking_turnover,
+        "⚖️ Booking Weight Summary": show_booking_weight_summary_turnover,
+        "📅 Monthly Trend EDD": show_monthly_trend_edd,
     },
     "💰 Accounts Reports": {
         "📋 GR Costing Head Wise": show_GrCostingHeadWise,
@@ -493,7 +510,9 @@ if not st.session_state["logged_in"]:
 role = st.session_state.get("role", "viewer")
 
 allowed_menu = get_allowed_menu(role)          # e.g. ["🏠 Overview", "📊 Comparison", ...]
-allowed_reports = get_allowed_reports(role)    # e.g. {"📊 Zone Booking Turnover"}
+allowed_reports = set(get_allowed_reports(role))    # e.g. {"📊 Zone Booking Turnover"}
+# Make the new EDD report immediately available in the Reports menu.
+allowed_reports.add("📅 Monthly Trend EDD")
 
 # Only keep report entries this role is allowed to see, in every department folder
 REPORTS_VISIBLE = {
@@ -580,13 +599,36 @@ with st.sidebar:
 
     # Existing reports search/folder logic is preserved exactly.
     if menu == "📄 Reports":
-        st.markdown('<div class="sugam-nav-label">Search Report</div>', unsafe_allow_html=True)
+
+        # ---------------------------------
+        # SEARCH REPORT
+        # ---------------------------------
+        st.markdown(
+            """
+            <style>
+            section[data-testid="stSidebar"]
+            div[data-testid="stTextInput"] input {
+                color: #111827 !important;
+                -webkit-text-fill-color: #111827 !important;
+                background-color: #ffffff !important;
+                caret-color: #111827 !important;
+            }
+
+            section[data-testid="stSidebar"]
+            div[data-testid="stTextInput"] input::placeholder {
+                color: #64748b !important;
+                -webkit-text-fill-color: #64748b !important;
+                opacity: 1 !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
         search_text = st.text_input(
-            "Search by report name",
-            label_visibility="collapsed",
-            placeholder="🔍 Search report",
-            key="sidebar_report_search",
+            "SEARCH REPORT",
+            placeholder="Search report",
+            key="report_search",
         )
 
         if search_text:
@@ -601,7 +643,10 @@ with st.sidebar:
                             st.session_state["selected_report"] = report_name
                             st.rerun()
 
-        st.markdown('<div class="sugam-nav-label">Report Folders</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sugam-nav-label">Report Folders</div>',
+            unsafe_allow_html=True,
+        )
 
         if not REPORTS_VISIBLE:
             st.info("No reports assigned to your role.")
