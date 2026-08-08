@@ -886,6 +886,47 @@ def _inject_overview_css():
                 }
             }
 
+            /* Operational Highlights compact expand/collapse metric button */
+            .st-key-operational_metrics_toggle div[data-testid="stButton"] {
+                display: flex !important;
+                justify-content: flex-end !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button {
+                width: auto !important;
+                min-width: 86px !important;
+                min-height: 28px !important;
+                height: 28px !important;
+                padding: 3px 10px !important;
+                margin: 0 !important;
+                border: 1px solid #bfd2ea !important;
+                border-radius: 8px !important;
+                background: #f8fbff !important;
+                color: #1d4ed8 !important;
+                font-size: 9px !important;
+                font-weight: 750 !important;
+                line-height: 1 !important;
+                box-shadow: none !important;
+                transform: none !important;
+            }
+
+            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button:hover {
+                border-color: #7aa7e8 !important;
+                background: #eef6ff !important;
+                box-shadow: none !important;
+                transform: none !important;
+            }
+
+            .st-key-operational_metrics_toggle div[data-testid="stButton"] > button p {
+                margin: 0 !important;
+                color: #1d4ed8 !important;
+                font-size: 9px !important;
+                font-weight: 750 !important;
+                white-space: nowrap !important;
+            }
+
             @media (max-width: 1180px) {
                 .checkbox-slicer-label {
                     font-size: 8.5px !important;
@@ -1630,15 +1671,41 @@ def _build_sla_metrics(current_df, previous_df):
 
 
 def _render_operational_highlights(current_df, previous_df):
-    """Render a compact SLAStatus panel that fits beside branch rankings."""
+    """Render Operational Highlights with a compact metric expand/collapse control."""
     current_col, previous_col, metrics = _build_sla_metrics(current_df, previous_df)
 
+    # UI-only state. The underlying SLA calculations remain unchanged.
+    state_key = "operational_highlights_expanded"
+    if state_key not in st.session_state:
+        st.session_state[state_key] = True
+
     with st.container(border=True):
-        st.markdown(
-            "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
-            "Operational Highlights</div>",
-            unsafe_allow_html=True,
-        )
+        title_col, action_col = st.columns([1.0, 0.42], gap="small", vertical_alignment="center")
+
+        with title_col:
+            st.markdown(
+                "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 2px 2px;'>"
+                "Operational Highlights</div>",
+                unsafe_allow_html=True,
+            )
+
+        with action_col:
+            toggle_label = "− HIDE METRICS" if st.session_state[state_key] else "＋ ADD METRIC"
+            if st.button(
+                toggle_label,
+                key="operational_metrics_toggle",
+                help="Expand or collapse Operational Highlights metrics.",
+                width="content",
+            ):
+                st.session_state[state_key] = not st.session_state[state_key]
+
+        if not st.session_state[state_key]:
+            st.markdown(
+                "<div style='font-size:10px;color:#64748b;margin:4px 0 2px 2px;'>"
+                "Metrics are collapsed. Use ADD METRIC to expand them.</div>",
+                unsafe_allow_html=True,
+            )
+            return
 
         if current_col is None:
             st.info("SLAStatus column is missing.")
@@ -1683,6 +1750,7 @@ def _render_operational_highlights(current_df, previous_df):
             "<div style='font-size:10px;color:#94a3b8;margin-top:5px;'>LY SLAStatus unavailable.</div>"
         )
         st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
+
 
 
 TARGET_FILE_PATH = (
@@ -3539,9 +3607,16 @@ def show_overview():
                 fig_mom = go.Figure()
                 fig_mom.add_trace(go.Bar(
                     x=monthly_chart["Month"], y=monthly_chart["Business Cr"], name="Business",
-                    marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
+                    # Lighter business bars keep the MoM percentage labels clearly visible.
+                    marker=dict(
+                        color="#bfdbfe",
+                        line=dict(color="#2563eb", width=1.3),
+                    ),
+                    opacity=0.92,
                     text=monthly_chart["Business Cr"], texttemplate=f"₹%{{text:.2f}} {revenue_unit}",
-                    textposition="outside", cliponaxis=False,
+                    textposition="outside",
+                    textfont=dict(size=10, color="#1e3a8a", family="Arial"),
+                    cliponaxis=False,
                     hovertemplate=f"<b>%{{x}}</b><br>Business: ₹%{{y:.2f}} {revenue_unit}<extra></extra>",
                 ))
                 growth_colors = ["#16a34a" if pd.notna(v) and v >= 0 else "#dc2626" for v in monthly_chart["Growth %"]]
@@ -3550,7 +3625,9 @@ def show_overview():
                     mode="lines+markers+text", yaxis="y2", line=dict(color="#f59e0b", width=3),
                     marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
                     text=["" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%" for v in monthly_chart["Growth %"]],
-                    textposition="top center", textfont=dict(size=10, color="#334155", family="Arial"),
+                    textposition="top center",
+                    textfont=dict(size=11, color=growth_colors, family="Arial"),
+                    cliponaxis=False,
                     hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
                 ))
                 revenue_max = pd.to_numeric(monthly_chart["Business Cr"], errors="coerce").max()
@@ -3572,32 +3649,40 @@ def show_overview():
 
         with branch_achievement_col:
             with st.container(border=True):
-                # Keep the level selector on the left and only a compact number dropdown on the right.
-                _level_col, _top_dropdown_col = st.columns(
-                    [0.88, 0.12], gap="small", vertical_alignment="center"
+                # Stable header: title on the left, Top-N dropdown in its own usable space.
+                _target_title_col, _top_dropdown_col = st.columns(
+                    [0.74, 0.26], gap="small", vertical_alignment="center"
                 )
 
-                with _level_col:
-                    _achievement_level = st.segmented_control(
-                        "Target achievement level",
-                        options=["Zone", "Circle", "Branch"],
-                        default="Branch",
-                        key="target_achievement_level",
-                        label_visibility="collapsed",
-                    ) or "Branch"
+                with _target_title_col:
+                    st.markdown(
+                        "<div style='font-size:13px;font-weight:700;color:#0f172a;margin:2px 0 4px 0;'>"
+                        "TARGET ACHIEVEMENT</div>",
+                        unsafe_allow_html=True,
+                    )
 
                 with _top_dropdown_col:
                     _branch_achievement_top_n = st.selectbox(
-                        "",
+                        "Top",
                         options=[5, 10, 20, 30],
                         index=0,
                         key="branch_achievement_top_n",
                         label_visibility="collapsed",
                     )
 
+                # Keep the hierarchy selector on a separate row so neither control overlaps.
+                _achievement_level = st.segmented_control(
+                    "Target achievement level",
+                    options=["Zone", "Circle", "Branch"],
+                    default="Branch",
+                    key="target_achievement_level",
+                    label_visibility="collapsed",
+                    width="stretch",
+                ) or "Branch"
+
                 st.markdown(
-                    f"<div style='font-size:13px;font-weight:700;color:#0f172a;margin:5px 0 8px 0;'>"
-                    f"{_achievement_level.upper()} WISE TARGET ACHIEVEMENT (Top {_branch_achievement_top_n})</div>",
+                    f"<div style='font-size:11px;font-weight:600;color:#475569;margin:2px 0 8px 0;'>"
+                    f"{_achievement_level} wise · Top {_branch_achievement_top_n}</div>",
                     unsafe_allow_html=True,
                 )
 
