@@ -1043,9 +1043,15 @@ def _inject_overview_css():
                 margin: 0 !important;
             }
 
+            /* Consistent small breathing room between dashboard rows. */
+            div[data-testid="stHorizontalBlock"] {
+                margin-bottom: 6px !important;
+            }
+
+            /* Bordered visual cards get a little extra vertical separation. */
             div[data-testid="stVerticalBlockBorderWrapper"] {
                 margin-top: 4px !important;
-                margin-bottom: 12px !important;
+                margin-bottom: 14px !important;
                 box-sizing: border-box !important;
             }
 
