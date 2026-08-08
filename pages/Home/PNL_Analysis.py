@@ -31,253 +31,150 @@ def _inject_pnl_css() -> None:
         """
         <style>
         :root {
-            --pnl-primary:#6d4bd2;
-            --pnl-primary-dark:#5137aa;
-            --pnl-primary-soft:#eee9ff;
-            --pnl-border:#ddd6fe;
-            --pnl-surface:#fcfbff;
-            --pnl-muted:#6b7280;
+            --dash-navy:#102a43;
+            --dash-blue:#2563eb;
+            --dash-teal:#0f766e;
+            --dash-muted:#64748b;
+            --dash-border:#dbe4ef;
         }
 
-        .stApp {
-            background:linear-gradient(180deg,#fdfcff 0%,#faf8ff 100%) !important;
-        }
-        .block-container {
-            max-width:100% !important;
-            padding:.45rem .75rem 1rem !important;
-        }
-        div[data-testid="stVerticalBlock"] { gap:.52rem !important; }
-        div[data-testid="stHorizontalBlock"] {
-            gap:.62rem !important;
-            align-items:flex-start !important;
-        }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
-            min-width:0 !important;
-        }
+        .stApp { background:#ffffff !important; }
+        .block-container { max-width:100% !important; padding:.35rem .75rem .75rem !important; }
+        div[data-testid="stVerticalBlock"] { gap:.55rem !important; }
+        div[data-testid="stHorizontalBlock"] { gap:.5rem !important; align-items:flex-start !important; }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] { min-width:0 !important; }
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            border:1px solid #ded8f6 !important;
+            margin-top:4px !important;
+            margin-bottom:10px !important;
+            border:1px solid #dce5ef !important;
             border-radius:14px !important;
-            background:linear-gradient(180deg,#ffffff 0%,#fdfcff 100%) !important;
-            box-shadow:0 7px 18px rgba(76,55,140,.07), inset 0 1px 0 #ffffff !important;
+            background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%) !important;
+            box-shadow:0 7px 18px rgba(15,42,67,.075), inset 0 1px 0 #ffffff !important;
+            box-sizing:border-box !important;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding:.72rem .80rem !important;
+        div[data-testid="stVerticalBlockBorderWrapper"] > div { padding:.55rem .65rem !important; }
+        div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+            transform:translateY(-1px);
+            box-shadow:0 10px 22px rgba(15,42,67,.10), inset 0 1px 0 #ffffff !important;
         }
-
-        .pnl-title {
-            color:#251b4f; font-size:19px; font-weight:850;
-            letter-spacing:-.25px; margin:0;
-        }
-        .pnl-subtitle { color:#6b7280; font-size:11px; margin-top:2px; }
-        .section-title {
-            font-size:14px; font-weight:700; color:#35256f;
-            margin:1px 0 7px 1px;
+        div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]) {
+            gap:14px !important; column-gap:14px !important; margin-top:3px !important; margin-bottom:6px !important;
         }
 
+        .pnl-title, .executive-title {
+            color:var(--dash-navy); font-size:19px; font-weight:850; letter-spacing:-.3px; margin:0;
+        }
+        .pnl-subtitle, .executive-subtitle { color:var(--dash-muted); font-size:11px; margin-top:2px; }
+        .section-title { font-size:14px; font-weight:600; color:#0f2744; margin:1px 0 7px 1px; }
+
+        div[data-testid="stElementContainer"]:has(.filter-summary) {
+            position:relative !important; z-index:5 !important; margin-top:0 !important; margin-bottom:0 !important;
+        }
         .filter-summary {
-            display:flex; flex-wrap:wrap; gap:8px; min-height:30px;
-            align-items:center; margin:7px 0 15px 0 !important;
+            display:flex; flex-wrap:wrap; justify-content:flex-start; align-items:center; width:100%;
+            min-height:28px; gap:6px; margin:0; padding:0; line-height:1; position:relative; z-index:5;
         }
         .filter-chip {
-            display:inline-flex; align-items:center; min-height:28px; padding:5px 13px;
-            border:1px solid #cfc4f6; border-radius:999px; background:#f7f4ff;
-            color:#5638ad; font-size:10.5px; font-weight:650; white-space:nowrap;
-            box-shadow:0 2px 5px rgba(109,75,210,.06);
+            display:inline-flex; align-items:center; justify-content:center; min-height:26px; padding:5px 11px;
+            border:1px solid #b8d1f2; border-radius:999px; background:#f5f9ff; color:#31557d;
+            font-size:10px; font-weight:500; line-height:1; box-shadow:inset 0 1px 0 #ffffff; white-space:nowrap;
         }
 
         div[data-testid="stSelectbox"] {
-            display:flex !important; flex-direction:column !important; gap:5px !important;
+            display:flex !important; flex-direction:column !important; gap:7px !important;
+            padding:0 !important; margin:0 0 2px 0 !important; border:0 !important;
+            background:transparent !important; box-shadow:none !important; overflow:visible !important;
         }
         div[data-testid="stSelectbox"] > label,
         div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
-            min-height:20px !important; line-height:20px !important;
-            margin:0 0 1px 2px !important; font-size:9.5px !important;
-            color:#4f3c91 !important; white-space:nowrap !important;
+            display:block !important; position:static !important; min-height:22px !important;
+            margin:0 0 2px 2px !important; padding:0 !important; line-height:22px !important;
+            color:#243b53 !important; font-size:10px !important; font-family:"Segoe UI",Arial,sans-serif !important;
+            font-weight:400 !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important;
         }
         div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-            min-height:38px !important; height:38px !important;
-            border:1px solid #ddd6f6 !important; border-radius:10px !important;
-            background:linear-gradient(180deg,#ffffff,#f4f1fb) !important;
-            box-shadow:0 2px 5px rgba(76,55,140,.04);
+            min-height:40px !important; height:40px !important; padding:0 8px !important;
+            border:1px solid #cbd9ea !important; border-radius:10px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f5f8fc 100%) !important;
+            box-shadow:inset 0 1px 2px rgba(15,23,42,.06) !important;
         }
-        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:focus-within {
-            border-color:#8b6ee7 !important;
-            box-shadow:0 0 0 2px rgba(109,75,210,.12) !important;
-        }
+        div[data-baseweb="select"] span { color:#102a43 !important; font-weight:800 !important; font-size:11px !important; }
+        div[data-baseweb="select"] svg { color:#1d4ed8 !important; }
 
-        /* KPI cards aligned with Business Overview design */
         .kpi-3d-card {
-            position: relative;
-            overflow: hidden;
-            min-height: 82px;
-            padding: 10px 11px 11px 11px;
-            border: 1px solid #cbd5e1;
-            border-radius: 14px;
-            background: linear-gradient(145deg, #ffffff 0%, #f8fafc 45%, #e7edf5 100%);
-            box-shadow:
-                0 7px 0 #c2ccd9,
-                0 11px 17px rgba(15,23,42,.18),
-                inset 1px 1px 0 rgba(255,255,255,.98),
-                inset -1px -1px 0 rgba(100,116,139,.18);
-            transform: translateY(-3px);
-            transition: transform .15s ease, box-shadow .15s ease;
+            position:relative; overflow:hidden; min-height:70px; padding:8px 9px;
+            border:1px solid #cbd5e1; border-radius:14px;
+            background:linear-gradient(145deg,#ffffff 0%,#f8fafc 45%,#e7edf5 100%);
+            box-shadow:0 3px 8px rgba(15,23,42,.10), inset 1px 1px 0 rgba(255,255,255,.98);
+            transform:none; transition:transform .15s ease,box-shadow .15s ease;
         }
+        .kpi-3d-card:hover { transform:translateY(-2px); box-shadow:0 7px 14px rgba(15,23,42,.13), inset 1px 1px 0 rgba(255,255,255,.98); }
+        .kpi-3d-topline { display:none !important; }
+        .kpi-3d-gloss { position:absolute; inset:1px 1px auto 1px; height:38%; border-radius:13px 13px 50% 50%; background:linear-gradient(180deg,rgba(255,255,255,.78),rgba(255,255,255,0)); pointer-events:none; }
+        .kpi-3d-head { position:relative; z-index:1; display:grid; grid-template-columns:minmax(0,1fr) 27px; align-items:center; gap:6px; }
+        .kpi-3d-title { color:var(--kpi-accent); font-size:11px; font-family:"Segoe UI",Arial,sans-serif; font-weight:400; letter-spacing:.15px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .kpi-3d-icon { width:27px; height:27px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:15px; background:linear-gradient(145deg,#ffffff,#dfe7f1); border:1px solid #d7e1ec; box-shadow:0 2px 4px rgba(15,23,42,.10), inset 1px 1px 0 rgba(255,255,255,.95); }
+        .kpi-3d-value { position:relative; z-index:1; margin-top:2px; color:#102a43; font-size:16px; font-weight:950; line-height:1.08; white-space:nowrap; }
+        .kpi-3d-footer { position:relative; z-index:1; margin-top:4px; display:flex; align-items:center; justify-content:space-between; gap:6px; }
+        .kpi-3d-ly { min-width:0; color:#64748b; font-size:9px; font-weight:600; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .kpi-3d-growth { display:inline-block; padding:2px 7px; border:1px solid; border-radius:999px; font-size:9px; font-weight:400; white-space:nowrap; box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 2px 3px rgba(15,23,42,.10); }
 
-        .kpi-3d-card:hover {
-            transform: translateY(-5px);
-            box-shadow:
-                0 9px 0 #b9c5d3,
-                0 15px 22px rgba(15,23,42,.22),
-                inset 1px 1px 0 rgba(255,255,255,.98),
-                inset -1px -1px 0 rgba(100,116,139,.20);
+        div[data-testid="stSegmentedControl"] { display:flex !important; justify-content:flex-end !important; width:100% !important; margin-top:1px !important; }
+        div[data-testid="stSegmentedControl"] > div,
+        div[data-testid="stSegmentedControl"] [role="radiogroup"] {
+            display:flex !important; gap:6px !important; width:100% !important; padding:0 !important;
+            border:0 !important; background:transparent !important; box-shadow:none !important;
         }
-
-        .kpi-3d-topline {
-            display: none !important;
-            position: absolute;
-            left: 0;
-            right: 0;
-            top: 0;
-            height: 4px;
-            background: linear-gradient(
-                90deg,
-                var(--kpi-accent),
-                color-mix(in srgb, var(--kpi-accent) 55%, white)
-            );
-            box-shadow: 0 2px 4px color-mix(
-                in srgb,
-                var(--kpi-accent) 28%,
-                transparent
-            );
+        div[data-testid="stSegmentedControl"] label,
+        div[data-testid="stSegmentedControl"] button {
+            position:relative !important; display:flex !important; align-items:center !important; justify-content:center !important;
+            min-height:32px !important; height:32px !important; padding:4px 10px !important; margin:0 !important;
+            border:1px solid #d8e2ee !important; border-radius:8px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%) !important; color:#334155 !important;
+            box-shadow:inset 0 1px 0 #ffffff,0 1px 2px rgba(15,23,42,.05) !important; transform:none !important;
+            font-size:10px !important; font-weight:650 !important; white-space:nowrap !important;
         }
-
-        .kpi-3d-gloss {
-            position: absolute;
-            inset: 1px 1px auto 1px;
-            height: 38%;
-            border-radius: 13px 13px 50% 50%;
-            background: linear-gradient(
-                180deg,
-                rgba(255,255,255,.78),
-                rgba(255,255,255,0)
-            );
-            pointer-events: none;
+        div[data-testid="stSegmentedControl"] label:hover,
+        div[data-testid="stSegmentedControl"] button:hover {
+            border-color:#9bb7d8 !important; background:linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important; color:#174a7e !important;
         }
-
-        .kpi-3d-head {
-            position: relative;
-            z-index: 1;
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) 27px;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .kpi-3d-title {
-            color: var(--kpi-accent);
-            font-size: 11px;
-            font-family: "Segoe UI", Arial, sans-serif;
-            font-weight: 400;
-            letter-spacing: .15px;
-            text-align: left;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            text-shadow: 0 1px 0 rgba(255,255,255,.95);
-        }
-
-        .kpi-3d-icon {
-            width: 27px;
-            height: 27px;
-            border-radius: 9px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 15px;
-            background: linear-gradient(145deg, #ffffff, #dfe7f1);
-            border: 1px solid color-mix(
-                in srgb,
-                var(--kpi-accent) 38%,
-                #cbd5e1
-            );
-            box-shadow:
-                0 3px 0 color-mix(in srgb, var(--kpi-accent) 24%, #b8c2cf),
-                0 5px 8px rgba(15,23,42,.14),
-                inset 1px 1px 0 rgba(255,255,255,.95);
-        }
-
-        .kpi-3d-value {
-            position: relative;
-            z-index: 1;
-            margin-top: 4px;
-            color: #102a43;
-            font-size: 18px;
-            font-weight: 950;
-            line-height: 1.08;
-            white-space: nowrap;
-            text-shadow: 0 1px 0 #ffffff, 0 2px 3px rgba(15,23,42,.12);
-        }
-
-        .kpi-3d-footer {
-            position: relative;
-            z-index: 1;
-            margin-top: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 6px;
-        }
-
-        .kpi-3d-ly {
-            min-width: 0;
-            color: #64748b;
-            font-family: "Segoe UI", Arial, sans-serif;
-            font-size: 9px;
-            font-weight: 600;
-            line-height: 1.1;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .kpi-3d-growth {
-            display: inline-block;
-            padding: 2px 7px;
-            border: 1px solid;
-            border-radius: 999px;
-            font-family: "Segoe UI", Arial, sans-serif;
-            font-size: 9px;
-            font-weight: 400;
-            letter-spacing: 0;
-            white-space: nowrap;
-            box-shadow:
-                inset 0 1px 0 rgba(255,255,255,.9),
-                0 2px 3px rgba(15,23,42,.10);
-        }
-
-        div[data-testid="stSegmentedControl"] { margin-top:1px !important; }
         div[data-testid="stSegmentedControl"] label:has(input:checked),
         div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
-            color:#4b2ea3 !important; background:#eee8ff !important;
-            border-color:#b9a7ef !important;
+            border-color:#123f73 !important; background:linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
+            color:#ffffff !important; box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 2px 5px rgba(15,42,67,.18) !important;
         }
+        div[data-testid="stSegmentedControl"] label:has(input:checked) p,
+        div[data-testid="stSegmentedControl"] label:has(input:checked) span,
+        div[data-testid="stSegmentedControl"] button[aria-pressed="true"] p,
+        div[data-testid="stSegmentedControl"] button[aria-pressed="true"] span { color:#ffffff !important; }
 
-        [data-testid="stDataFrame"] {
-            border:1px solid #e3def5; border-radius:10px; overflow:hidden;
-        }
-        [data-testid="stDataFrame"] table { font-size:11px; }
-
-        div[data-testid="stDownloadButton"] > button,
         .stButton > button {
-            border-radius:8px !important; min-height:34px !important;
-            font-size:10px !important; font-weight:800 !important;
-            border-color:#c9bdf1 !important; color:#4f359f !important;
-            background:#f7f4ff !important;
+            position:relative !important; overflow:hidden !important; min-height:34px !important; padding:5px 13px !important;
+            border:1px solid #d8e2ee !important; border-radius:8px !important; background:linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%) !important;
+            color:#334155 !important; box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 1px 2px rgba(15,23,42,.05) !important;
+            transform:none !important; font-size:11px !important; font-weight:650 !important;
         }
-        div[data-testid="stDownloadButton"] > button:hover,
-        .stButton > button:hover {
-            border-color:#8b6ee7 !important; background:#eee8ff !important;
+        .stButton > button:hover { border-color:#9bb7d8 !important; background:linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important; color:#174a7e !important; }
+        .stButton > button[data-testid="stBaseButton-primary"] { border-color:#123f73 !important; background:linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important; color:#ffffff !important; }
+
+        div[data-testid="stDownloadButton"] > button {
+            min-height:34px !important; width:auto !important; padding:5px 10px !important; border:1px solid #2563eb !important;
+            border-radius:8px !important; color:#ffffff !important; font-size:10px !important; font-weight:850 !important;
+            background:linear-gradient(145deg,#3b82f6 0%,#2563eb 58%,#1d4ed8 100%) !important;
+            box-shadow:0 3px 0 #1e40af,0 6px 10px rgba(37,99,235,.20) !important;
+        }
+        div[data-testid="stDownloadButton"] > button p { color:#ffffff !important; }
+
+        [data-testid="stDataFrame"] { border:1px solid #e2eaf3; border-radius:10px; overflow:hidden; box-shadow:none !important; background:#fbfdff; }
+        [data-testid="stDataFrame"] table { font-size:11px; }
+        [data-testid="stDataFrame"] tbody tr { height:22px !important; }
+
+        @media (max-width:1500px) {
+            .block-container { padding-left:.45rem !important; padding-right:.45rem !important; }
+            div[data-testid="stHorizontalBlock"] { gap:.4rem !important; }
+            div[data-testid="stSelectbox"] > label, div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] { font-size:9px !important; }
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { min-height:38px !important; height:38px !important; }
         }
         </style>
         """,
@@ -466,18 +363,14 @@ def render_kpi_card(
         st.markdown(html, unsafe_allow_html=True)
 
 
-def render_header() -> st.delta_generator.DeltaGenerator:
+def render_header():
     with st.container(border=True):
         left, right = st.columns([7, 1], gap="small", vertical_alignment="center")
         with left:
-            st.markdown(
-                '<div><div class="pnl-title">P&amp;L Dashboard</div>'
-                '<div class="pnl-subtitle">Executive profitability view across company, geography, load type and branch</div></div>',
-                unsafe_allow_html=True,
-            )
+            header_content_placeholder = st.empty()
         with right:
             export_placeholder = st.empty()
-    return export_placeholder
+    return header_content_placeholder, export_placeholder
 
 
 def build_monthly_comparison(df: pd.DataFrame, prev_df: pd.DataFrame, divisor: float) -> pd.DataFrame:
@@ -817,7 +710,7 @@ def render_top_n_pnl_table(
 # =====================================================
 def show_pnl_dashboard() -> None:
     _inject_pnl_css()
-    export_placeholder = render_header()
+    header_content_placeholder, export_placeholder = render_header()
 
     filter_cols = st.columns(10, gap="small")
     with filter_cols[0]:
@@ -941,8 +834,18 @@ def show_pnl_dashboard() -> None:
         f'<span class="filter-chip">{escape(label)}: {escape(str(value))}</span>'
         for label, value in chips if value not in (None, "", "All")
     )
-    st.markdown(f'<div class="filter-summary">{chip_html}</div>', unsafe_allow_html=True)
-    st.markdown("<div aria-hidden='true' style='height:7px'></div>", unsafe_allow_html=True)
+    header_filter_html = (
+        f'<div class="filter-summary" style="width:auto;min-height:0;flex-wrap:nowrap;gap:6px;">{chip_html}</div>'
+        if chip_html else ""
+    )
+    with header_content_placeholder:
+        st.markdown(
+            f'<div style="padding:2px 0 3px 4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
+            f'<div class="executive-title" style="white-space:nowrap;">P&amp;L Dashboard</div>'
+            f'{header_filter_html}</div>',
+            unsafe_allow_html=True,
+        )
+    st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
 
     if df.empty:
         st.warning("No data found for selected filters.")
@@ -971,15 +874,15 @@ def show_pnl_dashboard() -> None:
     previous = calculate_pnl_kpis(prev_df)
 
     kpi_specs = [
-        ("Business", amount_text(current["revenue"], conversion_type), amount_text(previous["revenue"], conversion_type), pct_change(current["revenue"], previous["revenue"]), "💰", "#5b3fbb", False),
-        ("Expense", amount_text(current["expense"], conversion_type), amount_text(previous["expense"], conversion_type), pct_change(current["expense"], previous["expense"]), "🧾", "#5b3fbb", True),
-        ("P&L", amount_text(current["pnl"], conversion_type), amount_text(previous["pnl"], conversion_type), pct_change(current["pnl"], previous["pnl"]), "📈", "#5b3fbb" if current["pnl"] >= 0 else "#dc2626", False),
-        ("P&L Margin", f'{current["margin"]:.2f}%', f'{previous["margin"]:.2f}%', current["margin"] - previous["margin"], "🎯", "#5b3fbb", False),
-        ("FTL P&L", amount_text(current["ftl_pnl"], conversion_type), amount_text(previous["ftl_pnl"], conversion_type), pct_change(current["ftl_pnl"], previous["ftl_pnl"]), "🚛", "#5b3fbb", False),
-        ("LTL P&L", amount_text(current["ltl_pnl"], conversion_type), amount_text(previous["ltl_pnl"], conversion_type), pct_change(current["ltl_pnl"], previous["ltl_pnl"]), "🚚", "#5b3fbb", False),
-        ("Profit GR", f'{current["profit_gr"]:,}', f'{previous["profit_gr"]:,}', pct_change(current["profit_gr"], previous["profit_gr"]), "✅", "#5b3fbb", False),
-        ("Loss GR", f'{current["loss_gr"]:,}', f'{previous["loss_gr"]:,}', pct_change(current["loss_gr"], previous["loss_gr"]), "⚠️", "#5b3fbb", True),
-        ("Avg P&L / GR", f'₹{current["avg_pnl_gr"]:,.0f}', f'₹{previous["avg_pnl_gr"]:,.0f}', pct_change(current["avg_pnl_gr"], previous["avg_pnl_gr"]), "📦", "#5b3fbb", False),
+        ("Business", amount_text(current["revenue"], conversion_type), amount_text(previous["revenue"], conversion_type), pct_change(current["revenue"], previous["revenue"]), "💰", "#2563eb", False),
+        ("Expense", amount_text(current["expense"], conversion_type), amount_text(previous["expense"], conversion_type), pct_change(current["expense"], previous["expense"]), "🧾", "#2563eb", True),
+        ("P&L", amount_text(current["pnl"], conversion_type), amount_text(previous["pnl"], conversion_type), pct_change(current["pnl"], previous["pnl"]), "📈", "#2563eb" if current["pnl"] >= 0 else "#dc2626", False),
+        ("P&L Margin", f'{current["margin"]:.2f}%', f'{previous["margin"]:.2f}%', current["margin"] - previous["margin"], "🎯", "#2563eb", False),
+        ("FTL P&L", amount_text(current["ftl_pnl"], conversion_type), amount_text(previous["ftl_pnl"], conversion_type), pct_change(current["ftl_pnl"], previous["ftl_pnl"]), "🚛", "#2563eb", False),
+        ("LTL P&L", amount_text(current["ltl_pnl"], conversion_type), amount_text(previous["ltl_pnl"], conversion_type), pct_change(current["ltl_pnl"], previous["ltl_pnl"]), "🚚", "#2563eb", False),
+        ("Profit GR", f'{current["profit_gr"]:,}', f'{previous["profit_gr"]:,}', pct_change(current["profit_gr"], previous["profit_gr"]), "✅", "#2563eb", False),
+        ("Loss GR", f'{current["loss_gr"]:,}', f'{previous["loss_gr"]:,}', pct_change(current["loss_gr"], previous["loss_gr"]), "⚠️", "#2563eb", True),
+        ("Avg P&L / GR", f'₹{current["avg_pnl_gr"]:,.0f}', f'₹{previous["avg_pnl_gr"]:,.0f}', pct_change(current["avg_pnl_gr"], previous["avg_pnl_gr"]), "📦", "#2563eb", False),
     ]
 
     kpi_cols = st.columns(9, gap="small")
@@ -992,11 +895,11 @@ def show_pnl_dashboard() -> None:
     # =====================================================
     st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
 
-    row1, row2 = st.columns([1.20, 0.80])
+    row1, row2 = st.columns([1.20, 0.80], gap="medium")
 
     with row1:
         with st.container(border=True):
-            title_col, filter_col = st.columns([2, 2])
+            title_col, filter_col = st.columns([2, 2], gap="small")
 
             total_growth = pct_change(current["pnl"], previous["pnl"])
             with title_col:
@@ -1061,13 +964,13 @@ def show_pnl_dashboard() -> None:
                     y=trend_df["Current P&L"],
                     name=f"Current ({fy})",
                     marker=dict(
-                        color="#7657d6",
-                        line=dict(color="#5137aa", width=1.3),
+                        color="#2563eb",
+                        line=dict(color="#1d4ed8", width=1.3),
                     ),
                     text=trend_df["Current P&L"],
                     texttemplate="%{text:.2f}",
                     textposition="outside",
-                    textfont=dict(size=12, color="#5b3fbb", family="Arial"),
+                    textfont=dict(size=12, color="#2563eb", family="Arial"),
                     cliponaxis=False,
                     hovertemplate=(
                         f"<b>%{{x}}</b><br>Current P&L: ₹%{{y:.2f}} {unit}<extra></extra>"
@@ -1108,7 +1011,7 @@ def show_pnl_dashboard() -> None:
                 barmode="group",
                 height=310,
                 margin=dict(l=8, r=8, t=24, b=8),
-                plot_bgcolor="#fbfaff",
+                plot_bgcolor="#fbfdff",
                 paper_bgcolor="rgba(0,0,0,0)",
                 legend=dict(
                     orientation="h",
@@ -1197,7 +1100,7 @@ def show_pnl_dashboard() -> None:
                             rotation=0,
                             direction="clockwise",
                             marker=dict(
-                                colors=["#7657d6", "#178f9b"],
+                                colors=["#2563eb", "#0f766e"],
                                 line=dict(color="#ffffff", width=1.5),
                             ),
                             textinfo="none",
@@ -1270,8 +1173,8 @@ def show_pnl_dashboard() -> None:
 
                 load_legend_html = (
                     '<div style="display:flex;flex-direction:column;gap:17px;padding:12px 0 3px;line-height:1.2;">'
-                    + _load_row("FTL", ftl, ftl_share, prev_ftl, ftl_yoy, "#7657d6")
-                    + _load_row("LTL", ltl, ltl_share, prev_ltl, ltl_yoy, "#178f9b")
+                    + _load_row("FTL", ftl, ftl_share, prev_ftl, ftl_yoy, "#2563eb")
+                    + _load_row("LTL", ltl, ltl_share, prev_ltl, ltl_yoy, "#0f766e")
                     + '</div>'
                 )
                 if hasattr(st, "html"):
@@ -1334,7 +1237,7 @@ def show_pnl_dashboard() -> None:
                 st.info("No company P&L is available for the selected filters.")
             else:
                 company_colors = [
-                    "#7657d6", "#178f9b", "#9b6ce3",
+                    "#2563eb", "#0f766e", "#7c3aed",
                     "#f59e0b", "#ec4899", "#64748b",
                 ]
                 max_company_value = float(company_chart_df["CY PNL"].abs().max() or 1)
@@ -1382,12 +1285,12 @@ def show_pnl_dashboard() -> None:
     # Month-on-Month P&L and P&L by Zone — side by side
     # =====================================================
     st.markdown("<div aria-hidden='true' style='height:8px'></div>", unsafe_allow_html=True)
-    mom_col, zone_col = st.columns([1.35, 1.0], gap="small")
+    mom_col, zone_col = st.columns([1.35, 1.0], gap="medium")
 
     with mom_col:
         with st.container(border=True):
             st.markdown(
-                "<div style='font-size:16px;font-weight:600;color:#241a4f;margin:2px 0 8px 2px;'>"
+                "<div style='font-size:16px;font-weight:600;color:#0f2744;margin:2px 0 8px 2px;'>"
                 "Month on Month P&L & Growth</div>",
                 unsafe_allow_html=True,
             )
@@ -1425,7 +1328,7 @@ def show_pnl_dashboard() -> None:
                 st.info("No monthly P&L data is available for the selected filters.")
             else:
                 bar_colors = [
-                    "#7657d6" if value >= 0 else "#dc2626"
+                    "#2563eb" if value >= 0 else "#dc2626"
                     for value in mom_df["P&L Display"]
                 ]
                 growth_colors = [
@@ -1441,7 +1344,7 @@ def show_pnl_dashboard() -> None:
                         name="P&L",
                         marker=dict(
                             color=bar_colors,
-                            line=dict(color="#5137aa", width=1.0),
+                            line=dict(color="#1d4ed8", width=1.0),
                         ),
                         text=mom_df["P&L Display"],
                         texttemplate=f"₹%{{text:.2f}} {unit}",
@@ -1493,7 +1396,7 @@ def show_pnl_dashboard() -> None:
                 fig_mom.update_layout(
                     height=370,
                     margin=dict(l=8, r=12, t=22, b=8),
-                    plot_bgcolor="#fbfaff",
+                    plot_bgcolor="#fbfdff",
                     paper_bgcolor="rgba(0,0,0,0)",
                     bargap=0.34,
                     legend=dict(
@@ -1537,7 +1440,7 @@ def show_pnl_dashboard() -> None:
     with zone_col:
         with st.container(border=True):
             st.markdown(
-                "<div style='font-size:16px;font-weight:600;color:#241a4f;margin:2px 0 8px 2px;'>"
+                "<div style='font-size:16px;font-weight:600;color:#0f2744;margin:2px 0 8px 2px;'>"
                 "P&L by Zone</div>",
                 unsafe_allow_html=True,
             )
@@ -1565,8 +1468,8 @@ def show_pnl_dashboard() -> None:
             }
             zone_df["Display Zone"] = zone_df["zone"].map(zone_name_map).fillna(zone_df["zone"])
             zone_colors = [
-                "#7657d6", "#178f9b", "#f59e0b",
-                "#8b5cc7", "#ec4899", "#ef5b5b", "#64748b",
+                "#2563eb", "#0f766e", "#f59e0b",
+                "#7c3aed", "#ec4899", "#ef5b5b", "#64748b",
             ]
 
             fig_zone = go.Figure(
@@ -1860,7 +1763,7 @@ def show_pnl_dashboard() -> None:
                 .compact-zone-matrix .num {{white-space:nowrap;font-weight:400;}}
                 .compact-zone-matrix .cy-cell,.compact-zone-matrix .cy-share {{background:#f8fbff;}}
                 .compact-zone-matrix .ly-cell,.compact-zone-matrix .ly-share {{background:#f7fcfb;}}
-                .compact-zone-matrix .yoy-cell {{background:#fcfaff;}}
+                .compact-zone-matrix .yoy-cell {{background:#fbfdff;}}
                 .compact-zone-matrix .total-cell {{font-weight:500;}}
                 .compact-zone-matrix .zone-share-row td {{color:#64748b;}}
                 .compact-zone-matrix .grand-total-row td {{background:#eaf2ff!important;font-weight:500;color:#0f2744;}}
@@ -2097,14 +2000,14 @@ def show_pnl_dashboard() -> None:
 
                 branch_rows.append(
                     f'<div style="margin-bottom:7px;padding:8px 10px;'
-                    f'border:1px solid #ddd6fe;border-radius:12px;background:#fbfaff;">'
+                    f'border:1px solid #dbe4ef;border-radius:12px;background:#fbfdff;">'
                     f'<div style="display:grid;'
                     f'grid-template-columns:34px minmax(175px,280px) minmax(100px,1fr) '
                     f'105px 105px 70px 82px;align-items:center;gap:10px;">'
                     f'<div style="text-align:center;font-size:13px;color:#334155;">{rank}</div>'
                     f'<div style="font-size:14px;color:#0f2744;white-space:nowrap;'
                     f'overflow:hidden;text-overflow:ellipsis;">{branch_name}</div>'
-                    f'<div style="height:7px;background:#e7e5f4;border-radius:999px;'
+                    f'<div style="height:7px;background:#e8eef5;border-radius:999px;'
                     f'overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.08);">'
                     f'<div style="width:{width_pct:.1f}%;height:7px;background:{fill_color};'
                     f'border-radius:999px;"></div></div>'
