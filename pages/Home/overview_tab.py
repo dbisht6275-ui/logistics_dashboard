@@ -4720,6 +4720,7 @@ def show_overview():
         "₹10–15 Lac",
         "₹15–25 Lac",
         "₹25–50 Lac",
+        "₹50 Lac & Above",
     ]
 
     selected_business_slab = st.session_state.get(
@@ -4734,6 +4735,7 @@ def show_overview():
         "₹10–15 Lac": (1000000, 1500000),
         "₹15–25 Lac": (1500000, 2500000),
         "₹25–50 Lac": (2500000, 5000000),
+        "₹50 Lac & Above": (5000000, None),
     }
 
     # Streamlit segmented_control may temporarily store None during the first
