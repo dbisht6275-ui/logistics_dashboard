@@ -2372,7 +2372,6 @@ def show_overview():
             f"""
             <div style="padding:2px 0 3px 4px;">
                 <div class="executive-title">Business Overview</div>
-                <div class="executive-subtitle">Executive view of business, shipments, load mix, geography and branch performance</div>
                 {header_filter_html}
             </div>
             """,
