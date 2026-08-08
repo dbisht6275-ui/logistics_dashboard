@@ -4381,7 +4381,7 @@ def show_overview():
         with st.container(border=True):
             st.markdown(
                 "<div style='font-size:16px;font-weight:400;color:#0f2744;margin:1px 0 7px 2px;'>"
-                "Branches by Business</div>",
+                "Branches by Monthly Avg Business</div>",
                 unsafe_allow_html=True,
             )
 
