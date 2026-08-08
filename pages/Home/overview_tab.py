@@ -807,6 +807,99 @@ def _inject_overview_css():
                 opacity: 1 !important;
             }
 
+            /* Attractive slab selector: compact Power-BI-style pills, visual only. */
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] {
+                width: 100% !important;
+                justify-content: stretch !important;
+                margin: 2px 0 8px 0 !important;
+            }
+
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] > div,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] [role="radiogroup"] {
+                display: grid !important;
+                grid-template-columns: repeat(7, minmax(95px, 1fr)) !important;
+                width: 100% !important;
+                max-width: none !important;
+                gap: 6px !important;
+                padding: 4px !important;
+                border: 1px solid #d8e3f0 !important;
+                border-radius: 12px !important;
+                background: linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%) !important;
+                box-shadow: inset 0 1px 2px rgba(15,23,42,.06) !important;
+            }
+
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button {
+                min-width: 0 !important;
+                width: 100% !important;
+                min-height: 36px !important;
+                height: 36px !important;
+                padding: 5px 8px !important;
+                margin: 0 !important;
+                border: 1px solid #d4deea !important;
+                border-radius: 9px !important;
+                background: #ffffff !important;
+                color: #334155 !important;
+                box-shadow: 0 1px 2px rgba(15,23,42,.05) !important;
+                transform: none !important;
+                transition: border-color .14s ease, background .14s ease, box-shadow .14s ease, transform .14s ease !important;
+            }
+
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:hover,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button:hover {
+                border-color: #93b7ef !important;
+                background: #f4f8ff !important;
+                box-shadow: 0 3px 8px rgba(37,99,235,.10) !important;
+                transform: translateY(-1px) !important;
+            }
+
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked),
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
+                color: #ffffff !important;
+                border-color: #2563eb !important;
+                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 58%, #1d4ed8 100%) !important;
+                box-shadow: 0 4px 10px rgba(37,99,235,.22), inset 0 1px 0 rgba(255,255,255,.25) !important;
+                transform: none !important;
+            }
+
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label::before,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button::before,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label::after,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button::after {
+                display: none !important;
+                content: none !important;
+            }
+
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label p,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label span,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button p,
+            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button span {
+                font-size: 11px !important;
+                font-weight: 650 !important;
+                line-height: 1.1 !important;
+                white-space: nowrap !important;
+            }
+
+            @media (max-width: 1500px) {
+                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] > div,
+                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] [role="radiogroup"] {
+                    grid-template-columns: repeat(7, minmax(78px, 1fr)) !important;
+                    gap: 4px !important;
+                }
+                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label,
+                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button {
+                    min-height: 33px !important;
+                    height: 33px !important;
+                    padding: 4px 5px !important;
+                }
+                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label p,
+                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label span,
+                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button p,
+                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button span {
+                    font-size: 9.5px !important;
+                }
+            }
+
 
             /* ============================================================
                Power-BI checkbox slicers - preserve the EXISTING filter UI.
@@ -2291,9 +2384,18 @@ def show_overview():
         )
 
     with filter_cols[7]:
+        # Cascade Month options from the selected Quarter(s).
+        # Example: Q1 -> Apr, May, Jun; Q1 + Q2 -> Apr through Sep.
+        # When no quarter is selected, Month continues to show every available month.
+        month_source_df = filter_source_df
+        if selected_quarters:
+            month_source_df = month_source_df[
+                month_source_df["Quarter"].isin(selected_quarters)
+            ]
+
         available_months = [
             m for m in MONTH_ORDER
-            if m in filter_source_df["Month"].dropna().unique().tolist()
+            if m in month_source_df["Month"].dropna().unique().tolist()
         ]
         selected_months = _checkbox_slicer(
             "▣ Month",
