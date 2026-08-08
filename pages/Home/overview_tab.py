@@ -1570,16 +1570,21 @@ def build_weight_yoy_trend(current_df, previous_df, trend_type, date_col, fy_sta
 
     return trend_df
 
-def create_card(title, value, color, icon, growth_value=0.0, previous_value=None):
-    """Render a compact KPI card with LY value and YoY growth."""
+def create_card(title, value, color, icon, growth_value=0.0, previous_value=None, target_value=None):
+    """Render a compact KPI card with LY value, optional target, and YoY growth."""
     positive = growth_value >= 0
     growth_color = "#15803d" if positive else "#dc2626"
     growth_bg = "#ffffff"
     growth_border = "#86efac" if positive else "#fda4af"
     growth_text = growth_label(growth_value)
     previous_text = previous_value if previous_value is not None else "N/A"
+    target_html = (
+        f'<div style="position:relative;z-index:1;margin-top:3px;font-size:9px;font-weight:700;'
+        f'color:#475569;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+        f'Target: {target_value}</div>'
+        if target_value is not None else ""
+    )
 
-                                                                               
     html = (
         f'<div class="kpi-3d-card" style="--kpi-accent:{color};">'
         f'<div class="kpi-3d-gloss"></div>'
@@ -1589,6 +1594,7 @@ def create_card(title, value, color, icon, growth_value=0.0, previous_value=None
         f'<div class="kpi-3d-icon">{icon}</div>'
         f'</div>'
         f'<div class="kpi-3d-value">{value}</div>'
+        f'{target_html}'
         f'<div class="kpi-3d-footer">'
         f'<span class="kpi-3d-ly">LY: {previous_text}</span>'
         f'<span class="kpi-3d-growth" '
@@ -2677,19 +2683,27 @@ def show_overview():
     paid_growth = pct_growth(paid, prev_kpis["paid"])
     tbb_growth = pct_growth(tbb, prev_kpis["tbb"])
 
+    target_month_count = max(int(df["FIN_MONTH"].dropna().nunique()), 1) if "FIN_MONTH" in df.columns else 1
+    total_target_lac = get_monthly_target_for_filtered_branches(df, "All") * target_month_count
+    ftl_target_lac = get_monthly_target_for_filtered_branches(df, "FTL") * target_month_count
+    ltl_target_lac = get_monthly_target_for_filtered_branches(df, "LTL") * target_month_count
+    total_target_text = format_revenue(total_target_lac * 100000.0, conversion_type)
+    ftl_target_text = format_revenue(ftl_target_lac * 100000.0, conversion_type)
+    ltl_target_text = format_revenue(ltl_target_lac * 100000.0, conversion_type)
+
     k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     with k1:
         create_card("Business", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth,
-                    format_revenue(prev_kpis["revenue"], conversion_type))
+                    format_revenue(prev_kpis["revenue"], conversion_type), total_target_text)
 
     with k2:
         create_card("FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth,
-                    format_revenue(prev_kpis["ftl"], conversion_type))
+                    format_revenue(prev_kpis["ftl"], conversion_type), ftl_target_text)
 
     with k3:
         create_card("LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth,
-                    format_revenue(prev_kpis["ltl"], conversion_type))
+                    format_revenue(prev_kpis["ltl"], conversion_type), ltl_target_text)
 
     with k4:
         create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth,
