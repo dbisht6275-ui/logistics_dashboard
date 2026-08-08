@@ -927,6 +927,25 @@ def _inject_overview_css():
                 white-space: nowrap !important;
             }
 
+            /* Target Achievement Top-N control: hide the selectbox label completely.
+               Global selectbox CSS forces labels visible, so this key-specific rule
+               keeps the compact dropdown in its own header slot with no "Top" text above it. */
+            .st-key-branch_achievement_top_n div[data-testid="stSelectbox"] > label,
+            .st-key-branch_achievement_top_n div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
+                display: none !important;
+                min-height: 0 !important;
+                height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                line-height: 0 !important;
+                overflow: hidden !important;
+            }
+
+            .st-key-branch_achievement_top_n div[data-testid="stSelectbox"] {
+                gap: 0 !important;
+                margin: 0 !important;
+            }
+
             @media (max-width: 1180px) {
                 .checkbox-slicer-label {
                     font-size: 8.5px !important;
@@ -1698,6 +1717,20 @@ def _render_operational_highlights(current_df, previous_df):
                 width="content",
             ):
                 st.session_state[state_key] = not st.session_state[state_key]
+
+        # Explain the SLA conditions used by Operational Highlights. This is UI-only;
+        # all existing calculations and thresholds below remain unchanged.
+        st.markdown(
+            "<div style='margin:2px 0 7px 2px;padding:6px 8px;border:1px solid #e2e8f0;"
+            "border-radius:8px;background:#f8fafc;color:#475569;font-size:9.5px;line-height:1.35;'>"
+            "<b>Condition:</b> On-Time Delivery = (Before EDD + On EDD) ÷ "
+            "(Before EDD + On EDD + After EDD + Overdue). "
+            "<span style='color:#15803d;font-weight:700;'>Green</span> means improvement vs LY; "
+            "<span style='color:#dc2626;font-weight:700;'>Red</span> means deterioration. "
+            "For After EDD, In Transit and Overdue, <b>lower is better</b>."
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
         if not st.session_state[state_key]:
             st.markdown(
@@ -3663,7 +3696,7 @@ def show_overview():
 
                 with _top_dropdown_col:
                     _branch_achievement_top_n = st.selectbox(
-                        "Top",
+                        "Number of records",
                         options=[5, 10, 20, 30],
                         index=0,
                         key="branch_achievement_top_n",
