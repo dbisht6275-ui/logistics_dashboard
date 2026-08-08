@@ -7,22 +7,18 @@ import plotly.express as px
 from services.data_loader import load_booking_data_pair, get_date_range
 from services.branch_agency_mast import load_stationmast_data
 
-# Compact layout constants
 SPACER_HEIGHT = 10
 REVENUE_CHART_HEIGHT = 310
 ALIGNED_CHART_HEIGHT = 310
 RANKING_CHART_HEIGHT = 330
 
-# User-selectable ranking sizes for Customer and Route insights.
 TOP_N_OPTIONS = [10, 20, 30, 40]
 
 def compact_spacer(height=SPACER_HEIGHT):
     """Render a consistent, minimal vertical gap between sections."""
     st.markdown(f"<div aria-hidden='true' style='height:{height}px'></div>", unsafe_allow_html=True)
 
-# =========================
-# Compact dashboard styling
-# =========================
+                           
 
 def _inject_overview_css():
     """
@@ -34,19 +30,17 @@ def _inject_overview_css():
     st.markdown(
         """
         <style>
-            /* Start page content close to the top, same as Outstanding */
+            
             .block-container {
                 padding-top: 0.5rem;
                 padding-bottom: 1rem;
             }
 
-            /* Remove unnecessary top spacing from the first page elements */
             .block-container > div:first-child {
                 margin-top: 0 !important;
                 padding-top: 0 !important;
             }
 
-            /* Reduce dataframe row height */
             [data-testid="stDataFrame"] table {
                 font-size: 11px;
             }
@@ -61,13 +55,11 @@ def _inject_overview_css():
                 box-shadow: 0 7px 14px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.9);
             }
 
-            /* Compact markdown headings inside cards */
             h5, h6 {
                 margin-top: 0rem !important;
                 margin-bottom: 0.35rem !important;
             }
 
-            /* KPI-style period selector: Daily / Weekly / Monthly / Quarterly */
             div[data-testid="stSegmentedControl"] {
                 display: flex !important;
                 justify-content: flex-end !important;
@@ -151,7 +143,6 @@ def _inject_overview_css():
                     inset -1px -1px 0 rgba(100,116,139,.18) !important;
             }
 
-            /* Selected period looks like an active blue KPI card */
             div[data-testid="stSegmentedControl"] label:has(input:checked),
             div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
                 color: #ffffff !important;
@@ -192,7 +183,6 @@ def _inject_overview_css():
                 }
             }
 
-            /* Strong 3D KPI cards */
             .kpi-3d-card {
                 position: relative;
                 overflow: hidden;
@@ -327,12 +317,10 @@ def _inject_overview_css():
                 box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 3px rgba(15,23,42,.10);
             }
 
-            /* Reduce dataframe/table vertical spacing */
             div[data-testid="stDataFrame"] {
                 font-size: 12px;
             }
 
-            /* 3D dashboard surface treatment */
             div[data-testid="stVerticalBlockBorderWrapper"] {
                 border: 1px solid rgba(148, 163, 184, 0.45) !important;
                 border-radius: 16px !important;
@@ -354,7 +342,6 @@ def _inject_overview_css():
                 transition: all 0.18s ease;
             }
 
-            /* Compact outlined filter controls */
             .filter-field-label {
                 display: flex;
                 align-items: center;
@@ -447,12 +434,6 @@ def _inject_overview_css():
                             inset -2px -2px 4px rgba(255,255,255,.95) !important;
             }
 
-            /* ============================================================
-               MODERN DASHBOARD BUTTON SYSTEM
-               Flat executive navigation style: lighter inactive state,
-               strong selected state, and a small accent rail instead of
-               bulky floating/shadowed buttons.
-               ============================================================ */
             .stButton > button {
                 position: relative !important;
                 overflow: hidden !important;
@@ -529,9 +510,7 @@ def _inject_overview_css():
                 transform: none !important;
             }
 
-
-
-            /* Compact layout overrides */
+            
             .block-container {max-width:100%;padding:.35rem .75rem .75rem!important;}
             div[data-testid="stVerticalBlock"] {gap:.55rem!important;}
             div[data-testid="stHorizontalBlock"] {gap:.5rem!important;}
@@ -561,7 +540,6 @@ def _inject_overview_css():
             [data-testid="stDataFrame"] tbody tr {height:22px!important;}
             h5,h6 {margin:.1rem 0 .25rem!important;}
 
-            /* Executive dashboard refinement */
             :root {
                 --dash-navy: #102a43;
                 --dash-blue: #2563eb;
@@ -599,7 +577,7 @@ def _inject_overview_css():
                 font-size: 11px;
                 margin-top: 2px;
             }
-            /* Active-filter chips shown inside the Business Overview header */
+            
             div[data-testid="stElementContainer"]:has(.filter-summary) {
                 position: relative !important;
                 z-index: 5 !important;
@@ -638,7 +616,6 @@ def _inject_overview_css():
                 white-space: nowrap;
             }
 
-            /* Cleaner card hierarchy: subtle depth, no oversized floating effect */
             div[data-testid="stVerticalBlockBorderWrapper"] {
                 border-radius: 14px !important;
                 border-color: #dce5ef !important;
@@ -650,7 +627,6 @@ def _inject_overview_css():
                 box-shadow: 0 10px 22px rgba(15,42,67,.10), inset 0 1px 0 #ffffff !important;
             }
 
-            /* Refined chart mode selector */
             div[data-testid="stSegmentedControl"] > div,
             div[data-testid="stSegmentedControl"] [role="radiogroup"] {
                 background: #edf2f7 !important;
@@ -667,7 +643,6 @@ def _inject_overview_css():
                 box-shadow: 0 2px 0 #aebac8, inset 0 1px 0 #ffffff !important;
             }
 
-            /* Compact filter strip */
             div[data-testid="stSelectbox"] {
                 padding: 3px 4px 5px 4px;
                 border-radius: 9px;
@@ -680,14 +655,12 @@ def _inject_overview_css():
                 box-shadow: inset 0 1px 2px rgba(15,23,42,.06) !important;
             }
 
-            /* Softer dataframe presentation */
             [data-testid="stDataFrame"] {
                 border: 1px solid #e2eaf3;
                 box-shadow: none !important;
                 background: #fbfdff;
             }
 
-            /* Compact export button in the Business Overview header */
             div[data-testid="stDownloadButton"] > button {
                 min-height: 34px !important;
                 width: auto !important;
@@ -709,12 +682,7 @@ def _inject_overview_css():
                 box-shadow: 0 4px 0 #1e40af, 0 8px 12px rgba(37,99,235,.24) !important;
             }
 
-
-            /* ============================================================
-               Responsive filter strip
-               Use Streamlit's native widget labels so the label always owns
-               its vertical space and cannot overlap the select control.
-               ============================================================ */
+            
             div[data-testid="stSelectbox"] {
                 display: flex !important;
                 flex-direction: column !important;
@@ -771,7 +739,6 @@ def _inject_overview_css():
                 box-shadow: inset 0 1px 2px rgba(15,23,42,.06) !important;
             }
 
-            /* Keep columns usable on common laptop widths. */
             div[data-testid="stHorizontalBlock"] {
                 align-items: flex-start !important;
             }
@@ -852,12 +819,7 @@ def _inject_overview_css():
                 font-weight: 850 !important;
             }
 
-
-            /* ============================================================
-               BRANCH MONTHLY-AVG SLAB BUTTONS
-               Real Streamlit buttons are used instead of segmented_control so
-               the visual treatment is stable across Streamlit versions.
-               ============================================================ */
+            
             div[class*="st-key-branch_slab_btn_"] {
                 margin: 0 !important;
                 padding: 0 !important;
@@ -928,58 +890,24 @@ def _inject_overview_css():
                 }
             }
 
-            /* ============================================================
-               CHART CONTROL BUTTONS — same executive design as slab buttons
-               Business Trend, Weight Trend and Target Achievement hierarchy.
-               Visual-only; period/hierarchy logic is unchanged.
-               ============================================================ */
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"],
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"],
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] {
-                display: flex !important;
-                justify-content: flex-end !important;
-                width: 100% !important;
-            }
-
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] > div,
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] [role="radiogroup"],
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] > div,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] [role="radiogroup"],
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] > div,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] [role="radiogroup"] {
-                display: grid !important;
-                gap: 7px !important;
-                width: 100% !important;
+            div[class*="st-key-revenue_period_btn_"],
+            div[class*="st-key-weight_period_btn_"],
+            div[class*="st-key-target_level_btn_"] {
+                margin: 0 !important;
                 padding: 0 !important;
-                border: 0 !important;
-                background: transparent !important;
-                box-shadow: none !important;
             }
 
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] > div,
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] [role="radiogroup"],
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] > div,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] [role="radiogroup"] {
-                grid-template-columns: repeat(4, minmax(72px, 1fr)) !important;
+            div[class*="st-key-revenue_period_btn_"] div[data-testid="stButton"],
+            div[class*="st-key-weight_period_btn_"] div[data-testid="stButton"],
+            div[class*="st-key-target_level_btn_"] div[data-testid="stButton"] {
+                width: 100% !important;
+                margin: 0 !important;
             }
 
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] > div,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] [role="radiogroup"] {
-                grid-template-columns: repeat(3, minmax(72px, 1fr)) !important;
-            }
-
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label,
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button {
-                position: relative !important;
-                overflow: hidden !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                min-width: 0 !important;
+            div[class*="st-key-revenue_period_btn_"] button,
+            div[class*="st-key-weight_period_btn_"] button,
+            div[class*="st-key-target_level_btn_"] button {
+                width: 100% !important;
                 min-height: 34px !important;
                 height: 34px !important;
                 padding: 4px 8px !important;
@@ -996,29 +924,9 @@ def _inject_overview_css():
                 transition: border-color .14s ease, background .14s ease, color .14s ease, box-shadow .14s ease !important;
             }
 
-            /* Remove the old segmented-control gloss / top stripe for these controls. */
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label::before,
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label::after,
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button::before,
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button::after,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label::before,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label::after,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button::before,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button::after,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label::before,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label::after,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button::before,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button::after {
-                content: none !important;
-                display: none !important;
-            }
-
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label:hover,
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button:hover,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label:hover,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button:hover,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label:hover,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button:hover {
+            div[class*="st-key-revenue_period_btn_"] button:hover,
+            div[class*="st-key-weight_period_btn_"] button:hover,
+            div[class*="st-key-target_level_btn_"] button:hover {
                 border-color: #9bb7d8 !important;
                 background: linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important;
                 color: #174a7e !important;
@@ -1026,31 +934,21 @@ def _inject_overview_css():
                 transform: none !important;
             }
 
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label:has(input:checked),
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button[aria-pressed="true"],
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label:has(input:checked),
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button[aria-pressed="true"],
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label:has(input:checked),
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
+            div[class*="st-key-revenue_period_btn_"] button[data-testid="stBaseButton-primary"],
+            div[class*="st-key-weight_period_btn_"] button[data-testid="stBaseButton-primary"],
+            div[class*="st-key-target_level_btn_"] button[data-testid="stBaseButton-primary"] {
                 border-color: #123f73 !important;
                 background: linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
                 color: #ffffff !important;
                 box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 2px 5px rgba(15,42,67,.18) !important;
-                transform: none !important;
             }
 
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label p,
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label span,
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button p,
-            .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button span,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label p,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label span,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button p,
-            .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button span,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label p,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label span,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button p,
-            .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button span {
+            div[class*="st-key-revenue_period_btn_"] button p,
+            div[class*="st-key-revenue_period_btn_"] button span,
+            div[class*="st-key-weight_period_btn_"] button p,
+            div[class*="st-key-weight_period_btn_"] button span,
+            div[class*="st-key-target_level_btn_"] button p,
+            div[class*="st-key-target_level_btn_"] button span {
                 margin: 0 !important;
                 padding: 0 !important;
                 font-size: 11px !important;
@@ -1059,39 +957,6 @@ def _inject_overview_css():
                 white-space: nowrap !important;
             }
 
-            @media (max-width: 1500px) {
-                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label,
-                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button,
-                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label,
-                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button,
-                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label,
-                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button {
-                    min-height: 32px !important;
-                    height: 32px !important;
-                    padding: 3px 5px !important;
-                    font-size: 9.5px !important;
-                }
-                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label p,
-                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] label span,
-                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button p,
-                .st-key-revenue_trend_type div[data-testid="stSegmentedControl"] button span,
-                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label p,
-                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] label span,
-                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button p,
-                .st-key-weight_trend_type div[data-testid="stSegmentedControl"] button span,
-                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label p,
-                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] label span,
-                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button p,
-                .st-key-target_achievement_level div[data-testid="stSegmentedControl"] button span {
-                    font-size: 9.5px !important;
-                }
-            }
-
-            /* ============================================================
-               Power-BI checkbox slicers - preserve the EXISTING filter UI.
-               The closed slicer is styled like the existing st.selectbox:
-               same height, grey fill, border radius and one-row footprint.
-               ============================================================ */
             .checkbox-slicer-label {
                 display: block;
                 min-height: 22px;
@@ -1107,7 +972,6 @@ def _inject_overview_css():
                 text-overflow: ellipsis;
             }
 
-            /* Keep popover widget in the same compact footprint as selectbox. */
             div[data-testid="stPopover"] {
                 width: 100% !important;
                 margin: 0 !important;
@@ -1118,7 +982,6 @@ def _inject_overview_css():
                 width: 100% !important;
             }
 
-            /* Closed slicer button = existing grey select control. */
             div[data-testid="stPopover"] > div > button {
                 width: 100% !important;
                 min-height: 40px !important;
@@ -1144,7 +1007,6 @@ def _inject_overview_css():
                 transform: none !important;
             }
 
-            /* Popover contents can scroll; the dashboard filter row never expands. */
             div[data-testid="stPopoverBody"] {
                 max-height: 360px !important;
                 overflow-y: auto !important;
@@ -1165,9 +1027,6 @@ def _inject_overview_css():
                 }
             }
 
-            /* Target Achievement Top-N control: hide the selectbox label completely.
-               Global selectbox CSS forces labels visible, so this key-specific rule
-               keeps the compact dropdown in its own header slot with no "Top" text above it. */
             .st-key-branch_achievement_top_n div[data-testid="stSelectbox"] > label,
             .st-key-branch_achievement_top_n div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
                 display: none !important;
@@ -1184,19 +1043,12 @@ def _inject_overview_css():
                 margin: 0 !important;
             }
 
-            /* ============================================================
-               VISUAL / INSIGHT SPACING
-               Use real card margins plus Streamlit column gaps. The previous
-               :has()-only rule was browser/layout dependent, so spacing could
-               still look unchanged. These rules are intentionally stronger.
-               ============================================================ */
             div[data-testid="stVerticalBlockBorderWrapper"] {
                 margin-top: 4px !important;
                 margin-bottom: 12px !important;
                 box-sizing: border-box !important;
             }
 
-            /* Rows that contain visual cards get a guaranteed horizontal gutter. */
             div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]) {
                 gap: 16px !important;
                 column-gap: 16px !important;
@@ -1204,7 +1056,6 @@ def _inject_overview_css():
                 margin-bottom: 8px !important;
             }
 
-            /* Prevent the bordered surface from visually bleeding into the next column. */
             div[data-testid="stHorizontalBlock"]:has(div[data-testid="stVerticalBlockBorderWrapper"])
             > div[data-testid="stColumn"] {
                 padding-left: 2px !important;
@@ -1212,7 +1063,6 @@ def _inject_overview_css():
                 box-sizing: border-box !important;
             }
 
-            /* Plotly/dataframe content receives a small inner buffer too. */
             div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPlotlyChart"] {
                 margin-top: 3px !important;
                 margin-bottom: 5px !important;
@@ -1246,13 +1096,6 @@ def _inject_overview_css():
                 }
             }
 
-            /* ============================================================
-               FILTER ALIGNMENT FIX
-               Custom checkbox slicers render their label and popover as two
-               Streamlit elements, while selectboxes keep both inside one
-               widget. Reserve the same label row so every control starts on
-               exactly the same horizontal line. Visual-only: no filter logic.
-               ============================================================ */
             div[data-testid="stVerticalBlock"]:has(.checkbox-slicer-label) {
                 gap: 0 !important;
             }
@@ -1277,8 +1120,6 @@ def _inject_overview_css():
                 padding: 0 !important;
             }
 
-            /* Compact Select all / Clear actions inside slicer popovers.
-               This only changes appearance; checkbox/filter logic is untouched. */
             div[data-testid="stPopoverBody"] div[data-testid="stButton"] {
                 width: auto !important;
                 margin: 0 !important;
@@ -1311,7 +1152,6 @@ def _inject_overview_css():
                 transform: none !important;
             }
 
-            /* Compact search field used only by searchable Circle/Branch slicers. */
             div[data-testid="stPopoverBody"] div[data-testid="stTextInput"] {
                 margin: 0 0 7px 0 !important;
                 padding: 0 !important;
@@ -1334,7 +1174,6 @@ def _inject_overview_css():
                 box-shadow: 0 0 0 2px rgba(37,99,235,.10) !important;
             }
 
-            /* Instant-search multiselect used inside Circle and Branch popovers. */
             div[data-testid="stPopoverBody"] div[data-testid="stMultiSelect"] {
                 margin-top: 7px !important;
             }
@@ -1463,7 +1302,6 @@ def add_3d_bar(fig, x, y, name, color, text=None, texttemplate=None,
             offsetgroup=offsetgroup,
         ))
 
-
 def apply_3d_chart_layout(fig, height=250, margin=None):
     """Apply a raised panel, perspective-like axes and soft depth to Plotly visuals."""
     fig.update_layout(
@@ -1478,16 +1316,12 @@ def apply_3d_chart_layout(fig, height=250, margin=None):
     fig.update_yaxes(showline=False, showgrid=False, zeroline=False)
     return fig
 
-
-# =========================
-# Auto growth-vs-LY helpers
-# =========================
+                           
 
 def get_previous_fy(fy):
     """Given '2025-2026' returns '2024-2025'."""
     start_year, end_year = map(int, fy.split("-"))
     return f"{start_year - 1}-{end_year - 1}"
-
 
 def calculate_kpis(data):
     """Compute the same set of KPIs used on the dashboard for any dataframe."""
@@ -1508,18 +1342,15 @@ def calculate_kpis(data):
         "tbb": data[data["GRTYPE"] == "TBB"]["REVENUE"].sum(),
     }
 
-
 def pct_growth(current, previous):
     """% change of current vs previous, safe against zero/NaN previous."""
     if previous in (0, None) or pd.isna(previous):
         return 0.0
     return ((current - previous) / previous) * 100
 
-
 def growth_label(value):
     arrow = "▲" if value >= 0 else "▼"
     return f"{arrow} {abs(value):.1f}%"
-
 
 MONTH_ORDER = [
     "Apr", "May", "Jun", "Jul",
@@ -1535,7 +1366,6 @@ QUARTER_MAP = {
     7: "Q3", 8: "Q3", 9: "Q3",
     10: "Q4", 11: "Q4", 12: "Q4",
 }
-
 
 def build_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, prev_fy_start, month_map):
     """
@@ -1605,7 +1435,7 @@ def build_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, pre
         else:
             prev_trend = pd.DataFrame(columns=["Key", "PREV_REVENUE"])
 
-    else:  # Monthly
+    else:           
         cur["Month"] = cur["FIN_MONTH"].map(month_map)
         trend_df = cur.groupby("Month")["REVENUE"].sum().reset_index()
         trend_df["Month"] = pd.Categorical(trend_df["Month"], categories=MONTH_ORDER, ordered=True)
@@ -1635,8 +1465,6 @@ def build_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, pre
     trend_df["Growth Label"] = trend_df["Growth %"].apply(lambda x: growth_label(x) if pd.notna(x) else "N/A")
 
     return trend_df
-
-
 
 def build_weight_yoy_trend(current_df, previous_df, trend_type, date_col, fy_start, prev_fy_start, month_map):
     """Build Current-FY vs LY weight trend in MT for Daily/Weekly/Monthly/Quarterly views."""
@@ -1702,7 +1530,7 @@ def build_weight_yoy_trend(current_df, previous_df, trend_type, date_col, fy_sta
         else:
             prev_trend = pd.DataFrame(columns=["Key", "PREV_AWEIGHT"])
 
-    else:  # Monthly
+    else:           
         cur["Month"] = cur["FIN_MONTH"].map(month_map)
         trend_df = cur.groupby("Month")["aweight"].sum().reset_index()
         trend_df["Month"] = pd.Categorical(trend_df["Month"], categories=MONTH_ORDER, ordered=True)
@@ -1745,8 +1573,7 @@ def create_card(title, value, color, icon, growth_value=0.0, previous_value=None
     growth_text = growth_label(growth_value)
     previous_text = previous_value if previous_value is not None else "N/A"
 
-    # Keep the complete HTML on one logical line. Blank lines or indented lines
-    # inside st.markdown can be interpreted by Markdown as a fenced code block.
+                                                                               
     html = (
         f'<div class="kpi-3d-card" style="--kpi-accent:{color};">'
         f'<div class="kpi-3d-gloss"></div>'
@@ -1766,7 +1593,6 @@ def create_card(title, value, color, icon, growth_value=0.0, previous_value=None
         f'</div>'
     )
 
-    # st.html bypasses Markdown parsing. The fallback supports older Streamlit versions.
     if hasattr(st, "html"):
         st.html(html)
     else:
@@ -1863,14 +1689,12 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
         config={"displayModeBar": False, "responsive": True},
     )
 
-
 def mini_rank_card(rank, name, value, max_value, color, render=True):
     """Build a compact ranked branch row with a wider name area and slimmer bar."""
     pct = min((value / max_value * 100), 100) if max_value else 0
     medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(rank, str(rank))
 
-    # Keep the HTML on one logical line. Indented multiline HTML can be
-    # interpreted by Markdown as a code block when multiple rows are joined.
+                                                                            
     html = (
         f'<div style="margin-bottom:5px;padding:5px 7px;border:1px solid #e5ebf2;'
         f'border-radius:9px;background:#fbfdff;">'
@@ -1894,8 +1718,6 @@ def mini_rank_card(rank, name, value, max_value, color, render=True):
             st.markdown(html, unsafe_allow_html=True)
     return html
 
-
-
 def _find_normalized_column(data, target_name):
     """Find a dataframe column while ignoring spaces, underscores and case."""
     if data is None or data.empty:
@@ -1907,7 +1729,6 @@ def _find_normalized_column(data, target_name):
         if normalized == target:
             return column
     return None
-
 
 def _build_sla_metrics(current_df, previous_df):
     """Build SLA operational metrics from the SLAStatus column."""
@@ -2011,7 +1832,6 @@ def _build_sla_metrics(current_df, previous_df):
 
     return current_col, previous_col, metrics
 
-
 def _render_operational_highlights(current_df, previous_df):
     """Render Operational Highlights. SLA calculations remain unchanged."""
     current_col, previous_col, metrics = _build_sla_metrics(current_df, previous_df)
@@ -2067,7 +1887,6 @@ def _render_operational_highlights(current_df, previous_df):
         )
         st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
 
-
 def _normalise_target_text(values):
     """Normalise branch text for reliable target-master matching."""
     return (
@@ -2078,7 +1897,6 @@ def _normalise_target_text(values):
         .str.upper()
         .str.replace(r"\s+", " ", regex=True)
     )
-
 
 @st.cache_data(show_spinner=False)
 def load_branch_monthly_targets():
@@ -2113,7 +1931,6 @@ def load_branch_monthly_targets():
     for col in ["TARGETLTL", "TARGETFTL"]:
         target_df[col] = pd.to_numeric(target_df[col], errors="coerce").fillna(0.0)
 
-    # Consolidate repeated rows, such as repeated branch codes in the source CSV.
     target_df = (
         target_df.groupby(
             ["BRANCHCODE", "BRANCH", "BRANCH_KEY"],
@@ -2124,7 +1941,6 @@ def load_branch_monthly_targets():
     )
     target_df["TARGETTOTAL"] = target_df["TARGETLTL"] + target_df["TARGETFTL"]
     return target_df
-
 
 def _find_target_branch_code_column(data):
     """Find a branch-code field in booking data, if one is available."""
@@ -2142,7 +1958,6 @@ def _find_target_branch_code_column(data):
         if candidate in normalized:
             return normalized[candidate]
     return None
-
 
 def _selected_target_months(filtered_df, selected_month, selected_quarter):
     """Return financial months for which monthly targets should be applied."""
@@ -2166,11 +1981,9 @@ def _selected_target_months(filtered_df, selected_month, selected_quarter):
 
     return available_months
 
-
 def convert_target_lac(target_lac, conversion_type):
     """Convert target stored in lakhs to the dashboard display unit."""
     return float(target_lac or 0) if conversion_type == "Lac" else float(target_lac or 0) / 100
-
 
 def calculate_branch_target_achievement(
     filtered_df,
@@ -2196,7 +2009,6 @@ def calculate_branch_target_achievement(
     result = branch_summary.copy()
     result["BRANCH_KEY"] = _normalise_target_text(result["branch"])
 
-    # Prefer branch-code matching when the booking data exposes a code column.
     branch_code_col = _find_target_branch_code_column(filtered_df)
     if branch_code_col is not None:
         code_map = filtered_df[["branch", branch_code_col]].copy()
@@ -2258,8 +2070,6 @@ def calculate_branch_target_achievement(
 
     return result, month_list
 
-
-
 def get_monthly_target_for_filtered_branches(filtered_df, selected_loadtype):
     """Return one-month target in lakhs for branches in the filtered dataset."""
     target_master = load_branch_monthly_targets()
@@ -2299,7 +2109,6 @@ def get_monthly_target_for_filtered_branches(filtered_df, selected_loadtype):
     if loadtype_value == "FTL":
         return float(matched["TARGETFTL"].sum())
     return float(matched["TARGETTOTAL"].sum())
-
 
 def build_target_trend(
     filtered_df,
@@ -2350,7 +2159,6 @@ def build_target_trend(
     result["Target"] = display_target
     return result[["Period", "Target"]]
 
-
 def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
     """Checkbox-style dropdown with optional instant client-side search.
 
@@ -2382,12 +2190,10 @@ def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
     def state_key(value):
         return f"{key}__item__{str(value)}"
 
-    # Searchable Circle/Branch slicers use st.multiselect. Its built-in search is
-    # filtered in the browser on every keystroke, so Enter is not required.
+                                                                           
     if searchable:
         selection_key = f"{key}__instant_selected"
 
-        # Migrate any selections from the earlier checkbox implementation once.
         legacy_selected = [
             value for value in options
             if st.session_state.get(state_key(value), False)
@@ -2439,14 +2245,12 @@ def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
             if not options:
                 st.caption("No values available")
 
-        # Keep legacy item states synchronised for compatibility with any code
-        # that may still inspect those keys elsewhere.
+                                                      
         selected_set = set(selected_values)
         for value in options:
             st.session_state[state_key(value)] = value in selected_set
         return selected_values
 
-    # Existing checkbox slicer behaviour for Zone / Quarter / Month.
     selected_before = [
         value for value in options
         if st.session_state.get(state_key(value), False)
@@ -2492,26 +2296,42 @@ def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
         if st.session_state.get(state_key(value), False)
     ]
 
+def _button_selector(options, state_key, key_prefix, default):
+    selected = st.session_state.get(state_key, default)
+    if selected not in options:
+        selected = default
+        st.session_state[state_key] = default
+
+    cols = st.columns(len(options), gap="small")
+    for idx, option in enumerate(options):
+        with cols[idx]:
+            if st.button(
+                option,
+                key=f"{key_prefix}_{idx}",
+                type="primary" if selected == option else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state[state_key] = option
+                st.rerun()
+    return selected
+
 def show_overview():
     """Compact overview dashboard page."""
 
     _inject_overview_css()
 
-    # Business Overview header card with the CSV export button inside it.
-    # The placeholder is filled after all filters have been applied.
+                                                                    
     with st.container(border=True):
         header_left, header_right = st.columns([7, 1], gap="small", vertical_alignment="center")
 
         with header_left:
-            # Filled after all filters are selected so the active-filter chips
-            # can appear inside the Business Overview header card.
+
             header_content_placeholder = st.empty()
 
         with header_right:
             export_placeholder = st.empty()
 
-    # Responsive single-row filter strip. Native labels reserve their own
-    # vertical space, preventing label/select overlap on laptop screens.
+                                                                        
     compact_spacer(4)
     filter_cols = st.columns(10, gap="small")
 
@@ -2540,7 +2360,6 @@ def show_overview():
     with st.spinner("Loading data..."):
         df, prev_df = load_booking_data_pair(start_date, end_date, prev_start, prev_end, view_type.lower())
 
-    # Convert frequently used date columns once. Trend/SLA/network sections reuse them.
     for _date_col in ["grdt", "deliverydt", "expecteddeliverydt", "lastdespdt"]:
         if _date_col in df.columns and not pd.api.types.is_datetime64_any_dtype(df[_date_col]):
             df[_date_col] = pd.to_datetime(df[_date_col], errors="coerce")
@@ -2567,7 +2386,6 @@ def show_overview():
         st.warning("No data found")
         return
 
-    # Company is supplied by the booking query as COMPNAME/compname.
     company_col = next(
         (col for col in df.columns if str(col).strip().casefold() == "compname"),
         None,
@@ -2576,7 +2394,6 @@ def show_overview():
         st.error("Company filter cannot be displayed because the compname column is missing from the booking data.")
         return
 
-    # Standardise the column name so all filters and visuals use one stable field.
     if company_col != "compname":
         df = df.rename(columns={company_col: "compname"})
     df["compname"] = df["compname"].fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
@@ -2615,7 +2432,6 @@ def show_overview():
         if not circle_row.empty:
             locked_zone = circle_row["zone"].iloc[0]
 
-    # Company remains single-select.
     with filter_cols[2]:
         company_options = sorted(df["compname"].dropna().unique().tolist())
         company = st.selectbox(
@@ -2626,10 +2442,8 @@ def show_overview():
     if company != "All":
         df = df[df["compname"] == company]
 
-    # Power-BI-style checkbox slicers.
-    # Each dropdown keeps its selected records inside the popover, preventing
-    # the filter row from expanding into multiple multiselect chips.
-    # Empty selection means All.
+                                                                             
+
     filter_source_df = df.copy()
 
     with filter_cols[3]:
@@ -2673,9 +2487,8 @@ def show_overview():
         )
 
     with filter_cols[7]:
-        # Cascade Month options from the selected Quarter(s).
-        # Example: Q1 -> Apr, May, Jun; Q1 + Q2 -> Apr through Sep.
-        # When no quarter is selected, Month continues to show every available month.
+
+                                                                                     
         month_source_df = filter_source_df
         if selected_quarters:
             month_source_df = month_source_df[
@@ -2692,10 +2505,8 @@ def show_overview():
             key="overview_month_slicer",
         )
 
-    # Apply all selected filters together using AND between filter groups,
-    # and OR within the selected records of each group.
-    # Example:
-    # Zone = [North, West] AND Month = [Apr, May]
+                                                       
+
     if selected_zones:
         df = df[df["zone"].isin(selected_zones)]
     if selected_circles:
@@ -2724,14 +2535,12 @@ def show_overview():
         )
     revenue_divisor, revenue_unit = get_revenue_conversion(conversion_type)
 
-    # Compatibility aliases used by existing downstream target/chart helpers.
     zone = selected_zones[0] if len(selected_zones) == 1 else "All"
     circle = selected_circles[0] if len(selected_circles) == 1 else "All"
     branch = selected_branches[0] if len(selected_branches) == 1 else "All"
     quarter = selected_quarters[0] if len(selected_quarters) == 1 else "All"
     month = selected_months[0] if len(selected_months) == 1 else "All"
 
-    # Keep the controls, active-filter chips and KPI row visually close without touching.
     compact_spacer(0)
 
     active_filter_items = [
@@ -2752,7 +2561,6 @@ def show_overview():
         if value not in (None, "", "All")
     )
 
-    # Render the title, subtitle and active-filter chips inside the header card.
     header_filter_html = (
         f'<div class="filter-summary" style="margin-top:7px;min-height:0;">'
         f'{active_filter_html}</div>'
@@ -2773,7 +2581,6 @@ def show_overview():
         st.warning("No data found for selected filters")
         return
 
-    # Do not serialize lakhs of rows on every rerun. Prepare CSV only on request.
     safe_view = str(view_type).strip().lower().replace(" ", "_")
     safe_fy = str(fy).strip().replace("/", "-").replace(" ", "_")
     export_key = f"overview_export_ready_{safe_view}_{safe_fy}"
@@ -2801,9 +2608,8 @@ def show_overview():
                 on_click=lambda: st.session_state.update({export_key: False}),
             )
 
-    # =========================
-    # Apply the same company/zone/circle/branch/quarter/month/loadtype filters to the LY data
-    # =========================
+                                                                                             
+                               
     if not prev_df.empty:
         if company != "All" and "compname" in prev_df.columns:
             prev_df = prev_df[prev_df["compname"] == company]
@@ -2822,7 +2628,6 @@ def show_overview():
 
     prev_kpis = calculate_kpis(prev_df)
 
-    # KPI calculations after all selected filters are applied
     current_kpis = calculate_kpis(df)
 
     revenue = current_kpis["revenue"]
@@ -2834,7 +2639,6 @@ def show_overview():
     paid = current_kpis["paid"]
     tbb = current_kpis["tbb"]
 
-    # Delivered consignments: a GR is treated as delivered when Deliverydt is populated.
     delivery_col = next(
         (col for col in df.columns if str(col).replace("_", "").replace(" ", "").casefold() == "deliverydt"),
         None,
@@ -2850,7 +2654,6 @@ def show_overview():
         if prev_delivery_col else 0
     )
 
-    # Auto-calculated growth % vs Last Year for each KPI
     revenue_growth = pct_growth(revenue, prev_kpis["revenue"])
     ftl_growth = pct_growth(ftl, prev_kpis["ftl"])
     ltl_growth = pct_growth(ltl, prev_kpis["ltl"])
@@ -2861,7 +2664,6 @@ def show_overview():
     paid_growth = pct_growth(paid, prev_kpis["paid"])
     tbb_growth = pct_growth(tbb, prev_kpis["tbb"])
 
-    # KPI Cards
     k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     with k1:
@@ -2900,10 +2702,8 @@ def show_overview():
         create_card("T.B.B", format_revenue(tbb, conversion_type), "#2563eb", "🚚", tbb_growth,
                     format_revenue(prev_kpis["tbb"], conversion_type))
 
-    # Small separator before charts
     compact_spacer()
 
-    # Monthly revenue data used for monthly trend and MoM growth
     monthly = (
         df.groupby("Month")["REVENUE"]
         .sum()
@@ -2923,7 +2723,6 @@ def show_overview():
     ftl_pct = (ftl / revenue * 100) if revenue else 0
     ltl_pct = (ltl / revenue * 100) if revenue else 0
 
-    # Business trend and load type charts
     row1, row2 = st.columns([1.20, 0.80], gap="medium")
 
     with row1:
@@ -2942,29 +2741,25 @@ def show_overview():
                 )
 
             with filter_col:
-                trend_type = st.segmented_control(
-                    "Business trend period",
+                trend_type = _button_selector(
                     ["Daily", "Weekly", "Monthly", "Quarterly"],
-                    default="Monthly",
-                    label_visibility="collapsed",
-                    key="revenue_trend_type",
-                ) or "Monthly"
+                    "revenue_trend_type",
+                    "revenue_period_btn",
+                    "Monthly",
+                )
 
-            # Build trend data (Current FY vs LY) for the selected granularity
-            DATE_COL = "grdt"   # change if your date column is different
+            DATE_COL = "grdt"                                            
 
             yoy_df = build_yoy_trend(
                 df, prev_df, trend_type, DATE_COL, start_date, prev_start, month_map
             )
 
-            # build_yoy_trend retains its original Crore calculation. Convert only
-            # the returned display columns when Lac is selected.
+                                                                
             if conversion_type == "Lac":
                 for revenue_col in ["Business Cr", "Prev Business Cr"]:
                     if revenue_col in yoy_df.columns:
                         yoy_df[revenue_col] = yoy_df[revenue_col] * 100
 
-            # Add the branch-wise monthly target to the same trend insight.
             monthly_target_lac = get_monthly_target_for_filtered_branches(
                 df, loadtype
             )
@@ -2991,11 +2786,9 @@ def show_overview():
                 axis=1,
             )
 
-            # Overall target values are reused beside the Month-on-Month chart.
             trend_actual = float(pd.to_numeric(yoy_df["Business Cr"], errors="coerce").fillna(0).sum())
             trend_target = float(pd.to_numeric(yoy_df["Target"], errors="coerce").fillna(0).sum())
 
-            # Business trend: Last Year, Current Year and Target.
             fig_yoy = go.Figure()
 
             fig_yoy.add_trace(
@@ -3124,10 +2917,9 @@ def show_overview():
             )
 
     with row2:
-        # ==============================================================
-        # Font settings for the two right-side revenue charts
-        # Increase or reduce these values from one place when required.
-        # ==============================================================
+
+                                                                       
+                                                                        
         LOAD_TITLE_FONT = 16
         LOAD_CENTER_VALUE_FONT = 19
         LOAD_CENTER_LABEL_FONT = 12
@@ -3140,9 +2932,8 @@ def show_overview():
         COMPANY_VALUE_FONT = 13
         COMPANY_SUBTEXT_FONT = 11
 
-        # ==============================================================
-        # Revenue by Load Type — larger and clearer values
-        # ==============================================================
+                                                          
+                                                                        
         with st.container(border=True):
             st.markdown(
                 f'<div style="font-size:{LOAD_TITLE_FONT}px;font-weight:600;'
@@ -3151,8 +2942,7 @@ def show_overview():
                 unsafe_allow_html=True,
             )
 
-            # Keep a clean visual gap between the heading and donut chart.
-            # This is presentation-only and does not alter any calculation.
+                                                                           
             compact_spacer(10)
 
             prev_ftl = prev_kpis["ftl"]
@@ -3163,7 +2953,6 @@ def show_overview():
             ftl_yoy = pct_growth(ftl, prev_ftl)
             ltl_yoy = pct_growth(ltl, prev_ltl)
 
-            # Slightly more width is assigned to the value/legend section.
             load_chart_col, load_legend_col = st.columns(
                 [0.80, 1.20],
                 gap="small",
@@ -3290,9 +3079,8 @@ def show_overview():
                 else:
                     st.markdown(load_legend_html, unsafe_allow_html=True)
 
-        # ==============================================================
-        # Revenue by Company — larger company, revenue and percentage text
-        # ==============================================================
+                                                                          
+                                                                        
         company_df = (
             df.groupby("compname", dropna=False)["REVENUE"]
             .sum()
@@ -3419,12 +3207,9 @@ def show_overview():
 
     compact_spacer()
 
+                               
 
-    # =========================
-    # Weight trend data is prepared inside the chart based on selected granularity
-    # =========================
-
-    # Zone-wise revenue data
+                            
     zone_df = (
         df.groupby("zone")["REVENUE"]
         .sum()
@@ -3443,7 +3228,6 @@ def show_overview():
 
     zone_df = zone_df.sort_values("Business Cr", ascending=False)
 
-    # Zone colors
     zone_colors = {
         "NORTH ZONE": "#1565C0",
         "WEST ZONE": "#009688",
@@ -3479,7 +3263,6 @@ def show_overview():
         matrix_df["Total"] = matrix_df.sum(axis=1)
         matrix_df = matrix_df.sort_values("Total", ascending=False)
 
-        # Build the matching last-year matrix for the Zone vs Country performance table.
         if prev_df is not None and not prev_df.empty and {"zone", "COUNTRY", "REVENUE"}.issubset(prev_df.columns):
             prev_zone_country_rev = (
                 prev_df.groupby(["zone", "COUNTRY"])["REVENUE"]
@@ -3498,9 +3281,8 @@ def show_overview():
         else:
             prev_matrix_df = pd.DataFrame()
 
-    # =====================================================
-    # Weight Trend and Business by Zone in one aligned row
-    # =====================================================
+                                                          
+                                                           
     weight_zone_left, weight_zone_right = st.columns([1.55, 1], gap="medium")
     aligned_chart_height = ALIGNED_CHART_HEIGHT
 
@@ -3509,12 +3291,11 @@ def show_overview():
             weight_title_col, weight_filter_col = st.columns([2, 2])
 
             with weight_filter_col:
-                weight_trend_type = st.segmented_control(
-                    "Weight trend period",
+                weight_trend_type = _button_selector(
                     ["Daily", "Weekly", "Monthly", "Quarterly"],
-                    default="Monthly",
-                    label_visibility="collapsed",
-                    key="weight_trend_type",
+                    "weight_trend_type",
+                    "weight_period_btn",
+                    "Monthly",
                 )
 
             DATE_COL = "grdt"
@@ -3631,8 +3412,7 @@ def show_overview():
         with st.container(border=True):
             st.markdown("###### Business by Zone")
 
-            # Preserve the existing zone aggregation and filters; only the
-            # presentation is changed to match the executive-dashboard design.
+                                                                              
             total_zone_revenue = zone_df["Business Cr"].sum()
             zone_donut_df = zone_df.copy()
             zone_donut_df["Percentage"] = (
@@ -3654,9 +3434,8 @@ def show_overview():
                     for zone_name in zone_donut_df["zone"].tolist()
                 ]
 
-                # Keep the donut inside the left 60% of the card.  The exact
-                # centre of this domain is x=0.30, y=0.50; using that same point
-                # for the annotation keeps the total perfectly centred.
+                                                                                
+                                                                       
                 donut_domain = dict(x=[0.00, 0.60], y=[0.00, 1.00])
                 donut_center_x = sum(donut_domain["x"]) / 2
                 donut_center_y = sum(donut_domain["y"]) / 2
@@ -3685,16 +3464,14 @@ def show_overview():
                     ]
                 )
 
-                # Build a clean right-side legend with one fixed-height row per zone.
-                # Extra vertical spacing prevents the zone name and value lines from
-                # overlapping. The percentage uses the same colour as its zone slice.
+                                                                                    
+                                                                                     
                 legend_y_start = 0.91
                 legend_step = 0.145 if len(zone_donut_df) <= 6 else 0.115
                 for idx, row in zone_donut_df.iterrows():
                     y_pos = legend_y_start - (idx * legend_step)
                     color = zone_color_list[idx]
 
-                    # Coloured bullet aligned with the first line of the label.
                     fig_zone.add_annotation(
                         x=0.625,
                         y=y_pos,
@@ -3707,7 +3484,6 @@ def show_overview():
                         font=dict(size=16, color=color),
                     )
 
-                    # Zone name on line 1; revenue and coloured contribution on line 2.
                     fig_zone.add_annotation(
                         x=0.675,
                         y=y_pos,
@@ -3728,10 +3504,8 @@ def show_overview():
                         font=dict(size=12, color="#334155", family="Arial"),
                     )
 
-                # Use the same Plotly height as the Weight Trend chart so both
-                # bordered Streamlit cards finish on the same horizontal line.
-                # This changes presentation only; zone values and calculations
-                # remain exactly the same.
+                                                                              
+
                 fig_zone.update_layout(
                     height=aligned_chart_height,
                     margin=dict(l=0, r=0, t=4, b=0),
@@ -3765,9 +3539,8 @@ def show_overview():
 
     compact_spacer()
 
-    # =====================================================
-    # Zone vs Country compact matrix (no internal scrolling)
-    # =====================================================
+                                                            
+                                                           
     if view_type == "Origin":
         with st.container(border=True):
             st.markdown(
@@ -3912,7 +3685,7 @@ def show_overview():
                 .compact-zone-matrix-wrap {{width:100%;overflow:visible;border:1px solid #dbe4ef;border-radius:10px;background:#ffffff;}}
                 .compact-zone-matrix {{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;font-family:'Segoe UI',Arial,sans-serif;font-size:{dynamic_font};color:#243b53;}}
                 .compact-zone-matrix th,.compact-zone-matrix td {{padding:5px 3px;border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;text-align:center;line-height:1.15;overflow:hidden;text-overflow:ellipsis;}}
-                /* Light separators around every country group (CY / LY / YoY). */
+                
                 .compact-zone-matrix .country-group {{border-left:1px solid #94a3b8!important;border-right:1px solid #94a3b8!important;}}
                 .compact-zone-matrix thead tr:nth-child(2) th:nth-child(3n+1) {{border-left:1px solid #94a3b8!important;}}
                 .compact-zone-matrix thead tr:nth-child(2) th:nth-child(3n) {{border-right:1px solid #94a3b8!important;}}
@@ -3924,7 +3697,7 @@ def show_overview():
                 .compact-zone-matrix .grand-total-row:first-of-type td:nth-child(3n+2) {{border-right:1px solid #94a3b8!important;}}
                 .compact-zone-matrix .grand-total-row:last-of-type td:nth-child(3n+2) {{border-left:1px solid #94a3b8!important;}}
                 .compact-zone-matrix .grand-total-row:last-of-type td:nth-child(3n+1) {{border-right:1px solid #94a3b8!important;}}
-                /* Light horizontal border around each two-row zone block. */
+                
                 .compact-zone-matrix .zone-revenue-row td {{border-top:1px solid #94a3b8!important;}}
                 .compact-zone-matrix .zone-revenue-row .zone-name {{border-bottom:1px solid #94a3b8!important;}}
                 .compact-zone-matrix .zone-share-row td {{border-bottom:1px solid #94a3b8!important;}}
@@ -3973,13 +3746,11 @@ def show_overview():
 
         compact_spacer()
 
-        # Month-on-Month analysis remains available below the full-width matrix.
         monthly_chart = monthly.copy()
         monthly_chart["Growth %"] = monthly_chart["Business Cr"].pct_change().mul(100).round(2)
         monthly_chart = monthly_chart.dropna(subset=["Month"]).copy()
         monthly_chart["Month"] = monthly_chart["Month"].astype(str)
 
-        # Three compact insights in one row: MoM, branch achievement, overall gauge.
         mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
             [1.20, 1.20, 0.60], gap="medium", vertical_alignment="top"
         )
@@ -3990,7 +3761,7 @@ def show_overview():
                 fig_mom = go.Figure()
                 fig_mom.add_trace(go.Bar(
                     x=monthly_chart["Month"], y=monthly_chart["Business Cr"], name="Business",
-                    # Lighter business bars keep the MoM percentage labels clearly visible.
+                                                                                           
                     marker=dict(
                         color="#bfdbfe",
                         line=dict(color="#2563eb", width=1.3),
@@ -4029,10 +3800,9 @@ def show_overview():
                 fig_mom.update_yaxes(showline=False)
                 st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False, "responsive": True})
 
-
         with branch_achievement_col:
             with st.container(border=True):
-                # Stable header: title on the left, Top-N dropdown in its own usable space.
+                                                                                           
                 _target_title_col, _top_dropdown_col = st.columns(
                     [0.74, 0.26], gap="small", vertical_alignment="center"
                 )
@@ -4053,15 +3823,12 @@ def show_overview():
                         label_visibility="collapsed",
                     )
 
-                # Keep the hierarchy selector on a separate row so neither control overlaps.
-                _achievement_level = st.segmented_control(
-                    "Target achievement level",
-                    options=["Zone", "Circle", "Branch"],
-                    default="Branch",
-                    key="target_achievement_level",
-                    label_visibility="collapsed",
-                    width="stretch",
-                ) or "Branch"
+                _achievement_level = _button_selector(
+                    ["Zone", "Circle", "Branch"],
+                    "target_achievement_level",
+                    "target_level_btn",
+                    "Branch",
+                )
 
                 st.markdown(
                     f"<div style='font-size:11px;font-weight:600;color:#475569;margin:2px 0 8px 0;'>"
@@ -4173,9 +3940,8 @@ def show_overview():
                     compact=False,
                 )
 
-    # =====================================================
-    # Selectable Top-N Consignors / Consignees | View-type aware
-    # =====================================================
+                                                                
+                                                           
     compact_spacer()
 
     def _find_column(frame, candidates):
@@ -4216,7 +3982,7 @@ def show_overview():
     party_layout_col, route_layout_col = st.columns(2, gap="medium")
 
     if party_col is not None:
-        # Current-year customer revenue under the already-applied dashboard filters.
+                                                                                    
         current_party = (
             df.assign(_party=df[party_col].fillna("Unknown").astype(str).str.strip())
             .query("_party != ''")
@@ -4225,7 +3991,6 @@ def show_overview():
             .reset_index(name="Current Business")
         )
 
-        # Same-period last-year revenue for the same customer field.
         if prev_party_col is not None:
             previous_party = (
                 prev_df.assign(
@@ -4357,7 +4122,7 @@ def show_overview():
                         }}
                         .customer-insight-table tr:last-child td {{border-bottom:0;}}
                         .customer-insight-table tbody tr:hover {{background:#f8fbff;}}
-                        /* Narrow rank column removes the unnecessary gap before Customer Name. */
+                        
                         .cust-rank {{
                             width:4%; padding-left:2px !important; padding-right:2px !important;
                             text-align:center; font-weight:400; color:#64748b;
@@ -4423,9 +4188,8 @@ def show_overview():
                     f"{party_label.lower()} column was not found in the booking dataset."
                 )
 
-    # =====================================================
-    # Selectable Top-N Routes | Same executive table treatment as Customers
-    # =====================================================
+                                                                           
+                                                           
     compact_spacer()
 
     route_candidates = ["route", "ROUTE", "Route"]
@@ -4448,7 +4212,6 @@ def show_overview():
         if selected_view == "Origin":
             return route_text
 
-        # Reverse only when a clear route separator is available.
         separators = [" → ", "→", " -> ", "->", " - ", " TO ", " to "]
         for separator in separators:
             if separator in route_text:
@@ -4456,7 +4219,6 @@ def show_overview():
                 if len(parts) >= 2:
                     return " → ".join(reversed(parts))
 
-        # Keep the original text when its format cannot be safely split.
         return route_text
 
     if route_col:
@@ -4601,7 +4363,7 @@ def show_overview():
                         }}
                         .route-insight-table tr:last-child td {{border-bottom:0;}}
                         .route-insight-table tbody tr:hover {{background:#f8fbff;}}
-                        /* Narrow rank column removes the unnecessary gap before Route. */
+                        
                         .route-rank {{
                             width:4%; padding-left:2px !important; padding-right:2px !important;
                             text-align:center; font-weight:400; color:#64748b;
@@ -4667,10 +4429,8 @@ def show_overview():
                     "in the booking dataset."
                 )
 
-    # Small separator before branch analysis
     compact_spacer()
 
-    # Branch summary for top/bottom branches and insights
     branch_summary = (
         df.groupby("branch")
         .agg(
@@ -4683,7 +4443,6 @@ def show_overview():
         .reset_index()
     )
 
-    # Previous-year branch business for CY/LY comparison in Branches by Business.
     if prev_df is not None and not prev_df.empty and "branch" in prev_df.columns:
         prev_branch_summary = (
             prev_df.groupby("branch", dropna=False)["REVENUE"]
@@ -4698,10 +4457,8 @@ def show_overview():
         branch_summary["LY_Business"], errors="coerce"
     ).fillna(0.0)
 
-    # Branches by Business is shown as MONTHLY AVERAGE, not selected-period total.
-    # The denominator is the number of financial months represented by the active
-    # filters. Using one common month count for every branch means months in which a
-    # branch had zero business are still part of the average, making branch comparison fair.
+                                                                                 
+
     current_month_count = max(int(df["FIN_MONTH"].dropna().nunique()), 1)
     previous_month_count = (
         max(int(prev_df["FIN_MONTH"].dropna().nunique()), 1)
@@ -4711,8 +4468,7 @@ def show_overview():
     branch_summary["Monthly_Avg_Business"] = branch_summary["Business"] / current_month_count
     branch_summary["LY_Monthly_Avg_Business"] = branch_summary["LY_Business"] / previous_month_count
 
-    # Keep the SAME slab labels/ranges, but classify branches by Monthly Avg Business
-    # so the rows shown inside a slab match the displayed CY Avg values.
+                                                                        
     business_slab_options = [
         "All",
         "₹0–5 Lac",
@@ -4738,9 +4494,8 @@ def show_overview():
         "₹50 Lac & Above": (5000000, None),
     }
 
-    # Streamlit segmented_control may temporarily store None during the first
-    # render, after a code reload, or when an older session-state value becomes
-    # invalid. Always normalise it before using it as a dictionary key.
+                                                                               
+                                                                       
     if selected_business_slab not in slab_ranges:
         selected_business_slab = "All"
         st.session_state["branch_business_slab_value"] = "All"
@@ -4752,7 +4507,7 @@ def show_overview():
     if slab_min is not None:
         top_branch_pool = top_branch_pool[top_branch_pool["Monthly_Avg_Business"] >= slab_min]
     if slab_max is not None:
-        # Upper limit is exclusive so one branch cannot fall into two slabs.
+                                                                            
         top_branch_pool = top_branch_pool[top_branch_pool["Monthly_Avg_Business"] < slab_max]
 
     branch_rank_df = (
@@ -4764,7 +4519,6 @@ def show_overview():
         branch_rank_df["Monthly_Avg_Business"] / revenue_divisor
     ).round(2)
 
-    # Keep only Top Branches and Operational Highlights in one balanced row.
     b1, b2 = st.columns([1.25, 0.80], gap="medium")
 
     with b1:
@@ -4775,8 +4529,7 @@ def show_overview():
                 unsafe_allow_html=True,
             )
 
-            # Use individual buttons rather than segmented_control. This makes the
-            # slab selector styling reliable across Streamlit versions.
+                                                                       
             slab_button_cols = st.columns(len(business_slab_options), gap="small")
             for slab_index, slab_label in enumerate(business_slab_options):
                 with slab_button_cols[slab_index]:
@@ -4792,8 +4545,7 @@ def show_overview():
                         selected_business_slab = slab_label
                         st.rerun()
 
-            # Recalculate immediately from the selected button value because the
-            # controls are rendered inside this card.
+                                                     
             slab_min, slab_max = slab_ranges.get(selected_business_slab, (None, None))
             top_branch_pool = branch_summary.copy()
             if slab_min is not None:
@@ -4904,8 +4656,7 @@ def show_overview():
 
     compact_spacer()
 
-
-    # Colour the branch-detail expanders and make their labels look like action buttons.
+                                                                                        
     st.markdown(
         """
         <style>
@@ -4947,9 +4698,8 @@ def show_overview():
         unsafe_allow_html=True,
     )
 
-    # =====================================================
-    # Branch/Agency Network Changes (lazy calculation)
-    # =====================================================
+                                                      
+                                                           
     network_toggle_key = "show_branch_agency_network_changes"
     if network_toggle_key not in st.session_state:
         st.session_state[network_toggle_key] = False
@@ -4968,8 +4718,7 @@ def show_overview():
         st.session_state[network_toggle_key] = not st.session_state[network_toggle_key]
         st.rerun()
 
-    # The former code calculated this section on every page rerun, even when hidden.
-    # All expensive copies, date filters and per-location calculations now run lazily.
+                                                                                      
     if st.session_state[network_toggle_key]:
         filtered_station_df = station_df.copy()
 
@@ -5010,7 +4759,6 @@ def show_overview():
         if not opened_df.empty and booking_date_col and booking_branch_col:
             opened_df["activedate"] = pd.to_datetime(opened_df["activedate"], errors="coerce")
 
-            # Keep only columns required by this section; this is much cheaper than df.copy().
             booking_columns = [
                 c for c in [booking_date_col, booking_branch_col, "REVENUE", "grno", "aweight"]
                 if c in df.columns
@@ -5022,15 +4770,13 @@ def show_overview():
                 )
             booking_work["_branch_key"] = booking_work[booking_branch_col].map(_normalise_key)
 
-            # Index by normalized branch key so each location does not rescan the full FY.
             branch_groups = {
                 key: group
                 for key, group in booking_work.groupby("_branch_key", sort=False)
                 if key
             }
 
-            # Resolve the exact dashboard period. Active Days must be measured only
-            # inside the selected FY / quarter / month, not up to the full FY end.
+                                                                                  
             fy_start_date = pd.to_datetime(start_date).normalize()
             fy_end_date = pd.to_datetime(end_date).normalize()
 
