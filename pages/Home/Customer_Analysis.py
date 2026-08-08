@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import html
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from services.data_CustomerAnalysis import load_booking_data, get_date_range
@@ -393,7 +394,130 @@ def apply_dashboard_style() -> None:
             div[data-testid="stPopover"] > div > button { min-height:38px !important; height:38px !important; padding-left:7px !important; padding-right:6px !important; font-size:10px !important; }
         }
 
-</style>
+
+
+        /* ---------- Executive customer growth tables ---------- */
+        .customer-rank-table {
+            width: 100%;
+            font-size: 11px;
+            color: #0f2742;
+        }
+        .customer-rank-head,
+        .customer-rank-row {
+            display: grid;
+            grid-template-columns: minmax(145px, 1.55fr) 0.92fr 0.92fr 1.20fr 0.92fr 0.82fr;
+            align-items: center;
+            column-gap: 10px;
+        }
+        .customer-rank-head {
+            font-weight: 850;
+            padding: 6px 4px 7px;
+            border-bottom: 1px solid #dbe5f0;
+            color: #17365d;
+        }
+        .customer-rank-row {
+            min-height: 34px;
+            padding: 4px;
+            border-bottom: 1px solid #eef2f7;
+        }
+        .customer-rank-row:last-child { border-bottom: none; }
+
+        /* ---------- Top customers CY vs LY compact table ---------- */
+        .top-customer-table {
+            width: 100%;
+            font-size: 11px;
+            color: #0f2742;
+        }
+        .top-customer-head,
+        .top-customer-row {
+            display: grid;
+            grid-template-columns: minmax(170px, 1.55fr) minmax(150px, 1.25fr) 0.85fr 0.85fr 0.70fr;
+            align-items: center;
+            column-gap: 10px;
+        }
+        .top-customer-head {
+            font-weight: 850;
+            padding: 6px 4px 7px;
+            border-bottom: 1px solid #dbe5f0;
+            color: #17365d;
+        }
+        .top-customer-row {
+            min-height: 34px;
+            padding: 4px;
+            border-bottom: 1px solid #eef2f7;
+        }
+        .top-customer-row:last-child { border-bottom: none; }
+        .top-customer-scale {
+            height: 9px;
+            background: #edf2f7;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .top-customer-scale-fill {
+            height: 100%;
+            background: #2f7de1;
+            border-radius: 2px;
+        }
+
+        /* ---------- Lost customer compact table ---------- */
+        .lost-customer-table {
+            width: 100%;
+            font-size: 11px;
+            color: #0f2742;
+        }
+        .lost-customer-head,
+        .lost-customer-row {
+            display: grid;
+            grid-template-columns: minmax(220px, 1.8fr) 1.05fr 1.05fr;
+            align-items: center;
+            column-gap: 10px;
+        }
+        .lost-customer-head {
+            font-weight: 850;
+            padding: 6px 4px 7px;
+            border-bottom: 1px solid #dbe5f0;
+            color: #17365d;
+        }
+        .lost-customer-row {
+            min-height: 34px;
+            padding: 4px;
+            border-bottom: 1px solid #eef2f7;
+        }
+        .lost-customer-row:last-child { border-bottom: none; }
+        .lost-customer-date {
+            text-align: center;
+            white-space: nowrap;
+            color: #334155;
+        }
+        .customer-name-cell {
+            font-weight: 750;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .customer-num-cell {
+            text-align: right;
+            white-space: nowrap;
+        }
+        .customer-growth-cell {
+            display: grid;
+            grid-template-columns: minmax(44px, 1fr) 46px;
+            gap: 6px;
+            align-items: center;
+            font-weight: 850;
+        }
+        .customer-growth-track {
+            height: 9px;
+            background: #edf2f7;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .customer-growth-fill {
+            height: 100%;
+            border-radius: 2px;
+        }
+
+        </style>
         """,
         unsafe_allow_html=True,
     )
@@ -424,6 +548,7 @@ MONTH_ORDER = ["Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "J
 MONTH_MAP = {1: "Apr", 2: "May", 3: "Jun", 4: "Jul", 5: "Aug", 6: "Sep", 7: "Oct", 8: "Nov", 9: "Dec", 10: "Jan", 11: "Feb", 12: "Mar"}
 QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
 QUARTER_MAP = {1: "Q1", 2: "Q1", 3: "Q1", 4: "Q2", 5: "Q2", 6: "Q2", 7: "Q3", 8: "Q3", 9: "Q3", 10: "Q4", 11: "Q4", 12: "Q4"}
+TOP_N_OPTIONS = [10, 20, 30, 40]
 
 # =====================================================
 # Helper Functions
@@ -446,6 +571,15 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
         "loadtype":     "LoadType",
         "fin_month":    "FIN_MONTH",
         "yr":           "YR",
+        "bookingdate":  "BusinessDate",
+        "booking_date": "BusinessDate",
+        "grdt":         "BusinessDate",
+        "grdate":       "BusinessDate",
+        "gr_date":      "BusinessDate",
+        "lrdate":       "BusinessDate",
+        "lr_date":      "BusinessDate",
+        "businessdate": "BusinessDate",
+        "business_date":"BusinessDate",
     }
     for col in list(df.columns):
         lower_col = col.lower()
@@ -497,6 +631,44 @@ def clean_booking_data(df: pd.DataFrame) -> pd.DataFrame:
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    # Keep the actual GR/booking date when the stored procedure returns one.
+    # Different database/SP versions may expose the same field under different
+    # names (for example GRDT, GR_DATE, BookingDt, CNDate, DocketDate, etc.).
+    # Detect those names without changing any business calculation.
+    if "BusinessDate" not in df.columns:
+        compact_date_names = {
+            "grdt", "grdate", "grdatetime", "grbookdate", "grbookingdate",
+            "bookingdt", "bookingdate", "bookingdatetime", "bkgdate", "bkgdt",
+            "cndate", "cndt", "lrdate", "lrdt", "docketdate", "docketdt",
+            "shipmentdate", "shipmentdt", "businessdate", "businessdt",
+            "entrydate", "entrydt", "docdate", "documentdate",
+        }
+        detected_date_col = None
+        for candidate in df.columns:
+            compact = "".join(ch for ch in str(candidate).lower() if ch.isalnum())
+            if compact in compact_date_names:
+                detected_date_col = candidate
+                break
+
+        # As a final safe fallback, consider columns whose name explicitly contains
+        # 'date' and accept one only when a meaningful share parses as datetimes.
+        if detected_date_col is None:
+            for candidate in df.columns:
+                name = str(candidate).lower()
+                if "date" not in name:
+                    continue
+                parsed = pd.to_datetime(df[candidate], errors="coerce")
+                non_blank = df[candidate].notna().sum()
+                if non_blank and parsed.notna().sum() / non_blank >= 0.50:
+                    detected_date_col = candidate
+                    break
+
+        if detected_date_col is not None:
+            df["BusinessDate"] = df[detected_date_col]
+
+    if "BusinessDate" in df.columns:
+        df["BusinessDate"] = pd.to_datetime(df["BusinessDate"], errors="coerce", dayfirst=True)
 
     return df
 
@@ -1036,6 +1208,7 @@ def render_kpis(metrics: dict, customer_label: str, conversion_type: str) -> Non
 def render_overview_tab(
     customer_summary: pd.DataFrame,
     monthly: pd.DataFrame,
+    df: pd.DataFrame,
     code_col: str,
     name_col: str,
     customer_label: str,
@@ -1120,200 +1293,328 @@ def render_overview_tab(
     top_growing = customer_summary[
         (customer_summary["prev_revenue"] > 0) &
         (customer_summary["revenue"] > customer_summary["prev_revenue"])
-    ].copy().nlargest(10, "growth_%")
+    ].copy().sort_values("growth_%", ascending=False)
 
     top_degrowing = customer_summary[
         (customer_summary["prev_revenue"] > 0) &
         (customer_summary["revenue"] < customer_summary["prev_revenue"]) &
         (customer_summary["revenue"] > 0)
-    ].copy().nsmallest(10, "growth_%")
+    ].copy().sort_values("growth_%", ascending=True)
 
-    lost_summary = (
-        prev_df[prev_df[code_col].isin(lost_customer_codes)]
-        .groupby([code_col, name_col], as_index=False)
-        .agg(lost_revenue=("Revenue", "sum"), last_CN_month=("FIN_MONTH", "max"))
-        .nlargest(10, "lost_revenue")
-    )
+    def _build_lost_customer_summary(inactive_months: int) -> pd.DataFrame:
+        """Customers with no business in the most recent N fiscal months.
+
+        FIN_MONTH is the source of truth (1=Apr ... 12=Mar). Previous-FY rows
+        are placed immediately before current-FY rows on one continuous fiscal
+        month axis so the 3/6/9/12-month inactivity test works across FY boundaries.
+        """
+        history_parts = []
+
+        if not prev_df.empty:
+            py = prev_df.copy()
+            py["__abs_month"] = pd.to_numeric(py["FIN_MONTH"], errors="coerce").fillna(0).astype(int) - 12
+            history_parts.append(py)
+
+        if not df.empty:
+            cy = df.copy()
+            cy["__abs_month"] = pd.to_numeric(cy["FIN_MONTH"], errors="coerce").fillna(0).astype(int)
+            history_parts.append(cy)
+
+        if not history_parts:
+            return pd.DataFrame()
+
+        history = pd.concat(history_parts, ignore_index=True, sort=False)
+        history = history[history["__abs_month"].notna()].copy()
+        if history.empty:
+            return pd.DataFrame()
+
+        current_months = pd.to_numeric(df.get("FIN_MONTH", pd.Series(dtype=float)), errors="coerce").dropna()
+        as_of_month = int(current_months.max()) if not current_months.empty else 12
+        cutoff_month = as_of_month - int(inactive_months)
+
+        # Pick the latest actual business row for each customer. When the stored
+        # procedure exposes a GR/booking date, use it to resolve the exact date
+        # inside the latest fiscal month.
+        sort_cols = ["__abs_month"]
+        if "BusinessDate" in history.columns:
+            sort_cols.append("BusinessDate")
+        last_rows = history.sort_values(sort_cols).groupby(code_col, as_index=False).tail(1)
+        keep_cols = [code_col, name_col, "__abs_month", "FIN_MONTH", "Branch", "Zone"]
+        if "BusinessDate" in last_rows.columns:
+            keep_cols.append("BusinessDate")
+        last_rows = last_rows[keep_cols].rename(columns={"FIN_MONTH": "last_business_ref"})
+        last_rows = last_rows[last_rows["__abs_month"] <= cutoff_month].copy()
+        if last_rows.empty:
+            return pd.DataFrame()
+
+        lost_codes = set(last_rows[code_col].dropna().tolist())
+        business_summary = (
+            history[history[code_col].isin(lost_codes)]
+            .groupby(code_col, as_index=False)
+            .agg(lost_revenue=("Revenue", "sum"))
+        )
+
+        return (
+            last_rows.merge(business_summary, on=code_col, how="left")
+            .sort_values("lost_revenue", ascending=False)
+            .head(10)
+        )
 
     divisor, unit = get_revenue_conversion(conversion_type)
-    v1, v2, v3 = st.columns(3, gap="small")
 
-    def render_cy_py_customer_chart(
+    def _fmt_business(value: float) -> str:
+        return f"₹{value / divisor:.2f} {unit}"
+
+    def _render_growth_detail_table(
         source_df: pd.DataFrame,
         title: str,
-        sort_column: str,
-        ascending: bool,
+        positive: bool,
         empty_message: str,
-        table_columns: list[str],
+        top_n: int,
     ) -> None:
-        st.markdown(f"<div class='section-header'>{title}</div>", unsafe_allow_html=True)
+        if title:
+            st.markdown(f"<div class='section-header'>{html.escape(title)}</div>", unsafe_allow_html=True)
         if source_df.empty:
             st.info(empty_message)
             return
 
-        chart_df = source_df.copy().sort_values(sort_column, ascending=ascending)
-        chart_df["CY Business"] = chart_df["revenue"] / divisor
-        chart_df["PY Business"] = chart_df["prev_revenue"] / divisor
+        table_df = source_df.copy().head(top_n)
+        max_pct = max(float(table_df["growth_%"].abs().max()), 1.0)
+        rows_html = []
 
-        long_df = chart_df.melt(
-            id_vars=[name_col, "growth_%"],
-            value_vars=["PY Business", "CY Business"],
-            var_name="Period",
-            value_name="Business Display",
-        )
-        fig = px.bar(
-            long_df,
-            x="Business Display",
-            y=name_col,
-            color="Period",
-            orientation="h",
-            barmode="group",
-            text="Business Display",
-            custom_data=["growth_%"],
-            category_orders={name_col: chart_df[name_col].tolist()},
-        )
-        fig.update_traces(
-            texttemplate=f"%{{text:.2f}} {unit}",
-            textposition="outside",
-            cliponaxis=False,
-            hovertemplate=(
-                f"%{{y}}<br>%{{fullData.name}}: %{{x:.2f}} {unit}"
-                "<br>Growth: %{customdata[0]:.1f}%<extra></extra>"
-            ),
-        )
-        fig.update_layout(
-            height=320,
-            margin=dict(l=5, r=35, t=5, b=20),
-            xaxis_title=f"Business ({unit})",
-            yaxis_title="",
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            legend_title_text="",
-            legend=dict(orientation="h", y=1.02, x=0),
-        )
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        for _, row in table_df.iterrows():
+            customer_name = html.escape(str(row.get(name_col, "")))
+            ly = float(row.get("prev_revenue", 0) or 0)
+            cy = float(row.get("revenue", 0) or 0)
+            pct = float(row.get("growth_%", 0) or 0)
+            delta = cy - ly
+            shipments = int(round(float(row.get("shipments", 0) or 0)))
+            bar_width = max(5.0, min(abs(pct) / max_pct * 100.0, 100.0))
+            accent = "#16a34a" if positive else "#ef4444"
+            pct_label = f"{abs(pct):.1f}%"
+            delta_label = _fmt_business(abs(delta))
 
-        # FIXED: Only select columns that actually exist in chart_df
-        safe_columns = [col for col in table_columns if col in chart_df.columns]
-        if safe_columns:
-            detail_df = chart_df[safe_columns].copy()
-            detail_df["CY Business"] = chart_df["revenue"] / divisor
-            detail_df["PY Business"] = chart_df["prev_revenue"] / divisor
-            
-            # Only rename columns that exist
-            rename_map = {
-                name_col: customer_label,
-                "growth_%": "Growth %",
-                "shipments": "CY Shipments",
-            }
-            # Only add prev_shipments to rename if it exists
-            if "prev_shipments" in detail_df.columns:
-                rename_map["prev_shipments"] = "PY Shipments"
-            
-            detail_df = detail_df.rename(columns=rename_map)
-            
-            with st.expander("View detailed CY / PY figures"):
-                st.dataframe(
-                    detail_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "CY Business": st.column_config.NumberColumn(format=f"%.2f {unit}"),
-                        "PY Business": st.column_config.NumberColumn(format=f"%.2f {unit}"),
-                        "Growth %": st.column_config.NumberColumn(format="%.1f%%"),
-                    },
-                )
+            rows_html.append(
+                f'<div class="customer-rank-row">'
+                f'<div class="customer-name-cell">{customer_name}</div>'
+                f'<div class="customer-num-cell">{_fmt_business(ly)}</div>'
+                f'<div class="customer-num-cell">{_fmt_business(cy)}</div>'
+                f'<div class="customer-growth-cell">'
+                f'<div class="customer-growth-track">'
+                f'<div class="customer-growth-fill" style="width:{bar_width:.1f}%;background:{accent};"></div>'
+                f'</div>'
+                f'<span style="color:{accent};">{pct_label}</span>'
+                f'</div>'
+                f'<div class="customer-num-cell" style="color:{accent};font-weight:800;">{delta_label}</div>'
+                f'<div class="customer-num-cell">{shipments:,}</div>'
+                f'</div>'
+            )
 
-    with v1:
+        change_header = "Growth %" if positive else "Decline %"
+        amount_header = "Growth (₹)" if positive else "Loss (₹)"
+        table_html = (
+            f'<div class="customer-rank-table">'
+            f'<div class="customer-rank-head">'
+            f'<div>{html.escape(customer_label)}</div>'
+            f'<div>LY Business</div>'
+            f'<div>CY Business</div>'
+            f'<div>{change_header}</div>'
+            f'<div>{amount_header}</div>'
+            f'<div>CY Shipments</div>'
+            f'</div>'
+            f'{"".join(rows_html)}'
+            f'</div>'
+        )
+        st.markdown(table_html, unsafe_allow_html=True)
+
+    # Growing and de-growing details: table-led design instead of charts.
+    g1, g2 = st.columns(2, gap="small", vertical_alignment="top")
+    with g1:
         with st.container(border=True):
-            render_cy_py_customer_chart(
+            grow_title_col, grow_selector_col = st.columns(
+                [4.2, 1.0], gap="small", vertical_alignment="center"
+            )
+            with grow_selector_col:
+                grow_top_n = st.selectbox(
+                    "Growing customers to display",
+                    TOP_N_OPTIONS,
+                    index=0,
+                    format_func=lambda value: f"Top {value}",
+                    key="customer_growth_top_n",
+                    label_visibility="collapsed",
+                )
+            with grow_title_col:
+                st.markdown(
+                    f"<div style='font-size:16px;font-weight:800;color:#0f2744;margin:1px 0 7px 0;'>TOP {grow_top_n} GROWING {customer_label.upper()}S <span style='font-size:12px;font-weight:600;'>(By Growth %)</span></div>",
+                    unsafe_allow_html=True,
+                )
+            _render_growth_detail_table(
                 top_growing,
-                f"Top Growing {customer_label}s",
-                "growth_%",
+                "",
                 True,
                 "No growing customers for selected filters.",
-                [name_col, "growth_%", "shipments", "prev_shipments"],
+                grow_top_n,
             )
 
-    with v2:
+    with g2:
         with st.container(border=True):
-            render_cy_py_customer_chart(
+            degrow_title_col, degrow_selector_col = st.columns(
+                [4.2, 1.0], gap="small", vertical_alignment="center"
+            )
+            with degrow_selector_col:
+                degrow_top_n = st.selectbox(
+                    "De-growing customers to display",
+                    TOP_N_OPTIONS,
+                    index=0,
+                    format_func=lambda value: f"Top {value}",
+                    key="customer_degrowth_top_n",
+                    label_visibility="collapsed",
+                )
+            with degrow_title_col:
+                st.markdown(
+                    f"<div style='font-size:16px;font-weight:800;color:#0f2744;margin:1px 0 7px 0;'>TOP {degrow_top_n} DE-GROWING {customer_label.upper()}S <span style='font-size:12px;font-weight:600;'>(By Decline %)</span></div>",
+                    unsafe_allow_html=True,
+                )
+            _render_growth_detail_table(
                 top_degrowing,
-                f"Top De-growing {customer_label}s",
-                "growth_%",
+                "",
                 False,
                 "No de-growing customers for selected filters.",
-                [name_col, "growth_%", "shipments", "prev_shipments"],
+                degrow_top_n,
             )
 
-    with v3:
+    dashboard_spacer()
+
+    # Top customers: compact CY vs LY ranked table.
+    top_left, lost_right = st.columns([1.65, 1], gap="small", vertical_alignment="top")
+    with top_left:
         with st.container(border=True):
-            st.markdown(f"<div class='section-header'>Top Lost {customer_label}s</div>", unsafe_allow_html=True)
-            if lost_summary.empty:
-                st.info("No lost customers for selected filters.")
+            top_title_col, top_selector_col = st.columns(
+                [4.2, 1.0], gap="small", vertical_alignment="center"
+            )
+            with top_selector_col:
+                top_customer_n = st.selectbox(
+                    "Top customers to display",
+                    TOP_N_OPTIONS,
+                    index=0,
+                    format_func=lambda value: f"Top {value}",
+                    key=f"top_customers_cy_ly_{customer_label.lower()}",
+                    label_visibility="collapsed",
+                )
+            with top_title_col:
+                st.markdown(
+                    f"<div style='font-size:16px;font-weight:800;color:#0f2744;margin:1px 0 7px 0;'>TOP {top_customer_n} {customer_label.upper()}S <span style='font-size:12px;font-weight:600;'>(CY vs LY)</span></div>",
+                    unsafe_allow_html=True,
+                )
+
+            top_customer_df = (
+                customer_summary.copy()
+                .sort_values("revenue", ascending=False)
+                .head(top_customer_n)
+            )
+
+            if top_customer_df.empty:
+                st.info(f"No {customer_label.lower()} business data available for selected filters.")
             else:
-                chart_df = lost_summary.copy().sort_values("lost_revenue", ascending=True)
-                chart_df["prev_revenue"] = chart_df["lost_revenue"]
-                chart_df["revenue"] = 0.0
-                chart_df["growth_%"] = -100.0
-                chart_df["PY Business"] = chart_df["prev_revenue"] / divisor
-                chart_df["CY Business"] = 0.0
+                max_cy = max(float(top_customer_df["revenue"].max()), 1.0)
+                top_rows_html = []
+                for _, row in top_customer_df.iterrows():
+                    customer_name = html.escape(str(row.get(name_col, "")))
+                    cy = float(row.get("revenue", 0) or 0)
+                    ly = float(row.get("prev_revenue", 0) or 0)
+                    growth = float(row.get("growth_%", 0) or 0)
+                    scale_width = max(2.0, min(cy / max_cy * 100.0, 100.0)) if cy > 0 else 0.0
+                    growth_color = "#16a34a" if growth >= 0 else "#ef4444"
+                    growth_arrow = "▲" if growth >= 0 else "▼"
 
-                long_df = chart_df.melt(
-                    id_vars=[name_col, "growth_%"],
-                    value_vars=["PY Business", "CY Business"],
-                    var_name="Period",
-                    value_name="Business Display",
-                )
-                fig = px.bar(
-                    long_df,
-                    x="Business Display",
-                    y=name_col,
-                    color="Period",
-                    orientation="h",
-                    barmode="group",
-                    text="Business Display",
-                    custom_data=["growth_%"],
-                    category_orders={name_col: chart_df[name_col].tolist()},
-                )
-                fig.update_traces(
-                    texttemplate=f"%{{text:.2f}} {unit}",
-                    textposition="outside",
-                    cliponaxis=False,
-                    hovertemplate=(
-                        f"%{{y}}<br>%{{fullData.name}}: %{{x:.2f}} {unit}"
-                        "<br>Growth: %{customdata[0]:.1f}%<extra></extra>"
-                    ),
-                )
-                fig.update_layout(
-                    height=320,
-                    margin=dict(l=5, r=35, t=5, b=20),
-                    xaxis_title=f"Business ({unit})",
-                    yaxis_title="",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    legend_title_text="",
-                    legend=dict(orientation="h", y=1.02, x=0),
-                )
-                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-                detail_df = chart_df[[name_col, "last_CN_month", "PY Business", "CY Business", "growth_%"]].copy()
-                detail_df = detail_df.rename(columns={
-                    name_col: customer_label,
-                    "last_CN_month": "Last CN Month",
-                    "growth_%": "Growth %",
-                })
-                with st.expander("View detailed CY / PY figures"):
-                    st.dataframe(
-                        detail_df,
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            "CY Business": st.column_config.NumberColumn(format=f"%.2f {unit}"),
-                            "PY Business": st.column_config.NumberColumn(format=f"%.2f {unit}"),
-                            "Growth %": st.column_config.NumberColumn(format="%.1f%%"),
-                        },
+                    top_rows_html.append(
+                        f'<div class="top-customer-row">'
+                        f'<div class="customer-name-cell">{customer_name}</div>'
+                        f'<div class="top-customer-scale"><div class="top-customer-scale-fill" style="width:{scale_width:.1f}%;"></div></div>'
+                        f'<div class="customer-num-cell">{_fmt_business(cy)}</div>'
+                        f'<div class="customer-num-cell" style="color:#64748b;">{_fmt_business(ly)}</div>'
+                        f'<div class="customer-num-cell" style="color:{growth_color};font-weight:850;">{growth_arrow} {abs(growth):.1f}%</div>'
+                        f'</div>'
                     )
+
+                top_table_html = (
+                    f'<div class="top-customer-table">'
+                    f'<div class="top-customer-head">'
+                    f'<div>{html.escape(customer_label)}</div>'
+                    f'<div>Scale</div>'
+                    f'<div>CY Business</div>'
+                    f'<div>LY Business</div>'
+                    f'<div>Growth %</div>'
+                    f'</div>'
+                    f'{"".join(top_rows_html)}'
+                    f'</div>'
+                )
+                st.markdown(top_table_html, unsafe_allow_html=True)
+
+    with lost_right:
+        with st.container(border=True):
+            lost_title_col, lost_period_col = st.columns([4.2, 1.35], gap="small", vertical_alignment="center")
+            with lost_title_col:
+                st.markdown(
+                    f"<div style='font-size:16px;font-weight:800;color:#0f2744;margin:1px 0 7px 0;'>LOST {customer_label.upper()}S</div>",
+                    unsafe_allow_html=True,
+                )
+            with lost_period_col:
+                lost_period_label = st.selectbox(
+                    "Lost customer period",
+                    ["Last 3 Months", "Last 6 Months", "Last 9 Months", "Last 12 Months"],
+                    index=0,
+                    key=f"lost_customer_period_{customer_label.lower()}",
+                    label_visibility="collapsed",
+                )
+
+            inactive_months = int(lost_period_label.split()[1])
+            lost_summary = _build_lost_customer_summary(inactive_months)
+
+            st.caption(f"Customers with no business in the most recent {inactive_months} months.")
+
+            if lost_summary.empty:
+                st.info(f"No customers inactive for the last {inactive_months} months under the selected filters.")
+            else:
+                if "BusinessDate" not in lost_summary.columns or lost_summary["BusinessDate"].isna().all():
+                    st.caption(
+                        "Last Business Date is not present in the stored-procedure output. "
+                        "The dashboard will show it automatically once a GR/booking date column is returned."
+                    )
+                lost_rows_html = []
+                for _, row in lost_summary.iterrows():
+                    customer_name = html.escape(str(row.get(name_col, "")))
+                    business_value = _fmt_business(float(row.get("lost_revenue", 0) or 0))
+                    last_business_date = row.get("BusinessDate")
+                    if pd.notna(last_business_date):
+                        try:
+                            last_ref_text = pd.to_datetime(last_business_date).strftime("%d-%b-%Y")
+                        except Exception:
+                            last_ref_text = "-"
+                    else:
+                        # Exact date is intentionally not fabricated from FIN_MONTH.
+                        # If the source procedure does not return a date, show a dash.
+                        last_ref_text = "-"
+
+                    lost_rows_html.append(
+                        f'<div class="lost-customer-row">'
+                        f'<div class="customer-name-cell">{customer_name}</div>'
+                        f'<div class="lost-customer-date">{html.escape(last_ref_text)}</div>'
+                        f'<div class="customer-num-cell">{business_value}</div>'
+                        f'</div>'
+                    )
+
+                lost_table_html = (
+                    f'<div class="lost-customer-table">'
+                    f'<div class="lost-customer-head">'
+                    f'<div>{html.escape(customer_label)}</div>'
+                    f'<div>Last Business Date</div>'
+                    f'<div>Previous Business</div>'
+                    f'</div>'
+                    f'{"".join(lost_rows_html)}'
+                    f'</div>'
+                )
+                st.markdown(lost_table_html, unsafe_allow_html=True)
 
 
 def render_growth_tab(growth_df: pd.DataFrame, name_col: str, customer_label: str, conversion_type: str) -> None:
@@ -2040,7 +2341,7 @@ def show_CustomerAnalysis() -> None:
         "Detailed Analysis",
     ])
     with tab1:
-        render_overview_tab(customer_summary, monthly, code_col, name_col, customer_label, prev_df, lost_customer_codes, conversion_type)
+        render_overview_tab(customer_summary, monthly, df, code_col, name_col, customer_label, prev_df, lost_customer_codes, conversion_type)
     with tab2:
         render_growth_tab(growth_df, name_col, customer_label, conversion_type)
     with tab3:
