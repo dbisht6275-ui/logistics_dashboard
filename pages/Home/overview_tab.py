@@ -784,122 +784,80 @@ def _inject_overview_css():
             }
 
 
-            /* Branches by Business: selected slab button */
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked),
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
-                color: #ffffff !important;
-                background: #123f73 !important;
-                border-color: #123f73 !important;
-                box-shadow: inset 0 1px 2px rgba(0,0,0,.18) !important;
-                transform: none !important;
+            /* ============================================================
+               BRANCH MONTHLY-AVG SLAB BUTTONS
+               Real Streamlit buttons are used instead of segmented_control so
+               the visual treatment is stable across Streamlit versions.
+               ============================================================ */
+            div[class*="st-key-branch_slab_btn_"] {
+                margin: 0 !important;
+                padding: 0 !important;
             }
 
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked) p,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked) span,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"] p,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"] span {
-                color: #ffffff !important;
-            }
-
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked)::before,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"]::before {
-                background: #123f73 !important;
-                opacity: 1 !important;
-            }
-
-            /* Attractive slab selector: compact Power-BI-style pills, visual only. */
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] {
+            div[class*="st-key-branch_slab_btn_"] div[data-testid="stButton"] {
                 width: 100% !important;
-                justify-content: stretch !important;
-                margin: 2px 0 8px 0 !important;
+                margin: 0 !important;
             }
 
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] > div,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] [role="radiogroup"] {
-                display: grid !important;
-                grid-template-columns: repeat(7, minmax(95px, 1fr)) !important;
+            div[class*="st-key-branch_slab_btn_"] button {
                 width: 100% !important;
-                max-width: none !important;
-                gap: 6px !important;
-                padding: 4px !important;
-                border: 1px solid #d8e3f0 !important;
-                border-radius: 12px !important;
-                background: linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%) !important;
-                box-shadow: inset 0 1px 2px rgba(15,23,42,.06) !important;
-            }
-
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button {
-                min-width: 0 !important;
-                width: 100% !important;
-                min-height: 36px !important;
-                height: 36px !important;
+                min-height: 38px !important;
+                height: 38px !important;
                 padding: 5px 8px !important;
                 margin: 0 !important;
-                border: 1px solid #d4deea !important;
-                border-radius: 9px !important;
-                background: #ffffff !important;
+                border: 1px solid #cbd5e1 !important;
+                border-radius: 10px !important;
+                background: linear-gradient(180deg,#ffffff 0%,#f8fafc 100%) !important;
                 color: #334155 !important;
-                box-shadow: 0 1px 2px rgba(15,23,42,.05) !important;
+                box-shadow: 0 2px 5px rgba(15,23,42,.07) !important;
                 transform: none !important;
-                transition: border-color .14s ease, background .14s ease, box-shadow .14s ease, transform .14s ease !important;
+                font-size: 11px !important;
+                font-weight: 650 !important;
+                white-space: nowrap !important;
+                transition: all .14s ease !important;
             }
 
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:hover,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button:hover {
-                border-color: #93b7ef !important;
-                background: #f4f8ff !important;
-                box-shadow: 0 3px 8px rgba(37,99,235,.10) !important;
+            div[class*="st-key-branch_slab_btn_"] button:hover {
+                border-color: #60a5fa !important;
+                background: #eff6ff !important;
+                color: #1d4ed8 !important;
+                box-shadow: 0 4px 10px rgba(37,99,235,.13) !important;
                 transform: translateY(-1px) !important;
             }
 
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label:has(input:checked),
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button[aria-pressed="true"] {
-                color: #ffffff !important;
+            div[class*="st-key-branch_slab_btn_"] button[data-testid="stBaseButton-primary"] {
                 border-color: #2563eb !important;
-                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 58%, #1d4ed8 100%) !important;
-                box-shadow: 0 4px 10px rgba(37,99,235,.22), inset 0 1px 0 rgba(255,255,255,.25) !important;
-                transform: none !important;
+                background: linear-gradient(135deg,#3b82f6 0%,#2563eb 58%,#1d4ed8 100%) !important;
+                color: #ffffff !important;
+                box-shadow: 0 4px 11px rgba(37,99,235,.22), inset 0 1px 0 rgba(255,255,255,.25) !important;
             }
 
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label::before,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button::before,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label::after,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button::after {
-                display: none !important;
-                content: none !important;
+            div[class*="st-key-branch_slab_btn_"] button[data-testid="stBaseButton-primary"] p,
+            div[class*="st-key-branch_slab_btn_"] button[data-testid="stBaseButton-primary"] span {
+                color: #ffffff !important;
             }
 
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label p,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label span,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button p,
-            .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button span {
+            div[class*="st-key-branch_slab_btn_"] button p,
+            div[class*="st-key-branch_slab_btn_"] button span {
+                margin: 0 !important;
+                padding: 0 !important;
                 font-size: 11px !important;
                 font-weight: 650 !important;
-                line-height: 1.1 !important;
                 white-space: nowrap !important;
             }
 
             @media (max-width: 1500px) {
-                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] > div,
-                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] [role="radiogroup"] {
-                    grid-template-columns: repeat(7, minmax(78px, 1fr)) !important;
-                    gap: 4px !important;
-                }
-                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label,
-                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button {
-                    min-height: 33px !important;
-                    height: 33px !important;
+                div[class*="st-key-branch_slab_btn_"] button {
+                    min-height: 34px !important;
+                    height: 34px !important;
                     padding: 4px 5px !important;
+                    font-size: 9.5px !important;
                 }
-                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label p,
-                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] label span,
-                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button p,
-                .st-key-top_branch_business_slab div[data-testid="stSegmentedControl"] button span {
+                div[class*="st-key-branch_slab_btn_"] button p,
+                div[class*="st-key-branch_slab_btn_"] button span {
                     font-size: 9.5px !important;
                 }
             }
-
 
             /* ============================================================
                Power-BI checkbox slicers - preserve the EXISTING filter UI.
@@ -1123,6 +1081,29 @@ def _inject_overview_css():
                 color: #1d4ed8 !important;
                 box-shadow: none !important;
                 transform: none !important;
+            }
+
+            /* Compact search field used only by searchable Circle/Branch slicers. */
+            div[data-testid="stPopoverBody"] div[data-testid="stTextInput"] {
+                margin: 0 0 7px 0 !important;
+                padding: 0 !important;
+            }
+
+            div[data-testid="stPopoverBody"] div[data-testid="stTextInput"] input {
+                min-height: 32px !important;
+                height: 32px !important;
+                padding: 5px 9px !important;
+                border: 1px solid #cbd9ea !important;
+                border-radius: 7px !important;
+                background: #ffffff !important;
+                font-size: 11px !important;
+                color: #102a43 !important;
+                box-shadow: inset 0 1px 2px rgba(15,23,42,.05) !important;
+            }
+
+            div[data-testid="stPopoverBody"] div[data-testid="stTextInput"] input:focus {
+                border-color: #60a5fa !important;
+                box-shadow: 0 0 0 2px rgba(37,99,235,.10) !important;
             }
 
             div[data-testid="stPopoverBody"] div[data-testid="stButton"] > button p {
@@ -2129,11 +2110,13 @@ def build_target_trend(
     return result[["Period", "Target"]]
 
 
-def _checkbox_slicer(label, options, key, locked_values=None):
+def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
     """Checkbox dropdown with the same closed appearance/height as existing filters.
 
     Empty selection means All. Multiple values stay in the dropdown and the closed
     control shows only a compact summary, so the dashboard filter row never expands.
+    When ``searchable`` is True, a compact text search filters the visible choices
+    without changing the underlying selected-value logic.
     """
     options = [x for x in options if pd.notna(x)]
     options = list(dict.fromkeys(options))
@@ -2173,6 +2156,20 @@ def _checkbox_slicer(label, options, key, locked_values=None):
         summary = f"{len(selected_before)} selected"
 
     with st.popover(summary, use_container_width=True):
+        visible_options = options
+        if searchable:
+            search_text = st.text_input(
+                f"Search {str(label).replace('◎', '').replace('⌂', '').strip()}",
+                key=f"{key}__search",
+                placeholder="Search...",
+                label_visibility="collapsed",
+            ).strip().casefold()
+            if search_text:
+                visible_options = [
+                    value for value in options
+                    if search_text in str(value).casefold()
+                ]
+
         action_cols = st.columns(2, gap="small")
         with action_cols[0]:
             if st.button(
@@ -2180,7 +2177,9 @@ def _checkbox_slicer(label, options, key, locked_values=None):
                 key=f"{key}__select_all",
                 use_container_width=False,
             ):
-                for value in options:
+                # With an active search, select only the visible matches.
+                # With no search, preserve the original Select all behaviour.
+                for value in visible_options:
                     st.session_state[state_key(value)] = True
                 st.rerun()
 
@@ -2190,14 +2189,18 @@ def _checkbox_slicer(label, options, key, locked_values=None):
                 key=f"{key}__clear",
                 use_container_width=False,
             ):
-                for value in options:
+                # With an active search, clear only the visible matches.
+                # With no search, preserve the original Clear behaviour.
+                for value in visible_options:
                     st.session_state[state_key(value)] = False
                 st.rerun()
 
         if not options:
             st.caption("No values available")
+        elif searchable and not visible_options:
+            st.caption("No matching values")
         else:
-            for value in options:
+            for value in visible_options:
                 st.checkbox(str(value), key=state_key(value))
 
     return [
@@ -2361,6 +2364,7 @@ def show_overview():
             circle_options,
             key="overview_circle_slicer",
             locked_values=[locked_circle] if locked_circle else None,
+            searchable=True,
         )
 
     with filter_cols[5]:
@@ -2370,6 +2374,7 @@ def show_overview():
             branch_options,
             key="overview_branch_slicer",
             locked_values=[locked_branch] if locked_branch else None,
+            searchable=True,
         )
 
     with filter_cols[6]:
@@ -4431,12 +4436,11 @@ def show_overview():
         "₹10–15 Lac",
         "₹15–25 Lac",
         "₹25–50 Lac",
-        "₹50 Lac & Above",
     ]
 
     selected_business_slab = st.session_state.get(
-        "top_branch_business_slab",
-        "All",
+        "branch_business_slab_value",
+        st.session_state.get("top_branch_business_slab", "All"),
     )
 
     slab_ranges = {
@@ -4446,7 +4450,6 @@ def show_overview():
         "₹10–15 Lac": (1000000, 1500000),
         "₹15–25 Lac": (1500000, 2500000),
         "₹25–50 Lac": (2500000, 5000000),
-        "₹50 Lac & Above": (5000000, None),
     }
 
     # Streamlit segmented_control may temporarily store None during the first
@@ -4454,6 +4457,7 @@ def show_overview():
     # invalid. Always normalise it before using it as a dictionary key.
     if selected_business_slab not in slab_ranges:
         selected_business_slab = "All"
+        st.session_state["branch_business_slab_value"] = "All"
         st.session_state["top_branch_business_slab"] = "All"
 
     slab_min, slab_max = slab_ranges.get(selected_business_slab, (None, None))
@@ -4485,17 +4489,25 @@ def show_overview():
                 unsafe_allow_html=True,
             )
 
-            selected_business_slab = st.segmented_control(
-                "Branch business slab",
-                business_slab_options,
-                default=selected_business_slab,
-                key="top_branch_business_slab",
-                label_visibility="collapsed",
-                width="stretch",
-            ) or "All"
+            # Use individual buttons rather than segmented_control. This makes the
+            # slab selector styling reliable across Streamlit versions.
+            slab_button_cols = st.columns(len(business_slab_options), gap="small")
+            for slab_index, slab_label in enumerate(business_slab_options):
+                with slab_button_cols[slab_index]:
+                    is_active_slab = slab_label == selected_business_slab
+                    if st.button(
+                        slab_label,
+                        key=f"branch_slab_btn_{slab_index}",
+                        type="primary" if is_active_slab else "secondary",
+                        use_container_width=True,
+                    ):
+                        st.session_state["branch_business_slab_value"] = slab_label
+                        st.session_state["top_branch_business_slab"] = slab_label
+                        selected_business_slab = slab_label
+                        st.rerun()
 
             # Recalculate immediately from the selected button value because the
-            # widget is rendered inside this card.
+            # controls are rendered inside this card.
             slab_min, slab_max = slab_ranges.get(selected_business_slab, (None, None))
             top_branch_pool = branch_summary.copy()
             if slab_min is not None:
