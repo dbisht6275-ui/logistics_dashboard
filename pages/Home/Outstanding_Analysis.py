@@ -42,10 +42,10 @@ CHANGES IN THIS VERSION
    the stored procedure for the selected date range -- fully settled and
    still-pending invoices alike.
 
-2. All monetary values are displayed in ₹ Crore (2 decimal places) across
-   KPI cards, charts and grouped summary tables. The Detailed Records table
-   is the one exception -- it stays in plain ₹ since it shows individual
-   invoice-level rows, where crore formatting made small amounts unreadable.
+2. A Conversion filter lets the user switch all dashboard-level monetary
+   values between ₹ Crore and ₹ Lac. KPI cards, charts and grouped summary
+   tables follow the selected unit. The Detailed Records table remains in
+   plain ₹ because it shows individual invoice-level rows.
 
 3. Previous-period (PY) growth-arrow comparison has been removed. KPI cards
    now show plain values only, with no ▲/▼ badge and no second stored
@@ -270,23 +270,22 @@ def _render_outstanding_header(placeholder, active_filters=None):
 # HELPERS
 # ---------------------------------------------------------------------------
 
-def _inr_cr(value):
-    """
-    Format a rupee value in ₹ Crore, 2 decimal places.
+def _get_conversion(conversion_type):
+    """Return the rupee divisor and short display unit for the selected view."""
+    return (1_00_000, "Lac") if conversion_type == "Lac" else (1_00_00_000, "Cr")
 
-    1 Crore = 1,00,00,000 (10,000,000)
-    """
+
+def _inr_amount(value, conversion_type):
+    """Format a rupee value in the selected Crore/Lac display unit."""
+    divisor, unit = _get_conversion(conversion_type)
     try:
         value = float(value)
     except (TypeError, ValueError):
-        return "₹0.00 Cr"
+        return f"₹0.00 {unit}"
 
     negative = value < 0
-    value = abs(value)
-
-    crore_value = value / 1_00_00_000
-
-    return f"{'-' if negative else ''}₹{crore_value:,.2f} Cr"
+    display_value = abs(value) / divisor
+    return f"{'-' if negative else ''}₹{display_value:,.2f} {unit}"
 
 
 def _find_column(df, candidates):
@@ -711,7 +710,7 @@ def show_OutstandingAnalysis():
     # DASHBOARD FILTERS
     # -----------------------------------------------------------------------
 
-    filter_columns = st.columns(6)
+    filter_columns = st.columns(7)
 
     with filter_columns[0]:
         if zone_col:
@@ -877,6 +876,15 @@ def show_OutstandingAnalysis():
             _match_scope_value(working_df[age_bucket_col], selected_bucket)
         ]
 
+    with filter_columns[6]:
+        conversion_type = _safe_selectbox(
+            "₹ Conversion",
+            ["Crore", "Lac"],
+            "oa_conversion_v1",
+        )
+
+    conversion_divisor, conversion_unit = _get_conversion(conversion_type)
+
     fdf = working_df.copy()
 
     # -----------------------------------------------------------------------
@@ -892,6 +900,7 @@ def show_OutstandingAnalysis():
         ("Customer", selected_customer),
         ("Document", selected_document),
         ("Age", selected_bucket),
+        ("Unit", conversion_type),
     ]
 
     _render_outstanding_header(
@@ -970,7 +979,7 @@ def show_OutstandingAnalysis():
     with k3:
         _kpi_card(
             "Balance",
-            _inr_cr(total_balance),
+            _inr_amount(total_balance, conversion_type),
             "Before on-account adjustment",
             "teal",
         )
@@ -978,7 +987,7 @@ def show_OutstandingAnalysis():
     with k4:
         _kpi_card(
             "On-Account Recd",
-            _inr_cr(total_on_account),
+            _inr_amount(total_on_account, conversion_type),
             "Unadjusted receipts",
             "purple",
         )
@@ -986,7 +995,7 @@ def show_OutstandingAnalysis():
     with k5:
         _kpi_card(
             "Net Outstanding",
-            _inr_cr(total_net),
+            _inr_amount(total_net, conversion_type),
             "After on-account adjustment",
             "amber",
         )
@@ -994,7 +1003,7 @@ def show_OutstandingAnalysis():
     with k6:
         _kpi_card(
             "Overdue > 90 Days",
-            _inr_cr(overdue_90),
+            _inr_amount(overdue_90, conversion_type),
             "High-risk receivables",
             "red",
         )
@@ -1046,10 +1055,10 @@ def show_OutstandingAnalysis():
                     textinfo="percent+label",
                     hovertemplate=(
                         "<b>%{label}</b><br>"
-                        "Outstanding: ₹%{customdata[0]:,.2f} Cr<br>"
+                        f"Outstanding: ₹%{{customdata[0]:,.2f}} {conversion_unit}<br>"
                         "Share: %{percent}<extra></extra>"
                     ),
-                    customdata=(age_df[["netbalance"]] / 1_00_00_000).values,
+                    customdata=(age_df[["netbalance"]] / conversion_divisor).values,
                 )
 
                 fig_age.update_layout(
@@ -1059,7 +1068,7 @@ def show_OutstandingAnalysis():
                     annotations=[
                         dict(
                             text=(
-                                f"<b>{_inr_cr(total_age_outstanding)}</b>"
+                                f"<b>{_inr_amount(total_age_outstanding, conversion_type)}</b>"
                                 "<br><span style='font-size:11px'>Net Outstanding</span>"
                             ),
                             x=0.5,
@@ -1117,7 +1126,7 @@ def show_OutstandingAnalysis():
                                     font-weight:800;
                                     color:#0f172a;
                                 ">
-                                    {_inr_cr(value)}
+                                    {_inr_amount(value, conversion_type)}
                                 </div>
                                 <div style="
                                     font-size:11px;
@@ -1150,7 +1159,7 @@ def show_OutstandingAnalysis():
                             color:#0f172a;
                             font-weight:800;
                         ">
-                            {_inr_cr(total_age_outstanding)}
+                            {_inr_amount(total_age_outstanding, conversion_type)}
                         </div>
                     </div>
                     """,
@@ -1167,31 +1176,31 @@ def show_OutstandingAnalysis():
                 .sort_values(ascending=True)
                 .reset_index()
             )
-            zone_df["netbalance_cr"] = zone_df["netbalance"] / 1_00_00_000
+            zone_df["netbalance_display"] = zone_df["netbalance"] / conversion_divisor
 
             fig_zone = px.bar(
                 zone_df,
-                x="netbalance_cr",
+                x="netbalance_display",
                 y=zone_col,
                 orientation="h",
-                text="netbalance_cr",
-                title="Net Outstanding by Zone (₹ Cr)",
-                color="netbalance_cr",
+                text="netbalance_display",
+                title=f"Net Outstanding by Zone (₹ {conversion_unit})",
+                color="netbalance_display",
                 color_continuous_scale="Blues",
             )
 
             fig_zone.update_traces(
-                texttemplate="₹%{text:,.2f} Cr",
+                texttemplate=f"₹%{{text:,.2f}} {conversion_unit}",
                 textposition="outside",
             )
 
-            max_zone = zone_df["netbalance_cr"].max() if not zone_df.empty else 0
+            max_zone = zone_df["netbalance_display"].max() if not zone_df.empty else 0
 
             fig_zone.update_layout(
                 height=380,
                 coloraxis_showscale=False,
                 margin=dict(t=50, b=10, l=10, r=30),
-                xaxis_title="Net Outstanding (₹ Cr)",
+                xaxis_title=f"Net Outstanding (₹ {conversion_unit})",
                 yaxis_title="",
                 xaxis_range=[0, max_zone * 1.18] if max_zone > 0 else None,
             )
@@ -1252,8 +1261,8 @@ def show_OutstandingAnalysis():
             ascending=True,
         )
 
-        document_summary["Net_Outstanding_Cr"] = (
-            document_summary["Net_Outstanding"] / 1_00_00_000
+        document_summary["Net_Outstanding_Display"] = (
+            document_summary["Net_Outstanding"] / conversion_divisor
         )
 
         doc_chart_col, doc_table_col = st.columns([1.35, 0.85])
@@ -1261,22 +1270,22 @@ def show_OutstandingAnalysis():
         with doc_chart_col:
             fig_document = px.bar(
                 document_summary,
-                x="Net_Outstanding_Cr",
+                x="Net_Outstanding_Display",
                 y=document_col,
                 orientation="h",
-                text="Net_Outstanding_Cr",
-                color="Net_Outstanding_Cr",
+                text="Net_Outstanding_Display",
+                color="Net_Outstanding_Display",
                 color_continuous_scale="Oranges",
-                title="Net Outstanding by Document Type (₹ Cr)",
+                title=f"Net Outstanding by Document Type (₹ {conversion_unit})",
             )
 
             fig_document.update_traces(
-                texttemplate="₹%{text:,.2f} Cr",
+                texttemplate=f"₹%{{text:,.2f}} {conversion_unit}",
                 textposition="outside",
             )
 
             max_document_value = (
-                document_summary["Net_Outstanding_Cr"].max()
+                document_summary["Net_Outstanding_Display"].max()
                 if not document_summary.empty
                 else 0
             )
@@ -1285,7 +1294,7 @@ def show_OutstandingAnalysis():
                 height=max(360, 42 * len(document_summary)),
                 coloraxis_showscale=False,
                 margin=dict(t=50, b=10, l=10, r=45),
-                xaxis_title="Net Outstanding (₹ Cr)",
+                xaxis_title=f"Net Outstanding (₹ {conversion_unit})",
                 yaxis_title="",
                 xaxis_range=(
                     [0, max_document_value * 1.18]
@@ -1306,11 +1315,11 @@ def show_OutstandingAnalysis():
             ).copy()
 
             document_table["Net_Outstanding"] = (
-                document_table["Net_Outstanding"] / 1_00_00_000
+                document_table["Net_Outstanding"] / conversion_divisor
             )
-            document_table["Billed"] = document_table["Billed"] / 1_00_00_000
+            document_table["Billed"] = document_table["Billed"] / conversion_divisor
             document_table = document_table.drop(
-                columns=["Net_Outstanding_Cr"]
+                columns=["Net_Outstanding_Display"]
             )
 
             st.dataframe(
@@ -1320,10 +1329,10 @@ def show_OutstandingAnalysis():
                 height=max(360, 42 * len(document_table)),
                 column_config={
                     "Net_Outstanding": st.column_config.NumberColumn(
-                        "Net Outstanding (₹ Cr)", format="₹%.2f Cr",
+                        f"Net Outstanding (₹ {conversion_unit})", format=f"₹%.2f {conversion_unit}",
                     ),
                     "Billed": st.column_config.NumberColumn(
-                        "Billed (₹ Cr)", format="₹%.2f Cr",
+                        f"Billed (₹ {conversion_unit})", format=f"₹%.2f {conversion_unit}",
                     ),
                     "Documents": st.column_config.NumberColumn(
                         "Documents", format="%d",
@@ -1354,22 +1363,22 @@ def show_OutstandingAnalysis():
                 .sort_values()
                 .reset_index()
             )
-            top_customers["netbalance_cr"] = (
-                top_customers["netbalance"] / 1_00_00_000
+            top_customers["netbalance_display"] = (
+                top_customers["netbalance"] / conversion_divisor
             )
 
             fig_customer = px.bar(
                 top_customers,
-                x="netbalance_cr",
+                x="netbalance_display",
                 y=customer_col,
                 orientation="h",
-                title="Top 15 Customers by Net Outstanding (₹ Cr)",
-                color="netbalance_cr",
+                title=f"Top 15 Customers by Net Outstanding (₹ {conversion_unit})",
+                color="netbalance_display",
                 color_continuous_scale="Reds",
             )
 
             fig_customer.update_traces(
-                texttemplate="₹%{x:,.2f} Cr",
+                texttemplate=f"₹%{{x:,.2f}} {conversion_unit}",
                 textposition="outside",
             )
 
@@ -1377,7 +1386,7 @@ def show_OutstandingAnalysis():
                 height=440,
                 coloraxis_showscale=False,
                 margin=dict(t=50, b=10, l=10, r=20),
-                xaxis_title="Net Outstanding (₹ Cr)",
+                xaxis_title=f"Net Outstanding (₹ {conversion_unit})",
                 yaxis_title="",
             )
 
@@ -1419,11 +1428,11 @@ def show_OutstandingAnalysis():
                 for column in ["Billed", "Received", "Net_Outstanding"]:
                     if column in branch_summary.columns:
                         branch_summary[column] = (
-                            branch_summary[column] / 1_00_00_000
+                            branch_summary[column] / conversion_divisor
                         )
                         branch_column_config[column] = st.column_config.NumberColumn(
-                            column.replace("_", " ") + " (₹ Cr)",
-                            format="₹%.2f Cr",
+                            column.replace("_", " ") + f" (₹ {conversion_unit})",
+                            format=f"₹%.2f {conversion_unit}",
                         )
 
                 if "Invoices" in branch_summary.columns:
@@ -1484,7 +1493,7 @@ def show_OutstandingAnalysis():
 
             for column in ["Billed", "Received"]:
                 if column in trend.columns:
-                    trend[column] = trend[column] / 1_00_00_000
+                    trend[column] = trend[column] / conversion_divisor
 
             fig_trend = go.Figure()
 
@@ -1513,7 +1522,7 @@ def show_OutstandingAnalysis():
                 height=380,
                 barmode="group",
                 margin=dict(t=30, b=10, l=10, r=10),
-                yaxis_title="Amount (₹ Cr)",
+                yaxis_title=f"Amount (₹ {conversion_unit})",
                 legend=dict(
                     orientation="h",
                     yanchor="bottom",
@@ -1559,11 +1568,11 @@ def show_OutstandingAnalysis():
 
     detail_df = fdf[show_columns].copy() if show_columns else fdf.copy()
 
-    # NOTE: Detail Records is left in plain ₹ (not ₹ Cr) on purpose --
+    # NOTE: Detail Records is left in plain ₹ (not converted to Crore/Lac) on purpose --
     # this table shows individual invoice-level rows, and converting each
     # row to crore made per-invoice amounts unreadable (values like
-    # ₹0.00 Cr for small invoices). Crore formatting is still used
-    # everywhere else (KPI cards, charts, grouped summary tables).
+    # tiny converted values for small invoices). The selected Conversion unit is
+    # used everywhere else (KPI cards, charts and grouped summary tables).
     money_columns = [
         column
         for column in ["billamount", "recdamount", "balance", "onaccrecd", "netbalance"]
