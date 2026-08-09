@@ -217,8 +217,38 @@ def _inject_css():
                 box-shadow: 0 3px 0 #1e40af, 0 6px 10px rgba(37,99,235,.18) !important;
             }
 
+            /* Business Overview-style dataframe treatment */
+            [data-testid="stDataFrame"] {
+                border: 1px solid #e2eaf3 !important;
+                border-radius: 12px !important;
+                overflow: hidden !important;
+                background: #fbfdff !important;
+                box-shadow: 0 3px 10px rgba(15,42,67,.07) !important;
+            }
+
             [data-testid="stDataFrame"] table {
-                font-size: 11px;
+                font-size: 11px !important;
+            }
+
+            [data-testid="stDataFrame"] tbody tr {
+                height: 24px !important;
+            }
+
+            [data-testid="stDataFrame"] thead tr {
+                height: 28px !important;
+            }
+
+            [data-testid="stDataFrame"] thead th {
+                background: #f8fafc !important;
+                color: #64748b !important;
+                font-size: 11px !important;
+                font-weight: 500 !important;
+                border-bottom: 1px solid #e2e8f0 !important;
+            }
+
+            [data-testid="stDataFrame"] tbody td {
+                color: #334155 !important;
+                border-bottom: 1px solid #edf2f7 !important;
             }
         </style>
         """,
@@ -1322,22 +1352,36 @@ def show_OutstandingAnalysis():
                 columns=["Net_Outstanding_Display"]
             )
 
+            document_column_config = {
+                "Net_Outstanding": st.column_config.NumberColumn(
+                    f"Net Outstanding (₹ {conversion_unit})",
+                    format=f"₹%.2f {conversion_unit}",
+                    width="medium",
+                ),
+                "Billed": st.column_config.NumberColumn(
+                    f"Billed (₹ {conversion_unit})",
+                    format=f"₹%.2f {conversion_unit}",
+                    width="medium",
+                ),
+                "Documents": st.column_config.NumberColumn(
+                    "Documents",
+                    format="%d",
+                    width="small",
+                ),
+            }
+
+            if document_col and document_col in document_table.columns:
+                document_column_config[document_col] = st.column_config.TextColumn(
+                    "Document Type",
+                    width="large",
+                )
+
             st.dataframe(
                 document_table,
                 width='stretch',
                 hide_index=True,
-                height=max(360, 42 * len(document_table)),
-                column_config={
-                    "Net_Outstanding": st.column_config.NumberColumn(
-                        f"Net Outstanding (₹ {conversion_unit})", format=f"₹%.2f {conversion_unit}",
-                    ),
-                    "Billed": st.column_config.NumberColumn(
-                        f"Billed (₹ {conversion_unit})", format=f"₹%.2f {conversion_unit}",
-                    ),
-                    "Documents": st.column_config.NumberColumn(
-                        "Documents", format="%d",
-                    ),
-                },
+                height=min(max(260, 34 * (len(document_table) + 1)), 440),
+                column_config=document_column_config,
             )
     else:
         st.info("Document Type or Net Outstanding data is not available.")
@@ -1423,7 +1467,12 @@ def show_OutstandingAnalysis():
                         ascending=False,
                     )
 
-                branch_column_config = {}
+                branch_column_config = {
+                    branch_col: st.column_config.TextColumn(
+                        "Branch",
+                        width="large",
+                    )
+                }
 
                 for column in ["Billed", "Received", "Net_Outstanding"]:
                     if column in branch_summary.columns:
@@ -1433,12 +1482,14 @@ def show_OutstandingAnalysis():
                         branch_column_config[column] = st.column_config.NumberColumn(
                             column.replace("_", " ") + f" (₹ {conversion_unit})",
                             format=f"₹%.2f {conversion_unit}",
+                            width="medium",
                         )
 
                 if "Invoices" in branch_summary.columns:
                     branch_column_config["Invoices"] = st.column_config.NumberColumn(
                         "Invoices",
                         format="%d",
+                        width="small",
                     )
 
                 st.dataframe(
@@ -1608,13 +1659,59 @@ def show_OutstandingAnalysis():
     # Styler has a hard render-cell cap that a full detail export can easily
     # exceed. column_config formatting achieves the same "₹" display without
     # going through Styler at all, so there is no cell limit here.
-    column_config = {
-        column: st.column_config.NumberColumn(
-            column.replace("_", " ").title() + " (₹)",
-            format="₹%.0f",
-        )
-        for column in money_columns
+    # Business Overview-style column names, widths and numeric/date formatting.
+    column_config = {}
+
+    friendly_text_columns = {
+        zone_col: ("Zone", "medium"),
+        circle_col: ("Circle", "medium"),
+        branch_col: ("Branch", "medium"),
+        customer_col: ("Customer", "large"),
+        "grtype": ("GR Type", "small"),
+        document_col: ("Document Type", "medium"),
+        "invoiceno": ("Invoice No.", "medium"),
+        age_bucket_col: ("Age Bucket", "small"),
     }
+
+    for column, config in friendly_text_columns.items():
+        if column and column in detail_df.columns:
+            label, width = config
+            column_config[column] = st.column_config.TextColumn(
+                label,
+                width=width,
+            )
+
+    for column, label in [("invoicedt", "Invoice Date"), ("duedt", "Due Date")]:
+        if column in detail_df.columns:
+            column_config[column] = st.column_config.DateColumn(
+                label,
+                format="DD/MM/YYYY",
+                width="small",
+            )
+
+    money_labels = {
+        "billamount": "Bill Amount (₹)",
+        "recdamount": "Received (₹)",
+        "balance": "Balance (₹)",
+        "onaccrecd": "On-Account Recd (₹)",
+        "netbalance": "Net Outstanding (₹)",
+    }
+
+    for column in money_columns:
+        column_config[column] = st.column_config.NumberColumn(
+            money_labels.get(column, column.replace("_", " ").title() + " (₹)"),
+            format="₹%.0f",
+            width="medium",
+        )
+
+    if "outstandingdays" in detail_df.columns:
+        column_config["outstandingdays"] = st.column_config.NumberColumn(
+            "Outstanding Days",
+            format="%d",
+            width="small",
+        )
+
+    st.caption(f"Showing {len(detail_df):,} filtered records")
 
     st.dataframe(
         detail_df,
