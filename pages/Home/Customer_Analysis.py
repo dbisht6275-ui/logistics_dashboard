@@ -1113,95 +1113,213 @@ def render_data_filters(
     customer_name_col: str,
     filter_columns,
 ):
+    """Render Overview-style role-aware cascading filters.
+
+    Hierarchy:
+        Zone -> Circle -> Branch -> Quarter -> Month -> Load Type -> Customer
+
+    Role behaviour comes from ``st.session_state["data_scope"]``:
+        {}                          -> unrestricted
+        {"zone": "..."}           -> Zone locked, Circle/Branch cascade below it
+        {"circle": "..."}         -> Zone + Circle locked, Branch cascades below it
+        {"branch": "..."}         -> Zone + Circle + Branch all locked
+    """
     data_scope = st.session_state.get("data_scope", {}) or {}
     locked_zone = data_scope.get("zone")
     locked_circle = data_scope.get("circle")
     locked_branch = data_scope.get("branch")
 
+    def _canon(value):
+        """Normalize role values for safe case/space-insensitive matching."""
+        if value is None:
+            return ""
+        return " ".join(str(value).strip().split()).casefold()
+
+    def _match(frame: pd.DataFrame, column: str, value):
+        if frame is None or frame.empty or column not in frame.columns or value in (None, ""):
+            return frame.iloc[0:0] if frame is not None else pd.DataFrame()
+        target = _canon(value)
+        normalized = (
+            frame[column]
+            .fillna("")
+            .astype(str)
+            .map(lambda x: " ".join(x.strip().split()).casefold())
+        )
+        return frame[normalized.eq(target)]
+
+    # Resolve the exact hierarchy names from the current FY data.  This avoids
+    # case/spacing differences between login rights and database values.
     if locked_branch:
-        row = df[df["Branch"].astype(str).str.casefold() == str(locked_branch).casefold()]
-        if not row.empty:
-            locked_branch = row["Branch"].iloc[0]
-            locked_circle = row["Circle"].iloc[0]
-            locked_zone = row["Zone"].iloc[0]
+        role_row = _match(df, "Branch", locked_branch)
+        if not role_row.empty:
+            locked_branch = role_row["Branch"].iloc[0]
+            if "Circle" in role_row.columns:
+                locked_circle = role_row["Circle"].iloc[0]
+            if "Zone" in role_row.columns:
+                locked_zone = role_row["Zone"].iloc[0]
     elif locked_circle:
-        row = df[df["Circle"].astype(str).str.casefold() == str(locked_circle).casefold()]
-        if not row.empty:
-            locked_circle = row["Circle"].iloc[0]
-            locked_zone = row["Zone"].iloc[0]
+        role_row = _match(df, "Circle", locked_circle)
+        if not role_row.empty:
+            locked_circle = role_row["Circle"].iloc[0]
+            if "Zone" in role_row.columns:
+                locked_zone = role_row["Zone"].iloc[0]
+    elif locked_zone:
+        role_row = _match(df, "Zone", locked_zone)
+        if not role_row.empty:
+            locked_zone = role_row["Zone"].iloc[0]
 
     f1, f2, f3, f4, f5, f6, f7, f8 = filter_columns[2:]
     filter_source_df = df.copy()
 
+    # ------------------------------------------------------------------
+    # ZONE
+    # ------------------------------------------------------------------
     with f1:
-        zone_options = sorted(filter_source_df["Zone"].dropna().unique().tolist()) if "Zone" in filter_source_df.columns else []
+        zone_options = (
+            sorted(filter_source_df["Zone"].dropna().astype(str).str.strip().unique().tolist(), key=str.casefold)
+            if "Zone" in filter_source_df.columns else []
+        )
         selected_zones = _checkbox_slicer(
-            "◉ Zone", zone_options, key="customer_zone_slicer",
+            "◉ Zone",
+            zone_options,
+            key="customer_zone_slicer",
             locked_values=[locked_zone] if locked_zone else None,
         )
 
+    zone_source_df = filter_source_df.copy()
+    if selected_zones and "Zone" in zone_source_df.columns:
+        zone_source_df = zone_source_df[zone_source_df["Zone"].isin(selected_zones)]
+
+    # ------------------------------------------------------------------
+    # CIRCLE - options only from selected/locked Zone
+    # ------------------------------------------------------------------
     with f2:
-        circle_options = sorted(filter_source_df["Circle"].dropna().unique().tolist()) if "Circle" in filter_source_df.columns else []
+        circle_options = (
+            sorted(zone_source_df["Circle"].dropna().astype(str).str.strip().unique().tolist(), key=str.casefold)
+            if "Circle" in zone_source_df.columns else []
+        )
         selected_circles = _checkbox_slicer(
-            "◎ Circle", circle_options, key="customer_circle_slicer",
+            "◎ Circle",
+            circle_options,
+            key="customer_circle_slicer",
             locked_values=[locked_circle] if locked_circle else None,
             searchable=True,
         )
 
+    circle_source_df = zone_source_df.copy()
+    if selected_circles and "Circle" in circle_source_df.columns:
+        circle_source_df = circle_source_df[circle_source_df["Circle"].isin(selected_circles)]
+
+    # ------------------------------------------------------------------
+    # BRANCH - options only from selected/locked Zone + Circle
+    # ------------------------------------------------------------------
     with f3:
-        branch_options = sorted(filter_source_df["Branch"].dropna().unique().tolist()) if "Branch" in filter_source_df.columns else []
+        branch_options = (
+            sorted(circle_source_df["Branch"].dropna().astype(str).str.strip().unique().tolist(), key=str.casefold)
+            if "Branch" in circle_source_df.columns else []
+        )
         selected_branches = _checkbox_slicer(
-            "⌂ Branch", branch_options, key="customer_branch_slicer",
+            "⌂ Branch",
+            branch_options,
+            key="customer_branch_slicer",
             locked_values=[locked_branch] if locked_branch else None,
             searchable=True,
         )
 
+    branch_source_df = circle_source_df.copy()
+    if selected_branches and "Branch" in branch_source_df.columns:
+        branch_source_df = branch_source_df[branch_source_df["Branch"].isin(selected_branches)]
+
+    # ------------------------------------------------------------------
+    # QUARTER - options only from selected hierarchy
+    # ------------------------------------------------------------------
     with f4:
         available_quarters = [
             q for q in QUARTER_ORDER
-            if q in filter_source_df["Quarter"].dropna().unique().tolist()
+            if "Quarter" in branch_source_df.columns
+            and q in branch_source_df["Quarter"].dropna().unique().tolist()
         ]
         selected_quarters = _checkbox_slicer(
-            "▦ Quarter", available_quarters, key="customer_quarter_slicer"
+            "▦ Quarter",
+            available_quarters,
+            key="customer_quarter_slicer",
         )
 
+    quarter_source_df = branch_source_df.copy()
+    if selected_quarters and "Quarter" in quarter_source_df.columns:
+        quarter_source_df = quarter_source_df[quarter_source_df["Quarter"].isin(selected_quarters)]
+
+    # ------------------------------------------------------------------
+    # MONTH - options only from selected hierarchy + Quarter
+    # ------------------------------------------------------------------
     with f5:
-        month_source_df = filter_source_df
-        if selected_quarters:
-            month_source_df = month_source_df[month_source_df["Quarter"].isin(selected_quarters)]
         available_months = [
             m for m in MONTH_ORDER
-            if m in month_source_df["Month"].dropna().unique().tolist()
+            if "Month" in quarter_source_df.columns
+            and m in quarter_source_df["Month"].dropna().unique().tolist()
         ]
         selected_months = _checkbox_slicer(
-            "▣ Month", available_months, key="customer_month_slicer"
+            "▣ Month",
+            available_months,
+            key="customer_month_slicer",
         )
 
-    selection_df = filter_source_df
-    if selected_zones:
-        selection_df = selection_df[selection_df["Zone"].isin(selected_zones)]
-    if selected_circles:
-        selection_df = selection_df[selection_df["Circle"].isin(selected_circles)]
-    if selected_branches:
-        selection_df = selection_df[selection_df["Branch"].isin(selected_branches)]
-    if selected_quarters:
-        selection_df = selection_df[selection_df["Quarter"].isin(selected_quarters)]
-    if selected_months:
+    selection_df = quarter_source_df.copy()
+    if selected_months and "Month" in selection_df.columns:
         selection_df = selection_df[selection_df["Month"].isin(selected_months)]
 
+    # ------------------------------------------------------------------
+    # LOAD TYPE / CUSTOMER / CONVERSION
+    # ------------------------------------------------------------------
     with f6:
-        loadtype_list = ["All"] + (sorted(selection_df["LoadType"].dropna().unique()) if "LoadType" in selection_df.columns else [])
+        loadtype_values = (
+            sorted(selection_df["LoadType"].dropna().astype(str).str.strip().unique().tolist(), key=str.casefold)
+            if "LoadType" in selection_df.columns else []
+        )
+        loadtype_list = ["All"] + loadtype_values
+        current_load = st.session_state.get("customer_loadtype", "All")
+        if current_load not in loadtype_list:
+            st.session_state["customer_loadtype"] = "All"
         load_type = st.selectbox("▤ Load Type", loadtype_list, key="customer_loadtype")
-    loadtype_df = selection_df if load_type == "All" else selection_df[selection_df["LoadType"] == load_type]
+
+    loadtype_df = (
+        selection_df
+        if load_type == "All" or "LoadType" not in selection_df.columns
+        else selection_df[selection_df["LoadType"] == load_type]
+    )
 
     with f7:
-        customer_list = ["All"] + (sorted(loadtype_df[customer_name_col].dropna().unique()) if customer_name_col in loadtype_df.columns else [])
-        customer = st.selectbox(f"👤 {customer_label}", customer_list, key="customer_name_filter")
+        customer_values = (
+            sorted(loadtype_df[customer_name_col].dropna().astype(str).str.strip().unique().tolist(), key=str.casefold)
+            if customer_name_col in loadtype_df.columns else []
+        )
+        customer_list = ["All"] + customer_values
+        current_customer = st.session_state.get("customer_name_filter", "All")
+        if current_customer not in customer_list:
+            st.session_state["customer_name_filter"] = "All"
+        customer = st.selectbox(
+            f"👤 {customer_label}",
+            customer_list,
+            key="customer_name_filter",
+        )
 
     with f8:
-        conversion_type = st.selectbox("₹ Conversion", ["Crore", "Lac"], key="customer_conversion_type")
+        conversion_type = st.selectbox(
+            "₹ Conversion",
+            ["Crore", "Lac"],
+            key="customer_conversion_type",
+        )
 
-    return selected_zones, selected_circles, selected_branches, selected_quarters, selected_months, load_type, customer, conversion_type
+    return (
+        selected_zones,
+        selected_circles,
+        selected_branches,
+        selected_quarters,
+        selected_months,
+        load_type,
+        customer,
+        conversion_type,
+    )
 
 
 # =====================================================
