@@ -84,6 +84,23 @@ ACCENT = {
 
 AGE_BUCKET_ORDER = ["0-30", "31-60", "61-90", "Above 90"]
 
+# Canonical document types used throughout the dashboard.
+# The stored procedure returns several operational variants that belong to
+# the same business document category.  Normalize them before any filter, KPI,
+# summary table, detail table or Excel export is built.
+DOCUMENT_TYPE_MAP = {
+    "BILL-GATEPASS CUSTOMER": "BILL",
+    "BILL-PAID CUSTOMER": "BILL",
+    "OPENING BILL": "BILL",
+    "ON A/C RECEIPT": "ON A/C Receipt",
+    "ON A/C RECEIPT -GATEPASS CUSTOMER": "ON A/C Receipt",
+    "ON A/C RECEIPT -PAID CUSTOMER": "ON A/C Receipt",
+    "PAID OUTSTANDING": "UNBILLED",
+    "TOPAY": "UNBILLED",
+    "UNBILLED GATEPASS": "UNBILLED",
+    "UNBILLED GR": "UNBILLED",
+}
+
 # Fixed stored-procedure parameters.
 SP_BRANCH = "00000"
 SP_GRTYPE = "C"
@@ -106,13 +123,34 @@ def _inject_css():
             }
 
             .oa-kpi-card {
+                position: relative;
                 background: linear-gradient(135deg, #ffffff 0%, #f3f6fb 100%);
                 border-radius: 14px;
-                padding: 9px 11px;
+                padding: 9px 42px 9px 11px;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.06);
                 border-left: 6px solid var(--accent, #2563eb);
                 text-align: left;
                 min-height: 78px;
+                overflow: hidden;
+            }
+
+            .oa-kpi-icon {
+                position: absolute;
+                top: 10px;
+                right: 10px;
+                width: 28px;
+                height: 28px;
+                border-radius: 9px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: color-mix(in srgb, var(--accent, #2563eb) 12%, white);
+                border: 1px solid color-mix(in srgb, var(--accent, #2563eb) 28%, white);
+                color: var(--accent, #2563eb);
+                font-size: 16px;
+                font-weight: 800;
+                line-height: 1;
+                box-shadow: 0 2px 5px rgba(15,23,42,.08);
             }
 
             .oa-kpi-label {
@@ -284,18 +322,18 @@ def _inject_css():
     )
 
 
-def _kpi_card(label, value, sub="", color="blue"):
-    """
-    Render one KPI card (plain value, no growth badge).
-    """
+def _kpi_card(label, value, sub="", color="blue", icon=""):
+    """Render one compact KPI card with an optional icon badge."""
+    icon_html = f'<div class="oa-kpi-icon">{escape(str(icon))}</div>' if icon else ""
     st.markdown(
         f"""
         <div class="oa-kpi-card" style="--accent:{ACCENT.get(color, '#2563eb')}">
-            <div class="oa-kpi-label">{label}</div>
+            {icon_html}
+            <div class="oa-kpi-label">{escape(str(label))}</div>
             <div class="oa-kpi-value-row">
                 <div class="oa-kpi-value">{value}</div>
             </div>
-            <div class="oa-kpi-sub">{sub}</div>
+            <div class="oa-kpi-sub">{escape(str(sub))}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -344,6 +382,62 @@ def _inr_amount(value, conversion_type):
     negative = value < 0
     display_value = abs(value) / divisor
     return f"{'-' if negative else ''}₹{display_value:,.2f} {unit}"
+
+
+def _normalize_document_type(value):
+    """Return the business document category used by the Outstanding dashboard.
+
+    Spacing and case differences from SQL are normalized first, so variants such
+    as ``ON A/C   Receipt -GATEPASS CUSTOMER`` still map correctly. Unknown
+    values are preserved instead of being silently discarded.
+    """
+    if pd.isna(value):
+        return "Unknown"
+
+    original = " ".join(str(value).strip().split())
+    if not original:
+        return "Unknown"
+
+    key = original.upper()
+
+    # Normalize inconsistent spaces around the hyphen in operational labels.
+    key = key.replace(" - ", "-").replace(" -", "-").replace("- ", "-")
+
+    compact_map = {
+        k.replace(" - ", "-").replace(" -", "-").replace("- ", "-"): v
+        for k, v in DOCUMENT_TYPE_MAP.items()
+    }
+    if key in compact_map:
+        return compact_map[key]
+
+    # Defensive family rules cover harmless wording/spacing variations while
+    # keeping the same three business categories requested by Finance.
+    if key.startswith("BILL-") or key == "BILL" or key == "OPENING BILL":
+        return "BILL"
+    if key.startswith("ON A/C RECEIPT"):
+        return "ON A/C Receipt"
+    if key.startswith("UNBILLED") or key in {"PAID OUTSTANDING", "TOPAY"}:
+        return "UNBILLED"
+
+    return original
+
+
+def _normalize_document_types_inplace(df, document_col):
+    """Preserve the source document type and create the canonical business type."""
+    if df is not None and document_col and document_col in df.columns:
+        # Keep the exact value returned by the stored procedure for audit/detail use.
+        # The dashboard filter and summary continue to use the canonicalized
+        # document type in ``document_col``.
+        original_col = "original_documenttype"
+        if original_col not in df.columns:
+            df[original_col] = (
+                df[document_col]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+            )
+        df[document_col] = df[document_col].apply(_normalize_document_type)
+    return df
 
 
 def _find_column(df, candidates):
@@ -569,27 +663,132 @@ def _checkbox_slicer(label, options, key, locked_values=None, searchable=True):
 
 
 def _render_scale_table(df, name_col, value_col, value_label, unit, secondary_cols=None, max_rows=50, accent="#7c3aed"):
+    """Render a compact scale-bar table that always fits inside its card.
+
+    Insight tables deliberately do NOT use horizontal scrolling. Column widths
+    are tuned by entity type so Customer, Branch, Zone, Document Type and Year
+    tables fit their own Streamlit column/card. Detailed Records is the only
+    table allowed to scroll horizontally elsewhere on the page.
+    """
     secondary_cols = secondary_cols or []
     if df is None or df.empty or name_col not in df.columns or value_col not in df.columns:
-        st.info("No table data is available for the selected filters."); return
+        st.info("No table data is available for the selected filters.")
+        return
+
     view = df.copy().head(max_rows).reset_index(drop=True)
     vals = pd.to_numeric(view[value_col], errors="coerce").fillna(0.0)
     max_abs = max(float(vals.abs().max()), 1.0)
-    rows=[]
-    for idx,row in view.iterrows():
-        raw=float(pd.to_numeric(pd.Series([row[value_col]]),errors="coerce").fillna(0).iloc[0])
-        width=min(abs(raw)/max_abs*100,100); name=escape(str(row[name_col])); extras=[]
-        for col,label,kind in secondary_cols:
-            val=row.get(col,0)
-            if kind=="money": extras.append(f'<td class="oa-scale-num">₹{float(val):,.2f} {escape(unit)}</td>')
-            elif kind=="int": extras.append(f'<td class="oa-scale-num">{int(val):,}</td>')
-            else: extras.append(f'<td class="oa-scale-num">{escape(str(val))}</td>')
-        rows.append('<tr>'+f'<td class="oa-scale-rank">{idx+1}</td>'+f'<td class="oa-scale-name" title="{name}">{name}</td>'+f'<td><div class="oa-scale-track"><div class="oa-scale-fill" style="width:{width:.1f}%;background:{accent};"></div></div></td>'+f'<td class="oa-scale-num">₹{raw:,.2f} {escape(unit)}</td>'+''.join(extras)+'</tr>')
-    heads=''.join(f'<th style="text-align:right;">{escape(label)}</th>' for _,label,_ in secondary_cols)
-    html=("<style>.oa-scale-wrap{width:100%;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff}.oa-scale-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px;color:#334155}.oa-scale-table th{padding:7px 6px;background:#f8fafc;color:#64748b;font-weight:500;border-bottom:1px solid #e2e8f0;text-align:left}.oa-scale-table td{padding:7px 6px;border-bottom:1px solid #edf2f7;vertical-align:middle}.oa-scale-table tbody tr:hover{background:#f8fbff}.oa-scale-rank{width:5%;text-align:center;color:#64748b}.oa-scale-name{width:28%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.oa-scale-track{width:100%;height:7px;background:#e8eef8;border-radius:999px;overflow:hidden}.oa-scale-fill{height:7px;border-radius:999px}.oa-scale-num{text-align:right;white-space:nowrap;font-weight:600;color:#0f172a}</style>"+f'<div class="oa-scale-wrap"><table class="oa-scale-table"><thead><tr><th>#</th><th>{escape(str(name_col).replace("_"," ").title())}</th><th>Scale</th><th style="text-align:right;">{escape(value_label)}</th>{heads}</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>')
-    if hasattr(st,"html"): st.html(html)
-    else: st.markdown(html,unsafe_allow_html=True)
 
+    rows = []
+    for idx, row in view.iterrows():
+        raw = float(pd.to_numeric(pd.Series([row[value_col]]), errors="coerce").fillna(0).iloc[0])
+        width = min(abs(raw) / max_abs * 100, 100)
+        name = escape(str(row[name_col]))
+        extras = []
+
+        for col, label, kind in secondary_cols:
+            val = row.get(col, 0)
+            if kind == "money":
+                extras.append(f'<td class="oa-scale-num oa-scale-secondary">₹{float(val):,.2f} {escape(unit)}</td>')
+            elif kind == "int":
+                try:
+                    display_val = f"{int(float(val)):,}"
+                except Exception:
+                    display_val = "0"
+                extras.append(f'<td class="oa-scale-num oa-scale-secondary">{display_val}</td>')
+            elif kind == "pct":
+                try:
+                    display_val = f"{float(val):,.1f}%"
+                except Exception:
+                    display_val = "0.0%"
+                extras.append(f'<td class="oa-scale-num oa-scale-secondary">{display_val}</td>')
+            else:
+                extras.append(f'<td class="oa-scale-num oa-scale-secondary">{escape(str(val))}</td>')
+
+        rows.append(
+            '<tr>'
+            f'<td class="oa-scale-rank">{idx + 1}</td>'
+            f'<td class="oa-scale-name" title="{name}">{name}</td>'
+            '<td class="oa-scale-bar-cell">'
+            f'<div class="oa-scale-track"><div class="oa-scale-fill" style="width:{width:.1f}%;background:{accent};"></div></div>'
+            '</td>'
+            f'<td class="oa-scale-num oa-scale-value">₹{raw:,.2f} {escape(unit)}</td>'
+            + ''.join(extras)
+            + '</tr>'
+        )
+
+    heads = ''.join(
+        f'<th class="oa-scale-secondary-head">{escape(label)}</th>'
+        for _, label, _ in secondary_cols
+    )
+
+    secondary_count = len(secondary_cols)
+    entity_key = str(name_col).strip().lower().replace("_", "").replace(" ", "")
+
+    # Widths are percentages and total 100%.  They are intentionally different
+    # by table type.  This fixes the previous problem where a global min-width
+    # forced two-column insight tables to spill outside their cards.
+    if "year" in entity_key:
+        rank_w, name_w, scale_w, value_w = 4, 9, 24, 21
+    elif "zone" in entity_key:
+        rank_w, name_w, scale_w, value_w = 4, 19, 23, 20
+    elif "branch" in entity_key:
+        rank_w, name_w, scale_w, value_w = 4, 16, 21, 18
+    elif "cust" in entity_key or "customer" in entity_key:
+        rank_w, name_w, scale_w, value_w = 4, 31, 23, 18
+    elif "document" in entity_key:
+        rank_w, name_w, scale_w, value_w = 4, 24, 23, 19
+    else:
+        rank_w, name_w, scale_w, value_w = 4, 25, 23, 19
+
+    base = rank_w + name_w + scale_w + value_w
+    remaining_w = max(100 - base, 0)
+    secondary_w = (remaining_w / secondary_count) if secondary_count else 0
+
+    # If there are no secondary columns, give the unused area back to name/scale.
+    if secondary_count == 0:
+        name_w += remaining_w * 0.55
+        scale_w += remaining_w * 0.45
+
+    colgroup = (
+        '<colgroup>'
+        f'<col style="width:{rank_w:.2f}%">'
+        f'<col style="width:{name_w:.2f}%">'
+        f'<col style="width:{scale_w:.2f}%">'
+        f'<col style="width:{value_w:.2f}%">'
+        + ''.join(f'<col style="width:{secondary_w:.2f}%">' for _ in secondary_cols)
+        + '</colgroup>'
+    )
+
+    html = (
+        '<style>'
+        '.oa-scale-wrap{width:100%;max-width:100%;overflow:hidden;border:1px solid #e2e8f0;border-radius:10px;background:#fff;box-sizing:border-box}'
+        '.oa-scale-table{width:100%;max-width:100%;border-collapse:collapse;table-layout:fixed;font-size:10px;color:#334155}'
+        '.oa-scale-table th{padding:6px 5px;background:#f8fafc;color:#64748b;font-weight:500;border-bottom:1px solid #e2e8f0;text-align:left;line-height:1.15;white-space:normal;overflow-wrap:anywhere}'
+        '.oa-scale-table td{padding:6px 5px;border-bottom:1px solid #edf2f7;vertical-align:middle;box-sizing:border-box}'
+        '.oa-scale-table tbody tr:hover{background:#f8fbff}'
+        '.oa-scale-rank{text-align:center!important;color:#64748b;padding-left:2px!important;padding-right:2px!important;white-space:nowrap}'
+        '.oa-scale-name{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;word-break:normal;line-height:1.18;font-weight:500;color:#1e293b}'
+        '.oa-scale-bar-cell{padding-left:5px!important;padding-right:5px!important}'
+        '.oa-scale-track{width:100%;height:7px;background:#e8eef8;border-radius:999px;overflow:hidden}'
+        '.oa-scale-fill{height:7px;border-radius:999px}'
+        '.oa-scale-num{text-align:right;white-space:nowrap;font-weight:600;color:#0f172a;font-variant-numeric:tabular-nums}'
+        '.oa-scale-secondary,.oa-scale-secondary-head{padding-left:6px!important;padding-right:6px!important;text-align:right!important}'
+        '.oa-scale-value{padding-left:6px!important;padding-right:6px!important}'
+        '</style>'
+        f'<div class="oa-scale-wrap"><table class="oa-scale-table">{colgroup}'
+        '<thead><tr>'
+        '<th style="text-align:center;">#</th>'
+        f'<th>{escape(str(name_col).replace("_", " ").title())}</th>'
+        '<th>Scale</th>'
+        f'<th style="text-align:right;">{escape(value_label)}</th>'
+        f'{heads}</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+    )
+
+    if hasattr(st, "html"):
+        st.html(html)
+    else:
+        st.markdown(html, unsafe_allow_html=True)
 
 def _clear_old_outstanding_widget_state():
     """
@@ -759,6 +958,13 @@ def show_OutstandingAnalysis():
         df,
         ["documenttype", "document_type", "doctype"],
     )
+
+    # IMPORTANT: Canonicalize Document Type before creating filter options or
+    # any analysis.  This means the Document Type filter, header chip, document
+    # summary, Detailed Records and Excel export all use BILL / ON A/C Receipt /
+    # UNBILLED instead of operational variants such as BILL-GATEPASS CUSTOMER.
+    _normalize_document_types_inplace(df, document_col)
+
     age_bucket_col = _find_column(
         df,
         ["age_bucket", "agebucket"],
@@ -1041,13 +1247,15 @@ def show_OutstandingAnalysis():
         else 0
     )
 
+    overdue_pct = (float(overdue_90) / float(total_net) * 100.0) if total_net else 0.0
+
     # NOTE: "Total Billed" and "Total Received" KPI cards were removed on
     # request -- they were causing confusion (their totals depended on
     # which rows happened to be settled vs pending). They are replaced
     # with two count-based cards (Total Invoices, Total Customers) that
     # are unambiguous.
 
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
 
     with k1:
         _kpi_card(
@@ -1055,6 +1263,7 @@ def show_OutstandingAnalysis():
             f"{invoice_count:,}",
             "Distinct invoices in selection",
             "blue",
+            "▤",
         )
 
     with k2:
@@ -1063,6 +1272,7 @@ def show_OutstandingAnalysis():
             f"{customer_count:,}",
             "Distinct customers in selection",
             "green",
+            "●●",
         )
 
     with k3:
@@ -1071,6 +1281,7 @@ def show_OutstandingAnalysis():
             _inr_amount(total_balance, conversion_type),
             "Before on-account adjustment",
             "teal",
+            "₹",
         )
 
     with k4:
@@ -1079,6 +1290,7 @@ def show_OutstandingAnalysis():
             _inr_amount(total_on_account, conversion_type),
             "Unadjusted receipts",
             "purple",
+            "↓",
         )
 
     with k5:
@@ -1087,6 +1299,7 @@ def show_OutstandingAnalysis():
             _inr_amount(total_net, conversion_type),
             "After on-account adjustment",
             "amber",
+            "₹",
         )
 
     with k6:
@@ -1095,6 +1308,16 @@ def show_OutstandingAnalysis():
             _inr_amount(overdue_90, conversion_type),
             "High-risk receivables",
             "red",
+            "!",
+        )
+
+    with k7:
+        _kpi_card(
+            "Overdue %",
+            f"{overdue_pct:,.1f}%",
+            ">90 days as % of net outstanding",
+            "purple",
+            "%",
         )
 
     # -----------------------------------------------------------------------
@@ -1301,9 +1524,11 @@ def show_OutstandingAnalysis():
     # -----------------------------------------------------------------------
     # DOCUMENT TYPE-WISE OUTSTANDING
     # -----------------------------------------------------------------------
+    # Keep this insight as a compact scale-bar table only. The previous
+    # Net Outstanding by Document Type chart has intentionally been removed.
 
     st.markdown(
-        "<div class='oa-section-title'>Document Type-wise Outstanding</div>",
+        "<div class='oa-section-title'>Document Type Analysis</div>",
         unsafe_allow_html=True,
     )
 
@@ -1335,7 +1560,7 @@ def show_OutstandingAnalysis():
                 how="left",
             )
         else:
-            document_summary["Billed"] = 0
+            document_summary["Billed"] = 0.0
 
         document_summary[document_col] = (
             document_summary[document_col]
@@ -1344,194 +1569,453 @@ def show_OutstandingAnalysis():
             .str.strip()
             .replace("", "Unknown")
         )
-
         document_summary = document_summary.sort_values(
+            "Net_Outstanding", ascending=False
+        ).copy()
+        document_summary["Net_Outstanding"] = (
+            pd.to_numeric(document_summary["Net_Outstanding"], errors="coerce")
+            .fillna(0.0) / conversion_divisor
+        )
+        document_summary["Billed"] = (
+            pd.to_numeric(document_summary["Billed"], errors="coerce")
+            .fillna(0.0) / conversion_divisor
+        )
+
+        _render_scale_table(
+            document_summary,
+            document_col,
             "Net_Outstanding",
-            ascending=True,
+            f"Net Outstanding (₹ {conversion_unit})",
+            conversion_unit,
+            secondary_cols=[
+                ("Billed", f"Billed (₹ {conversion_unit})", "money"),
+                ("Documents", "Documents", "int"),
+            ],
+            max_rows=30,
+            accent="#f59e0b",
         )
 
-        document_summary["Net_Outstanding_Display"] = (
-            document_summary["Net_Outstanding"] / conversion_divisor
-        )
-
-        doc_chart_col, doc_table_col = st.columns([1.35, 0.85])
-
-        with doc_chart_col:
-            fig_document = px.bar(
-                document_summary,
-                x="Net_Outstanding_Display",
-                y=document_col,
-                orientation="h",
-                text="Net_Outstanding_Display",
-                color="Net_Outstanding_Display",
-                color_continuous_scale="Oranges",
-                title=f"Net Outstanding by Document Type (₹ {conversion_unit})",
+        # The main Document Type table intentionally shows the canonical business
+        # categories (BILL / ON A/C Receipt / UNBILLED).  The source values from
+        # the stored procedure remain available here for audit and operational
+        # analysis without cluttering the default dashboard view.
+        if "original_documenttype" in fdf.columns:
+            original_doc_source = fdf.copy()
+            original_doc_source["original_documenttype"] = (
+                original_doc_source["original_documenttype"]
+                .fillna("Unknown")
+                .astype(str)
+                .str.strip()
+                .replace("", "Unknown")
             )
 
-            fig_document.update_traces(
-                texttemplate=f"₹%{{text:,.2f}} {conversion_unit}",
-                textposition="outside",
-            )
-
-            max_document_value = (
-                document_summary["Net_Outstanding_Display"].max()
-                if not document_summary.empty
-                else 0
-            )
-
-            fig_document.update_layout(
-                height=max(360, 42 * len(document_summary)),
-                coloraxis_showscale=False,
-                margin=dict(t=50, b=10, l=10, r=45),
-                xaxis_title=f"Net Outstanding (₹ {conversion_unit})",
-                yaxis_title="",
-                xaxis_range=(
-                    [0, max_document_value * 1.18]
-                    if max_document_value > 0
-                    else None
-                ),
-            )
-
-            st.plotly_chart(
-                fig_document,
-                width='stretch',
-            )
-
-        with doc_table_col:
-            document_table = document_summary.sort_values(
-                "Net_Outstanding",
-                ascending=False,
-            ).copy()
-
-            document_table["Net_Outstanding"] = (
-                document_table["Net_Outstanding"] / conversion_divisor
-            )
-            document_table["Billed"] = document_table["Billed"] / conversion_divisor
-            document_table = document_table.drop(
-                columns=["Net_Outstanding_Display"]
-            )
-            _render_scale_table(document_table, document_col, "Net_Outstanding", f"Net Outstanding (₹ {conversion_unit})", conversion_unit, secondary_cols=[("Billed", f"Billed (₹ {conversion_unit})", "money"), ("Documents", "Documents", "int")], max_rows=30, accent="#f59e0b")
-    else:
-        st.info("Document Type or Net Outstanding data is not available.")
-
-    # -----------------------------------------------------------------------
-    # CUSTOMER AND BRANCH ANALYSIS
-    # -----------------------------------------------------------------------
-
-    st.markdown(
-        "<div class='oa-section-title'>Top Customers and Branch Performance</div>",
-        unsafe_allow_html=True,
-    )
-
-    customer_chart_col, branch_table_col = st.columns([1.2, 1], gap="medium")
-
-    with customer_chart_col:
-        cust_title_col, cust_top_col = st.columns([3.2, 1.0], gap="small", vertical_alignment="center")
-        with cust_title_col:
-            st.markdown(
-                "<div style='font-size:15px;font-weight:600;color:#0f2744;'>Top Customers</div>",
-                unsafe_allow_html=True,
-            )
-        with cust_top_col:
-            customer_top_n = st.selectbox(
-                "Customers to display",
-                [10, 20, 30, 40, 50],
-                index=0,
-                format_func=lambda value: f"Top {value}",
-                key="oa_customer_top_n",
-                label_visibility="collapsed",
-            )
-
-        if customer_col and "netbalance" in fdf.columns:
-            top_customers = (
-                fdf.groupby(customer_col, dropna=False)["netbalance"]
-                .sum()
-                .sort_values(ascending=False)
-                .head(customer_top_n)
-                .sort_values()
+            original_doc_summary = (
+                original_doc_source.groupby(
+                    ["original_documenttype", document_col],
+                    dropna=False,
+                )
+                .agg(
+                    Net_Outstanding=("netbalance", "sum"),
+                    Documents=(
+                        "invoiceno", "nunique"
+                    ) if "invoiceno" in original_doc_source.columns else (
+                        "netbalance", "size"
+                    ),
+                    Billed=(
+                        "billamount", "sum"
+                    ) if "billamount" in original_doc_source.columns else (
+                        "netbalance", lambda s: 0.0
+                    ),
+                )
                 .reset_index()
             )
-            top_customers["netbalance_display"] = (
-                top_customers["netbalance"] / conversion_divisor
+
+            original_doc_summary["Net_Outstanding"] = (
+                pd.to_numeric(
+                    original_doc_summary["Net_Outstanding"],
+                    errors="coerce",
+                ).fillna(0.0) / conversion_divisor
+            )
+            original_doc_summary["Billed"] = (
+                pd.to_numeric(
+                    original_doc_summary["Billed"],
+                    errors="coerce",
+                ).fillna(0.0) / conversion_divisor
+            )
+            original_doc_summary = original_doc_summary.sort_values(
+                "Net_Outstanding", ascending=False
+            ).copy()
+
+            source_type_count = int(
+                original_doc_summary["original_documenttype"].nunique()
             )
 
-            fig_customer = px.bar(
-                top_customers,
-                x="netbalance_display",
-                y=customer_col,
-                orientation="h",
-                color="netbalance_display",
-                color_continuous_scale="Reds",
-            )
-            fig_customer.update_traces(
-                texttemplate=f"₹%{{x:,.2f}} {conversion_unit}",
-                textposition="outside",
-            )
-            fig_customer.update_layout(
-                height=max(360, min(760, 220 + customer_top_n * 11)),
-                coloraxis_showscale=False,
-                margin=dict(t=12, b=10, l=10, r=20),
-                xaxis_title=f"Net Outstanding (₹ {conversion_unit})",
-                yaxis_title="",
-            )
-            st.plotly_chart(fig_customer, width="stretch")
-        else:
-            st.info("Customer data is not available.")
-
-    with branch_table_col:
-        branch_title_col, branch_top_col = st.columns([3.2, 1.0], gap="small", vertical_alignment="center")
-        with branch_title_col:
-            st.markdown(
-                "<div style='font-size:15px;font-weight:600;color:#0f2744;'>Branch Performance</div>",
-                unsafe_allow_html=True,
-            )
-        with branch_top_col:
-            branch_top_n = st.selectbox(
-                "Branches to display",
-                [10, 20, 30, 40, 50],
-                index=0,
-                format_func=lambda value: f"Top {value}",
-                key="oa_branch_top_n",
-                label_visibility="collapsed",
-            )
-
-        if branch_col:
-            aggregation = {}
-            if "billamount" in fdf.columns:
-                aggregation["Billed"] = ("billamount", "sum")
-            if "recdamount" in fdf.columns:
-                aggregation["Received"] = ("recdamount", "sum")
-            if "netbalance" in fdf.columns:
-                aggregation["Net_Outstanding"] = ("netbalance", "sum")
-            if "invoiceno" in fdf.columns:
-                aggregation["Invoices"] = ("invoiceno", "nunique")
-
-            if aggregation:
-                branch_summary = fdf.groupby(branch_col).agg(**aggregation).reset_index()
-                if "Net_Outstanding" in branch_summary.columns:
-                    branch_summary = branch_summary.sort_values("Net_Outstanding", ascending=False)
-                for column in ["Billed", "Received", "Net_Outstanding"]:
-                    if column in branch_summary.columns:
-                        branch_summary[column] = branch_summary[column] / conversion_divisor
-
+            with st.expander(
+                f"Original Document Type Breakdown ({source_type_count} source types)",
+                expanded=False,
+            ):
+                st.caption(
+                    "Source document types returned by the stored procedure, "
+                    "mapped to the 3 dashboard business categories."
+                )
                 _render_scale_table(
-                    branch_summary,
-                    branch_col,
+                    original_doc_summary,
+                    "original_documenttype",
                     "Net_Outstanding",
                     f"Net Outstanding (₹ {conversion_unit})",
                     conversion_unit,
                     secondary_cols=[
+                        (document_col, "Mapped Type", "text"),
                         ("Billed", f"Billed (₹ {conversion_unit})", "money"),
-                        ("Received", f"Received (₹ {conversion_unit})", "money"),
-                        ("Invoices", "Invoices", "int"),
+                        ("Documents", "Documents", "int"),
                     ],
-                    max_rows=branch_top_n,
-                    accent="#7c3aed",
+                    max_rows=50,
+                    accent="#64748b",
+                )
+    else:
+        st.info("Document Type or Net Outstanding data is not available.")
+
+    # -----------------------------------------------------------------------
+    # CUSTOMER OUTSTANDING ANALYSIS
+    # -----------------------------------------------------------------------
+    # Top Customers and Top >90-Day Customers are deliberately shown as
+    # scale-bar tables rather than charts. Each table has its own Top-N control.
+
+    st.markdown(
+        "<div class='oa-section-title'>Customer Outstanding Analysis</div>",
+        unsafe_allow_html=True,
+    )
+
+    customer_table_col, overdue_customer_table_col = st.columns(
+        [1, 1], gap="medium"
+    )
+
+    with customer_table_col:
+        with st.container(border=True):
+            cust_title_col, cust_top_col = st.columns(
+                [3.2, 1.0], gap="small", vertical_alignment="center"
+            )
+            with cust_title_col:
+                st.markdown(
+                    "<div style='font-size:15px;font-weight:600;color:#0f2744;'>"
+                    "Top Customers by Outstanding</div>"
+                    "<div style='font-size:10px;color:#64748b;margin-top:2px;'>"
+                    "Ranked by current Net Outstanding.</div>",
+                    unsafe_allow_html=True,
+                )
+            with cust_top_col:
+                customer_top_n = st.selectbox(
+                    "Customers to display",
+                    [10, 20, 30, 40, 50],
+                    index=0,
+                    format_func=lambda value: f"Top {value}",
+                    key="oa_customer_top_n",
+                    label_visibility="collapsed",
+                )
+
+            if customer_col and "netbalance" in fdf.columns:
+                customer_agg = {"Net_Outstanding": ("netbalance", "sum")}
+                if "invoiceno" in fdf.columns:
+                    customer_agg["Invoices"] = ("invoiceno", "nunique")
+
+                customer_summary = (
+                    fdf.groupby(customer_col, dropna=False)
+                    .agg(**customer_agg)
+                    .reset_index()
+                )
+                customer_summary[customer_col] = (
+                    customer_summary[customer_col]
+                    .fillna("Unknown")
+                    .astype(str)
+                    .str.strip()
+                    .replace("", "Unknown")
+                )
+                customer_summary["Net_Outstanding"] = pd.to_numeric(
+                    customer_summary["Net_Outstanding"], errors="coerce"
+                ).fillna(0.0)
+                customer_total = float(customer_summary["Net_Outstanding"].sum())
+                customer_summary["Share"] = (
+                    customer_summary["Net_Outstanding"] / customer_total * 100.0
+                    if customer_total else 0.0
+                )
+                customer_summary = customer_summary.sort_values(
+                    "Net_Outstanding", ascending=False
+                ).copy()
+                customer_summary["Net_Outstanding"] = (
+                    customer_summary["Net_Outstanding"] / conversion_divisor
+                )
+
+                customer_secondary = [("Share", "% Share", "pct")]
+                if "Invoices" in customer_summary.columns:
+                    customer_secondary.append(("Invoices", "Invoices", "int"))
+
+                _render_scale_table(
+                    customer_summary,
+                    customer_col,
+                    "Net_Outstanding",
+                    f"Net Outstanding (₹ {conversion_unit})",
+                    conversion_unit,
+                    secondary_cols=customer_secondary,
+                    max_rows=customer_top_n,
+                    accent="#2563eb",
                 )
             else:
-                st.info("Branch amount columns are not available.")
-        else:
-            st.info("Branch data is not available.")
+                st.info("Customer data is not available.")
+
+    # Build >90-day source once and reuse it for customer and zone insights.
+    overdue_source = pd.DataFrame()
+    if "netbalance" in fdf.columns and (
+        age_bucket_col or "outstandingdays" in fdf.columns
+    ):
+        overdue_source = fdf.copy()
+        overdue_source["netbalance"] = pd.to_numeric(
+            overdue_source["netbalance"], errors="coerce"
+        ).fillna(0.0)
+
+        if "outstandingdays" in overdue_source.columns:
+            overdue_days = pd.to_numeric(
+                overdue_source["outstandingdays"], errors="coerce"
+            ).fillna(0.0)
+            overdue_source = overdue_source[overdue_days > 90].copy()
+        elif age_bucket_col:
+            overdue_source = overdue_source[
+                overdue_source[age_bucket_col].astype(str).eq("Above 90")
+            ].copy()
+
+    with overdue_customer_table_col:
+        with st.container(border=True):
+            overdue_title_col, overdue_top_col = st.columns(
+                [3.2, 1.0], gap="small", vertical_alignment="center"
+            )
+            with overdue_title_col:
+                st.markdown(
+                    "<div style='font-size:15px;font-weight:600;color:#0f2744;'>"
+                    "Top Customers (&gt;90 Days)</div>"
+                    "<div style='font-size:10px;color:#64748b;margin-top:2px;'>"
+                    "Customers carrying the largest aged receivables.</div>",
+                    unsafe_allow_html=True,
+                )
+            with overdue_top_col:
+                overdue_customer_top_n = st.selectbox(
+                    "Overdue customers to display",
+                    [10, 20, 30, 40, 50],
+                    index=0,
+                    format_func=lambda value: f"Top {value}",
+                    key="oa_overdue_customer_top_n",
+                    label_visibility="collapsed",
+                )
+
+            if customer_col and not overdue_source.empty:
+                overdue_agg = {"Over_90": ("netbalance", "sum")}
+                if "invoiceno" in overdue_source.columns:
+                    overdue_agg["Invoices"] = ("invoiceno", "nunique")
+
+                overdue_customers = (
+                    overdue_source.groupby(customer_col, dropna=False)
+                    .agg(**overdue_agg)
+                    .reset_index()
+                )
+                overdue_customers[customer_col] = (
+                    overdue_customers[customer_col]
+                    .fillna("Unknown")
+                    .astype(str)
+                    .str.strip()
+                    .replace("", "Unknown")
+                )
+                overdue_customers["Over_90"] = pd.to_numeric(
+                    overdue_customers["Over_90"], errors="coerce"
+                ).fillna(0.0)
+                overdue_total = float(overdue_customers["Over_90"].sum())
+                overdue_customers["Share"] = (
+                    overdue_customers["Over_90"] / overdue_total * 100.0
+                    if overdue_total else 0.0
+                )
+                overdue_customers = overdue_customers.sort_values(
+                    "Over_90", ascending=False
+                ).copy()
+                overdue_customers["Over_90"] = (
+                    overdue_customers["Over_90"] / conversion_divisor
+                )
+
+                overdue_secondary = [("Share", "% of Total >90", "pct")]
+                if "Invoices" in overdue_customers.columns:
+                    overdue_secondary.append(("Invoices", "Invoices", "int"))
+
+                _render_scale_table(
+                    overdue_customers,
+                    customer_col,
+                    "Over_90",
+                    f">90 Days (₹ {conversion_unit})",
+                    conversion_unit,
+                    secondary_cols=overdue_secondary,
+                    max_rows=overdue_customer_top_n,
+                    accent="#dc2626",
+                )
+            elif customer_col:
+                st.info("No >90-day customer outstanding is available for the selected filters.")
+            else:
+                st.info("Customer data is not available.")
+
+    # -----------------------------------------------------------------------
+    # BRANCH AND ZONE RISK ANALYSIS
+    # -----------------------------------------------------------------------
+
+    st.markdown(
+        "<div class='oa-section-title'>Branch and Zone Risk Analysis</div>",
+        unsafe_allow_html=True,
+    )
+
+    branch_table_col, overdue_zone_col = st.columns([1.15, 0.85], gap="medium")
+
+    with branch_table_col:
+        with st.container(border=True):
+            branch_title_col, branch_top_col = st.columns(
+                [3.2, 1.0], gap="small", vertical_alignment="center"
+            )
+            with branch_title_col:
+                st.markdown(
+                    "<div style='font-size:15px;font-weight:600;color:#0f2744;'>"
+                    "Branch Performance</div>"
+                    "<div style='font-size:10px;color:#64748b;margin-top:2px;'>"
+                    "Branch ranking by Net Outstanding.</div>",
+                    unsafe_allow_html=True,
+                )
+            with branch_top_col:
+                branch_top_n = st.selectbox(
+                    "Branches to display",
+                    [10, 20, 30, 40, 50],
+                    index=0,
+                    format_func=lambda value: f"Top {value}",
+                    key="oa_branch_top_n",
+                    label_visibility="collapsed",
+                )
+
+            if branch_col:
+                aggregation = {}
+                if "billamount" in fdf.columns:
+                    aggregation["Billed"] = ("billamount", "sum")
+                if "recdamount" in fdf.columns:
+                    aggregation["Received"] = ("recdamount", "sum")
+                if "netbalance" in fdf.columns:
+                    aggregation["Net_Outstanding"] = ("netbalance", "sum")
+                if "invoiceno" in fdf.columns:
+                    aggregation["Invoices"] = ("invoiceno", "nunique")
+
+                if aggregation and "netbalance" in fdf.columns:
+                    branch_summary = (
+                        fdf.groupby(branch_col, dropna=False)
+                        .agg(**aggregation)
+                        .reset_index()
+                    )
+                    branch_summary[branch_col] = (
+                        branch_summary[branch_col]
+                        .fillna("Unknown")
+                        .astype(str)
+                        .str.strip()
+                        .replace("", "Unknown")
+                    )
+                    branch_summary = branch_summary.sort_values(
+                        "Net_Outstanding", ascending=False
+                    ).copy()
+                    for column in ["Billed", "Received", "Net_Outstanding"]:
+                        if column in branch_summary.columns:
+                            branch_summary[column] = (
+                                pd.to_numeric(branch_summary[column], errors="coerce")
+                                .fillna(0.0) / conversion_divisor
+                            )
+
+                    _render_scale_table(
+                        branch_summary,
+                        branch_col,
+                        "Net_Outstanding",
+                        f"Net Outstanding (₹ {conversion_unit})",
+                        conversion_unit,
+                        secondary_cols=[
+                            ("Billed", f"Billed (₹ {conversion_unit})", "money"),
+                            ("Received", f"Received (₹ {conversion_unit})", "money"),
+                            ("Invoices", "Invoices", "int"),
+                        ],
+                        max_rows=branch_top_n,
+                        accent="#7c3aed",
+                    )
+                else:
+                    st.info("Branch amount columns are not available.")
+            else:
+                st.info("Branch data is not available.")
+
+    with overdue_zone_col:
+        with st.container(border=True):
+            st.markdown(
+                "<div style='font-size:15px;font-weight:600;color:#0f2744;'>"
+                "&gt;90 Days Outstanding by Zone</div>"
+                "<div style='font-size:10px;color:#64748b;margin:2px 0 7px 0;'>"
+                "Zone overdue amount, contribution and overdue ratio.</div>",
+                unsafe_allow_html=True,
+            )
+
+            if zone_col and not overdue_source.empty:
+                zone_total = (
+                    fdf.assign(
+                        _net=pd.to_numeric(
+                            fdf["netbalance"], errors="coerce"
+                        ).fillna(0.0)
+                    )
+                    .groupby(zone_col, dropna=False)["_net"]
+                    .sum()
+                    .reset_index(name="Zone_Total")
+                )
+                zone_overdue = (
+                    overdue_source.groupby(zone_col, dropna=False)["netbalance"]
+                    .sum()
+                    .reset_index(name="Over_90")
+                )
+                overdue_zone = zone_total.merge(
+                    zone_overdue, on=zone_col, how="left"
+                )
+                overdue_zone[zone_col] = (
+                    overdue_zone[zone_col]
+                    .fillna("Unknown")
+                    .astype(str)
+                    .str.strip()
+                    .replace("", "Unknown")
+                )
+                overdue_zone["Over_90"] = pd.to_numeric(
+                    overdue_zone["Over_90"], errors="coerce"
+                ).fillna(0.0)
+                overdue_total = float(overdue_zone["Over_90"].sum())
+                overdue_zone["Share_of_90"] = (
+                    overdue_zone["Over_90"] / overdue_total * 100.0
+                    if overdue_total else 0.0
+                )
+                overdue_zone["Zone_Overdue_Ratio"] = overdue_zone.apply(
+                    lambda row: (row["Over_90"] / row["Zone_Total"] * 100.0)
+                    if row["Zone_Total"] else 0.0,
+                    axis=1,
+                )
+                overdue_zone["Over_90"] = (
+                    overdue_zone["Over_90"] / conversion_divisor
+                )
+                overdue_zone = overdue_zone.sort_values(
+                    "Over_90", ascending=False
+                )
+
+                _render_scale_table(
+                    overdue_zone,
+                    zone_col,
+                    "Over_90",
+                    f">90 Days (₹ {conversion_unit})",
+                    conversion_unit,
+                    secondary_cols=[
+                        ("Share_of_90", "% of Total >90", "pct"),
+                        ("Zone_Overdue_Ratio", "% of Zone Outstanding", "pct"),
+                    ],
+                    max_rows=30,
+                    accent="#dc2626",
+                )
+            elif zone_col:
+                st.info("No >90-day zone outstanding is available for the selected filters.")
+            else:
+                st.info("Zone data is not available.")
 
     # -----------------------------------------------------------------------
     # YEAR-WISE OUTSTANDING INSIGHT
@@ -1568,25 +2052,9 @@ def show_OutstandingAnalysis():
             )
             year_summary["Outstanding_Display"] = year_summary["Net_Outstanding"] / conversion_divisor
 
-            insight_cols = st.columns(4, gap="small")
-            peak_row = year_summary.loc[year_summary["Net_Outstanding"].idxmax()]
-            oldest_year = int(year_summary["Invoice Year"].min())
-            active_years = int(year_summary["Invoice Year"].nunique())
-            three_year_cutoff = pd.Timestamp(as_on_date) - pd.DateOffset(years=3)
-            legacy_amount = pd.to_numeric(
-                year_source.loc[year_source["invoicedt"] < three_year_cutoff, "netbalance"],
-                errors="coerce",
-            ).fillna(0).sum()
-
-            with insight_cols[0]:
-                _kpi_card("Oldest Invoice Year", f"{oldest_year}", "Still contributing to outstanding", "blue")
-            with insight_cols[1]:
-                _kpi_card("Peak Outstanding Year", f"{int(peak_row['Invoice Year'])}", _inr_amount(peak_row["Net_Outstanding"], conversion_type), "purple")
-            with insight_cols[2]:
-                _kpi_card("Years Represented", f"{active_years:,}", "Invoice vintage years", "teal")
-            with insight_cols[3]:
-                _kpi_card("> 3 Years Old", _inr_amount(legacy_amount, conversion_type), "Legacy receivables", "red")
-
+            # Year KPI cards intentionally removed. The vintage chart and table
+            # remain because they show which invoice years still contribute to
+            # the selected As-On outstanding without implying historical snapshots.
             year_chart_col, year_table_col = st.columns([1.35, 1.0], gap="medium")
             with year_chart_col:
                 fig_year = go.Figure()
@@ -1749,6 +2217,7 @@ def show_OutstandingAnalysis():
         customer_col,
         "grtype",
         document_col,
+        "original_documenttype",
         "invoiceno",
         "invoicedt",
         "duedt",
@@ -1818,8 +2287,9 @@ def show_OutstandingAnalysis():
         branch_col: ("Branch", "medium"),
         customer_col: ("Customer", "large"),
         "grtype": ("GR Type", "small"),
-        document_col: ("Document Type", "medium"),
-        "invoiceno": ("Invoice No.", "medium"),
+        document_col: ("Document Type", "small"),
+        "original_documenttype": ("Original Document Type", "large"),
+        "invoiceno": ("Invoice No.", "small"),
         age_bucket_col: ("Age Bucket", "small"),
     }
 
