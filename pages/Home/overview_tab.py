@@ -2463,10 +2463,22 @@ def show_overview():
 
                                                                              
 
+    # ------------------------------------------------------------------
+    # CASCADING HIERARCHY FILTERS
+    # Zone -> Circle -> Branch
+    #
+    # IMPORTANT: each child filter must build its options from the rows
+    # allowed by the parent selection. Previously Circle and Branch both
+    # used filter_source_df directly, so Branch displayed every branch in
+    # the company/FY even when a Zone and Circle had already been selected.
+    # ------------------------------------------------------------------
     filter_source_df = df.copy()
 
+    # ZONE
     with filter_cols[3]:
-        zone_options = sorted(filter_source_df["zone"].dropna().unique().tolist())
+        zone_options = sorted(
+            filter_source_df["zone"].dropna().astype(str).str.strip().unique().tolist()
+        )
         selected_zones = _checkbox_slicer(
             "◉ Zone",
             zone_options,
@@ -2474,8 +2486,17 @@ def show_overview():
             locked_values=[locked_zone] if locked_zone else None,
         )
 
+    # CIRCLE options come only from selected/locked Zone(s).
+    circle_source_df = filter_source_df.copy()
+    if selected_zones:
+        circle_source_df = circle_source_df[
+            circle_source_df["zone"].isin(selected_zones)
+        ]
+
     with filter_cols[4]:
-        circle_options = sorted(filter_source_df["circle"].dropna().unique().tolist())
+        circle_options = sorted(
+            circle_source_df["circle"].dropna().astype(str).str.strip().unique().tolist()
+        )
         selected_circles = _checkbox_slicer(
             "◎ Circle",
             circle_options,
@@ -2484,8 +2505,17 @@ def show_overview():
             searchable=True,
         )
 
+    # BRANCH options come only from selected/locked Zone(s) + Circle(s).
+    branch_source_df = circle_source_df.copy()
+    if selected_circles:
+        branch_source_df = branch_source_df[
+            branch_source_df["circle"].isin(selected_circles)
+        ]
+
     with filter_cols[5]:
-        branch_options = sorted(filter_source_df["branch"].dropna().unique().tolist())
+        branch_options = sorted(
+            branch_source_df["branch"].dropna().astype(str).str.strip().unique().tolist()
+        )
         selected_branches = _checkbox_slicer(
             "⌂ Branch",
             branch_options,
@@ -2494,10 +2524,17 @@ def show_overview():
             searchable=True,
         )
 
+    # Quarter options follow the selected hierarchy as well.
+    period_source_df = branch_source_df.copy()
+    if selected_branches:
+        period_source_df = period_source_df[
+            period_source_df["branch"].isin(selected_branches)
+        ]
+
     with filter_cols[6]:
         available_quarters = [
             q for q in QUARTER_ORDER
-            if q in filter_source_df["Quarter"].dropna().unique().tolist()
+            if q in period_source_df["Quarter"].dropna().unique().tolist()
         ]
         selected_quarters = _checkbox_slicer(
             "▦ Quarter",
@@ -2506,9 +2543,7 @@ def show_overview():
         )
 
     with filter_cols[7]:
-
-                                                                                     
-        month_source_df = filter_source_df
+        month_source_df = period_source_df.copy()
         if selected_quarters:
             month_source_df = month_source_df[
                 month_source_df["Quarter"].isin(selected_quarters)
