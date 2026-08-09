@@ -257,6 +257,27 @@ def _inject_css():
                 color: #334155 !important;
                 border-bottom: 1px solid #edf2f7 !important;
             }
+
+            /* Fit the complete date/filter toolbar into one Overview-style row. */
+            div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+                min-width: 0 !important;
+            }
+            div[data-testid="stDateInput"] label,
+            div[data-testid="stSelectbox"] label {
+                font-size: 10px !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+            }
+            div[data-testid="stDateInput"] input,
+            div[data-baseweb="select"] span {
+                font-size: 11px !important;
+            }
+            .stButton > button {
+                min-height: 40px !important;
+                border-radius: 10px !important;
+                font-size: 11px !important;
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -631,101 +652,93 @@ def show_OutstandingAnalysis():
     _render_outstanding_header(header_content_placeholder)
 
     # -----------------------------------------------------------------------
-    # THREE STORED-PROCEDURE DATE PARAMETERS
+    # REPORT DATES / INITIAL LOAD
     # -----------------------------------------------------------------------
 
     default_from_date = date(1980, 1, 1)
-    default_to_date = date.today()      #current date
-    default_as_on_date = date.today()   #current date
+    default_to_date = date.today()
+    default_as_on_date = date.today()
 
-    date_col1, date_col2, date_col3, run_col = st.columns(
-        [1.25, 1.25, 1.25, 0.9]
-    )
-
-    with date_col1:
-        from_date = st.date_input(
-            "From Date",
-            value=st.session_state.get("oa_from_date", default_from_date),
-            format="DD/MM/YYYY",
-            key="oa_from_date",
+    # On the very first visit there is no report dataframe yet, so only the
+    # three stored-procedure dates and Run Report are shown. After the first
+    # successful run, dates + all dashboard filters are rendered in ONE row.
+    if "oa_df" not in st.session_state:
+        date_col1, date_col2, date_col3, run_col = st.columns(
+            [1.25, 1.25, 1.25, 0.9], gap="small"
         )
 
-    with date_col2:
-        to_date = st.date_input(
-            "To Date",
-            value=st.session_state.get("oa_to_date", default_to_date),
-            format="DD/MM/YYYY",
-            key="oa_to_date",
-        )
-
-    with date_col3:
-        as_on_date = st.date_input(
-            "As On Date",
-            value=st.session_state.get("oa_as_on_date", default_as_on_date),
-            format="DD/MM/YYYY",
-            key="oa_as_on_date",
-        )
-
-    with run_col:
-        st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-        run_report = st.button(
-            "Run Report",
-            type="primary",
-            key="oa_run_report",
-            width='stretch',
-        )
-
-    date_error = _validate_dates(from_date, to_date, as_on_date)
-
-    if date_error:
-        st.error(date_error)
-        return
-
-    # Load data only after the user presses Run Report.
-    if run_report:
-        try:
-            loaded_df = get_outstanding_data(
-                branch=SP_BRANCH,
-                grtype=SP_GRTYPE,
-                from_dt=from_date,
-                to_dt=to_date,
-                as_on_dt=as_on_date,
-                custcode=SP_CUSTCODE,
-                invoiceno=SP_INVOICENO,
-                user=SP_USER,
+        with date_col1:
+            from_date = st.date_input(
+                "From Date",
+                value=st.session_state.get("oa_from_date", default_from_date),
+                format="DD/MM/YYYY",
+                key="oa_from_date",
             )
 
-            st.session_state["oa_df"] = loaded_df
-            st.session_state["oa_loaded_dates"] = (
-                from_date,
-                to_date,
-                as_on_date,
+        with date_col2:
+            to_date = st.date_input(
+                "To Date",
+                value=st.session_state.get("oa_to_date", default_to_date),
+                format="DD/MM/YYYY",
+                key="oa_to_date",
             )
-            st.session_state["oa_last_refreshed"] = datetime.now()
 
-        except Exception as exc:
-            st.error(f"Unable to load outstanding data: {exc}")
+        with date_col3:
+            as_on_date = st.date_input(
+                "As On Date",
+                value=st.session_state.get("oa_as_on_date", default_as_on_date),
+                format="DD/MM/YYYY",
+                key="oa_as_on_date",
+            )
+
+        with run_col:
+            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+            run_report = st.button(
+                "Run Report",
+                type="primary",
+                key="oa_run_report_initial",
+                width="stretch",
+            )
+
+        date_error = _validate_dates(from_date, to_date, as_on_date)
+        if date_error:
+            st.error(date_error)
             return
 
-    # Do not query the database automatically on first page load.
-    if "oa_df" not in st.session_state:
+        if run_report:
+            try:
+                loaded_df = get_outstanding_data(
+                    branch=SP_BRANCH,
+                    grtype=SP_GRTYPE,
+                    from_dt=from_date,
+                    to_dt=to_date,
+                    as_on_dt=as_on_date,
+                    custcode=SP_CUSTCODE,
+                    invoiceno=SP_INVOICENO,
+                    user=SP_USER,
+                )
+                st.session_state["oa_df"] = loaded_df
+                st.session_state["oa_loaded_dates"] = (from_date, to_date, as_on_date)
+                st.session_state["oa_last_refreshed"] = datetime.now()
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Unable to load outstanding data: {exc}")
+                return
+
         st.info("Select the three dates and click **Run Report** to load data.")
         return
+
+    # A report is already loaded. The date widgets are rendered later in the
+    # same single row as Zone/Circle/Branch/Customer/etc.
+    from_date = st.session_state.get("oa_from_date", default_from_date)
+    to_date = st.session_state.get("oa_to_date", default_to_date)
+    as_on_date = st.session_state.get("oa_as_on_date", default_as_on_date)
 
     df = st.session_state["oa_df"].copy()
 
     if df.empty:
         st.warning("No outstanding data was found for the selected dates.")
         return
-
-    loaded_dates = st.session_state.get("oa_loaded_dates")
-    selected_dates = (from_date, to_date, as_on_date)
-
-    if loaded_dates and loaded_dates != selected_dates:
-        st.warning(
-            "The date filters have changed. Click **Run Report** to load data "
-            "for the newly selected dates."
-        )
 
     # -----------------------------------------------------------------------
     # DETECT AVAILABLE HIERARCHY COLUMNS
@@ -796,44 +809,166 @@ def show_OutstandingAnalysis():
         return
 
     # -----------------------------------------------------------------------
-    # DASHBOARD FILTERS - single row after Run Report
+    # DATES + ALL DASHBOARD FILTERS IN ONE ROW (Overview-style)
     # -----------------------------------------------------------------------
-    filter_columns = st.columns(7, gap="small")
-    working_df = scoped_df.copy()
+    # 11 controls in one compact row:
+    # From | To | As On | Zone | Circle | Branch | Customer | Document |
+    # Age Bucket | Conversion | Run Report
+    filter_columns = st.columns(
+        [1.05, 1.05, 1.05, 0.95, 0.95, 0.95, 1.08, 1.00, 0.90, 0.82, 0.82],
+        gap="small",
+    )
 
     with filter_columns[0]:
-        selected_zones = _checkbox_slicer("◉ Zone", _sorted_values(working_df, zone_col), "oa_zone_slicer_v3", locked_values=[locked_zone] if locked_zone else None)
+        from_date = st.date_input(
+            "From Date",
+            value=st.session_state.get("oa_from_date", default_from_date),
+            format="DD/MM/YYYY",
+            key="oa_from_date",
+        )
+    with filter_columns[1]:
+        to_date = st.date_input(
+            "To Date",
+            value=st.session_state.get("oa_to_date", default_to_date),
+            format="DD/MM/YYYY",
+            key="oa_to_date",
+        )
+    with filter_columns[2]:
+        as_on_date = st.date_input(
+            "As On Date",
+            value=st.session_state.get("oa_as_on_date", default_as_on_date),
+            format="DD/MM/YYYY",
+            key="oa_as_on_date",
+        )
+
+    date_error = _validate_dates(from_date, to_date, as_on_date)
+    if date_error:
+        st.error(date_error)
+        return
+
+    working_df = scoped_df.copy()
+
+    with filter_columns[3]:
+        selected_zones = _checkbox_slicer(
+            "◉ Zone",
+            _sorted_values(working_df, zone_col),
+            "oa_zone_slicer_v4",
+            locked_values=[locked_zone] if locked_zone else None,
+        )
     if selected_zones:
         working_df = working_df[working_df[zone_col].isin(selected_zones)]
 
-    with filter_columns[1]:
-        selected_circles = _checkbox_slicer("◎ Circle", _sorted_values(working_df, circle_col), "oa_circle_slicer_v3", locked_values=[locked_circle] if locked_circle else None)
+    with filter_columns[4]:
+        selected_circles = _checkbox_slicer(
+            "◎ Circle",
+            _sorted_values(working_df, circle_col),
+            "oa_circle_slicer_v4",
+            locked_values=[locked_circle] if locked_circle else None,
+        )
     if selected_circles:
         working_df = working_df[working_df[circle_col].isin(selected_circles)]
 
-    with filter_columns[2]:
-        selected_branches = _checkbox_slicer("⌂ Branch", _sorted_values(working_df, branch_col), "oa_branch_slicer_v3", locked_values=[locked_branch] if locked_branch else None)
+    with filter_columns[5]:
+        selected_branches = _checkbox_slicer(
+            "⌂ Branch",
+            _sorted_values(working_df, branch_col),
+            "oa_branch_slicer_v4",
+            locked_values=[locked_branch] if locked_branch else None,
+        )
     if selected_branches:
         working_df = working_df[working_df[branch_col].isin(selected_branches)]
 
-    with filter_columns[3]:
-        selected_customer = _safe_selectbox("Customer", ["All"] + _sorted_values(working_df, customer_col), "oa_filter_customer_v3") if customer_col else "All"
-    if selected_customer != "All" and customer_col:
-        working_df = working_df[_match_scope_value(working_df[customer_col], selected_customer)]
-
-    with filter_columns[4]:
-        selected_document = _safe_selectbox("Document Type", ["All"] + _sorted_values(working_df, document_col), "oa_filter_document_v3") if document_col else "All"
-    if selected_document != "All" and document_col:
-        working_df = working_df[_match_scope_value(working_df[document_col], selected_document)]
-
-    with filter_columns[5]:
-        available_buckets = [b for b in AGE_BUCKET_ORDER if age_bucket_col and b in working_df[age_bucket_col].dropna().astype(str).unique()]
-        selected_bucket = _safe_selectbox("Age Bucket", ["All"] + available_buckets, "oa_filter_age_bucket_v3") if age_bucket_col else "All"
-    if selected_bucket != "All" and age_bucket_col:
-        working_df = working_df[_match_scope_value(working_df[age_bucket_col], selected_bucket)]
-
     with filter_columns[6]:
-        conversion_type = _safe_selectbox("₹ Conversion", ["Crore", "Lac"], "oa_conversion_v2")
+        selected_customer = (
+            _safe_selectbox(
+                "Customer",
+                ["All"] + _sorted_values(working_df, customer_col),
+                "oa_filter_customer_v4",
+            )
+            if customer_col else "All"
+        )
+    if selected_customer != "All" and customer_col:
+        working_df = working_df[
+            _match_scope_value(working_df[customer_col], selected_customer)
+        ]
+
+    with filter_columns[7]:
+        selected_document = (
+            _safe_selectbox(
+                "Document Type",
+                ["All"] + _sorted_values(working_df, document_col),
+                "oa_filter_document_v4",
+            )
+            if document_col else "All"
+        )
+    if selected_document != "All" and document_col:
+        working_df = working_df[
+            _match_scope_value(working_df[document_col], selected_document)
+        ]
+
+    with filter_columns[8]:
+        available_buckets = [
+            b for b in AGE_BUCKET_ORDER
+            if age_bucket_col and b in working_df[age_bucket_col].dropna().astype(str).unique()
+        ]
+        selected_bucket = (
+            _safe_selectbox(
+                "Age Bucket",
+                ["All"] + available_buckets,
+                "oa_filter_age_bucket_v4",
+            )
+            if age_bucket_col else "All"
+        )
+    if selected_bucket != "All" and age_bucket_col:
+        working_df = working_df[
+            _match_scope_value(working_df[age_bucket_col], selected_bucket)
+        ]
+
+    with filter_columns[9]:
+        conversion_type = _safe_selectbox(
+            "₹ Conversion",
+            ["Crore", "Lac"],
+            "oa_conversion_v3",
+        )
+
+    with filter_columns[10]:
+        st.markdown("<div style='height:26px'></div>", unsafe_allow_html=True)
+        run_report = st.button(
+            "Run Report",
+            type="primary",
+            key="oa_run_report",
+            width="stretch",
+        )
+
+    # Only the Run button refreshes the stored-procedure dataset. Dashboard
+    # slicers above operate instantly on the already loaded dataframe.
+    if run_report:
+        try:
+            loaded_df = get_outstanding_data(
+                branch=SP_BRANCH,
+                grtype=SP_GRTYPE,
+                from_dt=from_date,
+                to_dt=to_date,
+                as_on_dt=as_on_date,
+                custcode=SP_CUSTCODE,
+                invoiceno=SP_INVOICENO,
+                user=SP_USER,
+            )
+            st.session_state["oa_df"] = loaded_df
+            st.session_state["oa_loaded_dates"] = (from_date, to_date, as_on_date)
+            st.session_state["oa_last_refreshed"] = datetime.now()
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Unable to load outstanding data: {exc}")
+            return
+
+    loaded_dates = st.session_state.get("oa_loaded_dates")
+    selected_dates = (from_date, to_date, as_on_date)
+    if loaded_dates and loaded_dates != selected_dates:
+        st.warning(
+            "The date filters have changed. Click **Run Report** to reload the report "
+            "for the newly selected dates."
+        )
 
     conversion_divisor, conversion_unit = _get_conversion(conversion_type)
     fdf = working_df.copy()
@@ -1288,15 +1423,31 @@ def show_OutstandingAnalysis():
         unsafe_allow_html=True,
     )
 
-    customer_chart_col, branch_table_col = st.columns([1.2, 1])
+    customer_chart_col, branch_table_col = st.columns([1.2, 1], gap="medium")
 
     with customer_chart_col:
+        cust_title_col, cust_top_col = st.columns([3.2, 1.0], gap="small", vertical_alignment="center")
+        with cust_title_col:
+            st.markdown(
+                "<div style='font-size:15px;font-weight:600;color:#0f2744;'>Top Customers</div>",
+                unsafe_allow_html=True,
+            )
+        with cust_top_col:
+            customer_top_n = st.selectbox(
+                "Customers to display",
+                [10, 20, 30, 40, 50],
+                index=0,
+                format_func=lambda value: f"Top {value}",
+                key="oa_customer_top_n",
+                label_visibility="collapsed",
+            )
+
         if customer_col and "netbalance" in fdf.columns:
             top_customers = (
-                fdf.groupby(customer_col)["netbalance"]
+                fdf.groupby(customer_col, dropna=False)["netbalance"]
                 .sum()
                 .sort_values(ascending=False)
-                .head(15)
+                .head(customer_top_n)
                 .sort_values()
                 .reset_index()
             )
@@ -1309,64 +1460,199 @@ def show_OutstandingAnalysis():
                 x="netbalance_display",
                 y=customer_col,
                 orientation="h",
-                title=f"Top 15 Customers by Net Outstanding (₹ {conversion_unit})",
                 color="netbalance_display",
                 color_continuous_scale="Reds",
             )
-
             fig_customer.update_traces(
                 texttemplate=f"₹%{{x:,.2f}} {conversion_unit}",
                 textposition="outside",
             )
-
             fig_customer.update_layout(
-                height=440,
+                height=max(360, min(760, 220 + customer_top_n * 11)),
                 coloraxis_showscale=False,
-                margin=dict(t=50, b=10, l=10, r=20),
+                margin=dict(t=12, b=10, l=10, r=20),
                 xaxis_title=f"Net Outstanding (₹ {conversion_unit})",
                 yaxis_title="",
             )
-
-            st.plotly_chart(fig_customer, width='stretch')
+            st.plotly_chart(fig_customer, width="stretch")
         else:
             st.info("Customer data is not available.")
 
     with branch_table_col:
+        branch_title_col, branch_top_col = st.columns([3.2, 1.0], gap="small", vertical_alignment="center")
+        with branch_title_col:
+            st.markdown(
+                "<div style='font-size:15px;font-weight:600;color:#0f2744;'>Branch Performance</div>",
+                unsafe_allow_html=True,
+            )
+        with branch_top_col:
+            branch_top_n = st.selectbox(
+                "Branches to display",
+                [10, 20, 30, 40, 50],
+                index=0,
+                format_func=lambda value: f"Top {value}",
+                key="oa_branch_top_n",
+                label_visibility="collapsed",
+            )
+
         if branch_col:
             aggregation = {}
-
             if "billamount" in fdf.columns:
                 aggregation["Billed"] = ("billamount", "sum")
-
             if "recdamount" in fdf.columns:
                 aggregation["Received"] = ("recdamount", "sum")
-
             if "netbalance" in fdf.columns:
                 aggregation["Net_Outstanding"] = ("netbalance", "sum")
-
             if "invoiceno" in fdf.columns:
                 aggregation["Invoices"] = ("invoiceno", "nunique")
 
             if aggregation:
-                branch_summary = (
-                    fdf.groupby(branch_col)
-                    .agg(**aggregation)
-                    .reset_index()
-                )
-
+                branch_summary = fdf.groupby(branch_col).agg(**aggregation).reset_index()
                 if "Net_Outstanding" in branch_summary.columns:
-                    branch_summary = branch_summary.sort_values(
-                        "Net_Outstanding",
-                        ascending=False,
-                    )
+                    branch_summary = branch_summary.sort_values("Net_Outstanding", ascending=False)
                 for column in ["Billed", "Received", "Net_Outstanding"]:
                     if column in branch_summary.columns:
                         branch_summary[column] = branch_summary[column] / conversion_divisor
-                _render_scale_table(branch_summary, branch_col, "Net_Outstanding", f"Net Outstanding (₹ {conversion_unit})", conversion_unit, secondary_cols=[("Billed", f"Billed (₹ {conversion_unit})", "money"), ("Received", f"Received (₹ {conversion_unit})", "money"), ("Invoices", "Invoices", "int")], max_rows=50, accent="#7c3aed")
+
+                _render_scale_table(
+                    branch_summary,
+                    branch_col,
+                    "Net_Outstanding",
+                    f"Net Outstanding (₹ {conversion_unit})",
+                    conversion_unit,
+                    secondary_cols=[
+                        ("Billed", f"Billed (₹ {conversion_unit})", "money"),
+                        ("Received", f"Received (₹ {conversion_unit})", "money"),
+                        ("Invoices", "Invoices", "int"),
+                    ],
+                    max_rows=branch_top_n,
+                    accent="#7c3aed",
+                )
             else:
                 st.info("Branch amount columns are not available.")
         else:
             st.info("Branch data is not available.")
+
+    # -----------------------------------------------------------------------
+    # YEAR-WISE OUTSTANDING INSIGHT
+    # -----------------------------------------------------------------------
+    # When the report is run from a long historical From Date (for example
+    # 01-01-1980), this view shows which invoice years still contribute to the
+    # current As-On outstanding. It uses invoice date as the vintage year.
+    if "invoicedt" in fdf.columns and "netbalance" in fdf.columns:
+        year_source = fdf.copy()
+        year_source["invoicedt"] = pd.to_datetime(year_source["invoicedt"], errors="coerce")
+        year_source = year_source.dropna(subset=["invoicedt"])
+
+        if not year_source.empty:
+            st.markdown(
+                "<div class='oa-section-title'>Year-wise Outstanding Insight</div>",
+                unsafe_allow_html=True,
+            )
+
+            year_source["Invoice Year"] = year_source["invoicedt"].dt.year.astype(int)
+            year_agg = {
+                "Net_Outstanding": ("netbalance", "sum"),
+            }
+            if "invoiceno" in year_source.columns:
+                year_agg["Invoices"] = ("invoiceno", "nunique")
+            if customer_col:
+                year_agg["Customers"] = (customer_col, "nunique")
+            if "outstandingdays" in year_source.columns:
+                year_agg["Avg_Age_Days"] = ("outstandingdays", "mean")
+
+            year_summary = (
+                year_source.groupby("Invoice Year", as_index=False)
+                .agg(**year_agg)
+                .sort_values("Invoice Year")
+            )
+            year_summary["Outstanding_Display"] = year_summary["Net_Outstanding"] / conversion_divisor
+
+            insight_cols = st.columns(4, gap="small")
+            peak_row = year_summary.loc[year_summary["Net_Outstanding"].idxmax()]
+            oldest_year = int(year_summary["Invoice Year"].min())
+            active_years = int(year_summary["Invoice Year"].nunique())
+            three_year_cutoff = pd.Timestamp(as_on_date) - pd.DateOffset(years=3)
+            legacy_amount = pd.to_numeric(
+                year_source.loc[year_source["invoicedt"] < three_year_cutoff, "netbalance"],
+                errors="coerce",
+            ).fillna(0).sum()
+
+            with insight_cols[0]:
+                _kpi_card("Oldest Invoice Year", f"{oldest_year}", "Still contributing to outstanding", "blue")
+            with insight_cols[1]:
+                _kpi_card("Peak Outstanding Year", f"{int(peak_row['Invoice Year'])}", _inr_amount(peak_row["Net_Outstanding"], conversion_type), "purple")
+            with insight_cols[2]:
+                _kpi_card("Years Represented", f"{active_years:,}", "Invoice vintage years", "teal")
+            with insight_cols[3]:
+                _kpi_card("> 3 Years Old", _inr_amount(legacy_amount, conversion_type), "Legacy receivables", "red")
+
+            year_chart_col, year_table_col = st.columns([1.35, 1.0], gap="medium")
+            with year_chart_col:
+                fig_year = go.Figure()
+                fig_year.add_trace(
+                    go.Bar(
+                        x=year_summary["Invoice Year"].astype(str),
+                        y=year_summary["Outstanding_Display"],
+                        name="Net Outstanding",
+                        marker_color="#2563eb",
+                        text=year_summary["Outstanding_Display"],
+                        texttemplate=f"₹%{{text:.2f}} {conversion_unit}",
+                        textposition="outside",
+                        cliponaxis=False,
+                        hovertemplate=(
+                            f"<b>Invoice Year %{{x}}</b><br>Net Outstanding: ₹%{{y:.2f}} {conversion_unit}<extra></extra>"
+                        ),
+                    )
+                )
+                if "Invoices" in year_summary.columns:
+                    fig_year.add_trace(
+                        go.Scatter(
+                            x=year_summary["Invoice Year"].astype(str),
+                            y=year_summary["Invoices"],
+                            name="Invoices",
+                            mode="lines+markers",
+                            yaxis="y2",
+                            line=dict(color="#f59e0b", width=2.5),
+                            marker=dict(size=7),
+                            hovertemplate="<b>Invoice Year %{x}</b><br>Invoices: %{y:,.0f}<extra></extra>",
+                        )
+                    )
+                fig_year.update_layout(
+                    height=390,
+                    margin=dict(l=8, r=8, t=28, b=8),
+                    plot_bgcolor="#fbfdff",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    legend=dict(orientation="h", y=1.05, x=0),
+                    xaxis=dict(title="Invoice Year", showgrid=False),
+                    yaxis=dict(title=f"Outstanding (₹ {conversion_unit})", showgrid=False),
+                    yaxis2=dict(title="Invoices", overlaying="y", side="right", showgrid=False),
+                )
+                st.plotly_chart(fig_year, width="stretch", config={"displayModeBar": False})
+
+            with year_table_col:
+                year_table = year_summary.copy().sort_values("Invoice Year", ascending=False)
+                year_table["Year"] = year_table["Invoice Year"].astype(str)
+                year_table["Net_Outstanding"] = year_table["Net_Outstanding"] / conversion_divisor
+                secondary_cols = []
+                if "Invoices" in year_table.columns:
+                    secondary_cols.append(("Invoices", "Invoices", "int"))
+                if "Customers" in year_table.columns:
+                    secondary_cols.append(("Customers", "Customers", "int"))
+                if "Avg_Age_Days" in year_table.columns:
+                    year_table["Avg_Age_Days"] = pd.to_numeric(year_table["Avg_Age_Days"], errors="coerce").fillna(0).round(0).astype(int)
+                    secondary_cols.append(("Avg_Age_Days", "Avg Age Days", "int"))
+
+                _render_scale_table(
+                    year_table,
+                    "Year",
+                    "Net_Outstanding",
+                    f"Outstanding (₹ {conversion_unit})",
+                    conversion_unit,
+                    secondary_cols=secondary_cols,
+                    max_rows=50,
+                    accent="#2563eb",
+                )
 
     # -----------------------------------------------------------------------
     # MONTHLY BILLING VERSUS COLLECTION TREND
