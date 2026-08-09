@@ -968,6 +968,8 @@ def show_pnl_dashboard() -> None:
 
     filter_source_df = df.copy()
 
+    # Cascading hierarchy filters:
+    # Zone -> Circle -> Branch -> Quarter -> Month
     with filter_cols[3]:
         zone_options = _safe_options(filter_source_df, "zone")
         selected_zones = _checkbox_slicer(
@@ -975,35 +977,56 @@ def show_pnl_dashboard() -> None:
             locked_values=[locked_zone] if locked_zone else None,
         )
 
+    circle_source_df = filter_source_df.copy()
+    if selected_zones:
+        circle_source_df = circle_source_df[
+            circle_source_df["zone"].isin(selected_zones)
+        ]
+
     with filter_cols[4]:
-        circle_options = _safe_options(filter_source_df, "circle")
+        circle_options = _safe_options(circle_source_df, "circle")
         selected_circles = _checkbox_slicer(
             "◎ Circle", circle_options, key="pnl_circle_slicer",
             locked_values=[locked_circle] if locked_circle else None,
             searchable=True,
         )
 
+    branch_source_df = circle_source_df.copy()
+    if selected_circles:
+        branch_source_df = branch_source_df[
+            branch_source_df["circle"].isin(selected_circles)
+        ]
+
     with filter_cols[5]:
-        branch_options = _safe_options(filter_source_df, "branch")
+        branch_options = _safe_options(branch_source_df, "branch")
         selected_branches = _checkbox_slicer(
             "⌂ Branch", branch_options, key="pnl_branch_slicer",
             locked_values=[locked_branch] if locked_branch else None,
             searchable=True,
         )
 
+    quarter_source_df = branch_source_df.copy()
+    if selected_branches:
+        quarter_source_df = quarter_source_df[
+            quarter_source_df["branch"].isin(selected_branches)
+        ]
+
     with filter_cols[6]:
         available_quarters = [
             q for q in QUARTER_ORDER
-            if q in filter_source_df["Quarter"].dropna().unique().tolist()
+            if q in quarter_source_df["Quarter"].dropna().unique().tolist()
         ]
         selected_quarters = _checkbox_slicer(
             "▦ Quarter", available_quarters, key="pnl_quarter_slicer"
         )
 
+    month_source_df = quarter_source_df.copy()
+    if selected_quarters:
+        month_source_df = month_source_df[
+            month_source_df["Quarter"].isin(selected_quarters)
+        ]
+
     with filter_cols[7]:
-        month_source_df = filter_source_df
-        if selected_quarters:
-            month_source_df = month_source_df[month_source_df["Quarter"].isin(selected_quarters)]
         available_months = [
             m for m in MONTH_ORDER
             if m in month_source_df["Month"].dropna().unique().tolist()
