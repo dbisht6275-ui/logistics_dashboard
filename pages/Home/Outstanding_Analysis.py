@@ -108,16 +108,16 @@ def _inject_css():
             .oa-kpi-card {
                 background: linear-gradient(135deg, #ffffff 0%, #f3f6fb 100%);
                 border-radius: 14px;
-                padding: 16px 18px;
+                padding: 9px 11px;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.06);
                 border-left: 6px solid var(--accent, #2563eb);
                 text-align: left;
-                min-height: 108px;
+                min-height: 78px;
             }
 
             .oa-kpi-label {
-                font-size: 12px;
-                color: #6b7280;
+                font-size: 10px;
+                color: #64748b;
                 font-weight: 700;
                 text-transform: uppercase;
                 letter-spacing: .04em;
@@ -132,15 +132,15 @@ def _inject_css():
             }
 
             .oa-kpi-value {
-                font-size: 23px;
+                font-size: 18px;
                 font-weight: 800;
                 color: #111827;
             }
 
             .oa-kpi-sub {
-                font-size: 11px;
-                color: #9ca3af;
-                margin-top: 3px;
+                font-size: 9px;
+                color: #94a3b8;
+                margin-top: 2px;
             }
 
             .oa-section-title {
@@ -216,6 +216,13 @@ def _inject_css():
                 background: linear-gradient(145deg, #3b82f6 0%, #2563eb 58%, #1d4ed8 100%) !important;
                 box-shadow: 0 3px 0 #1e40af, 0 6px 10px rgba(37,99,235,.18) !important;
             }
+
+            /* Overview-style searchable multi-select slicers */
+            .checkbox-slicer-label {display:block;height:20px;line-height:20px;margin:0 0 6px 2px;color:#243b53;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+            div[data-testid="stPopover"] {width:100% !important;margin:0 !important;padding:0 !important;}
+            div[data-testid="stPopover"] > div {width:100% !important;}
+            div[data-testid="stPopover"] > div > button {width:100% !important;min-height:40px !important;height:40px !important;padding:0 9px !important;border:1px solid #cbd9ea !important;border-radius:10px !important;background:linear-gradient(180deg,#ffffff 0%,#f5f8fc 100%) !important;color:#102a43 !important;font-size:11px !important;font-weight:800 !important;justify-content:space-between !important;}
+            div[data-testid="stPopoverBody"] {max-height:360px !important;overflow-y:auto !important;}
 
             /* Business Overview-style dataframe treatment */
             [data-testid="stDataFrame"] {
@@ -511,6 +518,58 @@ def _safe_selectbox(
     )
 
 
+
+def _checkbox_slicer(label, options, key, locked_values=None, searchable=True):
+    options = [x for x in options if pd.notna(x)]
+    options = list(dict.fromkeys(options))
+    st.markdown(f'<div class="checkbox-slicer-label">{escape(str(label))}</div>', unsafe_allow_html=True)
+    if locked_values:
+        locked_values = [x for x in locked_values if x is not None]
+        summary = str(locked_values[0]) if len(locked_values) == 1 else f"{len(locked_values)} selected"
+        with st.popover(summary, use_container_width=True):
+            for value in locked_values:
+                st.checkbox(str(value), value=True, disabled=True, key=f"{key}__locked__{value}")
+        return locked_values
+    selection_key = f"{key}__instant_selected"
+    current = st.session_state.get(selection_key, [])
+    st.session_state[selection_key] = [value for value in current if value in options]
+    selected_before = st.session_state.get(selection_key, [])
+    summary = "All" if not selected_before else (str(selected_before[0]) if len(selected_before) == 1 else f"{len(selected_before)} selected")
+    with st.popover(summary, use_container_width=True):
+        actions = st.columns(2, gap="small")
+        with actions[0]:
+            if st.button("Select all", key=f"{key}__select_all"):
+                st.session_state[selection_key] = list(options); st.rerun()
+        with actions[1]:
+            if st.button("Clear", key=f"{key}__clear"):
+                st.session_state[selection_key] = []; st.rerun()
+        selected_values = st.multiselect(label, options=options, key=selection_key, placeholder="Type to search...", label_visibility="collapsed")
+    return selected_values
+
+
+def _render_scale_table(df, name_col, value_col, value_label, unit, secondary_cols=None, max_rows=50, accent="#7c3aed"):
+    secondary_cols = secondary_cols or []
+    if df is None or df.empty or name_col not in df.columns or value_col not in df.columns:
+        st.info("No table data is available for the selected filters."); return
+    view = df.copy().head(max_rows).reset_index(drop=True)
+    vals = pd.to_numeric(view[value_col], errors="coerce").fillna(0.0)
+    max_abs = max(float(vals.abs().max()), 1.0)
+    rows=[]
+    for idx,row in view.iterrows():
+        raw=float(pd.to_numeric(pd.Series([row[value_col]]),errors="coerce").fillna(0).iloc[0])
+        width=min(abs(raw)/max_abs*100,100); name=escape(str(row[name_col])); extras=[]
+        for col,label,kind in secondary_cols:
+            val=row.get(col,0)
+            if kind=="money": extras.append(f'<td class="oa-scale-num">₹{float(val):,.2f} {escape(unit)}</td>')
+            elif kind=="int": extras.append(f'<td class="oa-scale-num">{int(val):,}</td>')
+            else: extras.append(f'<td class="oa-scale-num">{escape(str(val))}</td>')
+        rows.append('<tr>'+f'<td class="oa-scale-rank">{idx+1}</td>'+f'<td class="oa-scale-name" title="{name}">{name}</td>'+f'<td><div class="oa-scale-track"><div class="oa-scale-fill" style="width:{width:.1f}%;background:{accent};"></div></div></td>'+f'<td class="oa-scale-num">₹{raw:,.2f} {escape(unit)}</td>'+''.join(extras)+'</tr>')
+    heads=''.join(f'<th style="text-align:right;">{escape(label)}</th>' for _,label,_ in secondary_cols)
+    html=("<style>.oa-scale-wrap{width:100%;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;background:#fff}.oa-scale-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:11px;color:#334155}.oa-scale-table th{padding:7px 6px;background:#f8fafc;color:#64748b;font-weight:500;border-bottom:1px solid #e2e8f0;text-align:left}.oa-scale-table td{padding:7px 6px;border-bottom:1px solid #edf2f7;vertical-align:middle}.oa-scale-table tbody tr:hover{background:#f8fbff}.oa-scale-rank{width:5%;text-align:center;color:#64748b}.oa-scale-name{width:28%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.oa-scale-track{width:100%;height:7px;background:#e8eef8;border-radius:999px;overflow:hidden}.oa-scale-fill{height:7px;border-radius:999px}.oa-scale-num{text-align:right;white-space:nowrap;font-weight:600;color:#0f172a}</style>"+f'<div class="oa-scale-wrap"><table class="oa-scale-table"><thead><tr><th>#</th><th>{escape(str(name_col).replace("_"," ").title())}</th><th>Scale</th><th style="text-align:right;">{escape(value_label)}</th>{heads}</tr></thead><tbody>'+''.join(rows)+'</tbody></table></div>')
+    if hasattr(st,"html"): st.html(html)
+    else: st.markdown(html,unsafe_allow_html=True)
+
+
 def _clear_old_outstanding_widget_state():
     """
     Remove keys used by older versions of this page.
@@ -737,185 +796,50 @@ def show_OutstandingAnalysis():
         return
 
     # -----------------------------------------------------------------------
-    # DASHBOARD FILTERS
+    # DASHBOARD FILTERS - single row after Run Report
     # -----------------------------------------------------------------------
-
-    filter_columns = st.columns(7)
-
-    with filter_columns[0]:
-        if zone_col:
-            if locked_zone:
-                selected_zone = locked_zone
-                _safe_selectbox(
-                    "Zone",
-                    [selected_zone],
-                    "oa_filter_zone_locked_v2",
-                    disabled=True,
-                    help_text="Locked as per your assigned rights",
-                )
-            else:
-                selected_zone = _safe_selectbox(
-                    "Zone",
-                    ["All"] + _sorted_values(scoped_df, zone_col),
-                    "oa_filter_zone_v2",
-                )
-        else:
-            selected_zone = "All"
-            _safe_selectbox(
-                "Zone",
-                ["Not available"],
-                "oa_filter_zone_missing_v2",
-                disabled=True,
-            )
-
+    filter_columns = st.columns(7, gap="small")
     working_df = scoped_df.copy()
 
-    if selected_zone != "All" and zone_col:
-        working_df = working_df[
-            _match_scope_value(working_df[zone_col], selected_zone)
-        ]
+    with filter_columns[0]:
+        selected_zones = _checkbox_slicer("◉ Zone", _sorted_values(working_df, zone_col), "oa_zone_slicer_v3", locked_values=[locked_zone] if locked_zone else None)
+    if selected_zones:
+        working_df = working_df[working_df[zone_col].isin(selected_zones)]
 
     with filter_columns[1]:
-        if circle_col:
-            if locked_circle:
-                selected_circle = locked_circle
-                _safe_selectbox(
-                    "Circle",
-                    [selected_circle],
-                    "oa_filter_circle_locked_v2",
-                    disabled=True,
-                    help_text="Locked as per your assigned rights",
-                )
-            else:
-                selected_circle = _safe_selectbox(
-                    "Circle",
-                    ["All"] + _sorted_values(working_df, circle_col),
-                    "oa_filter_circle_v2",
-                )
-        else:
-            selected_circle = "All"
-            _safe_selectbox(
-                "Circle",
-                ["Not available"],
-                "oa_filter_circle_missing_v2",
-                disabled=True,
-            )
-
-    if selected_circle != "All" and circle_col:
-        working_df = working_df[
-            _match_scope_value(working_df[circle_col], selected_circle)
-        ]
+        selected_circles = _checkbox_slicer("◎ Circle", _sorted_values(working_df, circle_col), "oa_circle_slicer_v3", locked_values=[locked_circle] if locked_circle else None)
+    if selected_circles:
+        working_df = working_df[working_df[circle_col].isin(selected_circles)]
 
     with filter_columns[2]:
-        if branch_col:
-            if locked_branch:
-                selected_branch = locked_branch
-                _safe_selectbox(
-                    "Branch",
-                    [selected_branch],
-                    "oa_filter_branch_locked_v2",
-                    disabled=True,
-                    help_text="Locked as per your assigned rights",
-                )
-            else:
-                selected_branch = _safe_selectbox(
-                    "Branch",
-                    ["All"] + _sorted_values(working_df, branch_col),
-                    "oa_filter_branch_v2",
-                )
-        else:
-            selected_branch = "All"
-            _safe_selectbox(
-                "Branch",
-                ["Not available"],
-                "oa_filter_branch_missing_v2",
-                disabled=True,
-            )
-
-    if selected_branch != "All" and branch_col:
-        working_df = working_df[
-            _match_scope_value(working_df[branch_col], selected_branch)
-        ]
+        selected_branches = _checkbox_slicer("⌂ Branch", _sorted_values(working_df, branch_col), "oa_branch_slicer_v3", locked_values=[locked_branch] if locked_branch else None)
+    if selected_branches:
+        working_df = working_df[working_df[branch_col].isin(selected_branches)]
 
     with filter_columns[3]:
-        if customer_col:
-            selected_customer = _safe_selectbox(
-                "Customer",
-                ["All"] + _sorted_values(working_df, customer_col),
-                "oa_filter_customer_v2",
-            )
-        else:
-            selected_customer = "All"
-            _safe_selectbox(
-                "Customer",
-                ["Not available"],
-                "oa_filter_customer_missing_v2",
-                disabled=True,
-            )
-
+        selected_customer = _safe_selectbox("Customer", ["All"] + _sorted_values(working_df, customer_col), "oa_filter_customer_v3") if customer_col else "All"
     if selected_customer != "All" and customer_col:
-        working_df = working_df[
-            _match_scope_value(working_df[customer_col], selected_customer)
-        ]
+        working_df = working_df[_match_scope_value(working_df[customer_col], selected_customer)]
 
     with filter_columns[4]:
-        if document_col:
-            selected_document = _safe_selectbox(
-                "Document Type",
-                ["All"] + _sorted_values(working_df, document_col),
-                "oa_filter_document_v2",
-            )
-        else:
-            selected_document = "All"
-            _safe_selectbox(
-                "Document Type",
-                ["Not available"],
-                "oa_filter_document_missing_v2",
-                disabled=True,
-            )
-
+        selected_document = _safe_selectbox("Document Type", ["All"] + _sorted_values(working_df, document_col), "oa_filter_document_v3") if document_col else "All"
     if selected_document != "All" and document_col:
-        working_df = working_df[
-            _match_scope_value(working_df[document_col], selected_document)
-        ]
+        working_df = working_df[_match_scope_value(working_df[document_col], selected_document)]
 
     with filter_columns[5]:
-        if age_bucket_col:
-            available_buckets = [
-                bucket
-                for bucket in AGE_BUCKET_ORDER
-                if bucket in working_df[age_bucket_col].dropna().astype(str).unique()
-            ]
-
-            selected_bucket = _safe_selectbox(
-                "Age Bucket",
-                ["All"] + available_buckets,
-                "oa_filter_age_bucket_v2",
-            )
-        else:
-            selected_bucket = "All"
-            _safe_selectbox(
-                "Age Bucket",
-                ["Not available"],
-                "oa_filter_age_bucket_missing_v2",
-                disabled=True,
-            )
-
+        available_buckets = [b for b in AGE_BUCKET_ORDER if age_bucket_col and b in working_df[age_bucket_col].dropna().astype(str).unique()]
+        selected_bucket = _safe_selectbox("Age Bucket", ["All"] + available_buckets, "oa_filter_age_bucket_v3") if age_bucket_col else "All"
     if selected_bucket != "All" and age_bucket_col:
-        working_df = working_df[
-            _match_scope_value(working_df[age_bucket_col], selected_bucket)
-        ]
+        working_df = working_df[_match_scope_value(working_df[age_bucket_col], selected_bucket)]
 
     with filter_columns[6]:
-        conversion_type = _safe_selectbox(
-            "₹ Conversion",
-            ["Crore", "Lac"],
-            "oa_conversion_v1",
-        )
+        conversion_type = _safe_selectbox("₹ Conversion", ["Crore", "Lac"], "oa_conversion_v2")
 
     conversion_divisor, conversion_unit = _get_conversion(conversion_type)
-
     fdf = working_df.copy()
+    selected_zone = selected_zones[0] if len(selected_zones) == 1 else "All"
+    selected_circle = selected_circles[0] if len(selected_circles) == 1 else "All"
+    selected_branch = selected_branches[0] if len(selected_branches) == 1 else "All"
 
     # -----------------------------------------------------------------------
     # ACTIVE FILTER CHIPS IN DASHBOARD HEADER
@@ -924,9 +848,9 @@ def show_OutstandingAnalysis():
     # -----------------------------------------------------------------------
 
     active_filter_items = [
-        ("Zone", selected_zone),
-        ("Circle", selected_circle),
-        ("Branch", selected_branch),
+        ("Zone", ", ".join(map(str, selected_zones)) if selected_zones else "All"),
+        ("Circle", ", ".join(map(str, selected_circles)) if selected_circles else "All"),
+        ("Branch", ", ".join(map(str, selected_branches)) if selected_branches else "All"),
         ("Customer", selected_customer),
         ("Document", selected_document),
         ("Age", selected_bucket),
@@ -1351,38 +1275,7 @@ def show_OutstandingAnalysis():
             document_table = document_table.drop(
                 columns=["Net_Outstanding_Display"]
             )
-
-            document_column_config = {
-                "Net_Outstanding": st.column_config.NumberColumn(
-                    f"Net Outstanding (₹ {conversion_unit})",
-                    format=f"₹%.2f {conversion_unit}",
-                    width="medium",
-                ),
-                "Billed": st.column_config.NumberColumn(
-                    f"Billed (₹ {conversion_unit})",
-                    format=f"₹%.2f {conversion_unit}",
-                    width="medium",
-                ),
-                "Documents": st.column_config.NumberColumn(
-                    "Documents",
-                    format="%d",
-                    width="small",
-                ),
-            }
-
-            if document_col and document_col in document_table.columns:
-                document_column_config[document_col] = st.column_config.TextColumn(
-                    "Document Type",
-                    width="large",
-                )
-
-            st.dataframe(
-                document_table,
-                width='stretch',
-                hide_index=True,
-                height=min(max(260, 34 * (len(document_table) + 1)), 440),
-                column_config=document_column_config,
-            )
+            _render_scale_table(document_table, document_col, "Net_Outstanding", f"Net Outstanding (₹ {conversion_unit})", conversion_unit, secondary_cols=[("Billed", f"Billed (₹ {conversion_unit})", "money"), ("Documents", "Documents", "int")], max_rows=30, accent="#f59e0b")
     else:
         st.info("Document Type or Net Outstanding data is not available.")
 
@@ -1466,39 +1359,10 @@ def show_OutstandingAnalysis():
                         "Net_Outstanding",
                         ascending=False,
                     )
-
-                branch_column_config = {
-                    branch_col: st.column_config.TextColumn(
-                        "Branch",
-                        width="large",
-                    )
-                }
-
                 for column in ["Billed", "Received", "Net_Outstanding"]:
                     if column in branch_summary.columns:
-                        branch_summary[column] = (
-                            branch_summary[column] / conversion_divisor
-                        )
-                        branch_column_config[column] = st.column_config.NumberColumn(
-                            column.replace("_", " ") + f" (₹ {conversion_unit})",
-                            format=f"₹%.2f {conversion_unit}",
-                            width="medium",
-                        )
-
-                if "Invoices" in branch_summary.columns:
-                    branch_column_config["Invoices"] = st.column_config.NumberColumn(
-                        "Invoices",
-                        format="%d",
-                        width="small",
-                    )
-
-                st.dataframe(
-                    branch_summary,
-                    height=440,
-                    width='stretch',
-                    hide_index=True,
-                    column_config=branch_column_config,
-                )
+                        branch_summary[column] = branch_summary[column] / conversion_divisor
+                _render_scale_table(branch_summary, branch_col, "Net_Outstanding", f"Net Outstanding (₹ {conversion_unit})", conversion_unit, secondary_cols=[("Billed", f"Billed (₹ {conversion_unit})", "money"), ("Received", f"Received (₹ {conversion_unit})", "money"), ("Invoices", "Invoices", "int")], max_rows=50, accent="#7c3aed")
             else:
                 st.info("Branch amount columns are not available.")
         else:
