@@ -59,6 +59,7 @@ CHANGES IN THIS VERSION
 
 import io
 from datetime import date, datetime
+from html import escape
 
 import pandas as pd
 import plotly.express as px
@@ -151,6 +152,71 @@ def _inject_css():
                 padding-bottom: 6px;
             }
 
+            /* Outstanding header: title + active filter chips on one line. */
+            .oa-header-row {
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 8px;
+                width: 100%;
+                min-height: 36px;
+                padding: 1px 0 1px 2px;
+            }
+
+            .oa-header-title {
+                color: #102a43;
+                font-size: 21px;
+                font-weight: 850;
+                letter-spacing: -0.3px;
+                margin-right: 8px;
+                white-space: nowrap;
+                line-height: 1.15;
+            }
+
+            .oa-filter-chip {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 28px;
+                padding: 6px 13px;
+                border: 1px solid #b8d1f2;
+                border-radius: 999px;
+                background: #f5f9ff;
+                color: #31557d;
+                font-size: 11px;
+                font-weight: 500;
+                line-height: 1;
+                white-space: nowrap;
+                box-shadow: inset 0 1px 0 #ffffff;
+            }
+
+            /* Keep the bordered dashboard header compact like Business Overview. */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-row) {
+                border-radius: 14px !important;
+                border-color: #d8e3f0 !important;
+                background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
+                box-shadow: 0 4px 12px rgba(15, 42, 67, .06) !important;
+            }
+
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-row) > div {
+                padding-top: .45rem !important;
+                padding-bottom: .45rem !important;
+            }
+
+            /* Header Excel action styled like the Overview dashboard action. */
+            div[data-testid="stDownloadButton"] > button {
+                min-height: 34px !important;
+                width: auto !important;
+                padding: 5px 11px !important;
+                border: 1px solid #2563eb !important;
+                border-radius: 8px !important;
+                color: #ffffff !important;
+                font-size: 11px !important;
+                font-weight: 800 !important;
+                background: linear-gradient(145deg, #3b82f6 0%, #2563eb 58%, #1d4ed8 100%) !important;
+                box-shadow: 0 3px 0 #1e40af, 0 6px 10px rgba(37,99,235,.18) !important;
+            }
+
             [data-testid="stDataFrame"] table {
                 font-size: 11px;
             }
@@ -176,6 +242,28 @@ def _kpi_card(label, value, sub="", color="blue"):
         """,
         unsafe_allow_html=True,
     )
+
+
+def _render_outstanding_header(placeholder, active_filters=None):
+    """Render Outstanding Analysis title with active-filter chips beside it."""
+    active_filters = active_filters or []
+
+    chip_html = "".join(
+        f'<span class="oa-filter-chip">{escape(str(label))}: {escape(str(value))}</span>'
+        for label, value in active_filters
+        if value not in (None, "", "All", "Not available")
+    )
+
+    with placeholder:
+        st.markdown(
+            f"""
+            <div class="oa-header-row">
+                <div class="oa-header-title">Outstanding Analysis</div>
+                {chip_html}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -433,16 +521,26 @@ def show_OutstandingAnalysis():
     _clear_old_outstanding_widget_state()
     _inject_css()
 
-    st.markdown(
-        """
-        <h3 style="margin:0;padding:0;">Outstanding Analysis</h3>
-        <p style="color:#64748b;font-size:12px;margin:0 0 8px 0;">
-            Zone / Circle / Branch / Customer-wise receivables and ageing
-            (values shown in ₹ Crore)
-        </p>
-        """,
-        unsafe_allow_html=True,
-    )
+    # -----------------------------------------------------------------------
+    # DASHBOARD HEADER
+    # Title and active filter chips follow the Business Overview layout.
+    # -----------------------------------------------------------------------
+
+    with st.container(border=True):
+        header_left, header_right = st.columns(
+            [7, 1],
+            gap="small",
+            vertical_alignment="center",
+        )
+
+        with header_left:
+            header_content_placeholder = st.empty()
+
+        with header_right:
+            header_action_placeholder = st.empty()
+
+    # Always show the page title, even before the first report is run.
+    _render_outstanding_header(header_content_placeholder)
 
     # -----------------------------------------------------------------------
     # THREE STORED-PROCEDURE DATE PARAMETERS
@@ -780,6 +878,26 @@ def show_OutstandingAnalysis():
         ]
 
     fdf = working_df.copy()
+
+    # -----------------------------------------------------------------------
+    # ACTIVE FILTER CHIPS IN DASHBOARD HEADER
+    # Only non-All values are shown. Locked role values (Zone/Circle/Branch)
+    # remain visible because they explain the user's reporting scope.
+    # -----------------------------------------------------------------------
+
+    active_filter_items = [
+        ("Zone", selected_zone),
+        ("Circle", selected_circle),
+        ("Branch", selected_branch),
+        ("Customer", selected_customer),
+        ("Document", selected_document),
+        ("Age", selected_bucket),
+    ]
+
+    _render_outstanding_header(
+        header_content_placeholder,
+        active_filter_items,
+    )
 
     if fdf.empty:
         st.warning("No data found for the selected filters.")
@@ -1506,19 +1624,23 @@ def show_OutstandingAnalysis():
             sheet_name="Outstanding",
         )
 
-    st.download_button(
-        "Download filtered data (Excel)",
-        data=excel_buffer.getvalue(),
-        file_name=(
-            "outstanding_filtered_"
-            f"{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
-        ),
-        mime=(
-            "application/vnd.openxmlformats-officedocument."
-            "spreadsheetml.sheet"
-        ),
-        key="oa_download",
-    )
+    # Put the export action in the top dashboard header, matching Overview.
+    with header_action_placeholder:
+        st.download_button(
+            "⬇ Excel",
+            data=excel_buffer.getvalue(),
+            file_name=(
+                "outstanding_filtered_"
+                f"{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+            ),
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            key="oa_header_download",
+            help="Download the currently filtered Outstanding records.",
+            width="content",
+        )
 
     last_refreshed = st.session_state.get(
         "oa_last_refreshed",
