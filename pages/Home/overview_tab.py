@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.6.2
+# OVERVIEW VERSION: 8.6.3
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -1436,6 +1436,95 @@ def _inject_overview_css():
             div[data-baseweb="popover"] li:hover {
                 background: #eaf2fa !important;
                 color: #12395f !important;
+            }
+
+
+            /* =========================================================
+               FILTER CONTROL FINAL OVERRIDE - VERSION 8.6.3
+               Professional steel-blue treatment for EVERY top filter:
+               View Type, FY, Company, Zone, Circle, Branch, Quarter,
+               Month, Load Type and Conversion.
+               ========================================================= */
+
+            /* ---------- Standard Streamlit selectboxes ---------- */
+            div[data-testid="stSelectbox"] div[data-baseweb="select"],
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+            div[data-testid="stSelectbox"] div[role="combobox"] {
+                background: #e9f1fa !important;
+                border-color: #89a9c9 !important;
+                color: #173b63 !important;
+            }
+
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+                border: 1px solid #89a9c9 !important;
+                border-radius: 9px !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.90),
+                    0 2px 4px rgba(42,78,115,.10) !important;
+            }
+
+            /* Remove the inner default grey/white layers */
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div > div,
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div > div > div {
+                background: transparent !important;
+            }
+
+            div[data-testid="stSelectbox"] span,
+            div[data-testid="stSelectbox"] input {
+                color: #173b63 !important;
+                font-weight: 700 !important;
+            }
+
+            div[data-testid="stSelectbox"] svg {
+                color: #2f6698 !important;
+            }
+
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
+            div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div {
+                background: #dceafa !important;
+                border-color: #5f8db8 !important;
+                box-shadow:
+                    0 0 0 2px rgba(61,112,158,.10),
+                    0 3px 7px rgba(42,78,115,.13) !important;
+            }
+
+            /* ---------- Custom slicer/popover filters ---------- */
+            div[data-testid="stPopover"] > div > button {
+                background: #e9f1fa !important;
+                border: 1px solid #89a9c9 !important;
+                border-radius: 9px !important;
+                color: #173b63 !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.90),
+                    0 2px 4px rgba(42,78,115,.10) !important;
+            }
+
+            div[data-testid="stPopover"] > div > button p,
+            div[data-testid="stPopover"] > div > button span {
+                color: #173b63 !important;
+                font-weight: 700 !important;
+            }
+
+            div[data-testid="stPopover"] > div > button svg {
+                color: #2f6698 !important;
+            }
+
+            div[data-testid="stPopover"] > div > button:hover,
+            div[data-testid="stPopover"] > div > button:focus {
+                background: #dceafa !important;
+                border-color: #5f8db8 !important;
+                color: #173b63 !important;
+                box-shadow:
+                    0 0 0 2px rgba(61,112,158,.10),
+                    0 3px 7px rgba(42,78,115,.13) !important;
+            }
+
+            /* ---------- Keep top filter labels consistent ---------- */
+            div[data-testid="stSelectbox"] > label,
+            div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+            .checkbox-slicer-label {
+                color: #24496f !important;
+                font-weight: 600 !important;
             }
 
         </style>
