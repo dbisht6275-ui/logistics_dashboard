@@ -355,7 +355,7 @@ div[data-testid="stAlert"] {
 
         st.markdown(
             '<div class="sg-safe">🛡 Your data is safe and secure</div>',
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
 
     st.markdown(
