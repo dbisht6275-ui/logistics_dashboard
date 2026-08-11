@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.7.1
+# OVERVIEW VERSION: 8.7.2
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -9,7 +9,7 @@ from services.data_loader import load_booking_data_pair, get_date_range
 from services.branch_agency_mast import load_stationmast_data
 
 SPACER_HEIGHT = 1
-REVENUE_CHART_HEIGHT = 245
+REVENUE_CHART_HEIGHT = 420
 ALIGNED_CHART_HEIGHT = 245
 RANKING_CHART_HEIGHT = 330
 
@@ -1745,6 +1745,21 @@ def _inject_overview_css():
                 gap: 0.15rem !important;
             }
 
+
+            /* 8.7.2: let the taller Business Trend fill the row instead of leaving a blank band. */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ) div[data-testid="stPlotlyChart"] {
+                min-height: 420px !important;
+            }
+
+            /* Keep Weight Trend immediately after the preceding row. */
+            div[data-testid="stHorizontalBlock"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) {
+                margin-top: -1px !important;
+            }
+
         </style>
         """,
         unsafe_allow_html=True,
@@ -2071,18 +2086,27 @@ def build_weight_yoy_trend(current_df, previous_df, trend_type, date_col, fy_sta
 
     return trend_df
 
-def create_card(title, value, color, icon, growth_value=0.0, previous_value=None, target_value=None):
-    """Render a compact KPI card with LY value, optional target, and YoY growth."""
+def create_card(
+    title, value, color, icon, growth_value=0.0, previous_value=None,
+    target_value=None, target_achievement=None
+):
+    """Render a compact KPI card with LY value, optional target/achievement, and YoY growth."""
     positive = growth_value >= 0
     growth_color = "#15803d" if positive else "#dc2626"
     growth_bg = "#ffffff"
     growth_border = "#86efac" if positive else "#fda4af"
     growth_text = growth_label(growth_value)
     previous_text = previous_value if previous_value is not None else "N/A"
+
+    target_achievement_text = (
+        f" / {target_achievement:.1f}%"
+        if target_achievement is not None and pd.notna(target_achievement)
+        else ""
+    )
     target_html = (
-        f'<div style="position:relative;z-index:1;margin-top:3px;font-size:9px;font-weight:700;'
-        f'color:#475569;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-        f'Target: {target_value}</div>'
+        f'<div style="position:relative;z-index:1;margin-top:3px;font-size:9px;font-weight:800;'
+        f'color:#c2410c;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
+        f'Target: {target_value}{target_achievement_text}</div>'
         if target_value is not None else ""
     )
 
@@ -3257,23 +3281,40 @@ def show_overview():
     total_target_lac = get_monthly_target_for_filtered_branches(df, "All") * target_month_count
     ftl_target_lac = get_monthly_target_for_filtered_branches(df, "FTL") * target_month_count
     ltl_target_lac = get_monthly_target_for_filtered_branches(df, "LTL") * target_month_count
-    total_target_text = format_revenue(total_target_lac * 100000.0, conversion_type)
-    ftl_target_text = format_revenue(ftl_target_lac * 100000.0, conversion_type)
-    ltl_target_text = format_revenue(ltl_target_lac * 100000.0, conversion_type)
+    total_target_rupees = total_target_lac * 100000.0
+    ftl_target_rupees = ftl_target_lac * 100000.0
+    ltl_target_rupees = ltl_target_lac * 100000.0
+
+    total_target_text = format_revenue(total_target_rupees, conversion_type)
+    ftl_target_text = format_revenue(ftl_target_rupees, conversion_type)
+    ltl_target_text = format_revenue(ltl_target_rupees, conversion_type)
+
+    total_target_achievement = (revenue / total_target_rupees * 100) if total_target_rupees > 0 else None
+    ftl_target_achievement = (ftl / ftl_target_rupees * 100) if ftl_target_rupees > 0 else None
+    ltl_target_achievement = (ltl / ltl_target_rupees * 100) if ltl_target_rupees > 0 else None
 
     k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     with k1:
-        create_card("Business", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth,
-                    format_revenue(prev_kpis["revenue"], conversion_type), total_target_text)
+        create_card(
+            "Business", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth,
+            format_revenue(prev_kpis["revenue"], conversion_type), total_target_text,
+            total_target_achievement,
+        )
 
     with k2:
-        create_card("FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth,
-                    format_revenue(prev_kpis["ftl"], conversion_type), ftl_target_text)
+        create_card(
+            "FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth,
+            format_revenue(prev_kpis["ftl"], conversion_type), ftl_target_text,
+            ftl_target_achievement,
+        )
 
     with k3:
-        create_card("LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth,
-                    format_revenue(prev_kpis["ltl"], conversion_type), ltl_target_text)
+        create_card(
+            "LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth,
+            format_revenue(prev_kpis["ltl"], conversion_type), ltl_target_text,
+            ltl_target_achievement,
+        )
 
     with k4:
         create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth,
