@@ -1,3 +1,4 @@
+# OVERVIEW VERSION: 8.6.2
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -1316,11 +1317,11 @@ def _inject_overview_css():
 
 
             /* =========================================================
-               OVERVIEW FILTER BOXES - DARK BLUE STYLE
-               Keeps chart period buttons unchanged.
+               OVERVIEW FILTER BOXES - PROFESSIONAL BLUE STYLE
+               Applied consistently to ALL selectboxes and slicer boxes.
                ========================================================= */
 
-            /* Selectbox outer shell */
+            /* Native selectbox container */
             div[data-testid="stSelectbox"] {
                 background: transparent !important;
                 border: 0 !important;
@@ -1329,112 +1330,112 @@ def _inject_overview_css():
                 transform: none !important;
             }
 
-            /* Selectbox control */
+            /* Native selectbox control */
             div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
                 min-height: 40px !important;
                 height: 40px !important;
-                border: 1px solid #0b2f5b !important;
+                padding: 0 8px !important;
+                border: 1px solid #a9bfd8 !important;
                 border-radius: 9px !important;
                 background: linear-gradient(
                     180deg,
-                    #174f8d 0%,
-                    #123f73 58%,
-                    #0b2f5b 100%
+                    #f9fbfe 0%,
+                    #eef4fa 58%,
+                    #e4edf7 100%
                 ) !important;
-                color: #ffffff !important;
+                color: #173b63 !important;
                 box-shadow:
-                    inset 0 1px 0 rgba(255,255,255,.16),
-                    0 3px 7px rgba(15,42,67,.20) !important;
+                    inset 0 1px 0 rgba(255,255,255,.95),
+                    0 2px 5px rgba(30,64,105,.10) !important;
             }
 
-            /* Selectbox selected text */
             div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
-                color: #ffffff !important;
+                color: #173b63 !important;
                 font-weight: 700 !important;
             }
 
-            /* Selectbox dropdown arrow */
             div[data-testid="stSelectbox"] div[data-baseweb="select"] svg {
-                color: #ffffff !important;
-                background: rgba(255,255,255,.10) !important;
+                color: #376d9f !important;
+                background: #e2edf8 !important;
                 border-radius: 5px !important;
             }
 
-            /* Selectbox hover/focus */
             div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
             div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div {
-                border-color: #2563eb !important;
+                border-color: #6f99c4 !important;
                 background: linear-gradient(
                     180deg,
-                    #1d5fa9 0%,
-                    #174f8d 55%,
-                    #123f73 100%
+                    #ffffff 0%,
+                    #edf5fd 55%,
+                    #dfeaf6 100%
                 ) !important;
                 box-shadow:
-                    0 0 0 2px rgba(37,99,235,.14),
-                    0 4px 9px rgba(15,42,67,.24) !important;
+                    0 0 0 2px rgba(71,120,166,.10),
+                    0 3px 7px rgba(30,64,105,.13) !important;
             }
 
-            /* Checkbox slicer / popover filter button */
+            /* Checkbox slicer / popover filter trigger */
             div[data-testid="stPopover"] > div > button {
                 min-height: 40px !important;
                 height: 40px !important;
-                border: 1px solid #0b2f5b !important;
+                padding: 0 9px !important;
+                border: 1px solid #a9bfd8 !important;
                 border-radius: 9px !important;
                 background: linear-gradient(
                     180deg,
-                    #174f8d 0%,
-                    #123f73 58%,
-                    #0b2f5b 100%
+                    #f9fbfe 0%,
+                    #eef4fa 58%,
+                    #e4edf7 100%
                 ) !important;
-                color: #ffffff !important;
+                color: #173b63 !important;
                 box-shadow:
-                    inset 0 1px 0 rgba(255,255,255,.16),
-                    0 3px 7px rgba(15,42,67,.20) !important;
+                    inset 0 1px 0 rgba(255,255,255,.95),
+                    0 2px 5px rgba(30,64,105,.10) !important;
                 transform: none !important;
             }
 
             div[data-testid="stPopover"] > div > button p,
             div[data-testid="stPopover"] > div > button span {
-                color: #ffffff !important;
+                color: #173b63 !important;
                 font-weight: 700 !important;
             }
 
             div[data-testid="stPopover"] > div > button svg {
-                color: #ffffff !important;
+                color: #376d9f !important;
             }
 
             div[data-testid="stPopover"] > div > button:hover,
             div[data-testid="stPopover"] > div > button:focus {
-                border-color: #2563eb !important;
+                border-color: #6f99c4 !important;
                 background: linear-gradient(
                     180deg,
-                    #1d5fa9 0%,
-                    #174f8d 55%,
-                    #123f73 100%
+                    #ffffff 0%,
+                    #edf5fd 55%,
+                    #dfeaf6 100%
                 ) !important;
-                color: #ffffff !important;
+                color: #173b63 !important;
                 box-shadow:
-                    0 0 0 2px rgba(37,99,235,.14),
-                    0 4px 9px rgba(15,42,67,.24) !important;
+                    0 0 0 2px rgba(71,120,166,.10),
+                    0 3px 7px rgba(30,64,105,.13) !important;
                 transform: none !important;
             }
 
-            /* Dropdown option menu remains light for readability */
+            /* Dropdown option list stays clean and professional */
             div[data-baseweb="popover"] ul {
                 background: #ffffff !important;
-                border: 1px solid #cbd5e1 !important;
-                box-shadow: 0 12px 28px rgba(15,23,42,.20) !important;
+                border: 1px solid #c5d3e2 !important;
+                border-radius: 10px !important;
+                box-shadow: 0 12px 26px rgba(30,64,105,.16) !important;
             }
 
             div[data-baseweb="popover"] li {
                 background: #ffffff !important;
-                color: #102a43 !important;
+                color: #173b63 !important;
             }
 
             div[data-baseweb="popover"] li:hover {
-                background: #eaf2ff !important;
-                color: #123f73 !important;
+                background: #eaf2fa !important;
+                color: #12395f !important;
             }
 
         </style>
@@ -3380,85 +3381,17 @@ def show_overview():
 
         with st.container(border=True):
             st.markdown(
-                f'<div style="font-size:{COMPANY_TITLE_FONT}px;font-weight:600;'
-                f'color:#0f172a;margin:0 0 7px 0;line-height:1.2;">'
-                f'Business by Company (CY)</div>',
+                "<div style='font-size:16px;font-weight:600;color:#0f172a;"
+                "margin:0 0 4px 0;line-height:1.2;'>Target Achievement</div>",
                 unsafe_allow_html=True,
             )
-
-            if company_chart_df.empty or company_total <= 0:
-                st.info("No company revenue is available for the selected filters.")
-            else:
-                company_colors = [
-                    "#2563eb",
-                    "#0f9f8f",
-                    "#7c3aed",
-                    "#f59e0b",
-                    "#ec4899",
-                    "#64748b",
-                ]
-                max_company_value = float(company_chart_df["Business Cr"].max() or 1)
-                company_rows = []
-
-                for idx, row in company_chart_df.iterrows():
-                    company_name = escape(str(row["Company"]))
-                    value = float(row["Business Cr"] or 0)
-                    share = float(row["Contribution %"] or 0)
-                    py_value = float(row["PY Business Cr"] or 0)
-                    growth = float(row["Growth %"] or 0)
-                    width_pct = (
-                        min((value / max_company_value * 100), 100)
-                        if max_company_value
-                        else 0
-                    )
-                    color = company_colors[idx % len(company_colors)]
-                    growth_color = "#16a34a" if growth >= 0 else "#dc2626"
-                    growth_arrow = "▲" if growth >= 0 else "▼"
-
-                    company_rows.append(
-                        f'<div title="{company_name} | LY ₹{py_value:.2f} {revenue_unit} | '
-                        f'{growth_arrow} {abs(growth):.1f}%" '
-                        f'style="display:grid;'
-                        f'grid-template-columns:minmax(150px,195px) minmax(55px,1fr) '
-                        f'minmax(84px,auto) minmax(58px,auto);'
-                        f'align-items:center;gap:8px;margin:9px 0;line-height:1.2;">'
-
-                        f'<div style="font-size:{COMPANY_NAME_FONT}px;font-weight:600;'
-                        f'color:#334155;white-space:nowrap;overflow:hidden;'
-                        f'text-overflow:ellipsis;">{company_name}</div>'
-
-                        f'<div style="height:9px;background:#e8eef5;border-radius:999px;'
-                        f'overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
-                        f'<div style="height:9px;width:{width_pct:.2f}%;background:{color};'
-                        f'border-radius:999px;"></div></div>'
-
-                        f'<div style="font-size:{COMPANY_VALUE_FONT}px;font-weight:700;'
-                        f'color:#0f172a;white-space:nowrap;">'
-                        f'₹{value:.2f} {revenue_unit}</div>'
-
-                        f'<div style="font-size:{COMPANY_VALUE_FONT}px;font-weight:700;'
-                        f'color:#334155;min-width:54px;text-align:right;white-space:nowrap;">'
-                        f'{share:.2f}%</div>'
-
-                        f'<div style="grid-column:2/5;margin-top:-3px;'
-                        f'font-size:{COMPANY_SUBTEXT_FONT}px;color:#64748b;white-space:nowrap;">'
-                        f'LY ₹{py_value:.2f} {revenue_unit} · '
-                        f'<span style="color:{growth_color};font-weight:700;">'
-                        f'{growth_arrow} {abs(growth):.1f}%</span></div>'
-
-                        f'</div>'
-                    )
-
-                company_html = (
-                    '<div style="padding:0 3px 4px 3px;">'
-                    + ''.join(company_rows)
-                    + '</div>'
-                )
-
-                if hasattr(st, "html"):
-                    st.html(company_html)
-                else:
-                    st.markdown(company_html, unsafe_allow_html=True)
+            create_target_speedometer(
+                actual=trend_actual,
+                target=trend_target,
+                unit=f" {revenue_unit}",
+                title="Target Achievement",
+                compact=False,
+            )
 
     compact_spacer()
 
@@ -4187,13 +4120,86 @@ def show_overview():
 
     with target_meter_col:
         with st.container(border=True):
-            create_target_speedometer(
-                actual=trend_actual,
-                target=trend_target,
-                unit=f" {revenue_unit}",
-                title="Target Achievement",
-                compact=False,
+            st.markdown(
+                f'<div style="font-size:13px;font-weight:600;'
+                f'color:#0f172a;margin:0 0 7px 0;line-height:1.2;">'
+                f'Business by Company (CY)</div>',
+                unsafe_allow_html=True,
             )
+
+            if company_chart_df.empty or company_total <= 0:
+                st.info("No company revenue is available for the selected filters.")
+            else:
+                company_colors = [
+                    "#2563eb",
+                    "#0f9f8f",
+                    "#7c3aed",
+                    "#f59e0b",
+                    "#ec4899",
+                    "#64748b",
+                ]
+                max_company_value = float(company_chart_df["Business Cr"].max() or 1)
+                company_rows = []
+
+                for idx, row in company_chart_df.iterrows():
+                    company_name = escape(str(row["Company"]))
+                    value = float(row["Business Cr"] or 0)
+                    share = float(row["Contribution %"] or 0)
+                    py_value = float(row["PY Business Cr"] or 0)
+                    growth = float(row["Growth %"] or 0)
+                    width_pct = (
+                        min((value / max_company_value * 100), 100)
+                        if max_company_value
+                        else 0
+                    )
+                    color = company_colors[idx % len(company_colors)]
+                    growth_color = "#16a34a" if growth >= 0 else "#dc2626"
+                    growth_arrow = "▲" if growth >= 0 else "▼"
+
+                    company_rows.append(
+                        f'<div title="{company_name} | LY ₹{py_value:.2f} {revenue_unit} | '
+                        f'{growth_arrow} {abs(growth):.1f}%" '
+                        f'style="display:grid;'
+                        f'grid-template-columns:minmax(150px,195px) minmax(55px,1fr) '
+                        f'minmax(84px,auto) minmax(58px,auto);'
+                        f'align-items:center;gap:8px;margin:9px 0;line-height:1.2;">'
+
+                        f'<div style="font-size:10.5px;font-weight:600;'
+                        f'color:#334155;white-space:nowrap;overflow:hidden;'
+                        f'text-overflow:ellipsis;">{company_name}</div>'
+
+                        f'<div style="height:9px;background:#e8eef5;border-radius:999px;'
+                        f'overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
+                        f'<div style="height:9px;width:{width_pct:.2f}%;background:{color};'
+                        f'border-radius:999px;"></div></div>'
+
+                        f'<div style="font-size:10px;font-weight:700;'
+                        f'color:#0f172a;white-space:nowrap;">'
+                        f'₹{value:.2f} {revenue_unit}</div>'
+
+                        f'<div style="font-size:10px;font-weight:700;'
+                        f'color:#334155;min-width:54px;text-align:right;white-space:nowrap;">'
+                        f'{share:.2f}%</div>'
+
+                        f'<div style="grid-column:2/5;margin-top:-3px;'
+                        f'font-size:{COMPANY_SUBTEXT_FONT}px;color:#64748b;white-space:nowrap;">'
+                        f'LY ₹{py_value:.2f} {revenue_unit} · '
+                        f'<span style="color:{growth_color};font-weight:700;">'
+                        f'{growth_arrow} {abs(growth):.1f}%</span></div>'
+
+                        f'</div>'
+                    )
+
+                company_html = (
+                    '<div style="padding:0 3px 4px 3px;">'
+                    + ''.join(company_rows)
+                    + '</div>'
+                )
+
+                if hasattr(st, "html"):
+                    st.html(company_html)
+                else:
+                    st.markdown(company_html, unsafe_allow_html=True)
 
                                                             
                                                        
