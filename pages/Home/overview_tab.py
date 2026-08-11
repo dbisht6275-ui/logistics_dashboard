@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.7.0
+# OVERVIEW VERSION: 8.7.1
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -8,7 +8,7 @@ import plotly.express as px
 from services.data_loader import load_booking_data_pair, get_date_range
 from services.branch_agency_mast import load_stationmast_data
 
-SPACER_HEIGHT = 5
+SPACER_HEIGHT = 1
 REVENUE_CHART_HEIGHT = 245
 ALIGNED_CHART_HEIGHT = 245
 RANKING_CHART_HEIGHT = 330
@@ -1121,16 +1121,16 @@ def _inject_overview_css():
 
             /* Bordered visual cards get a little extra vertical separation. */
             div[data-testid="stVerticalBlockBorderWrapper"] {
-                margin-top: 4px !important;
-                margin-bottom: 7px !important;
+                margin-top: 1px !important;
+                margin-bottom: 2px !important;
                 box-sizing: border-box !important;
             }
 
             div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]) {
                 gap: 16px !important;
                 column-gap: 16px !important;
-                margin-top: 4px !important;
-                margin-bottom: 4px !important;
+                margin-top: 1px !important;
+                margin-bottom: 1px !important;
             }
 
             div[data-testid="stHorizontalBlock"]:has(div[data-testid="stVerticalBlockBorderWrapper"])
@@ -1153,10 +1153,10 @@ def _inject_overview_css():
                 div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]) {
                     gap: 12px !important;
                     column-gap: 12px !important;
-                    margin-bottom: 7px !important;
+                    margin-bottom: 2px !important;
                 }
                 div[data-testid="stVerticalBlockBorderWrapper"] {
-                    margin-bottom: 10px !important;
+                    margin-bottom: 2px !important;
                 }
             }
 
@@ -1692,6 +1692,57 @@ def _inject_overview_css():
             div[class*="st-key-weight_period_btn_"] button p,
             div[class*="st-key-weight_period_btn_"] button span {
                 font-size: 9.5px !important;
+            }
+
+
+            /* =========================================================
+               TREND ROW GAP REDUCTION - VERSION 8.7.1
+               ========================================================= */
+
+            /* Remove extra bottom space after the Business Trend row */
+            div[data-testid="stHorizontalBlock"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ) {
+                margin-bottom: 0 !important;
+                padding-bottom: 0 !important;
+            }
+
+            /* Remove extra top space before the Weight Trend row */
+            div[data-testid="stHorizontalBlock"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) {
+                margin-top: 0 !important;
+                padding-top: 0 !important;
+            }
+
+            /* Trend cards themselves should not add exterior vertical margin */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ),
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) {
+                margin-top: 0 !important;
+                margin-bottom: 1px !important;
+            }
+
+            /* If Streamlit inserts an empty spacer/element container between rows,
+               collapse it as much as possible. */
+            div[data-testid="stElementContainer"]:empty {
+                min-height: 0 !important;
+                height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            /* Keep the outer vertical layout compact around trend sections */
+            div[data-testid="stVerticalBlock"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ),
+            div[data-testid="stVerticalBlock"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) {
+                gap: 0.15rem !important;
             }
 
         </style>
