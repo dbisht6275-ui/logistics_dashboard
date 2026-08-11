@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.6.9
+# OVERVIEW VERSION: 8.7.0
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -8,9 +8,9 @@ import plotly.express as px
 from services.data_loader import load_booking_data_pair, get_date_range
 from services.branch_agency_mast import load_stationmast_data
 
-SPACER_HEIGHT = 10
-REVENUE_CHART_HEIGHT = 310
-ALIGNED_CHART_HEIGHT = 310
+SPACER_HEIGHT = 5
+REVENUE_CHART_HEIGHT = 245
+ALIGNED_CHART_HEIGHT = 245
 RANKING_CHART_HEIGHT = 330
 
 TOP_N_OPTIONS = [10, 20, 30, 40]
@@ -1122,7 +1122,7 @@ def _inject_overview_css():
             /* Bordered visual cards get a little extra vertical separation. */
             div[data-testid="stVerticalBlockBorderWrapper"] {
                 margin-top: 4px !important;
-                margin-bottom: 14px !important;
+                margin-bottom: 7px !important;
                 box-sizing: border-box !important;
             }
 
@@ -1130,7 +1130,7 @@ def _inject_overview_css():
                 gap: 16px !important;
                 column-gap: 16px !important;
                 margin-top: 4px !important;
-                margin-bottom: 8px !important;
+                margin-bottom: 4px !important;
             }
 
             div[data-testid="stHorizontalBlock"]:has(div[data-testid="stVerticalBlockBorderWrapper"])
@@ -1634,6 +1634,64 @@ def _inject_overview_css():
 
             .st-key-target_meter_compact div[data-testid="stVerticalBlockBorderWrapper"] > div {
                 padding: .35rem .50rem .30rem !important;
+            }
+
+
+            /* =========================================================
+               COMPACT BUSINESS + WEIGHT TREND LAYOUT - VERSION 8.7.0
+               ========================================================= */
+
+            /* Less vertical gap between dashboard rows */
+            div[data-testid="stHorizontalBlock"] {
+                margin-bottom: 2px !important;
+            }
+
+            div[data-testid="stHorizontalBlock"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ),
+            div[data-testid="stHorizontalBlock"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) {
+                margin-top: 0 !important;
+                margin-bottom: 2px !important;
+            }
+
+            /* Tight chart-card padding */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ) > div,
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) > div {
+                padding-top: .38rem !important;
+                padding-bottom: .30rem !important;
+            }
+
+            /* Reduce Plotly whitespace inside trend cards */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ) div[data-testid="stPlotlyChart"],
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) div[data-testid="stPlotlyChart"] {
+                margin-top: -2px !important;
+                margin-bottom: 0 !important;
+            }
+
+            /* Compact Daily / Weekly / Monthly / Quarterly controls */
+            div[class*="st-key-revenue_period_btn_"] button,
+            div[class*="st-key-weight_period_btn_"] button {
+                min-height: 30px !important;
+                height: 30px !important;
+                padding: 2px 7px !important;
+                border-radius: 7px !important;
+            }
+
+            div[class*="st-key-revenue_period_btn_"] button p,
+            div[class*="st-key-revenue_period_btn_"] button span,
+            div[class*="st-key-weight_period_btn_"] button p,
+            div[class*="st-key-weight_period_btn_"] button span {
+                font-size: 9.5px !important;
             }
 
         </style>
@@ -3377,7 +3435,7 @@ def show_overview():
             fig_yoy.update_layout(
                 barmode="group",
                 height=REVENUE_CHART_HEIGHT,
-                margin=dict(l=2, r=2, t=20, b=2),
+                margin=dict(l=2, r=2, t=12, b=0),
                 plot_bgcolor="#f8fafc",
                 paper_bgcolor="rgba(0,0,0,0)",
                 legend=dict(
@@ -3394,7 +3452,7 @@ def show_overview():
                 bargap=0.22,
                 bargroupgap=0.08,
             )
-            apply_3d_chart_layout(fig_yoy, height=REVENUE_CHART_HEIGHT, margin=dict(l=8, r=8, t=24, b=8))
+            apply_3d_chart_layout(fig_yoy, height=REVENUE_CHART_HEIGHT, margin=dict(l=6, r=6, t=14, b=2))
             fig_yoy.update_xaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=11))
             fig_yoy.update_yaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=11), title_font=dict(size=12))
 
