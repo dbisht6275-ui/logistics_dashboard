@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.6.5
+# OVERVIEW VERSION: 8.6.6
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -1991,7 +1991,7 @@ def create_card(title, value, color, icon, growth_value=0.0, previous_value=None
         st.markdown(html, unsafe_allow_html=True)
 
 def create_target_speedometer(actual, target, unit="", title="Target Achievement", compact=False):
-    """Render a Plotly speedometer. Compact mode is designed for chart headers."""
+    """Render a compact executive target-achievement gauge that fits dashboard cards cleanly."""
     actual = float(actual or 0)
     target = float(target or 0)
     achievement = (actual / target * 100) if target > 0 else 0.0
@@ -2000,54 +2000,68 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
     if target <= 0:
         status_text = "Target not set"
         status_color = "#64748b"
+        status_bg = "#f1f5f9"
     elif achievement >= 100:
         status_text = "Target achieved"
-        status_color = "#16a34a"
+        status_color = "#15803d"
+        status_bg = "#dcfce7"
     elif achievement >= 80:
         status_text = "Near target"
-        status_color = "#f59e0b"
+        status_color = "#b45309"
+        status_bg = "#fef3c7"
     else:
         status_text = "Below target"
         status_color = "#dc2626"
+        status_bg = "#fee2e2"
+
+    # Top summary line keeps Actual / Target separate from the gauge title
+    # so Plotly text never overlaps the center percentage.
+    summary_html = (
+        f'<div style="display:flex;justify-content:space-between;align-items:center;'
+        f'gap:8px;margin:0 2px 3px 2px;">'
+        f'<div style="font-size:11px;color:#64748b;">'
+        f'Actual <span style="font-weight:600;color:#0f172a;">{actual:,.2f}{unit}</span>'
+        f'</div>'
+        f'<div style="font-size:11px;color:#64748b;text-align:right;">'
+        f'Target <span style="font-weight:600;color:#0f172a;">{target:,.2f}{unit}</span>'
+        f'</div>'
+        f'</div>'
+    )
+
+    st.markdown(summary_html, unsafe_allow_html=True)
 
     fig = go.Figure(
         go.Indicator(
-            mode="gauge+number+delta",
+            mode="gauge+number",
             value=gauge_value,
             number={
                 "suffix": "%",
                 "valueformat": ".1f",
-                "font": {"size": 19 if compact else 28, "color": "#0f172a"},
-            },
-            delta={
-                "reference": 100,
-                "relative": False,
-                "valueformat": ".1f",
-                "suffix": " pp",
-                "increasing": {"color": "#16a34a"},
-                "decreasing": {"color": "#dc2626"},
-                "font": {"size": 9 if compact else 11},
-            },
-            title={
-                "text": (
-                    f"<b>{title}</b><br>"
-                    f"<span style='font-size:11px;color:#64748b'>"
-                    f"Actual {actual:,.2f}{unit} | Target {target:,.2f}{unit}</span>"
-                ),
-                "font": {"size": 10 if compact else 14, "color": "#334155"},
+                "font": {
+                    "size": 25 if compact else 31,
+                    "color": "#0f172a",
+                    "family": "Arial",
+                },
             },
             gauge={
+                "shape": "angular",
                 "axis": {
                     "range": [0, 150],
                     "tickmode": "array",
                     "tickvals": [0, 50, 80, 100, 120, 150],
-                    "ticktext": ["0", "50", "80", "100", "120", "150%"],
-                    "tickfont": {"size": 7 if compact else 9, "color": "#64748b"},
+                    "ticktext": ["0", "50", "80", "100", "120", "150"],
+                    "tickfont": {
+                        "size": 7 if compact else 8,
+                        "color": "#64748b",
+                    },
+                    "tickwidth": 0,
                 },
-                "bar": {"color": status_color, "thickness": 0.28},
-                "bgcolor": "#f8fafc",
-                "borderwidth": 1,
-                "bordercolor": "#dbe4ef",
+                "bar": {
+                    "color": status_color,
+                    "thickness": 0.24,
+                },
+                "bgcolor": "#ffffff",
+                "borderwidth": 0,
                 "steps": [
                     {"range": [0, 80], "color": "#fee2e2"},
                     {"range": [80, 100], "color": "#fef3c7"},
@@ -2061,25 +2075,37 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
             },
         )
     )
+
     fig.update_layout(
-        height=96 if compact else 235,
-        margin=(dict(l=2, r=2, t=24, b=0) if compact else dict(l=18, r=18, t=55, b=20)),
+        height=115 if compact else 160,
+        margin=dict(
+            l=8 if compact else 10,
+            r=8 if compact else 10,
+            t=2,
+            b=0,
+        ),
         paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Arial"),
-        annotations=[
-            dict(
-                x=0.5, y=0.03, xref="paper", yref="paper",
-                text=f"<b>{status_text}</b>",
-                showarrow=False,
-                font=dict(size=12, color=status_color),
-            )
-        ],
     )
+
     st.plotly_chart(
         fig,
         width="stretch",
         config={"displayModeBar": False, "responsive": True},
     )
+
+    status_html = (
+        f'<div style="display:flex;justify-content:center;margin-top:-10px;margin-bottom:2px;">'
+        f'<span style="display:inline-flex;align-items:center;justify-content:center;'
+        f'padding:4px 10px;border-radius:999px;background:{status_bg};'
+        f'color:{status_color};font-size:10.5px;font-weight:600;'
+        f'border:1px solid {status_color}33;">{status_text}</span>'
+        f'</div>'
+    )
+
+    st.markdown(status_html, unsafe_allow_html=True)
+
 
 def mini_rank_card(rank, name, value, max_value, color, render=True):
     """Build a compact ranked branch row with a wider name area and slimmer bar."""
@@ -3567,8 +3593,8 @@ def show_overview():
 
         with st.container(border=True):
             st.markdown(
-                "<div style='font-size:16px;font-weight:600;color:#0f172a;"
-                "margin:0 0 4px 0;line-height:1.2;'>Target Achievement</div>",
+                "<div style='font-size:13px;font-weight:500;color:#0f172a;"
+                "margin:0 0 5px 0;line-height:1.2;'>Target Achievement</div>",
                 unsafe_allow_html=True,
             )
             create_target_speedometer(
