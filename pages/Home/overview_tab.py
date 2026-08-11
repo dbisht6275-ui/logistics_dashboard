@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.7.2
+# OVERVIEW VERSION: 8.7.1
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -9,7 +9,7 @@ from services.data_loader import load_booking_data_pair, get_date_range
 from services.branch_agency_mast import load_stationmast_data
 
 SPACER_HEIGHT = 1
-REVENUE_CHART_HEIGHT = 420
+REVENUE_CHART_HEIGHT = 245
 ALIGNED_CHART_HEIGHT = 245
 RANKING_CHART_HEIGHT = 330
 
@@ -1745,21 +1745,6 @@ def _inject_overview_css():
                 gap: 0.15rem !important;
             }
 
-
-            /* 8.7.2: let the taller Business Trend fill the row instead of leaving a blank band. */
-            div[data-testid="stVerticalBlockBorderWrapper"]:has(
-                div[class*="st-key-revenue_period_btn_"]
-            ) div[data-testid="stPlotlyChart"] {
-                min-height: 420px !important;
-            }
-
-            /* Keep Weight Trend immediately after the preceding row. */
-            div[data-testid="stHorizontalBlock"]:has(
-                div[class*="st-key-weight_period_btn_"]
-            ) {
-                margin-top: -1px !important;
-            }
-
         </style>
         """,
         unsafe_allow_html=True,
@@ -2086,11 +2071,9 @@ def build_weight_yoy_trend(current_df, previous_df, trend_type, date_col, fy_sta
 
     return trend_df
 
-def create_card(
-    title, value, color, icon, growth_value=0.0, previous_value=None,
-    target_value=None, target_achievement=None
-):
-    """Render a compact KPI card with LY value, optional target/achievement, and YoY growth."""
+def create_card(title, value, color, icon, growth_value=0.0, previous_value=None,
+                target_value=None, target_achievement=None):
+    """Render a compact KPI card with LY value, target and target achievement."""
     positive = growth_value >= 0
     growth_color = "#15803d" if positive else "#dc2626"
     growth_bg = "#ffffff"
@@ -2098,17 +2081,20 @@ def create_card(
     growth_text = growth_label(growth_value)
     previous_text = previous_value if previous_value is not None else "N/A"
 
-    target_achievement_text = (
-        f" / {target_achievement:.1f}%"
-        if target_achievement is not None and pd.notna(target_achievement)
-        else ""
-    )
-    target_html = (
-        f'<div style="position:relative;z-index:1;margin-top:3px;font-size:9px;font-weight:800;'
-        f'color:#c2410c;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-        f'Target: {target_value}{target_achievement_text}</div>'
-        if target_value is not None else ""
-    )
+    if target_value is not None:
+        ach_text = (
+            f"{float(target_achievement):.1f}%"
+            if target_achievement is not None and pd.notna(target_achievement)
+            else "N/A"
+        )
+        target_html = (
+            f'<div style="position:relative;z-index:1;margin-top:3px;font-size:9px;'
+            f'font-weight:800;color:#ea580c;line-height:1.05;white-space:nowrap;'
+            f'overflow:hidden;text-overflow:ellipsis;">'
+            f'TGT-{target_value} / Ach {ach_text}</div>'
+        )
+    else:
+        target_html = ""
 
     html = (
         f'<div class="kpi-3d-card" style="--kpi-accent:{color};">'
@@ -2136,124 +2122,111 @@ def create_card(
         st.markdown(html, unsafe_allow_html=True)
 
 def create_target_speedometer(actual, target, unit="", title="Target Achievement", compact=False):
-    """Render a compact target-achievement meter that stays fully inside its card."""
+    """Render a bullet-style target achievement chart.
+
+    A bullet chart is clearer than a speedometer for one business KPI because it
+    shows actual progress against the 100% target on a common linear scale.
+    """
     actual = float(actual or 0)
     target = float(target or 0)
     achievement = (actual / target * 100) if target > 0 else 0.0
-    gauge_value = min(max(achievement, 0.0), 150.0)
+    chart_value = max(0.0, achievement)
+    axis_max = max(120.0, min(160.0, chart_value * 1.12 if chart_value else 120.0))
 
     if target <= 0:
         status_text = "Target not set"
         status_color = "#64748b"
-        status_bg = "#f1f5f9"
+        bar_color = "#94a3b8"
     elif achievement >= 100:
         status_text = "Target achieved"
         status_color = "#15803d"
-        status_bg = "#dcfce7"
+        bar_color = "#16a34a"
     elif achievement >= 80:
         status_text = "Near target"
         status_color = "#b45309"
-        status_bg = "#fef3c7"
+        bar_color = "#f59e0b"
     else:
         status_text = "Below target"
         status_color = "#dc2626"
-        status_bg = "#fee2e2"
+        bar_color = "#2563eb"
 
-    # One compact summary row.
+    gap = target - actual
+    gap_label = f"Gap {abs(gap):,.2f}{unit}" if target > 0 else "Target not set"
+    if gap < 0:
+        gap_label = f"Above target {abs(gap):,.2f}{unit}"
+
     st.markdown(
         (
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;'
-            'align-items:start;margin:4px 4px 4px 4px;line-height:1.15;">'
-            f'<div style="padding:3px 0 2px 0;">'
-            f'<div style="font-size:12px;font-weight:600;color:#31557d;'
-            f'margin-bottom:3px;letter-spacing:.1px;">Actual</div>'
-            f'<div style="font-size:15px;font-weight:700;color:#0f2744;">'
-            f'{actual:,.2f}{unit}</div></div>'
-            f'<div style="padding:3px 0 2px 0;text-align:right;">'
-            f'<div style="font-size:12px;font-weight:600;color:#31557d;'
-            f'margin-bottom:3px;letter-spacing:.1px;">Target</div>'
-            f'<div style="font-size:15px;font-weight:700;color:#0f2744;">'
-            f'{target:,.2f}{unit}</div></div>'
+            '<div style="display:grid;grid-template-columns:1fr auto;gap:12px;'
+            'align-items:end;margin:2px 2px 1px 2px;">'
+            '<div>'
+            f'<div style="font-size:11px;color:#64748b;font-weight:600;">Actual / Target</div>'
+            f'<div style="font-size:16px;color:#0f2744;font-weight:800;margin-top:2px;">'
+            f'{actual:,.2f}{unit} / {target:,.2f}{unit}</div>'
+            '</div>'
+            f'<div style="text-align:right;font-size:22px;font-weight:850;color:{status_color};">'
+            f'{achievement:.1f}%</div>'
             '</div>'
         ),
         unsafe_allow_html=True,
     )
 
-    fig = go.Figure(
-        go.Indicator(
-            mode="gauge+number",
-            value=gauge_value,
-            domain={"x": [0.08, 0.92], "y": [0.10, 0.96]},
-            number={
-                "suffix": "%",
-                "valueformat": ".1f",
-                "font": {
-                    "size": 22 if compact else 26,
-                    "color": "#0f172a",
-                    "family": "Arial",
-                },
-            },
-            gauge={
-                "shape": "angular",
-                "axis": {
-                    "range": [0, 150],
-                    "tickmode": "array",
-                    "tickvals": [0, 50, 80, 100, 120, 150],
-                    "ticktext": ["0", "50", "80", "100", "120", "150"],
-                    "tickfont": {
-                        "size": 6 if compact else 7,
-                        "color": "#64748b",
-                    },
-                    "tickwidth": 0,
-                },
-                "bar": {
-                    "color": status_color,
-                    "thickness": 0.20,
-                },
-                "bgcolor": "#ffffff",
-                "borderwidth": 0,
-                "steps": [
-                    {"range": [0, 80], "color": "#fee2e2"},
-                    {"range": [80, 100], "color": "#fef3c7"},
-                    {"range": [100, 150], "color": "#dcfce7"},
-                ],
-                "threshold": {
-                    "line": {"color": "#0f172a", "width": 2.5},
-                    "thickness": 0.68,
-                    "value": 100,
-                },
-            },
-        )
-    )
+    fig = go.Figure()
+    # Background performance bands.
+    fig.add_shape(type="rect", x0=0, x1=min(80, axis_max), y0=-0.32, y1=0.32,
+                  fillcolor="#fee2e2", line_width=0, layer="below")
+    if axis_max > 80:
+        fig.add_shape(type="rect", x0=80, x1=min(100, axis_max), y0=-0.32, y1=0.32,
+                      fillcolor="#fef3c7", line_width=0, layer="below")
+    if axis_max > 100:
+        fig.add_shape(type="rect", x0=100, x1=axis_max, y0=-0.32, y1=0.32,
+                      fillcolor="#dcfce7", line_width=0, layer="below")
+
+    fig.add_trace(go.Bar(
+        x=[min(chart_value, axis_max)], y=["Achievement"], orientation="h",
+        marker=dict(color=bar_color), width=0.38,
+        text=[f"{achievement:.1f}%"], textposition="inside",
+        textfont=dict(color="white", size=12, family="Arial"),
+        hovertemplate=(
+            f"Actual: {actual:,.2f}{unit}<br>Target: {target:,.2f}{unit}"
+            f"<br>Achievement: {achievement:.1f}%<extra></extra>"
+        ),
+        showlegend=False,
+    ))
+
+    # 100% target marker.
+    fig.add_vline(x=100, line_width=3, line_color="#0f172a")
+    fig.add_annotation(x=100, y=0.52, text="Target 100%", showarrow=False,
+                       font=dict(size=9, color="#0f172a"))
 
     fig.update_layout(
-        height=92 if compact else 118,
-        margin=dict(l=2, r=2, t=3, b=0),
+        height=92 if compact else 108,
+        margin=dict(l=5, r=5, t=18, b=22),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
+        bargap=0.3,
+        xaxis=dict(
+            range=[0, axis_max],
+            tickmode="array",
+            tickvals=[0, 50, 80, 100, 120] if axis_max >= 120 else [0, 50, 80, 100],
+            ticktext=["0%", "50%", "80%", "100%", "120%"] if axis_max >= 120 else ["0%", "50%", "80%", "100%"],
+            showgrid=False, zeroline=False, showline=False, tickfont=dict(size=8, color="#64748b"),
+        ),
+        yaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
         font=dict(family="Arial"),
     )
 
     st.plotly_chart(
-        fig,
-        width="stretch",
-        config={
-            "displayModeBar": False,
-            "responsive": True,
-            "staticPlot": True,
-        },
+        fig, width="stretch",
+        config={"displayModeBar": False, "responsive": True, "staticPlot": True},
     )
 
-    # Status pill is kept in normal document flow (no negative margin),
-    # so it can never fall outside the bordered card.
     st.markdown(
         (
-            '<div style="display:flex;justify-content:center;align-items:center;'
-            'margin:0 0 1px 0;min-height:22px;">'
-            f'<span style="display:inline-flex;align-items:center;justify-content:center;'
-            f'padding:3px 9px;border-radius:999px;background:{status_bg};'
-            f'color:{status_color};font-size:9.5px;font-weight:600;'
-            f'line-height:1;border:1px solid {status_color}33;">{status_text}</span>'
+            '<div style="display:flex;justify-content:space-between;align-items:center;'
+            'margin:-3px 3px 0 3px;font-size:9.5px;">'
+            f'<span style="color:#64748b;font-weight:600;">{gap_label}</span>'
+            f'<span style="color:{status_color};font-weight:700;">{status_text}</span>'
             '</div>'
         ),
         unsafe_allow_html=True,
@@ -3281,14 +3254,12 @@ def show_overview():
     total_target_lac = get_monthly_target_for_filtered_branches(df, "All") * target_month_count
     ftl_target_lac = get_monthly_target_for_filtered_branches(df, "FTL") * target_month_count
     ltl_target_lac = get_monthly_target_for_filtered_branches(df, "LTL") * target_month_count
+    total_target_text = format_revenue(total_target_lac * 100000.0, conversion_type)
+    ftl_target_text = format_revenue(ftl_target_lac * 100000.0, conversion_type)
+    ltl_target_text = format_revenue(ltl_target_lac * 100000.0, conversion_type)
     total_target_rupees = total_target_lac * 100000.0
     ftl_target_rupees = ftl_target_lac * 100000.0
     ltl_target_rupees = ltl_target_lac * 100000.0
-
-    total_target_text = format_revenue(total_target_rupees, conversion_type)
-    ftl_target_text = format_revenue(ftl_target_rupees, conversion_type)
-    ltl_target_text = format_revenue(ltl_target_rupees, conversion_type)
-
     total_target_achievement = (revenue / total_target_rupees * 100) if total_target_rupees > 0 else None
     ftl_target_achievement = (ftl / ftl_target_rupees * 100) if ftl_target_rupees > 0 else None
     ltl_target_achievement = (ltl / ltl_target_rupees * 100) if ltl_target_rupees > 0 else None
@@ -3296,25 +3267,16 @@ def show_overview():
     k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     with k1:
-        create_card(
-            "Business", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth,
-            format_revenue(prev_kpis["revenue"], conversion_type), total_target_text,
-            total_target_achievement,
-        )
+        create_card("Business", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth,
+                    format_revenue(prev_kpis["revenue"], conversion_type), total_target_text, total_target_achievement)
 
     with k2:
-        create_card(
-            "FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth,
-            format_revenue(prev_kpis["ftl"], conversion_type), ftl_target_text,
-            ftl_target_achievement,
-        )
+        create_card("FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth,
+                    format_revenue(prev_kpis["ftl"], conversion_type), ftl_target_text, ftl_target_achievement)
 
     with k3:
-        create_card(
-            "LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth,
-            format_revenue(prev_kpis["ltl"], conversion_type), ltl_target_text,
-            ltl_target_achievement,
-        )
+        create_card("LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth,
+                    format_revenue(prev_kpis["ltl"], conversion_type), ltl_target_text, ltl_target_achievement)
 
     with k4:
         create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth,
