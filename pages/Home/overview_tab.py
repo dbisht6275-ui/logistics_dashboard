@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.6.7
+# OVERVIEW VERSION: 8.6.8
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -2031,11 +2031,11 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
         (
             '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;'
             'align-items:center;margin:0 2px -2px 2px;line-height:1.05;">'
-            f'<div style="font-size:9px;color:#64748b;">Actual<br>'
-            f'<span style="font-size:10.5px;font-weight:600;color:#0f172a;">'
+            f'<div style="font-size:11px;color:#64748b;">Actual<br>'
+            f'<span style="font-size:14px;font-weight:700;color:#0f172a;">'
             f'{actual:,.2f}{unit}</span></div>'
-            f'<div style="font-size:9px;color:#64748b;text-align:right;">Target<br>'
-            f'<span style="font-size:10.5px;font-weight:600;color:#0f172a;">'
+            f'<div style="font-size:11px;color:#64748b;text-align:right;">Target<br>'
+            f'<span style="font-size:14px;font-weight:700;color:#0f172a;">'
             f'{target:,.2f}{unit}</span></div>'
             '</div>'
         ),
@@ -3609,7 +3609,7 @@ def show_overview():
 
         with st.container(border=True):
             st.markdown(
-                "<div style='font-size:12px;font-weight:500;color:#0f172a;"
+                "<div style='font-size:15px;font-weight:600;color:#0f172a;"
                 "margin:0 0 2px 0;line-height:1.1;'>Target Achievement</div>",
                 unsafe_allow_html=True,
             )
