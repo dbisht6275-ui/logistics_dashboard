@@ -9,7 +9,7 @@ from services.data_loader import load_booking_data_pair, get_date_range
 from services.branch_agency_mast import load_stationmast_data
 
 SPACER_HEIGHT = 1
-REVENUE_CHART_HEIGHT = 245
+REVENUE_CHART_HEIGHT = 420
 ALIGNED_CHART_HEIGHT = 245
 RANKING_CHART_HEIGHT = 330
 
@@ -2122,116 +2122,134 @@ def create_card(title, value, color, icon, growth_value=0.0, previous_value=None
         st.markdown(html, unsafe_allow_html=True)
 
 def create_target_speedometer(actual, target, unit="", title="Target Achievement", compact=False):
-    """Render a bullet-style target achievement chart.
-
-    A bullet chart is clearer than a speedometer for one business KPI because it
-    shows actual progress against the 100% target on a common linear scale.
-    """
+    """Render Actual vs Target in the same visual language as the Business Trend chart."""
     actual = float(actual or 0)
     target = float(target or 0)
     achievement = (actual / target * 100) if target > 0 else 0.0
-    chart_value = max(0.0, achievement)
-    axis_max = max(120.0, min(160.0, chart_value * 1.12 if chart_value else 120.0))
 
     if target <= 0:
         status_text = "Target not set"
         status_color = "#64748b"
-        bar_color = "#94a3b8"
     elif achievement >= 100:
         status_text = "Target achieved"
         status_color = "#15803d"
-        bar_color = "#16a34a"
     elif achievement >= 80:
         status_text = "Near target"
         status_color = "#b45309"
-        bar_color = "#f59e0b"
     else:
         status_text = "Below target"
         status_color = "#dc2626"
-        bar_color = "#2563eb"
 
-    gap = target - actual
-    gap_label = f"Gap {abs(gap):,.2f}{unit}" if target > 0 else "Target not set"
-    if gap < 0:
-        gap_label = f"Above target {abs(gap):,.2f}{unit}"
-
+    # Header summary mirrors the clean KPI / trend styling.
     st.markdown(
         (
-            '<div style="display:grid;grid-template-columns:1fr auto;gap:12px;'
-            'align-items:end;margin:2px 2px 1px 2px;">'
+            '<div style="display:flex;align-items:flex-end;justify-content:space-between;'
+            'gap:10px;margin:2px 2px 4px 2px;">'
             '<div>'
-            f'<div style="font-size:11px;color:#64748b;font-weight:600;">Actual / Target</div>'
-            f'<div style="font-size:16px;color:#0f2744;font-weight:800;margin-top:2px;">'
+            '<div style="font-size:10px;color:#64748b;font-weight:600;">Actual / Target</div>'
+            f'<div style="font-size:15px;color:#0f2744;font-weight:800;margin-top:2px;">'
             f'{actual:,.2f}{unit} / {target:,.2f}{unit}</div>'
             '</div>'
-            f'<div style="text-align:right;font-size:22px;font-weight:850;color:{status_color};">'
-            f'{achievement:.1f}%</div>'
+            f'<div style="font-size:18px;font-weight:850;color:{status_color};white-space:nowrap;">'
+            f'Ach {achievement:.1f}%</div>'
             '</div>'
         ),
         unsafe_allow_html=True,
     )
 
     fig = go.Figure()
-    # Background performance bands.
-    fig.add_shape(type="rect", x0=0, x1=min(80, axis_max), y0=-0.32, y1=0.32,
-                  fillcolor="#fee2e2", line_width=0, layer="below")
-    if axis_max > 80:
-        fig.add_shape(type="rect", x0=80, x1=min(100, axis_max), y0=-0.32, y1=0.32,
-                      fillcolor="#fef3c7", line_width=0, layer="below")
-    if axis_max > 100:
-        fig.add_shape(type="rect", x0=100, x1=axis_max, y0=-0.32, y1=0.32,
-                      fillcolor="#dcfce7", line_width=0, layer="below")
 
-    fig.add_trace(go.Bar(
-        x=[min(chart_value, axis_max)], y=["Achievement"], orientation="h",
-        marker=dict(color=bar_color), width=0.38,
-        text=[f"{achievement:.1f}%"], textposition="inside",
-        textfont=dict(color="white", size=12, family="Arial"),
-        hovertemplate=(
-            f"Actual: {actual:,.2f}{unit}<br>Target: {target:,.2f}{unit}"
-            f"<br>Achievement: {achievement:.1f}%<extra></extra>"
-        ),
-        showlegend=False,
-    ))
+    # Actual: solid dashboard blue, same as Current business bars.
+    fig.add_trace(
+        go.Bar(
+            x=["Achievement"],
+            y=[actual],
+            name="Actual",
+            marker=dict(color="#2563eb", line=dict(color="#1e3a8a", width=1.3)),
+            text=[actual],
+            texttemplate="%{text:.2f}",
+            textposition="outside",
+            textfont=dict(size=11, color="#1d4ed8", family="Arial"),
+            cliponaxis=False,
+            offsetgroup="actual",
+            hovertemplate=(
+                f"<b>Actual</b><br>{actual:,.2f}{unit}<extra></extra>"
+            ),
+        )
+    )
 
-    # 100% target marker.
-    fig.add_vline(x=100, line_width=3, line_color="#0f172a")
-    fig.add_annotation(x=100, y=0.52, text="Target 100%", showarrow=False,
-                       font=dict(size=9, color="#0f172a"))
+    # Target: orange hatched bar, matching the Target bars in Business Trend.
+    fig.add_trace(
+        go.Bar(
+            x=["Achievement"],
+            y=[target],
+            name="Target",
+            marker=dict(
+                color="#fff7ed",
+                line=dict(color="#f59e0b", width=1.5),
+                pattern=dict(shape="/", solidity=0.22, fgcolor="#f59e0b"),
+            ),
+            text=[target],
+            texttemplate="%{text:.2f}",
+            textposition="outside",
+            textfont=dict(size=11, color="#b45309", family="Arial"),
+            cliponaxis=False,
+            offsetgroup="target",
+            hovertemplate=(
+                f"<b>Target</b><br>{target:,.2f}{unit}<br>Achievement: {achievement:.1f}%<extra></extra>"
+            ),
+        )
+    )
+
+    ymax = max(actual, target, 1.0)
+    fig.add_annotation(
+        x="Achievement",
+        y=ymax * 1.24,
+        text=f"🎯 {achievement:.1f}%",
+        showarrow=False,
+        font=dict(size=12, color=status_color, family="Arial"),
+    )
 
     fig.update_layout(
-        height=92 if compact else 108,
-        margin=dict(l=5, r=5, t=18, b=22),
+        barmode="group",
+        height=175 if compact else 205,
+        margin=dict(l=4, r=4, t=30, b=4),
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        bargap=0.3,
-        xaxis=dict(
-            range=[0, axis_max],
-            tickmode="array",
-            tickvals=[0, 50, 80, 100, 120] if axis_max >= 120 else [0, 50, 80, 100],
-            ticktext=["0%", "50%", "80%", "100%", "120%"] if axis_max >= 120 else ["0%", "50%", "80%", "100%"],
-            showgrid=False, zeroline=False, showline=False, tickfont=dict(size=8, color="#64748b"),
+        plot_bgcolor="#f8fafc",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            x=0,
+            font=dict(size=10),
         ),
-        yaxis=dict(showticklabels=False, showgrid=False, zeroline=False),
+        yaxis=dict(
+            range=[0, ymax * 1.38],
+            showgrid=False,
+            showline=False,
+            zeroline=False,
+            tickfont=dict(size=9, color="#64748b"),
+        ),
+        xaxis=dict(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10)),
+        bargap=0.34,
+        bargroupgap=0.08,
         font=dict(family="Arial"),
     )
 
     st.plotly_chart(
-        fig, width="stretch",
+        fig,
+        width="stretch",
         config={"displayModeBar": False, "responsive": True, "staticPlot": True},
     )
 
     st.markdown(
         (
-            '<div style="display:flex;justify-content:space-between;align-items:center;'
-            'margin:-3px 3px 0 3px;font-size:9.5px;">'
-            f'<span style="color:#64748b;font-weight:600;">{gap_label}</span>'
-            f'<span style="color:{status_color};font-weight:700;">{status_text}</span>'
-            '</div>'
+            '<div style="display:flex;justify-content:center;margin-top:-2px;">'
+            f'<span style="font-size:9.5px;font-weight:700;color:{status_color};">'
+            f'{status_text}</span></div>'
         ),
         unsafe_allow_html=True,
     )
-
 
 def mini_rank_card(rank, name, value, max_value, color, render=True):
     """Build a compact ranked branch row with a wider name area and slimmer bar."""
