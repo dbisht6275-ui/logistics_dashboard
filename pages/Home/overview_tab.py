@@ -187,9 +187,10 @@ def _inject_overview_css():
             .kpi-3d-card {
                 position: relative;
                 overflow: hidden;
-                min-height: 86px;
-                height: 86px;
-                padding: 10px 11px 11px 11px;
+                min-height: 94px;
+                height: 94px;
+                padding: 10px 11px 12px 11px;
+                box-sizing: border-box;
                 border: 1px solid #cbd5e1;
                 border-radius: 14px;
                 background: linear-gradient(145deg, #ffffff 0%, #f8fafc 45%, #e7edf5 100%);
@@ -536,9 +537,9 @@ def _inject_overview_css():
             }
             div[data-baseweb="select"] > div {min-height:34px!important;}
             div[data-testid="stHorizontalBlock"] > div {min-width:0!important;}
-            .kpi-3d-card {min-height:86px!important;height:86px!important;padding:8px 9px;transform:none;box-shadow:0 3px 8px rgba(15,23,42,.10)!important;}
+            .kpi-3d-card {min-height:94px!important;height:94px!important;padding:8px 9px 10px!important;box-sizing:border-box!important;transform:none;box-shadow:0 3px 8px rgba(15,23,42,.10)!important;}
             .kpi-3d-value {font-size:16px;margin-top:2px;}
-            .kpi-3d-footer {margin-top:4px;}
+            .kpi-3d-footer {margin-top:3px;margin-bottom:1px;}
             [data-testid="stDataFrame"] tbody tr {height:22px!important;}
             h5,h6 {margin:.1rem 0 .25rem!important;}
 
@@ -2152,6 +2153,8 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
         status_icon = "↗"
 
     # Two-column layout: donut on the left, compact KPI boxes on the right.
+    # Add breathing room below the heading so the donut never touches it.
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
     donut_col, metrics_col = st.columns([0.92, 1.08], gap="small")
 
     with donut_col:
@@ -2192,7 +2195,7 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
         )
         fig.update_layout(
             height=176 if compact else 195,
-            margin=dict(l=0, r=0, t=0, b=0),
+            margin=dict(l=0, r=0, t=8, b=0),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
         )
@@ -3734,7 +3737,7 @@ def show_overview():
         with st.container(border=True):
             st.markdown(
                 "<div style='font-size:15px;font-weight:600;color:#0f172a;"
-                "margin:0 0 2px 0;line-height:1.1;'>Target Achievement (MTD)</div>",
+                "margin:0 0 8px 0;line-height:1.1;'>Target Achievement (MTD)</div>",
                 unsafe_allow_html=True,
             )
             create_target_speedometer(
