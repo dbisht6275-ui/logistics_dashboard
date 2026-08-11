@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.6.3
+# OVERVIEW VERSION: 8.6.4
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -1525,6 +1525,100 @@ def _inject_overview_css():
             .checkbox-slicer-label {
                 color: #24496f !important;
                 font-weight: 600 !important;
+            }
+
+
+            /* =========================================================
+               FILTER TYPOGRAPHY UNIFICATION - VERSION 8.6.4
+               Same font size/weight for every top filter heading
+               and every selected filter value. No bold text.
+               ========================================================= */
+
+            /* ---------- All top filter headings ---------- */
+            div[data-testid="stSelectbox"] > label,
+            div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+            div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] p,
+            div[data-testid="stSelectbox"] > label p,
+            .checkbox-slicer-label {
+                font-family: "Segoe UI", Arial, sans-serif !important;
+                font-size: 10px !important;
+                font-weight: 400 !important;
+                line-height: 20px !important;
+                color: #334e68 !important;
+                letter-spacing: 0 !important;
+                text-transform: none !important;
+            }
+
+            /* ---------- All top filter selected values ---------- */
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] input,
+            div[data-testid="stPopover"] > div > button,
+            div[data-testid="stPopover"] > div > button p,
+            div[data-testid="stPopover"] > div > button span {
+                font-family: "Segoe UI", Arial, sans-serif !important;
+                font-size: 10px !important;
+                font-weight: 400 !important;
+                line-height: 1 !important;
+                letter-spacing: 0 !important;
+                color: #173b63 !important;
+                text-transform: none !important;
+            }
+
+            /* ---------- Same control height for all filters ---------- */
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+            div[data-testid="stPopover"] > div > button {
+                min-height: 38px !important;
+                height: 38px !important;
+            }
+
+            /* ---------- Same heading height / spacing ---------- */
+            div[data-testid="stSelectbox"] > label,
+            div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+            .checkbox-slicer-label {
+                min-height: 20px !important;
+                height: 20px !important;
+                margin: 0 0 4px 2px !important;
+                padding: 0 !important;
+            }
+
+            /* Keep arrow/icon size consistent too */
+            div[data-testid="stSelectbox"] svg,
+            div[data-testid="stPopover"] > div > button svg {
+                width: 15px !important;
+                height: 15px !important;
+            }
+
+            /* Responsive screens keep the exact same typography */
+            @media (max-width: 1500px) {
+                div[data-testid="stSelectbox"] > label,
+                div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+                div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] p,
+                div[data-testid="stSelectbox"] > label p,
+                .checkbox-slicer-label,
+                div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+                div[data-testid="stSelectbox"] div[data-baseweb="select"] input,
+                div[data-testid="stPopover"] > div > button,
+                div[data-testid="stPopover"] > div > button p,
+                div[data-testid="stPopover"] > div > button span {
+                    font-size: 10px !important;
+                    font-weight: 400 !important;
+                }
+            }
+
+            @media (max-width: 1180px) {
+                div[data-testid="stSelectbox"] > label,
+                div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+                div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] p,
+                div[data-testid="stSelectbox"] > label p,
+                .checkbox-slicer-label,
+                div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+                div[data-testid="stSelectbox"] div[data-baseweb="select"] input,
+                div[data-testid="stPopover"] > div > button,
+                div[data-testid="stPopover"] > div > button p,
+                div[data-testid="stPopover"] > div > button span {
+                    font-size: 10px !important;
+                    font-weight: 400 !important;
+                }
             }
 
         </style>
