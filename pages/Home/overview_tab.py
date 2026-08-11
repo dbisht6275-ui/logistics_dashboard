@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.6.2
+# OVERVIEW VERSION: 8.6.5
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -1436,6 +1436,192 @@ def _inject_overview_css():
             div[data-baseweb="popover"] li:hover {
                 background: #eaf2fa !important;
                 color: #12395f !important;
+            }
+
+
+            /* =========================================================
+               TOP NATIVE FILTERS = SAME DESIGN AS SLICER FILTERS
+               Version 8.6.5
+               View Type, Financial Year, Company, Load Type, Conversion
+               ========================================================= */
+
+            .st-key-overview_view_type div[data-testid="stSelectbox"],
+            .st-key-overview_fy div[data-testid="stSelectbox"],
+            .st-key-overview_company div[data-testid="stSelectbox"],
+            .st-key-overview_loadtype div[data-testid="stSelectbox"],
+            .st-key-overview_conversion_type div[data-testid="stSelectbox"] {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                transform: none !important;
+                overflow: visible !important;
+            }
+
+            /* Same heading typography/spacing as checkbox-slicer-label */
+            .st-key-overview_view_type div[data-testid="stSelectbox"] > label,
+            .st-key-overview_view_type div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+            .st-key-overview_fy div[data-testid="stSelectbox"] > label,
+            .st-key-overview_fy div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+            .st-key-overview_company div[data-testid="stSelectbox"] > label,
+            .st-key-overview_company div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+            .st-key-overview_loadtype div[data-testid="stSelectbox"] > label,
+            .st-key-overview_loadtype div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+            .st-key-overview_conversion_type div[data-testid="stSelectbox"] > label,
+            .st-key-overview_conversion_type div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
+                display: block !important;
+                height: 22px !important;
+                min-height: 22px !important;
+                line-height: 22px !important;
+                margin: 0 0 9px 2px !important;
+                padding: 0 !important;
+                color: #243b53 !important;
+                font-family: "Segoe UI", Arial, sans-serif !important;
+                font-size: 10px !important;
+                font-weight: 400 !important;
+                letter-spacing: 0 !important;
+                white-space: nowrap !important;
+            }
+
+            .st-key-overview_view_type div[data-testid="stSelectbox"] label p,
+            .st-key-overview_fy div[data-testid="stSelectbox"] label p,
+            .st-key-overview_company div[data-testid="stSelectbox"] label p,
+            .st-key-overview_loadtype div[data-testid="stSelectbox"] label p,
+            .st-key-overview_conversion_type div[data-testid="stSelectbox"] label p {
+                margin: 0 !important;
+                padding: 0 !important;
+                font-size: 10px !important;
+                font-weight: 400 !important;
+                line-height: 22px !important;
+                color: #243b53 !important;
+            }
+
+            /* Match popover trigger: exact same size, fill, border, radius and shadow */
+            .st-key-overview_view_type div[data-baseweb="select"] > div,
+            .st-key-overview_fy div[data-baseweb="select"] > div,
+            .st-key-overview_company div[data-baseweb="select"] > div,
+            .st-key-overview_loadtype div[data-baseweb="select"] > div,
+            .st-key-overview_conversion_type div[data-baseweb="select"] > div {
+                width: 100% !important;
+                min-height: 40px !important;
+                height: 40px !important;
+                padding: 0 9px !important;
+                margin: 0 !important;
+                border: 1px solid #a9bfd8 !important;
+                border-radius: 9px !important;
+                background: linear-gradient(
+                    180deg,
+                    #f9fbfe 0%,
+                    #eef4fa 58%,
+                    #e4edf7 100%
+                ) !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.95),
+                    0 2px 5px rgba(30,64,105,.10) !important;
+                color: #173b63 !important;
+                transform: none !important;
+            }
+
+            /* Remove Streamlit/BaseWeb grey inner layers */
+            .st-key-overview_view_type div[data-baseweb="select"] > div > div,
+            .st-key-overview_view_type div[data-baseweb="select"] > div > div > div,
+            .st-key-overview_fy div[data-baseweb="select"] > div > div,
+            .st-key-overview_fy div[data-baseweb="select"] > div > div > div,
+            .st-key-overview_company div[data-baseweb="select"] > div > div,
+            .st-key-overview_company div[data-baseweb="select"] > div > div > div,
+            .st-key-overview_loadtype div[data-baseweb="select"] > div > div,
+            .st-key-overview_loadtype div[data-baseweb="select"] > div > div > div,
+            .st-key-overview_conversion_type div[data-baseweb="select"] > div > div,
+            .st-key-overview_conversion_type div[data-baseweb="select"] > div > div > div {
+                background: transparent !important;
+                box-shadow: none !important;
+            }
+
+            /* Same value text as slicers: normal weight, same size */
+            .st-key-overview_view_type div[data-baseweb="select"] span,
+            .st-key-overview_fy div[data-baseweb="select"] span,
+            .st-key-overview_company div[data-baseweb="select"] span,
+            .st-key-overview_loadtype div[data-baseweb="select"] span,
+            .st-key-overview_conversion_type div[data-baseweb="select"] span {
+                color: #173b63 !important;
+                font-family: "Segoe UI", Arial, sans-serif !important;
+                font-size: 10px !important;
+                font-weight: 400 !important;
+                line-height: 1 !important;
+            }
+
+            /* Same blue arrow treatment */
+            .st-key-overview_view_type div[data-baseweb="select"] svg,
+            .st-key-overview_fy div[data-baseweb="select"] svg,
+            .st-key-overview_company div[data-baseweb="select"] svg,
+            .st-key-overview_loadtype div[data-baseweb="select"] svg,
+            .st-key-overview_conversion_type div[data-baseweb="select"] svg {
+                width: 15px !important;
+                height: 15px !important;
+                padding: 0 !important;
+                border-radius: 0 !important;
+                background: transparent !important;
+                color: #376d9f !important;
+            }
+
+            .st-key-overview_view_type div[data-baseweb="select"] > div:hover,
+            .st-key-overview_view_type div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div,
+            .st-key-overview_fy div[data-baseweb="select"] > div:hover,
+            .st-key-overview_fy div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div,
+            .st-key-overview_company div[data-baseweb="select"] > div:hover,
+            .st-key-overview_company div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div,
+            .st-key-overview_loadtype div[data-baseweb="select"] > div:hover,
+            .st-key-overview_loadtype div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div,
+            .st-key-overview_conversion_type div[data-baseweb="select"] > div:hover,
+            .st-key-overview_conversion_type div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div {
+                border-color: #6f99c4 !important;
+                background: linear-gradient(
+                    180deg,
+                    #ffffff 0%,
+                    #edf5fd 55%,
+                    #dfeaf6 100%
+                ) !important;
+                box-shadow:
+                    0 0 0 2px rgba(71,120,166,.10),
+                    0 3px 7px rgba(30,64,105,.13) !important;
+            }
+
+            /* Keep exact same sizing at responsive widths too */
+            @media (max-width: 1500px) {
+                .st-key-overview_view_type div[data-baseweb="select"] > div,
+                .st-key-overview_fy div[data-baseweb="select"] > div,
+                .st-key-overview_company div[data-baseweb="select"] > div,
+                .st-key-overview_loadtype div[data-baseweb="select"] > div,
+                .st-key-overview_conversion_type div[data-baseweb="select"] > div {
+                    min-height: 38px !important;
+                    height: 38px !important;
+                }
+
+                .st-key-overview_view_type div[data-testid="stSelectbox"] > label,
+                .st-key-overview_fy div[data-testid="stSelectbox"] > label,
+                .st-key-overview_company div[data-testid="stSelectbox"] > label,
+                .st-key-overview_loadtype div[data-testid="stSelectbox"] > label,
+                .st-key-overview_conversion_type div[data-testid="stSelectbox"] > label {
+                    height: 21px !important;
+                    min-height: 21px !important;
+                    line-height: 21px !important;
+                    margin-bottom: 8px !important;
+                    font-size: 9px !important;
+                }
+
+                .st-key-overview_view_type div[data-baseweb="select"] span,
+                .st-key-overview_fy div[data-baseweb="select"] span,
+                .st-key-overview_company div[data-baseweb="select"] span,
+                .st-key-overview_loadtype div[data-baseweb="select"] span,
+                .st-key-overview_conversion_type div[data-baseweb="select"] span {
+                    font-size: 10px !important;
+                    font-weight: 400 !important;
+                }
             }
 
         </style>
