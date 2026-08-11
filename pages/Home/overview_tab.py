@@ -943,6 +943,76 @@ def _inject_overview_css():
                 box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 2px 5px rgba(15,42,67,.18) !important;
             }
 
+            /* ---------------------------------------------------------
+               Period selector selected colors
+               0 = Daily, 1 = Weekly, 2 = Monthly, 3 = Quarterly
+               Applies to both Revenue and Weight trend selectors.
+               --------------------------------------------------------- */
+
+            /* DAILY - Green */
+            .st-key-revenue_period_btn_0 button[data-testid="stBaseButton-primary"],
+            .st-key-weight_period_btn_0 button[data-testid="stBaseButton-primary"] {
+                border-color: #15803d !important;
+                background: linear-gradient(180deg, #22c55e 0%, #16a34a 58%, #15803d 100%) !important;
+                color: #ffffff !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.24),
+                    0 3px 7px rgba(22,163,74,.26) !important;
+            }
+
+            /* WEEKLY - Amber / Orange */
+            .st-key-revenue_period_btn_1 button[data-testid="stBaseButton-primary"],
+            .st-key-weight_period_btn_1 button[data-testid="stBaseButton-primary"] {
+                border-color: #b45309 !important;
+                background: linear-gradient(180deg, #f59e0b 0%, #d97706 58%, #b45309 100%) !important;
+                color: #ffffff !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.24),
+                    0 3px 7px rgba(217,119,6,.28) !important;
+            }
+
+            /* MONTHLY - Blue */
+            .st-key-revenue_period_btn_2 button[data-testid="stBaseButton-primary"],
+            .st-key-weight_period_btn_2 button[data-testid="stBaseButton-primary"] {
+                border-color: #1d4ed8 !important;
+                background: linear-gradient(180deg, #3b82f6 0%, #2563eb 58%, #1d4ed8 100%) !important;
+                color: #ffffff !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.24),
+                    0 3px 7px rgba(37,99,235,.28) !important;
+            }
+
+            /* QUARTERLY - Purple */
+            .st-key-revenue_period_btn_3 button[data-testid="stBaseButton-primary"],
+            .st-key-weight_period_btn_3 button[data-testid="stBaseButton-primary"] {
+                border-color: #6d28d9 !important;
+                background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 58%, #6d28d9 100%) !important;
+                color: #ffffff !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.24),
+                    0 3px 7px rgba(124,58,237,.28) !important;
+            }
+
+            /* Keep selected text white for every period */
+            .st-key-revenue_period_btn_0 button[data-testid="stBaseButton-primary"] p,
+            .st-key-revenue_period_btn_0 button[data-testid="stBaseButton-primary"] span,
+            .st-key-revenue_period_btn_1 button[data-testid="stBaseButton-primary"] p,
+            .st-key-revenue_period_btn_1 button[data-testid="stBaseButton-primary"] span,
+            .st-key-revenue_period_btn_2 button[data-testid="stBaseButton-primary"] p,
+            .st-key-revenue_period_btn_2 button[data-testid="stBaseButton-primary"] span,
+            .st-key-revenue_period_btn_3 button[data-testid="stBaseButton-primary"] p,
+            .st-key-revenue_period_btn_3 button[data-testid="stBaseButton-primary"] span,
+            .st-key-weight_period_btn_0 button[data-testid="stBaseButton-primary"] p,
+            .st-key-weight_period_btn_0 button[data-testid="stBaseButton-primary"] span,
+            .st-key-weight_period_btn_1 button[data-testid="stBaseButton-primary"] p,
+            .st-key-weight_period_btn_1 button[data-testid="stBaseButton-primary"] span,
+            .st-key-weight_period_btn_2 button[data-testid="stBaseButton-primary"] p,
+            .st-key-weight_period_btn_2 button[data-testid="stBaseButton-primary"] span,
+            .st-key-weight_period_btn_3 button[data-testid="stBaseButton-primary"] p,
+            .st-key-weight_period_btn_3 button[data-testid="stBaseButton-primary"] span {
+                color: #ffffff !important;
+            }
+
             div[class*="st-key-revenue_period_btn_"] button p,
             div[class*="st-key-revenue_period_btn_"] button span,
             div[class*="st-key-weight_period_btn_"] button p,
@@ -1242,6 +1312,129 @@ def _inject_overview_css():
                     margin-bottom: 8px !important;
                     font-size: 8.5px !important;
                 }
+            }
+
+
+            /* =========================================================
+               OVERVIEW FILTER BOXES - DARK BLUE STYLE
+               Keeps chart period buttons unchanged.
+               ========================================================= */
+
+            /* Selectbox outer shell */
+            div[data-testid="stSelectbox"] {
+                background: transparent !important;
+                border: 0 !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                transform: none !important;
+            }
+
+            /* Selectbox control */
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+                min-height: 40px !important;
+                height: 40px !important;
+                border: 1px solid #0b2f5b !important;
+                border-radius: 9px !important;
+                background: linear-gradient(
+                    180deg,
+                    #174f8d 0%,
+                    #123f73 58%,
+                    #0b2f5b 100%
+                ) !important;
+                color: #ffffff !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.16),
+                    0 3px 7px rgba(15,42,67,.20) !important;
+            }
+
+            /* Selectbox selected text */
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
+                color: #ffffff !important;
+                font-weight: 700 !important;
+            }
+
+            /* Selectbox dropdown arrow */
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] svg {
+                color: #ffffff !important;
+                background: rgba(255,255,255,.10) !important;
+                border-radius: 5px !important;
+            }
+
+            /* Selectbox hover/focus */
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
+            div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div {
+                border-color: #2563eb !important;
+                background: linear-gradient(
+                    180deg,
+                    #1d5fa9 0%,
+                    #174f8d 55%,
+                    #123f73 100%
+                ) !important;
+                box-shadow:
+                    0 0 0 2px rgba(37,99,235,.14),
+                    0 4px 9px rgba(15,42,67,.24) !important;
+            }
+
+            /* Checkbox slicer / popover filter button */
+            div[data-testid="stPopover"] > div > button {
+                min-height: 40px !important;
+                height: 40px !important;
+                border: 1px solid #0b2f5b !important;
+                border-radius: 9px !important;
+                background: linear-gradient(
+                    180deg,
+                    #174f8d 0%,
+                    #123f73 58%,
+                    #0b2f5b 100%
+                ) !important;
+                color: #ffffff !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.16),
+                    0 3px 7px rgba(15,42,67,.20) !important;
+                transform: none !important;
+            }
+
+            div[data-testid="stPopover"] > div > button p,
+            div[data-testid="stPopover"] > div > button span {
+                color: #ffffff !important;
+                font-weight: 700 !important;
+            }
+
+            div[data-testid="stPopover"] > div > button svg {
+                color: #ffffff !important;
+            }
+
+            div[data-testid="stPopover"] > div > button:hover,
+            div[data-testid="stPopover"] > div > button:focus {
+                border-color: #2563eb !important;
+                background: linear-gradient(
+                    180deg,
+                    #1d5fa9 0%,
+                    #174f8d 55%,
+                    #123f73 100%
+                ) !important;
+                color: #ffffff !important;
+                box-shadow:
+                    0 0 0 2px rgba(37,99,235,.14),
+                    0 4px 9px rgba(15,42,67,.24) !important;
+                transform: none !important;
+            }
+
+            /* Dropdown option menu remains light for readability */
+            div[data-baseweb="popover"] ul {
+                background: #ffffff !important;
+                border: 1px solid #cbd5e1 !important;
+                box-shadow: 0 12px 28px rgba(15,23,42,.20) !important;
+            }
+
+            div[data-baseweb="popover"] li {
+                background: #ffffff !important;
+                color: #102a43 !important;
+            }
+
+            div[data-baseweb="popover"] li:hover {
+                background: #eaf2ff !important;
+                color: #123f73 !important;
             }
 
         </style>
