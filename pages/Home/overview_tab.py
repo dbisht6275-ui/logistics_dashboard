@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.6.8
+# OVERVIEW VERSION: 8.6.9
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -2029,14 +2029,18 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
     # One compact summary row.
     st.markdown(
         (
-            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;'
-            'align-items:center;margin:0 2px -2px 2px;line-height:1.05;">'
-            f'<div style="font-size:11px;color:#64748b;">Actual<br>'
-            f'<span style="font-size:14px;font-weight:700;color:#0f172a;">'
-            f'{actual:,.2f}{unit}</span></div>'
-            f'<div style="font-size:11px;color:#64748b;text-align:right;">Target<br>'
-            f'<span style="font-size:14px;font-weight:700;color:#0f172a;">'
-            f'{target:,.2f}{unit}</span></div>'
+            '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;'
+            'align-items:start;margin:4px 4px 4px 4px;line-height:1.15;">'
+            f'<div style="padding:3px 0 2px 0;">'
+            f'<div style="font-size:12px;font-weight:600;color:#31557d;'
+            f'margin-bottom:3px;letter-spacing:.1px;">Actual</div>'
+            f'<div style="font-size:15px;font-weight:700;color:#0f2744;">'
+            f'{actual:,.2f}{unit}</div></div>'
+            f'<div style="padding:3px 0 2px 0;text-align:right;">'
+            f'<div style="font-size:12px;font-weight:600;color:#31557d;'
+            f'margin-bottom:3px;letter-spacing:.1px;">Target</div>'
+            f'<div style="font-size:15px;font-weight:700;color:#0f2744;">'
+            f'{target:,.2f}{unit}</div></div>'
             '</div>'
         ),
         unsafe_allow_html=True,
@@ -2091,7 +2095,7 @@ def create_target_speedometer(actual, target, unit="", title="Target Achievement
 
     fig.update_layout(
         height=92 if compact else 118,
-        margin=dict(l=2, r=2, t=0, b=0),
+        margin=dict(l=2, r=2, t=3, b=0),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Arial"),
