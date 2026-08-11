@@ -187,7 +187,8 @@ def _inject_overview_css():
             .kpi-3d-card {
                 position: relative;
                 overflow: hidden;
-                min-height: 82px;
+                min-height: 86px;
+                height: 86px;
                 padding: 10px 11px 11px 11px;
                 border: 1px solid #cbd5e1;
                 border-radius: 14px;
@@ -535,7 +536,7 @@ def _inject_overview_css():
             }
             div[data-baseweb="select"] > div {min-height:34px!important;}
             div[data-testid="stHorizontalBlock"] > div {min-width:0!important;}
-            .kpi-3d-card {min-height:70px;padding:8px 9px;transform:none;box-shadow:0 3px 8px rgba(15,23,42,.10)!important;}
+            .kpi-3d-card {min-height:86px!important;height:86px!important;padding:8px 9px;transform:none;box-shadow:0 3px 8px rgba(15,23,42,.10)!important;}
             .kpi-3d-value {font-size:16px;margin-top:2px;}
             .kpi-3d-footer {margin-top:4px;}
             [data-testid="stDataFrame"] tbody tr {height:22px!important;}
@@ -2094,7 +2095,11 @@ def create_card(title, value, color, icon, growth_value=0.0, previous_value=None
             f'TGT-{target_value} / Ach {ach_text}</div>'
         )
     else:
-        target_html = ""
+        target_html = (
+            '<div style="position:relative;z-index:1;margin-top:3px;font-size:9px;'
+            'font-weight:800;color:transparent;line-height:1.05;white-space:nowrap;'
+            'user-select:none;">&nbsp;</div>'
+        )
 
     html = (
         f'<div class="kpi-3d-card" style="--kpi-accent:{color};">'
@@ -2121,135 +2126,120 @@ def create_card(title, value, color, icon, growth_value=0.0, previous_value=None
     else:
         st.markdown(html, unsafe_allow_html=True)
 
-def create_target_speedometer(actual, target, unit="", title="Target Achievement", compact=False):
-    """Render Actual vs Target in the same visual language as the Business Trend chart."""
+def create_target_speedometer(actual, target, unit="", title="Target Achievement (MTD)", compact=False):
+    """Render a donut target-achievement card with metric boxes, matching the dashboard reference."""
     actual = float(actual or 0)
     target = float(target or 0)
     achievement = (actual / target * 100) if target > 0 else 0.0
+    gap = max(target - actual, 0.0)
+    remaining_pct = max(100.0 - achievement, 0.0)
 
     if target <= 0:
         status_text = "Target not set"
         status_color = "#64748b"
+        status_icon = "•"
     elif achievement >= 100:
         status_text = "Target achieved"
         status_color = "#15803d"
+        status_icon = "✓"
     elif achievement >= 80:
         status_text = "Near target"
         status_color = "#b45309"
+        status_icon = "↗"
     else:
-        status_text = "Below target"
-        status_color = "#dc2626"
+        status_text = "On track toward target"
+        status_color = "#15803d"
+        status_icon = "↗"
 
-    # Header summary mirrors the clean KPI / trend styling.
-    st.markdown(
-        (
-            '<div style="display:flex;align-items:flex-end;justify-content:space-between;'
-            'gap:10px;margin:2px 2px 4px 2px;">'
-            '<div>'
-            '<div style="font-size:10px;color:#64748b;font-weight:600;">Actual / Target</div>'
-            f'<div style="font-size:15px;color:#0f2744;font-weight:800;margin-top:2px;">'
-            f'{actual:,.2f}{unit} / {target:,.2f}{unit}</div>'
-            '</div>'
-            f'<div style="font-size:18px;font-weight:850;color:{status_color};white-space:nowrap;">'
-            f'Ach {achievement:.1f}%</div>'
-            '</div>'
-        ),
-        unsafe_allow_html=True,
-    )
+    # Two-column layout: donut on the left, compact KPI boxes on the right.
+    donut_col, metrics_col = st.columns([0.92, 1.08], gap="small")
 
-    fig = go.Figure()
-
-    # Actual: solid dashboard blue, same as Current business bars.
-    fig.add_trace(
-        go.Bar(
-            x=["Achievement"],
-            y=[actual],
-            name="Actual",
-            marker=dict(color="#2563eb", line=dict(color="#1e3a8a", width=1.3)),
-            text=[actual],
-            texttemplate="%{text:.2f}",
-            textposition="outside",
-            textfont=dict(size=11, color="#1d4ed8", family="Arial"),
-            cliponaxis=False,
-            offsetgroup="actual",
-            hovertemplate=(
-                f"<b>Actual</b><br>{actual:,.2f}{unit}<extra></extra>"
-            ),
+    with donut_col:
+        fig = go.Figure(
+            go.Pie(
+                values=[min(max(achievement, 0.0), 100.0), remaining_pct],
+                labels=["Achieved", "Remaining"],
+                hole=0.72,
+                sort=False,
+                direction="clockwise",
+                rotation=90,
+                marker=dict(
+                    colors=["#2563eb", "#e5e7eb"],
+                    line=dict(color="#ffffff", width=0),
+                ),
+                textinfo="none",
+                hovertemplate="%{label}: %{value:.1f}%<extra></extra>",
+                showlegend=False,
+            )
         )
-    )
-
-    # Target: orange hatched bar, matching the Target bars in Business Trend.
-    fig.add_trace(
-        go.Bar(
-            x=["Achievement"],
-            y=[target],
-            name="Target",
-            marker=dict(
-                color="#fff7ed",
-                line=dict(color="#f59e0b", width=1.5),
-                pattern=dict(shape="/", solidity=0.22, fgcolor="#f59e0b"),
-            ),
-            text=[target],
-            texttemplate="%{text:.2f}",
-            textposition="outside",
-            textfont=dict(size=11, color="#b45309", family="Arial"),
-            cliponaxis=False,
-            offsetgroup="target",
-            hovertemplate=(
-                f"<b>Target</b><br>{target:,.2f}{unit}<br>Achievement: {achievement:.1f}%<extra></extra>"
-            ),
+        fig.add_annotation(
+            x=0.5, y=0.58,
+            text=f"<b>{achievement:.1f}%</b>",
+            showarrow=False,
+            font=dict(size=24 if not compact else 20, color="#2563eb", family="Arial"),
         )
-    )
+        fig.add_annotation(
+            x=0.5, y=0.40,
+            text="Achieved",
+            showarrow=False,
+            font=dict(size=10, color="#0f172a", family="Arial"),
+        )
+        fig.add_annotation(
+            x=0.5, y=0.28,
+            text="<b>(MTD)</b>",
+            showarrow=False,
+            font=dict(size=9, color="#2563eb", family="Arial"),
+        )
+        fig.update_layout(
+            height=176 if compact else 195,
+            margin=dict(l=0, r=0, t=0, b=0),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(
+            fig,
+            width="stretch",
+            config={"displayModeBar": False, "responsive": True, "staticPlot": True},
+        )
 
-    ymax = max(actual, target, 1.0)
-    fig.add_annotation(
-        x="Achievement",
-        y=ymax * 1.24,
-        text=f"🎯 {achievement:.1f}%",
-        showarrow=False,
-        font=dict(size=12, color=status_color, family="Arial"),
-    )
+    def _metric_box(dot_color, label, value_text):
+        return (
+            '<div style="display:grid;grid-template-columns:12px 1fr auto;align-items:center;'
+            'gap:7px;padding:9px 10px;margin-bottom:7px;border:1px solid #e5eaf1;'
+            'border-radius:7px;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);'
+            'box-shadow:0 2px 5px rgba(15,23,42,.05);">'
+            f'<span style="width:8px;height:8px;border-radius:50%;background:{dot_color};display:inline-block;"></span>'
+            f'<span style="font-size:10px;font-weight:500;color:#334155;white-space:nowrap;">{label}</span>'
+            f'<span style="font-size:10px;font-weight:800;color:#0f172a;text-align:right;white-space:nowrap;">{value_text}</span>'
+            '</div>'
+        )
 
-    fig.update_layout(
-        barmode="group",
-        height=175 if compact else 205,
-        margin=dict(l=4, r=4, t=30, b=4),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="#f8fafc",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            x=0,
-            font=dict(size=10),
-        ),
-        yaxis=dict(
-            range=[0, ymax * 1.38],
-            showgrid=False,
-            showline=False,
-            zeroline=False,
-            tickfont=dict(size=9, color="#64748b"),
-        ),
-        xaxis=dict(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=10)),
-        bargap=0.34,
-        bargroupgap=0.08,
-        font=dict(family="Arial"),
-    )
+    with metrics_col:
+        metrics_html = (
+            '<div style="padding-top:12px;">'
+            + _metric_box("#2563eb", "Achieved", f"{actual:,.2f}{unit}")
+            + _metric_box("#f97316", "Target", f"{target:,.2f}{unit}")
+            + _metric_box("transparent", "Gap to Target", f"{gap:,.2f}{unit}")
+            + '</div>'
+        )
+        st.markdown(metrics_html, unsafe_allow_html=True)
 
-    st.plotly_chart(
-        fig,
-        width="stretch",
-        config={"displayModeBar": False, "responsive": True, "staticPlot": True},
-    )
+    # Bottom status note in the same visual style as the reference card.
+    if target > 0:
+        note = (
+            f'<div style="display:flex;align-items:center;gap:6px;margin:1px 4px 0 4px;'
+            f'font-size:9px;color:#475569;line-height:1.2;">'
+            f'<span style="font-size:16px;color:{status_color};font-weight:800;">{status_icon}</span>'
+            f'<span>{status_text}: <b style="color:#2563eb;">{achievement:.1f}%</b> achieved; '
+            f'<b>{gap:,.2f}{unit}</b> remaining.</span></div>'
+        )
+    else:
+        note = (
+            '<div style="font-size:9px;color:#64748b;margin:1px 4px 0 4px;">'
+            'Target not set for the selected filters.</div>'
+        )
+    st.markdown(note, unsafe_allow_html=True)
 
-    st.markdown(
-        (
-            '<div style="display:flex;justify-content:center;margin-top:-2px;">'
-            f'<span style="font-size:9.5px;font-weight:700;color:{status_color};">'
-            f'{status_text}</span></div>'
-        ),
-        unsafe_allow_html=True,
-    )
 
 def mini_rank_card(rank, name, value, max_value, color, render=True):
     """Build a compact ranked branch row with a wider name area and slimmer bar."""
@@ -3744,7 +3734,7 @@ def show_overview():
         with st.container(border=True):
             st.markdown(
                 "<div style='font-size:15px;font-weight:600;color:#0f172a;"
-                "margin:0 0 2px 0;line-height:1.1;'>Target Achievement</div>",
+                "margin:0 0 2px 0;line-height:1.1;'>Target Achievement (MTD)</div>",
                 unsafe_allow_html=True,
             )
             create_target_speedometer(
