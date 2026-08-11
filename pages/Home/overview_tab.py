@@ -620,10 +620,10 @@ def _inject_overview_css():
             }
 
             div[data-testid="stVerticalBlockBorderWrapper"] {
+                border: 2px solid #a9bfd8 !important;
                 border-radius: 14px !important;
-                border-color: #dce5ef !important;
                 background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
-                box-shadow: 0 7px 18px rgba(15,42,67,.075), inset 0 1px 0 #ffffff !important;
+                box-shadow: 0 7px 18px rgba(15,42,67,.085), inset 0 1px 0 #ffffff !important;
             }
             div[data-testid="stVerticalBlockBorderWrapper"]:hover {
                 transform: translateY(-1px);
@@ -1696,6 +1696,15 @@ def _inject_overview_css():
                 font-size: 9.5px !important;
             }
 
+
+            /* =========================================================
+               STRONG OUTER BORDERS FOR ALL CHART / INSIGHT PANELS
+               ========================================================= */
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                border-width: 2px !important;
+                border-style: solid !important;
+                border-color: #a9bfd8 !important;
+            }
 
             /* =========================================================
                TREND ROW GAP REDUCTION - VERSION 8.7.1
@@ -4661,7 +4670,7 @@ def show_overview():
 
                 with customer_title_col:
                     st.markdown(
-                        f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top {customer_top_n} Customers by Business</div>"
+                        f"<div style='font-size:18px;font-weight:700;color:#0f2744;margin:1px 0 9px 2px;'>Top {customer_top_n} Customers by Business</div>"
                         f"<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>"
                         f"Customer basis: {party_label} | Current FY revenue, share and YoY movement."
                         "</div>",
@@ -4728,28 +4737,28 @@ def show_overview():
                         }}
                         .customer-insight-table th {{
                             padding:7px 6px; background:#f8fafc;
-                            color:#64748b; font-size:12px; font-weight:400;
+                            color:#475569; font-size:12px; font-weight:700;
                             text-align:left; border-bottom:1px solid #e2e8f0;
                             white-space:nowrap;
                         }}
                         .customer-insight-table td {{
                             padding:8px 6px; border-bottom:1px solid #edf2f7;
-                            vertical-align:middle;
+                            vertical-align:middle; font-weight:600;
                         }}
                         .customer-insight-table tr:last-child td {{border-bottom:0;}}
                         .customer-insight-table tbody tr:hover {{background:#f8fbff;}}
                         
                         .cust-rank {{
                             width:4%; padding-left:2px !important; padding-right:2px !important;
-                            text-align:center; font-weight:400; color:#64748b;
+                            text-align:center; font-weight:600; color:#475569;
                         }}
                         .cust-name {{
                             width:38%; padding-left:3px !important;
-                            font-weight:400; color:#1e293b;
+                            font-weight:600; color:#1e293b;
                             white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
                         }}
                         .cust-revenue {{width:32%;}}
-                        .cust-value {{font-weight:400; color:#0f172a; margin-bottom:3px;}}
+                        .cust-value {{font-weight:700; color:#0f172a; margin-bottom:3px;}}
                         .cust-bar-track {{
                             width:100%; height:5px; border-radius:999px;
                             background:#e8eef8; overflow:hidden;
@@ -4758,11 +4767,11 @@ def show_overview():
                             height:5px; border-radius:999px;
                             background:linear-gradient(90deg,#60a5fa,#2563eb);
                         }}
-                        .cust-share {{width:12%; text-align:right; font-weight:400; color:#475569;}}
+                        .cust-share {{width:12%; text-align:right; font-weight:600; color:#475569;}}
                         .cust-yoy {{width:14%; text-align:right;}}
                         .cust-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:11px; font-weight:400;
+                            font-size:11px; font-weight:700;
                         }}
                         .cust-growth.up {{color:#16a34a;}}
                         .cust-growth.down {{color:#dc2626;}}
@@ -4906,7 +4915,7 @@ def show_overview():
 
                 with route_title_col:
                     st.markdown(
-                        f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top {route_top_n} Routes by Business</div>"
+                        f"<div style='font-size:18px;font-weight:700;color:#0f2744;margin:1px 0 9px 2px;'>Top {route_top_n} Routes by Business</div>"
                         "<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>"
                         + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
                         + " | Current FY revenue, share and YoY movement.</div>",
@@ -4969,28 +4978,28 @@ def show_overview():
                         }}
                         .route-insight-table th {{
                             padding:7px 6px; background:#f8fafc;
-                            color:#64748b; font-size:12px; font-weight:400;
+                            color:#475569; font-size:12px; font-weight:700;
                             text-align:left; border-bottom:1px solid #e2e8f0;
                             white-space:nowrap;
                         }}
                         .route-insight-table td {{
                             padding:8px 6px; border-bottom:1px solid #edf2f7;
-                            vertical-align:middle;
+                            vertical-align:middle; font-weight:600;
                         }}
                         .route-insight-table tr:last-child td {{border-bottom:0;}}
                         .route-insight-table tbody tr:hover {{background:#f8fbff;}}
                         
                         .route-rank {{
                             width:4%; padding-left:2px !important; padding-right:2px !important;
-                            text-align:center; font-weight:400; color:#64748b;
+                            text-align:center; font-weight:600; color:#475569;
                         }}
                         .route-name {{
                             width:38%; padding-left:3px !important;
-                            font-weight:400; color:#1e293b;
+                            font-weight:600; color:#1e293b;
                             white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
                         }}
                         .route-revenue {{width:32%;}}
-                        .route-value {{font-weight:400; color:#0f172a; margin-bottom:3px;}}
+                        .route-value {{font-weight:700; color:#0f172a; margin-bottom:3px;}}
                         .route-bar-track {{
                             width:100%; height:5px; border-radius:999px;
                             background:#e8eef8; overflow:hidden;
@@ -4999,11 +5008,11 @@ def show_overview():
                             height:5px; border-radius:999px;
                             background:linear-gradient(90deg,#2dd4bf,#0f766e);
                         }}
-                        .route-share {{width:12%; text-align:right; font-weight:400; color:#475569;}}
+                        .route-share {{width:12%; text-align:right; font-weight:600; color:#475569;}}
                         .route-yoy {{width:14%; text-align:right;}}
                         .route-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:11px; font-weight:400;
+                            font-size:11px; font-weight:700;
                         }}
                         .route-growth.up {{color:#16a34a;}}
                         .route-growth.down {{color:#dc2626;}}
