@@ -4341,13 +4341,13 @@ def show_overview():
             growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
             growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
             fig_mom.update_layout(
-                height=235, margin=dict(l=8, r=8, t=28, b=6), plot_bgcolor="#f8fafc",
+                height=282, margin=dict(l=8, r=8, t=28, b=6), plot_bgcolor="#f8fafc",
                 paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=1.10, x=0), bargap=0.35,
                 yaxis=dict(title=f"Business ({revenue_unit})", range=[0, revenue_max * 1.30], showgrid=False, zeroline=False),
                 yaxis2=dict(title="Growth (%)", overlaying="y", side="right", range=[-growth_abs_max * 1.35, growth_abs_max * 1.35], showgrid=False, zeroline=True, zerolinecolor="#cbd5e1"),
                 xaxis=dict(showgrid=False, title=""),
             )
-            apply_3d_chart_layout(fig_mom, height=235, margin=dict(l=8, r=8, t=30, b=6))
+            apply_3d_chart_layout(fig_mom, height=282, margin=dict(l=8, r=8, t=30, b=6))
             fig_mom.update_xaxes(showline=False, zeroline=False)
             fig_mom.update_yaxes(showline=False)
             st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False, "responsive": True})
