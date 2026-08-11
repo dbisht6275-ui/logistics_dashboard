@@ -362,8 +362,7 @@ div[data-testid="stAlert"] {
         """<div class="sg-restricted">
 <strong>🔒 Restricted Access</strong><br>
 This system is for authorized users only. Dashboard access is subject to company security policies.
-</div>
-,
+</div>""",
         unsafe_allow_html=True,
     )
 
