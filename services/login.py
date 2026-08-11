@@ -318,9 +318,7 @@ div[data-testid="stAlert"] {
         """<div class="sg-brand">
 <div class="sg-logo">SG</div>
 <div class="sg-name">SUGAM GROUP</div>
-<div class="sg-tagline">REDEFINING LOGISTICS</div>
 <div class="sg-title">Logistics Analytics Portal</div>
-<div class="sg-subtitle">Business Intelligence Dashboard</div>
 <div class="sg-secure"><span>✓</span><span>Secure login to continue</span></div>
 </div>""",
         unsafe_allow_html=True,
@@ -365,9 +363,7 @@ div[data-testid="stAlert"] {
 <strong>🔒 Restricted Access</strong><br>
 This system is for authorized users only. Dashboard access is subject to company security policies.
 </div>
-<div class="sg-footer">
-© 2026 Sugam Group &nbsp;|&nbsp; Internal Use Only
-</div>""",
+,
         unsafe_allow_html=True,
     )
 
