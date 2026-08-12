@@ -5,6 +5,7 @@ from services.roles import get_allowed_menu, get_allowed_reports, clear_role_cac
 
 from pages.Home.overview_tab import show_overview
 from pages.Home.PNL_Analysis import show_pnl_dashboard
+from pages.Home.Net_Profit_Analysis import show_net_profit_dashboard
 from pages.Home.comparison_tab import show_comparison
 from pages.Home.Customer_Analysis import show_CustomerAnalysis
 
@@ -460,6 +461,7 @@ section.main {
 FULL_MENU_ITEMS = [
     "🏠 Business Overview",
     "💹 P&L Dashboard",
+    "💰 Net Profit Dashboard",
     "📊 Comparison",
     "📈 Outstanding Analysis",
     "👥 Customer Analysis",
@@ -731,6 +733,9 @@ if menu == "🏠 Business Overview":
 
 elif menu == "💹 P&L Dashboard":
     show_pnl_dashboard()
+
+elif menu == "💰 Net Profit Dashboard":
+    show_net_profit_dashboard()
 
 elif menu == "📊 Comparison":
     show_comparison()
