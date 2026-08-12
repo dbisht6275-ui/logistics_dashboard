@@ -298,13 +298,19 @@ def _first_existing_metadata(df):
 # VIEW-SPECIFIC BRANCH IDENTIFICATION
 # ============================================================
 
-def _get_branch_code_column(df, view_type):
+def _get_branch_identity_column(df, view_type):
     """
-    IMPORTANT:
-    Origin and Destination can have different branch-code fields.
+    The current booking stored procedure returns a display branch column
+    ('branch') rather than a dedicated ORIGINBRANCHCODE / DESTBRANCHCODE.
 
-    Prefer the view-specific field first.
-    Only fall back to generic BRANCHCODE when a dedicated field is absent.
+    For Net Profit we therefore use the branch represented by the selected
+    view as the operational branch identity:
+
+      ViewType=ORIGIN      -> df['branch'] is the booking/origin branch
+      ViewType=DESTINATION -> df['branch'] is the delivery/destination branch
+
+    Dedicated branch-code columns are still preferred if the SP starts
+    returning them in future.
     """
     view = str(view_type).strip().upper()
 
@@ -316,6 +322,9 @@ def _get_branch_code_column(df, view_type):
             "booking_branch_code",
             "BRANCHCODE",
             "branch_code",
+            "branch",
+            "BRANCH",
+            "branchname",
         ]
     elif view == "DESTINATION":
         candidates = [
@@ -326,6 +335,9 @@ def _get_branch_code_column(df, view_type):
             "delivery_branch_code",
             "BRANCHCODE",
             "branch_code",
+            "branch",
+            "BRANCH",
+            "branchname",
         ]
     else:
         raise ValueError(f"Unsupported view type: {view_type!r}")
@@ -334,13 +346,22 @@ def _get_branch_code_column(df, view_type):
 
     if branch_col is None:
         raise ValueError(
-            f"Could not identify {view.title()} Branch Code. "
+            f"Could not identify {view.title()} branch. "
             f"Expected one of {candidates}. "
             f"Available columns: {list(df.columns)}"
         )
 
     return branch_col
 
+
+def _normalise_branch_key(series):
+    """Normalised branch-name/code key used only for joins."""
+    return (
+        series.astype(str)
+        .str.strip()
+        .str.casefold()
+        .str.replace(r"\s+", " ", regex=True)
+    )
 
 def _get_date_column(df):
     date_col = _find_column(
@@ -373,7 +394,8 @@ def _aggregate_view_pnl(df, view_type):
     if df is None or df.empty:
         return pd.DataFrame(
             columns=[
-                "BRANCHCODE",
+                "BRANCH_KEY",
+                "BRANCH",
                 "YEAR",
                 "MONTHNO",
                 "BUSINESS",
@@ -385,7 +407,7 @@ def _aggregate_view_pnl(df, view_type):
 
     out = df.copy()
 
-    branch_col = _get_branch_code_column(out, view_type)
+    branch_col = _get_branch_identity_column(out, view_type)
     date_col = _get_date_column(out)
 
     required_metrics = {
@@ -409,7 +431,14 @@ def _aggregate_view_pnl(df, view_type):
 
     out = out.rename(columns=rename_map)
 
-    out["_BRANCHCODE"] = _clean_code(out[branch_col])
+    out["_BRANCH"] = (
+        out[branch_col]
+        .fillna("Unknown")
+        .astype(str)
+        .str.strip()
+        .replace("", "Unknown")
+    )
+    out["_BRANCH_KEY"] = _normalise_branch_key(out["_BRANCH"])
 
     dt = pd.to_datetime(out[date_col], errors="coerce")
     out["_YEAR"] = dt.dt.year
@@ -419,9 +448,9 @@ def _aggregate_view_pnl(df, view_type):
         out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
 
     out = out[
-        out["_BRANCHCODE"].notna()
-        & out["_BRANCHCODE"].ne("")
-        & out["_BRANCHCODE"].str.casefold().ne("nan")
+        out["_BRANCH_KEY"].notna()
+        & out["_BRANCH_KEY"].ne("")
+        & out["_BRANCH_KEY"].ne("nan")
         & out["_YEAR"].notna()
         & out["_MONTHNO"].notna()
     ].copy()
@@ -441,14 +470,15 @@ def _aggregate_view_pnl(df, view_type):
 
     summary = (
         out.groupby(
-            ["_BRANCHCODE", "_YEAR", "_MONTHNO"],
+            ["_BRANCH_KEY", "_BRANCH", "_YEAR", "_MONTHNO"],
             as_index=False,
             dropna=False,
         )
         .agg(**agg_spec)
         .rename(
             columns={
-                "_BRANCHCODE": "BRANCHCODE",
+                "_BRANCH_KEY": "BRANCH_KEY",
+                "_BRANCH": "BRANCH",
                 "_YEAR": "YEAR",
                 "_MONTHNO": "MONTHNO",
             }
@@ -545,6 +575,13 @@ def _prepare_overhead(df):
         out["MONTH"] = ""
 
     out["BRANCHCODE"] = _clean_code(out["BRANCHCODE"])
+    out["BRANCH"] = (
+        out["BRANCH"]
+        .fillna(out["BRANCHCODE"])
+        .astype(str)
+        .str.strip()
+    )
+    out["BRANCH_KEY"] = _normalise_branch_key(out["BRANCH"])
     out["YEAR"] = pd.to_numeric(out["YEAR"], errors="coerce")
     out["MONTHNO"] = pd.to_numeric(out["MONTHNO"], errors="coerce")
 
@@ -563,7 +600,7 @@ def _prepare_overhead(df):
             errors="coerce",
         ).fillna(0.0)
 
-    return out[expected].copy()
+    return out[["BRANCH_KEY"] + expected].copy()
 
 
 # ============================================================
@@ -571,7 +608,7 @@ def _prepare_overhead(df):
 # ============================================================
 
 def _prefix_metrics(df, prefix):
-    keys = {"BRANCHCODE", "YEAR", "MONTHNO"}
+    keys = {"BRANCH_KEY", "BRANCH", "YEAR", "MONTHNO"}
     rename_map = {
         column: f"{prefix}_{column}"
         for column in df.columns
@@ -606,11 +643,17 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
     destination = _aggregate_view_pnl(destination_df, "DESTINATION")
     overhead = _prepare_overhead(overhead_df)
 
-    keys = ["BRANCHCODE", "YEAR", "MONTHNO"]
+    # Revenue SP returns branch names; overhead query returns both branch
+    # code and branch name. Join using a normalised branch-name key.
+    keys = ["BRANCH_KEY", "YEAR", "MONTHNO"]
+
+    origin = origin.rename(columns={"BRANCH": "ORIGIN_BRANCH"})
+    destination = destination.rename(columns={"BRANCH": "DESTINATION_BRANCH"})
 
     origin = _prefix_metrics(origin, "ORIGIN")
     destination = _prefix_metrics(destination, "DESTINATION")
 
+    # _prefix_metrics intentionally prefixes branch display fields too.
     combined = origin.merge(
         destination,
         on=keys,
@@ -635,14 +678,13 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
                 errors="coerce",
             ).fillna(0.0)
 
-    # Ensure required origin/destination metrics exist even when one side is empty.
     for prefix in ["ORIGIN", "DESTINATION"]:
         for metric in ["BUSINESS", "TOTAL_INCOME", "DIRECT_EXPENSE", "PNL"]:
             column = f"{prefix}_{metric}"
             if column not in combined.columns:
                 combined[column] = 0.0
 
-    # Organisational metadata, if present.
+    # Optional organisation metadata.
     for field in ["COMPNAME", "zone", "circle"]:
         combined[field] = _coalesce_metadata(combined, field)
 
@@ -666,12 +708,70 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         + combined["DESTINATION_PNL"]
     )
 
+    overhead_merge = overhead[
+        [
+            "BRANCH_KEY",
+            "BRANCHCODE",
+            "BRANCH",
+            "YEAR",
+            "MONTHNO",
+            "SALARY",
+            "GODOWN RENT",
+            "OVERHEAD EXPENSE",
+            "CLAIM",
+            "TOTAL EXPENSE",
+        ]
+    ].copy()
+
     final = combined.merge(
-        overhead,
+        overhead_merge,
         on=keys,
         how="left",
         validate="one_to_one",
     )
+
+    # Pick the branch display name from overhead first; otherwise from
+    # Origin/Destination revenue data.
+    origin_branch_col = next(
+        (
+            c for c in [
+                "ORIGIN_ORIGIN_BRANCH",
+                "ORIGIN_BRANCH",
+            ]
+            if c in final.columns
+        ),
+        None,
+    )
+    destination_branch_col = next(
+        (
+            c for c in [
+                "DESTINATION_DESTINATION_BRANCH",
+                "DESTINATION_BRANCH",
+            ]
+            if c in final.columns
+        ),
+        None,
+    )
+
+    if "BRANCH" not in final.columns:
+        final["BRANCH"] = pd.NA
+
+    if origin_branch_col is not None:
+        final["BRANCH"] = final["BRANCH"].fillna(final[origin_branch_col])
+
+    if destination_branch_col is not None:
+        final["BRANCH"] = final["BRANCH"].fillna(final[destination_branch_col])
+
+    final["BRANCH"] = (
+        final["BRANCH"]
+        .fillna(final["BRANCH_KEY"])
+        .astype(str)
+        .str.strip()
+    )
+
+    if "BRANCHCODE" not in final.columns:
+        final["BRANCHCODE"] = ""
+    final["BRANCHCODE"] = final["BRANCHCODE"].fillna("").astype(str).str.strip()
 
     for column in [
         "SALARY",
@@ -685,16 +785,8 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
             errors="coerce",
         ).fillna(0.0)
 
-    if "BRANCH" not in final.columns:
-        final["BRANCH"] = final["BRANCHCODE"]
-    else:
-        final["BRANCH"] = (
-            final["BRANCH"]
-            .replace("", pd.NA)
-            .fillna(final["BRANCHCODE"])
-        )
-
-    # THE FINAL ACCOUNTING LOGIC.
+    # FINAL ACCOUNTING LOGIC:
+    # Origin P&L + Destination P&L - branch overhead (once).
     final["NET_PROFIT"] = (
         final["COMBINED_PNL"]
         - final["TOTAL EXPENSE"]
@@ -709,7 +801,6 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         * 100
     )
 
-    # Calendar labels.
     final["MONTH"] = final["MONTHNO"].map(
         {
             1: "Jan",
@@ -727,7 +818,6 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         }
     )
 
-    # Financial year month number: Apr=1 ... Mar=12.
     final["FIN_MONTH"] = final["MONTHNO"].map(
         {
             4: 1,
