@@ -939,26 +939,44 @@ def load_net_profit_data_pair(
     prev_end,
 ):
     """
-    Current FY + Previous FY Net Profit concurrently.
+    Memory-safe Current FY + Previous FY loader.
+
+    IMPORTANT:
+    Current FY and Previous FY are loaded SEQUENTIALLY
+    to reduce peak memory usage on Streamlit Cloud.
+
+    Inside each period, Origin + Destination + Overhead
+    are still fetched in parallel for reasonable speed.
     """
-    with ThreadPoolExecutor(
-        max_workers=2,
-        thread_name_prefix="net-profit-pair",
-    ) as executor:
 
-        current_future = executor.submit(
-            _fetch_complete_net_profit_period,
-            start_date,
-            end_date,
-        )
+    print(
+        f"[Net Profit Pair] Loading CURRENT FY first: "
+        f"{start_date} to {end_date}"
+    )
 
-        previous_future = executor.submit(
-            _fetch_complete_net_profit_period,
-            prev_start,
-            prev_end,
-        )
+    current_df = _fetch_complete_net_profit_period(
+        start_date,
+        end_date,
+    )
 
-        current_df = current_future.result()
-        previous_df = previous_future.result()
+    print(
+        f"[Net Profit Pair] CURRENT FY complete | "
+        f"rows={len(current_df):,}"
+    )
+
+    print(
+        f"[Net Profit Pair] Loading PREVIOUS FY next: "
+        f"{prev_start} to {prev_end}"
+    )
+
+    previous_df = _fetch_complete_net_profit_period(
+        prev_start,
+        prev_end,
+    )
+
+    print(
+        f"[Net Profit Pair] PREVIOUS FY complete | "
+        f"rows={len(previous_df):,}"
+    )
 
     return current_df, previous_df
