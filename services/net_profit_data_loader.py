@@ -412,7 +412,6 @@ def _aggregate_view_pnl(df, view_type):
 
     required_metrics = {
         "REVENUE": ["REVENUE", "revenue", "business"],
-        "TOTAL_INCOME": ["TOTAL_INCOME", "totalincome"],
         "EXPENSE": ["EXPENSE", "expense", "cost"],
         "PNL": ["PNL", "pnl", "profitloss", "profit_loss"],
     }
@@ -444,8 +443,12 @@ def _aggregate_view_pnl(df, view_type):
     out["_YEAR"] = dt.dt.year
     out["_MONTHNO"] = dt.dt.month
 
-    for column in ["REVENUE", "TOTAL_INCOME", "EXPENSE", "PNL"]:
+    for column in ["REVENUE", "EXPENSE", "PNL"]:
         out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
+
+    # Business rule for this Net Profit dashboard:
+    # TOTAL_INCOME is the P&L amount itself.
+    out["TOTAL_INCOME"] = out["PNL"]
 
     out = out[
         out["_BRANCH_KEY"].notna()
