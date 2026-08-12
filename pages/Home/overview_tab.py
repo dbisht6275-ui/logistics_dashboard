@@ -1,3 +1,4 @@
+# OVERVIEW VERSION: 8.7.1
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -7,9 +8,9 @@ import plotly.express as px
 from services.data_loader import load_booking_data_pair, get_date_range
 from services.branch_agency_mast import load_stationmast_data
 
-SPACER_HEIGHT = 10
-REVENUE_CHART_HEIGHT = 310
-ALIGNED_CHART_HEIGHT = 310
+SPACER_HEIGHT = 1
+REVENUE_CHART_HEIGHT = 420
+ALIGNED_CHART_HEIGHT = 245
 RANKING_CHART_HEIGHT = 330
 
 TOP_N_OPTIONS = [10, 20, 30, 40]
@@ -186,8 +187,10 @@ def _inject_overview_css():
             .kpi-3d-card {
                 position: relative;
                 overflow: hidden;
-                min-height: 82px;
-                padding: 10px 11px 11px 11px;
+                min-height: 94px;
+                height: 94px;
+                padding: 10px 11px 12px 11px;
+                box-sizing: border-box;
                 border: 1px solid #cbd5e1;
                 border-radius: 14px;
                 background: linear-gradient(145deg, #ffffff 0%, #f8fafc 45%, #e7edf5 100%);
@@ -534,9 +537,9 @@ def _inject_overview_css():
             }
             div[data-baseweb="select"] > div {min-height:34px!important;}
             div[data-testid="stHorizontalBlock"] > div {min-width:0!important;}
-            .kpi-3d-card {min-height:70px;padding:8px 9px;transform:none;box-shadow:0 3px 8px rgba(15,23,42,.10)!important;}
+            .kpi-3d-card {min-height:94px!important;height:94px!important;padding:8px 9px 10px!important;box-sizing:border-box!important;transform:none;box-shadow:0 3px 8px rgba(15,23,42,.10)!important;}
             .kpi-3d-value {font-size:16px;margin-top:2px;}
-            .kpi-3d-footer {margin-top:4px;}
+            .kpi-3d-footer {margin-top:3px;margin-bottom:1px;}
             [data-testid="stDataFrame"] tbody tr {height:22px!important;}
             h5,h6 {margin:.1rem 0 .25rem!important;}
 
@@ -617,10 +620,10 @@ def _inject_overview_css():
             }
 
             div[data-testid="stVerticalBlockBorderWrapper"] {
+                border: 2px solid #a9bfd8 !important;
                 border-radius: 14px !important;
-                border-color: #dce5ef !important;
                 background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
-                box-shadow: 0 7px 18px rgba(15,42,67,.075), inset 0 1px 0 #ffffff !important;
+                box-shadow: 0 7px 18px rgba(15,42,67,.085), inset 0 1px 0 #ffffff !important;
             }
             div[data-testid="stVerticalBlockBorderWrapper"]:hover {
                 transform: translateY(-1px);
@@ -943,6 +946,76 @@ def _inject_overview_css():
                 box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 2px 5px rgba(15,42,67,.18) !important;
             }
 
+            /* ---------------------------------------------------------
+               Period selector selected colors
+               0 = Daily, 1 = Weekly, 2 = Monthly, 3 = Quarterly
+               Applies to both Revenue and Weight trend selectors.
+               --------------------------------------------------------- */
+
+            /* DAILY - Green */
+            .st-key-revenue_period_btn_0 button[data-testid="stBaseButton-primary"],
+            .st-key-weight_period_btn_0 button[data-testid="stBaseButton-primary"] {
+                border-color: #15803d !important;
+                background: linear-gradient(180deg, #22c55e 0%, #16a34a 58%, #15803d 100%) !important;
+                color: #ffffff !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.24),
+                    0 3px 7px rgba(22,163,74,.26) !important;
+            }
+
+            /* WEEKLY - Amber / Orange */
+            .st-key-revenue_period_btn_1 button[data-testid="stBaseButton-primary"],
+            .st-key-weight_period_btn_1 button[data-testid="stBaseButton-primary"] {
+                border-color: #b45309 !important;
+                background: linear-gradient(180deg, #f59e0b 0%, #d97706 58%, #b45309 100%) !important;
+                color: #ffffff !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.24),
+                    0 3px 7px rgba(217,119,6,.28) !important;
+            }
+
+            /* MONTHLY - Blue */
+            .st-key-revenue_period_btn_2 button[data-testid="stBaseButton-primary"],
+            .st-key-weight_period_btn_2 button[data-testid="stBaseButton-primary"] {
+                border-color: #1d4ed8 !important;
+                background: linear-gradient(180deg, #3b82f6 0%, #2563eb 58%, #1d4ed8 100%) !important;
+                color: #ffffff !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.24),
+                    0 3px 7px rgba(37,99,235,.28) !important;
+            }
+
+            /* QUARTERLY - Purple */
+            .st-key-revenue_period_btn_3 button[data-testid="stBaseButton-primary"],
+            .st-key-weight_period_btn_3 button[data-testid="stBaseButton-primary"] {
+                border-color: #6d28d9 !important;
+                background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 58%, #6d28d9 100%) !important;
+                color: #ffffff !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.24),
+                    0 3px 7px rgba(124,58,237,.28) !important;
+            }
+
+            /* Keep selected text white for every period */
+            .st-key-revenue_period_btn_0 button[data-testid="stBaseButton-primary"] p,
+            .st-key-revenue_period_btn_0 button[data-testid="stBaseButton-primary"] span,
+            .st-key-revenue_period_btn_1 button[data-testid="stBaseButton-primary"] p,
+            .st-key-revenue_period_btn_1 button[data-testid="stBaseButton-primary"] span,
+            .st-key-revenue_period_btn_2 button[data-testid="stBaseButton-primary"] p,
+            .st-key-revenue_period_btn_2 button[data-testid="stBaseButton-primary"] span,
+            .st-key-revenue_period_btn_3 button[data-testid="stBaseButton-primary"] p,
+            .st-key-revenue_period_btn_3 button[data-testid="stBaseButton-primary"] span,
+            .st-key-weight_period_btn_0 button[data-testid="stBaseButton-primary"] p,
+            .st-key-weight_period_btn_0 button[data-testid="stBaseButton-primary"] span,
+            .st-key-weight_period_btn_1 button[data-testid="stBaseButton-primary"] p,
+            .st-key-weight_period_btn_1 button[data-testid="stBaseButton-primary"] span,
+            .st-key-weight_period_btn_2 button[data-testid="stBaseButton-primary"] p,
+            .st-key-weight_period_btn_2 button[data-testid="stBaseButton-primary"] span,
+            .st-key-weight_period_btn_3 button[data-testid="stBaseButton-primary"] p,
+            .st-key-weight_period_btn_3 button[data-testid="stBaseButton-primary"] span {
+                color: #ffffff !important;
+            }
+
             div[class*="st-key-revenue_period_btn_"] button p,
             div[class*="st-key-revenue_period_btn_"] button span,
             div[class*="st-key-weight_period_btn_"] button p,
@@ -1050,16 +1123,16 @@ def _inject_overview_css():
 
             /* Bordered visual cards get a little extra vertical separation. */
             div[data-testid="stVerticalBlockBorderWrapper"] {
-                margin-top: 4px !important;
-                margin-bottom: 14px !important;
+                margin-top: 1px !important;
+                margin-bottom: 2px !important;
                 box-sizing: border-box !important;
             }
 
             div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]) {
                 gap: 16px !important;
                 column-gap: 16px !important;
-                margin-top: 4px !important;
-                margin-bottom: 8px !important;
+                margin-top: 1px !important;
+                margin-bottom: 1px !important;
             }
 
             div[data-testid="stHorizontalBlock"]:has(div[data-testid="stVerticalBlockBorderWrapper"])
@@ -1082,10 +1155,10 @@ def _inject_overview_css():
                 div[data-testid="stHorizontalBlock"]:has(> div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]) {
                     gap: 12px !important;
                     column-gap: 12px !important;
-                    margin-bottom: 7px !important;
+                    margin-bottom: 2px !important;
                 }
                 div[data-testid="stVerticalBlockBorderWrapper"] {
-                    margin-bottom: 10px !important;
+                    margin-bottom: 2px !important;
                 }
             }
 
@@ -1242,6 +1315,445 @@ def _inject_overview_css():
                     margin-bottom: 8px !important;
                     font-size: 8.5px !important;
                 }
+            }
+
+
+            /* =========================================================
+               OVERVIEW FILTER BOXES - PROFESSIONAL BLUE STYLE
+               Applied consistently to ALL selectboxes and slicer boxes.
+               ========================================================= */
+
+            /* Native selectbox container */
+            div[data-testid="stSelectbox"] {
+                background: transparent !important;
+                border: 0 !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                transform: none !important;
+            }
+
+            /* Native selectbox control */
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+                min-height: 40px !important;
+                height: 40px !important;
+                padding: 0 8px !important;
+                border: 1px solid #a9bfd8 !important;
+                border-radius: 9px !important;
+                background: linear-gradient(
+                    180deg,
+                    #f9fbfe 0%,
+                    #eef4fa 58%,
+                    #e4edf7 100%
+                ) !important;
+                color: #173b63 !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.95),
+                    0 2px 5px rgba(30,64,105,.10) !important;
+            }
+
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] span {
+                color: #173b63 !important;
+                font-weight: 700 !important;
+            }
+
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] svg {
+                color: #376d9f !important;
+                background: #e2edf8 !important;
+                border-radius: 5px !important;
+            }
+
+            div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
+            div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div {
+                border-color: #6f99c4 !important;
+                background: linear-gradient(
+                    180deg,
+                    #ffffff 0%,
+                    #edf5fd 55%,
+                    #dfeaf6 100%
+                ) !important;
+                box-shadow:
+                    0 0 0 2px rgba(71,120,166,.10),
+                    0 3px 7px rgba(30,64,105,.13) !important;
+            }
+
+            /* Checkbox slicer / popover filter trigger */
+            div[data-testid="stPopover"] > div > button {
+                min-height: 40px !important;
+                height: 40px !important;
+                padding: 0 9px !important;
+                border: 1px solid #a9bfd8 !important;
+                border-radius: 9px !important;
+                background: linear-gradient(
+                    180deg,
+                    #f9fbfe 0%,
+                    #eef4fa 58%,
+                    #e4edf7 100%
+                ) !important;
+                color: #173b63 !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.95),
+                    0 2px 5px rgba(30,64,105,.10) !important;
+                transform: none !important;
+            }
+
+            div[data-testid="stPopover"] > div > button p,
+            div[data-testid="stPopover"] > div > button span {
+                color: #173b63 !important;
+                font-weight: 700 !important;
+            }
+
+            div[data-testid="stPopover"] > div > button svg {
+                color: #376d9f !important;
+            }
+
+            div[data-testid="stPopover"] > div > button:hover,
+            div[data-testid="stPopover"] > div > button:focus {
+                border-color: #6f99c4 !important;
+                background: linear-gradient(
+                    180deg,
+                    #ffffff 0%,
+                    #edf5fd 55%,
+                    #dfeaf6 100%
+                ) !important;
+                color: #173b63 !important;
+                box-shadow:
+                    0 0 0 2px rgba(71,120,166,.10),
+                    0 3px 7px rgba(30,64,105,.13) !important;
+                transform: none !important;
+            }
+
+            /* Dropdown option list stays clean and professional */
+            div[data-baseweb="popover"] ul {
+                background: #ffffff !important;
+                border: 1px solid #c5d3e2 !important;
+                border-radius: 10px !important;
+                box-shadow: 0 12px 26px rgba(30,64,105,.16) !important;
+            }
+
+            div[data-baseweb="popover"] li {
+                background: #ffffff !important;
+                color: #173b63 !important;
+            }
+
+            div[data-baseweb="popover"] li:hover {
+                background: #eaf2fa !important;
+                color: #12395f !important;
+            }
+
+
+            /* =========================================================
+               TOP NATIVE FILTERS = SAME DESIGN AS SLICER FILTERS
+               Version 8.6.5
+               View Type, Financial Year, Company, Load Type, Conversion
+               ========================================================= */
+
+            .st-key-overview_view_type div[data-testid="stSelectbox"],
+            .st-key-overview_fy div[data-testid="stSelectbox"],
+            .st-key-overview_company div[data-testid="stSelectbox"],
+            .st-key-overview_loadtype div[data-testid="stSelectbox"],
+            .st-key-overview_conversion_type div[data-testid="stSelectbox"] {
+                display: flex !important;
+                flex-direction: column !important;
+                gap: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                transform: none !important;
+                overflow: visible !important;
+            }
+
+            /* Same heading typography/spacing as checkbox-slicer-label */
+            .st-key-overview_view_type div[data-testid="stSelectbox"] > label,
+            .st-key-overview_view_type div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+            .st-key-overview_fy div[data-testid="stSelectbox"] > label,
+            .st-key-overview_fy div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+            .st-key-overview_company div[data-testid="stSelectbox"] > label,
+            .st-key-overview_company div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+            .st-key-overview_loadtype div[data-testid="stSelectbox"] > label,
+            .st-key-overview_loadtype div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+            .st-key-overview_conversion_type div[data-testid="stSelectbox"] > label,
+            .st-key-overview_conversion_type div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
+                display: block !important;
+                height: 22px !important;
+                min-height: 22px !important;
+                line-height: 22px !important;
+                margin: 0 0 9px 2px !important;
+                padding: 0 !important;
+                color: #243b53 !important;
+                font-family: "Segoe UI", Arial, sans-serif !important;
+                font-size: 10px !important;
+                font-weight: 400 !important;
+                letter-spacing: 0 !important;
+                white-space: nowrap !important;
+            }
+
+            .st-key-overview_view_type div[data-testid="stSelectbox"] label p,
+            .st-key-overview_fy div[data-testid="stSelectbox"] label p,
+            .st-key-overview_company div[data-testid="stSelectbox"] label p,
+            .st-key-overview_loadtype div[data-testid="stSelectbox"] label p,
+            .st-key-overview_conversion_type div[data-testid="stSelectbox"] label p {
+                margin: 0 !important;
+                padding: 0 !important;
+                font-size: 10px !important;
+                font-weight: 400 !important;
+                line-height: 22px !important;
+                color: #243b53 !important;
+            }
+
+            /* Match popover trigger: exact same size, fill, border, radius and shadow */
+            .st-key-overview_view_type div[data-baseweb="select"] > div,
+            .st-key-overview_fy div[data-baseweb="select"] > div,
+            .st-key-overview_company div[data-baseweb="select"] > div,
+            .st-key-overview_loadtype div[data-baseweb="select"] > div,
+            .st-key-overview_conversion_type div[data-baseweb="select"] > div {
+                width: 100% !important;
+                min-height: 40px !important;
+                height: 40px !important;
+                padding: 0 9px !important;
+                margin: 0 !important;
+                border: 1px solid #a9bfd8 !important;
+                border-radius: 9px !important;
+                background: linear-gradient(
+                    180deg,
+                    #f9fbfe 0%,
+                    #eef4fa 58%,
+                    #e4edf7 100%
+                ) !important;
+                box-shadow:
+                    inset 0 1px 0 rgba(255,255,255,.95),
+                    0 2px 5px rgba(30,64,105,.10) !important;
+                color: #173b63 !important;
+                transform: none !important;
+            }
+
+            /* Remove Streamlit/BaseWeb grey inner layers */
+            .st-key-overview_view_type div[data-baseweb="select"] > div > div,
+            .st-key-overview_view_type div[data-baseweb="select"] > div > div > div,
+            .st-key-overview_fy div[data-baseweb="select"] > div > div,
+            .st-key-overview_fy div[data-baseweb="select"] > div > div > div,
+            .st-key-overview_company div[data-baseweb="select"] > div > div,
+            .st-key-overview_company div[data-baseweb="select"] > div > div > div,
+            .st-key-overview_loadtype div[data-baseweb="select"] > div > div,
+            .st-key-overview_loadtype div[data-baseweb="select"] > div > div > div,
+            .st-key-overview_conversion_type div[data-baseweb="select"] > div > div,
+            .st-key-overview_conversion_type div[data-baseweb="select"] > div > div > div {
+                background: transparent !important;
+                box-shadow: none !important;
+            }
+
+            /* Same value text as slicers: normal weight, same size */
+            .st-key-overview_view_type div[data-baseweb="select"] span,
+            .st-key-overview_fy div[data-baseweb="select"] span,
+            .st-key-overview_company div[data-baseweb="select"] span,
+            .st-key-overview_loadtype div[data-baseweb="select"] span,
+            .st-key-overview_conversion_type div[data-baseweb="select"] span {
+                color: #173b63 !important;
+                font-family: "Segoe UI", Arial, sans-serif !important;
+                font-size: 10px !important;
+                font-weight: 400 !important;
+                line-height: 1 !important;
+            }
+
+            /* Same blue arrow treatment */
+            .st-key-overview_view_type div[data-baseweb="select"] svg,
+            .st-key-overview_fy div[data-baseweb="select"] svg,
+            .st-key-overview_company div[data-baseweb="select"] svg,
+            .st-key-overview_loadtype div[data-baseweb="select"] svg,
+            .st-key-overview_conversion_type div[data-baseweb="select"] svg {
+                width: 15px !important;
+                height: 15px !important;
+                padding: 0 !important;
+                border-radius: 0 !important;
+                background: transparent !important;
+                color: #376d9f !important;
+            }
+
+            .st-key-overview_view_type div[data-baseweb="select"] > div:hover,
+            .st-key-overview_view_type div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div,
+            .st-key-overview_fy div[data-baseweb="select"] > div:hover,
+            .st-key-overview_fy div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div,
+            .st-key-overview_company div[data-baseweb="select"] > div:hover,
+            .st-key-overview_company div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div,
+            .st-key-overview_loadtype div[data-baseweb="select"] > div:hover,
+            .st-key-overview_loadtype div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div,
+            .st-key-overview_conversion_type div[data-baseweb="select"] > div:hover,
+            .st-key-overview_conversion_type div[data-testid="stSelectbox"]:focus-within div[data-baseweb="select"] > div {
+                border-color: #6f99c4 !important;
+                background: linear-gradient(
+                    180deg,
+                    #ffffff 0%,
+                    #edf5fd 55%,
+                    #dfeaf6 100%
+                ) !important;
+                box-shadow:
+                    0 0 0 2px rgba(71,120,166,.10),
+                    0 3px 7px rgba(30,64,105,.13) !important;
+            }
+
+            /* Keep exact same sizing at responsive widths too */
+            @media (max-width: 1500px) {
+                .st-key-overview_view_type div[data-baseweb="select"] > div,
+                .st-key-overview_fy div[data-baseweb="select"] > div,
+                .st-key-overview_company div[data-baseweb="select"] > div,
+                .st-key-overview_loadtype div[data-baseweb="select"] > div,
+                .st-key-overview_conversion_type div[data-baseweb="select"] > div {
+                    min-height: 38px !important;
+                    height: 38px !important;
+                }
+
+                .st-key-overview_view_type div[data-testid="stSelectbox"] > label,
+                .st-key-overview_fy div[data-testid="stSelectbox"] > label,
+                .st-key-overview_company div[data-testid="stSelectbox"] > label,
+                .st-key-overview_loadtype div[data-testid="stSelectbox"] > label,
+                .st-key-overview_conversion_type div[data-testid="stSelectbox"] > label {
+                    height: 21px !important;
+                    min-height: 21px !important;
+                    line-height: 21px !important;
+                    margin-bottom: 8px !important;
+                    font-size: 9px !important;
+                }
+
+                .st-key-overview_view_type div[data-baseweb="select"] span,
+                .st-key-overview_fy div[data-baseweb="select"] span,
+                .st-key-overview_company div[data-baseweb="select"] span,
+                .st-key-overview_loadtype div[data-baseweb="select"] span,
+                .st-key-overview_conversion_type div[data-baseweb="select"] span {
+                    font-size: 10px !important;
+                    font-weight: 400 !important;
+                }
+            }
+
+
+            /* Compact Target Meter card */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[data-testid="stPlotlyChart"]
+            ) {
+                overflow: hidden !important;
+            }
+
+            .st-key-target_meter_compact div[data-testid="stVerticalBlockBorderWrapper"] > div {
+                padding: .35rem .50rem .30rem !important;
+            }
+
+
+            /* =========================================================
+               COMPACT BUSINESS + WEIGHT TREND LAYOUT - VERSION 8.7.0
+               ========================================================= */
+
+            /* Less vertical gap between dashboard rows */
+            div[data-testid="stHorizontalBlock"] {
+                margin-bottom: 2px !important;
+            }
+
+            div[data-testid="stHorizontalBlock"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ),
+            div[data-testid="stHorizontalBlock"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) {
+                margin-top: 0 !important;
+                margin-bottom: 2px !important;
+            }
+
+            /* Tight chart-card padding */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ) > div,
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) > div {
+                padding-top: .38rem !important;
+                padding-bottom: .30rem !important;
+            }
+
+            /* Reduce Plotly whitespace inside trend cards */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ) div[data-testid="stPlotlyChart"],
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) div[data-testid="stPlotlyChart"] {
+                margin-top: -2px !important;
+                margin-bottom: 0 !important;
+            }
+
+            /* Compact Daily / Weekly / Monthly / Quarterly controls */
+            div[class*="st-key-revenue_period_btn_"] button,
+            div[class*="st-key-weight_period_btn_"] button {
+                min-height: 30px !important;
+                height: 30px !important;
+                padding: 2px 7px !important;
+                border-radius: 7px !important;
+            }
+
+            div[class*="st-key-revenue_period_btn_"] button p,
+            div[class*="st-key-revenue_period_btn_"] button span,
+            div[class*="st-key-weight_period_btn_"] button p,
+            div[class*="st-key-weight_period_btn_"] button span {
+                font-size: 9.5px !important;
+            }
+
+
+            /* =========================================================
+               STRONG OUTER BORDERS FOR ALL CHART / INSIGHT PANELS
+               ========================================================= */
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                border-width: 2px !important;
+                border-style: solid !important;
+                border-color: #a9bfd8 !important;
+            }
+
+            /* =========================================================
+               TREND ROW GAP REDUCTION - VERSION 8.7.1
+               ========================================================= */
+
+            /* Remove extra bottom space after the Business Trend row */
+            div[data-testid="stHorizontalBlock"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ) {
+                margin-bottom: 0 !important;
+                padding-bottom: 0 !important;
+            }
+
+            /* Remove extra top space before the Weight Trend row */
+            div[data-testid="stHorizontalBlock"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) {
+                margin-top: 0 !important;
+                padding-top: 0 !important;
+            }
+
+            /* Trend cards themselves should not add exterior vertical margin */
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ),
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) {
+                margin-top: 0 !important;
+                margin-bottom: 1px !important;
+            }
+
+            /* If Streamlit inserts an empty spacer/element container between rows,
+               collapse it as much as possible. */
+            div[data-testid="stElementContainer"]:empty {
+                min-height: 0 !important;
+                height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            /* Keep the outer vertical layout compact around trend sections */
+            div[data-testid="stVerticalBlock"]:has(
+                div[class*="st-key-revenue_period_btn_"]
+            ),
+            div[data-testid="stVerticalBlock"]:has(
+                div[class*="st-key-weight_period_btn_"]
+            ) {
+                gap: 0.15rem !important;
             }
 
         </style>
@@ -1570,20 +2082,34 @@ def build_weight_yoy_trend(current_df, previous_df, trend_type, date_col, fy_sta
 
     return trend_df
 
-def create_card(title, value, color, icon, growth_value=0.0, previous_value=None, target_value=None):
-    """Render a compact KPI card with LY value, optional target, and YoY growth."""
+def create_card(title, value, color, icon, growth_value=0.0, previous_value=None,
+                target_value=None, target_achievement=None):
+    """Render a compact KPI card with LY value, target and target achievement."""
     positive = growth_value >= 0
     growth_color = "#15803d" if positive else "#dc2626"
     growth_bg = "#ffffff"
     growth_border = "#86efac" if positive else "#fda4af"
     growth_text = growth_label(growth_value)
     previous_text = previous_value if previous_value is not None else "N/A"
-    target_html = (
-        f'<div style="position:relative;z-index:1;margin-top:3px;font-size:9px;font-weight:700;'
-        f'color:#475569;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'
-        f'Target: {target_value}</div>'
-        if target_value is not None else ""
-    )
+
+    if target_value is not None:
+        ach_text = (
+            f"{float(target_achievement):.1f}%"
+            if target_achievement is not None and pd.notna(target_achievement)
+            else "N/A"
+        )
+        target_html = (
+            f'<div style="position:relative;z-index:1;margin-top:3px;font-size:9px;'
+            f'font-weight:800;color:#ea580c;line-height:1.05;white-space:nowrap;'
+            f'overflow:hidden;text-overflow:ellipsis;">'
+            f'TGT-{target_value} / Ach {ach_text}</div>'
+        )
+    else:
+        target_html = (
+            '<div style="position:relative;z-index:1;margin-top:3px;font-size:9px;'
+            'font-weight:800;color:transparent;line-height:1.05;white-space:nowrap;'
+            'user-select:none;">&nbsp;</div>'
+        )
 
     html = (
         f'<div class="kpi-3d-card" style="--kpi-accent:{color};">'
@@ -1610,96 +2136,122 @@ def create_card(title, value, color, icon, growth_value=0.0, previous_value=None
     else:
         st.markdown(html, unsafe_allow_html=True)
 
-def create_target_speedometer(actual, target, unit="", title="Target Achievement", compact=False):
-    """Render a Plotly speedometer. Compact mode is designed for chart headers."""
+def create_target_speedometer(actual, target, unit="", title="Target Achievement (MTD)", compact=False):
+    """Render a donut target-achievement card with metric boxes, matching the dashboard reference."""
     actual = float(actual or 0)
     target = float(target or 0)
     achievement = (actual / target * 100) if target > 0 else 0.0
-    gauge_value = min(max(achievement, 0.0), 150.0)
+    gap = max(target - actual, 0.0)
+    remaining_pct = max(100.0 - achievement, 0.0)
 
     if target <= 0:
         status_text = "Target not set"
         status_color = "#64748b"
+        status_icon = "•"
     elif achievement >= 100:
         status_text = "Target achieved"
-        status_color = "#16a34a"
+        status_color = "#15803d"
+        status_icon = "✓"
     elif achievement >= 80:
         status_text = "Near target"
-        status_color = "#f59e0b"
+        status_color = "#b45309"
+        status_icon = "↗"
     else:
-        status_text = "Below target"
-        status_color = "#dc2626"
+        status_text = "On track toward target"
+        status_color = "#15803d"
+        status_icon = "↗"
 
-    fig = go.Figure(
-        go.Indicator(
-            mode="gauge+number+delta",
-            value=gauge_value,
-            number={
-                "suffix": "%",
-                "valueformat": ".1f",
-                "font": {"size": 19 if compact else 28, "color": "#0f172a"},
-            },
-            delta={
-                "reference": 100,
-                "relative": False,
-                "valueformat": ".1f",
-                "suffix": " pp",
-                "increasing": {"color": "#16a34a"},
-                "decreasing": {"color": "#dc2626"},
-                "font": {"size": 9 if compact else 11},
-            },
-            title={
-                "text": (
-                    f"<b>{title}</b><br>"
-                    f"<span style='font-size:11px;color:#64748b'>"
-                    f"Actual {actual:,.2f}{unit} | Target {target:,.2f}{unit}</span>"
+    # Two-column layout: donut on the left, compact KPI boxes on the right.
+    # Add breathing room below the heading so the donut never touches it.
+    st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+    donut_col, metrics_col = st.columns([0.92, 1.08], gap="small")
+
+    with donut_col:
+        fig = go.Figure(
+            go.Pie(
+                values=[min(max(achievement, 0.0), 100.0), remaining_pct],
+                labels=["Achieved", "Remaining"],
+                hole=0.72,
+                sort=False,
+                direction="clockwise",
+                rotation=90,
+                marker=dict(
+                    colors=["#2563eb", "#e5e7eb"],
+                    line=dict(color="#ffffff", width=0),
                 ),
-                "font": {"size": 10 if compact else 14, "color": "#334155"},
-            },
-            gauge={
-                "axis": {
-                    "range": [0, 150],
-                    "tickmode": "array",
-                    "tickvals": [0, 50, 80, 100, 120, 150],
-                    "ticktext": ["0", "50", "80", "100", "120", "150%"],
-                    "tickfont": {"size": 7 if compact else 9, "color": "#64748b"},
-                },
-                "bar": {"color": status_color, "thickness": 0.28},
-                "bgcolor": "#f8fafc",
-                "borderwidth": 1,
-                "bordercolor": "#dbe4ef",
-                "steps": [
-                    {"range": [0, 80], "color": "#fee2e2"},
-                    {"range": [80, 100], "color": "#fef3c7"},
-                    {"range": [100, 150], "color": "#dcfce7"},
-                ],
-                "threshold": {
-                    "line": {"color": "#0f172a", "width": 3},
-                    "thickness": 0.78,
-                    "value": 100,
-                },
-            },
-        )
-    )
-    fig.update_layout(
-        height=96 if compact else 235,
-        margin=(dict(l=2, r=2, t=24, b=0) if compact else dict(l=18, r=18, t=55, b=20)),
-        paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Arial"),
-        annotations=[
-            dict(
-                x=0.5, y=0.03, xref="paper", yref="paper",
-                text=f"<b>{status_text}</b>",
-                showarrow=False,
-                font=dict(size=12, color=status_color),
+                textinfo="none",
+                hovertemplate="%{label}: %{value:.1f}%<extra></extra>",
+                showlegend=False,
             )
-        ],
-    )
-    st.plotly_chart(
-        fig,
-        width="stretch",
-        config={"displayModeBar": False, "responsive": True},
-    )
+        )
+        fig.add_annotation(
+            x=0.5, y=0.58,
+            text=f"<b>{achievement:.1f}%</b>",
+            showarrow=False,
+            font=dict(size=24 if not compact else 20, color="#2563eb", family="Arial"),
+        )
+        fig.add_annotation(
+            x=0.5, y=0.40,
+            text="Achieved",
+            showarrow=False,
+            font=dict(size=10, color="#0f172a", family="Arial"),
+        )
+        fig.add_annotation(
+            x=0.5, y=0.28,
+            text="<b>(MTD)</b>",
+            showarrow=False,
+            font=dict(size=9, color="#2563eb", family="Arial"),
+        )
+        fig.update_layout(
+            height=176 if compact else 195,
+            margin=dict(l=0, r=0, t=8, b=0),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(
+            fig,
+            width="stretch",
+            config={"displayModeBar": False, "responsive": True, "staticPlot": True},
+        )
+
+    def _metric_box(dot_color, label, value_text):
+        return (
+            '<div style="display:grid;grid-template-columns:12px 1fr auto;align-items:center;'
+            'gap:7px;padding:9px 10px;margin-bottom:7px;border:1px solid #e5eaf1;'
+            'border-radius:7px;background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);'
+            'box-shadow:0 2px 5px rgba(15,23,42,.05);">'
+            f'<span style="width:8px;height:8px;border-radius:50%;background:{dot_color};display:inline-block;"></span>'
+            f'<span style="font-size:10px;font-weight:500;color:#334155;white-space:nowrap;">{label}</span>'
+            f'<span style="font-size:10px;font-weight:800;color:#0f172a;text-align:right;white-space:nowrap;">{value_text}</span>'
+            '</div>'
+        )
+
+    with metrics_col:
+        metrics_html = (
+            '<div style="padding-top:12px;">'
+            + _metric_box("#2563eb", "Achieved", f"{actual:,.2f}{unit}")
+            + _metric_box("#f97316", "Target", f"{target:,.2f}{unit}")
+            + _metric_box("transparent", "Gap to Target", f"{gap:,.2f}{unit}")
+            + '</div>'
+        )
+        st.markdown(metrics_html, unsafe_allow_html=True)
+
+    # Bottom status note in the same visual style as the reference card.
+    if target > 0:
+        note = (
+            f'<div style="display:flex;align-items:center;gap:6px;margin:1px 4px 0 4px;'
+            f'font-size:9px;color:#475569;line-height:1.2;">'
+            f'<span style="font-size:16px;color:{status_color};font-weight:800;">{status_icon}</span>'
+            f'<span>{status_text}: <b style="color:#2563eb;">{achievement:.1f}%</b> achieved; '
+            f'<b>{gap:,.2f}{unit}</b> remaining.</span></div>'
+        )
+    else:
+        note = (
+            '<div style="font-size:9px;color:#64748b;margin:1px 4px 0 4px;">'
+            'Target not set for the selected filters.</div>'
+        )
+    st.markdown(note, unsafe_allow_html=True)
+
 
 def mini_rank_card(rank, name, value, max_value, color, render=True):
     """Build a compact ranked branch row with a wider name area and slimmer bar."""
@@ -2725,20 +3277,26 @@ def show_overview():
     total_target_text = format_revenue(total_target_lac * 100000.0, conversion_type)
     ftl_target_text = format_revenue(ftl_target_lac * 100000.0, conversion_type)
     ltl_target_text = format_revenue(ltl_target_lac * 100000.0, conversion_type)
+    total_target_rupees = total_target_lac * 100000.0
+    ftl_target_rupees = ftl_target_lac * 100000.0
+    ltl_target_rupees = ltl_target_lac * 100000.0
+    total_target_achievement = (revenue / total_target_rupees * 100) if total_target_rupees > 0 else None
+    ftl_target_achievement = (ftl / ftl_target_rupees * 100) if ftl_target_rupees > 0 else None
+    ltl_target_achievement = (ltl / ltl_target_rupees * 100) if ltl_target_rupees > 0 else None
 
     k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     with k1:
         create_card("Business", format_revenue(revenue, conversion_type), "#2563eb", "💰", revenue_growth,
-                    format_revenue(prev_kpis["revenue"], conversion_type), total_target_text)
+                    format_revenue(prev_kpis["revenue"], conversion_type), total_target_text, total_target_achievement)
 
     with k2:
         create_card("FTL Business", format_revenue(ftl, conversion_type), "#2563eb", "🚛", ftl_growth,
-                    format_revenue(prev_kpis["ftl"], conversion_type), ftl_target_text)
+                    format_revenue(prev_kpis["ftl"], conversion_type), ftl_target_text, ftl_target_achievement)
 
     with k3:
         create_card("LTL Business", format_revenue(ltl, conversion_type), "#2563eb", "🚚", ltl_growth,
-                    format_revenue(prev_kpis["ltl"], conversion_type), ltl_target_text)
+                    format_revenue(prev_kpis["ltl"], conversion_type), ltl_target_text, ltl_target_achievement)
 
     with k4:
         create_card("Total GR", f"{total_gr:,}", "#2563eb", "📦", gr_growth,
@@ -2951,7 +3509,7 @@ def show_overview():
             fig_yoy.update_layout(
                 barmode="group",
                 height=REVENUE_CHART_HEIGHT,
-                margin=dict(l=2, r=2, t=20, b=2),
+                margin=dict(l=2, r=2, t=12, b=0),
                 plot_bgcolor="#f8fafc",
                 paper_bgcolor="rgba(0,0,0,0)",
                 legend=dict(
@@ -2968,7 +3526,7 @@ def show_overview():
                 bargap=0.22,
                 bargroupgap=0.08,
             )
-            apply_3d_chart_layout(fig_yoy, height=REVENUE_CHART_HEIGHT, margin=dict(l=8, r=8, t=24, b=8))
+            apply_3d_chart_layout(fig_yoy, height=REVENUE_CHART_HEIGHT, margin=dict(l=6, r=6, t=14, b=2))
             fig_yoy.update_xaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=11))
             fig_yoy.update_yaxes(showgrid=False, showline=False, zeroline=False, tickfont=dict(size=11), title_font=dict(size=12))
 
@@ -3187,85 +3745,17 @@ def show_overview():
 
         with st.container(border=True):
             st.markdown(
-                f'<div style="font-size:{COMPANY_TITLE_FONT}px;font-weight:600;'
-                f'color:#0f172a;margin:0 0 7px 0;line-height:1.2;">'
-                f'Business by Company (CY)</div>',
+                "<div style='font-size:15px;font-weight:600;color:#0f172a;"
+                "margin:0 0 8px 0;line-height:1.1;'>Target Achievement (MTD)</div>",
                 unsafe_allow_html=True,
             )
-
-            if company_chart_df.empty or company_total <= 0:
-                st.info("No company revenue is available for the selected filters.")
-            else:
-                company_colors = [
-                    "#2563eb",
-                    "#0f9f8f",
-                    "#7c3aed",
-                    "#f59e0b",
-                    "#ec4899",
-                    "#64748b",
-                ]
-                max_company_value = float(company_chart_df["Business Cr"].max() or 1)
-                company_rows = []
-
-                for idx, row in company_chart_df.iterrows():
-                    company_name = escape(str(row["Company"]))
-                    value = float(row["Business Cr"] or 0)
-                    share = float(row["Contribution %"] or 0)
-                    py_value = float(row["PY Business Cr"] or 0)
-                    growth = float(row["Growth %"] or 0)
-                    width_pct = (
-                        min((value / max_company_value * 100), 100)
-                        if max_company_value
-                        else 0
-                    )
-                    color = company_colors[idx % len(company_colors)]
-                    growth_color = "#16a34a" if growth >= 0 else "#dc2626"
-                    growth_arrow = "▲" if growth >= 0 else "▼"
-
-                    company_rows.append(
-                        f'<div title="{company_name} | LY ₹{py_value:.2f} {revenue_unit} | '
-                        f'{growth_arrow} {abs(growth):.1f}%" '
-                        f'style="display:grid;'
-                        f'grid-template-columns:minmax(150px,195px) minmax(55px,1fr) '
-                        f'minmax(84px,auto) minmax(58px,auto);'
-                        f'align-items:center;gap:8px;margin:9px 0;line-height:1.2;">'
-
-                        f'<div style="font-size:{COMPANY_NAME_FONT}px;font-weight:600;'
-                        f'color:#334155;white-space:nowrap;overflow:hidden;'
-                        f'text-overflow:ellipsis;">{company_name}</div>'
-
-                        f'<div style="height:9px;background:#e8eef5;border-radius:999px;'
-                        f'overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
-                        f'<div style="height:9px;width:{width_pct:.2f}%;background:{color};'
-                        f'border-radius:999px;"></div></div>'
-
-                        f'<div style="font-size:{COMPANY_VALUE_FONT}px;font-weight:700;'
-                        f'color:#0f172a;white-space:nowrap;">'
-                        f'₹{value:.2f} {revenue_unit}</div>'
-
-                        f'<div style="font-size:{COMPANY_VALUE_FONT}px;font-weight:700;'
-                        f'color:#334155;min-width:54px;text-align:right;white-space:nowrap;">'
-                        f'{share:.2f}%</div>'
-
-                        f'<div style="grid-column:2/5;margin-top:-3px;'
-                        f'font-size:{COMPANY_SUBTEXT_FONT}px;color:#64748b;white-space:nowrap;">'
-                        f'LY ₹{py_value:.2f} {revenue_unit} · '
-                        f'<span style="color:{growth_color};font-weight:700;">'
-                        f'{growth_arrow} {abs(growth):.1f}%</span></div>'
-
-                        f'</div>'
-                    )
-
-                company_html = (
-                    '<div style="padding:0 3px 4px 3px;">'
-                    + ''.join(company_rows)
-                    + '</div>'
-                )
-
-                if hasattr(st, "html"):
-                    st.html(company_html)
-                else:
-                    st.markdown(company_html, unsafe_allow_html=True)
+            create_target_speedometer(
+                actual=trend_actual,
+                target=trend_target,
+                unit=f" {revenue_unit}",
+                title="Target Achievement",
+                compact=False,
+            )
 
     compact_spacer()
 
@@ -3851,13 +4341,13 @@ def show_overview():
             growth_abs_max = pd.to_numeric(monthly_chart["Growth %"], errors="coerce").abs().max()
             growth_abs_max = growth_abs_max if pd.notna(growth_abs_max) and growth_abs_max > 0 else 10
             fig_mom.update_layout(
-                height=235, margin=dict(l=8, r=8, t=28, b=6), plot_bgcolor="#f8fafc",
+                height=282, margin=dict(l=8, r=8, t=28, b=6), plot_bgcolor="#f8fafc",
                 paper_bgcolor="rgba(0,0,0,0)", legend=dict(orientation="h", y=1.10, x=0), bargap=0.35,
                 yaxis=dict(title=f"Business ({revenue_unit})", range=[0, revenue_max * 1.30], showgrid=False, zeroline=False),
                 yaxis2=dict(title="Growth (%)", overlaying="y", side="right", range=[-growth_abs_max * 1.35, growth_abs_max * 1.35], showgrid=False, zeroline=True, zerolinecolor="#cbd5e1"),
                 xaxis=dict(showgrid=False, title=""),
             )
-            apply_3d_chart_layout(fig_mom, height=235, margin=dict(l=8, r=8, t=30, b=6))
+            apply_3d_chart_layout(fig_mom, height=282, margin=dict(l=8, r=8, t=30, b=6))
             fig_mom.update_xaxes(showline=False, zeroline=False)
             fig_mom.update_yaxes(showline=False)
             st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False, "responsive": True})
@@ -3994,13 +4484,86 @@ def show_overview():
 
     with target_meter_col:
         with st.container(border=True):
-            create_target_speedometer(
-                actual=trend_actual,
-                target=trend_target,
-                unit=f" {revenue_unit}",
-                title="Target Achievement",
-                compact=False,
+            st.markdown(
+                f'<div style="font-size:13px;font-weight:600;'
+                f'color:#0f172a;margin:0 0 7px 0;line-height:1.2;">'
+                f'Business by Company (CY)</div>',
+                unsafe_allow_html=True,
             )
+
+            if company_chart_df.empty or company_total <= 0:
+                st.info("No company revenue is available for the selected filters.")
+            else:
+                company_colors = [
+                    "#2563eb",
+                    "#0f9f8f",
+                    "#7c3aed",
+                    "#f59e0b",
+                    "#ec4899",
+                    "#64748b",
+                ]
+                max_company_value = float(company_chart_df["Business Cr"].max() or 1)
+                company_rows = []
+
+                for idx, row in company_chart_df.iterrows():
+                    company_name = escape(str(row["Company"]))
+                    value = float(row["Business Cr"] or 0)
+                    share = float(row["Contribution %"] or 0)
+                    py_value = float(row["PY Business Cr"] or 0)
+                    growth = float(row["Growth %"] or 0)
+                    width_pct = (
+                        min((value / max_company_value * 100), 100)
+                        if max_company_value
+                        else 0
+                    )
+                    color = company_colors[idx % len(company_colors)]
+                    growth_color = "#16a34a" if growth >= 0 else "#dc2626"
+                    growth_arrow = "▲" if growth >= 0 else "▼"
+
+                    company_rows.append(
+                        f'<div title="{company_name} | LY ₹{py_value:.2f} {revenue_unit} | '
+                        f'{growth_arrow} {abs(growth):.1f}%" '
+                        f'style="display:grid;'
+                        f'grid-template-columns:minmax(150px,195px) minmax(55px,1fr) '
+                        f'minmax(84px,auto) minmax(58px,auto);'
+                        f'align-items:center;gap:8px;margin:9px 0;line-height:1.2;">'
+
+                        f'<div style="font-size:10.5px;font-weight:600;'
+                        f'color:#334155;white-space:nowrap;overflow:hidden;'
+                        f'text-overflow:ellipsis;">{company_name}</div>'
+
+                        f'<div style="height:9px;background:#e8eef5;border-radius:999px;'
+                        f'overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
+                        f'<div style="height:9px;width:{width_pct:.2f}%;background:{color};'
+                        f'border-radius:999px;"></div></div>'
+
+                        f'<div style="font-size:10px;font-weight:700;'
+                        f'color:#0f172a;white-space:nowrap;">'
+                        f'₹{value:.2f} {revenue_unit}</div>'
+
+                        f'<div style="font-size:10px;font-weight:700;'
+                        f'color:#334155;min-width:54px;text-align:right;white-space:nowrap;">'
+                        f'{share:.2f}%</div>'
+
+                        f'<div style="grid-column:2/5;margin-top:-3px;'
+                        f'font-size:{COMPANY_SUBTEXT_FONT}px;color:#64748b;white-space:nowrap;">'
+                        f'LY ₹{py_value:.2f} {revenue_unit} · '
+                        f'<span style="color:{growth_color};font-weight:700;">'
+                        f'{growth_arrow} {abs(growth):.1f}%</span></div>'
+
+                        f'</div>'
+                    )
+
+                company_html = (
+                    '<div style="padding:0 3px 4px 3px;">'
+                    + ''.join(company_rows)
+                    + '</div>'
+                )
+
+                if hasattr(st, "html"):
+                    st.html(company_html)
+                else:
+                    st.markdown(company_html, unsafe_allow_html=True)
 
                                                             
                                                        
@@ -4107,7 +4670,7 @@ def show_overview():
 
                 with customer_title_col:
                     st.markdown(
-                        f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top {customer_top_n} Customers by Business</div>"
+                        f"<div style='font-size:18px;font-weight:700;color:#0f2744;margin:1px 0 9px 2px;'>Top {customer_top_n} Customers by Business</div>"
                         f"<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>"
                         f"Customer basis: {party_label} | Current FY revenue, share and YoY movement."
                         "</div>",
@@ -4174,28 +4737,28 @@ def show_overview():
                         }}
                         .customer-insight-table th {{
                             padding:7px 6px; background:#f8fafc;
-                            color:#64748b; font-size:12px; font-weight:400;
+                            color:#475569; font-size:12px; font-weight:700;
                             text-align:left; border-bottom:1px solid #e2e8f0;
                             white-space:nowrap;
                         }}
                         .customer-insight-table td {{
                             padding:8px 6px; border-bottom:1px solid #edf2f7;
-                            vertical-align:middle;
+                            vertical-align:middle; font-weight:600;
                         }}
                         .customer-insight-table tr:last-child td {{border-bottom:0;}}
                         .customer-insight-table tbody tr:hover {{background:#f8fbff;}}
                         
                         .cust-rank {{
                             width:4%; padding-left:2px !important; padding-right:2px !important;
-                            text-align:center; font-weight:400; color:#64748b;
+                            text-align:center; font-weight:600; color:#475569;
                         }}
                         .cust-name {{
                             width:38%; padding-left:3px !important;
-                            font-weight:400; color:#1e293b;
+                            font-weight:600; color:#1e293b;
                             white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
                         }}
                         .cust-revenue {{width:32%;}}
-                        .cust-value {{font-weight:400; color:#0f172a; margin-bottom:3px;}}
+                        .cust-value {{font-weight:700; color:#0f172a; margin-bottom:3px;}}
                         .cust-bar-track {{
                             width:100%; height:5px; border-radius:999px;
                             background:#e8eef8; overflow:hidden;
@@ -4204,11 +4767,11 @@ def show_overview():
                             height:5px; border-radius:999px;
                             background:linear-gradient(90deg,#60a5fa,#2563eb);
                         }}
-                        .cust-share {{width:12%; text-align:right; font-weight:400; color:#475569;}}
+                        .cust-share {{width:12%; text-align:right; font-weight:600; color:#475569;}}
                         .cust-yoy {{width:14%; text-align:right;}}
                         .cust-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:11px; font-weight:400;
+                            font-size:11px; font-weight:700;
                         }}
                         .cust-growth.up {{color:#16a34a;}}
                         .cust-growth.down {{color:#dc2626;}}
@@ -4352,7 +4915,7 @@ def show_overview():
 
                 with route_title_col:
                     st.markdown(
-                        f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>Top {route_top_n} Routes by Business</div>"
+                        f"<div style='font-size:18px;font-weight:700;color:#0f2744;margin:1px 0 9px 2px;'>Top {route_top_n} Routes by Business</div>"
                         "<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>"
                         + ("Origin → Destination" if view_type == "Origin" else "Destination → Origin")
                         + " | Current FY revenue, share and YoY movement.</div>",
@@ -4415,28 +4978,28 @@ def show_overview():
                         }}
                         .route-insight-table th {{
                             padding:7px 6px; background:#f8fafc;
-                            color:#64748b; font-size:12px; font-weight:400;
+                            color:#475569; font-size:12px; font-weight:700;
                             text-align:left; border-bottom:1px solid #e2e8f0;
                             white-space:nowrap;
                         }}
                         .route-insight-table td {{
                             padding:8px 6px; border-bottom:1px solid #edf2f7;
-                            vertical-align:middle;
+                            vertical-align:middle; font-weight:600;
                         }}
                         .route-insight-table tr:last-child td {{border-bottom:0;}}
                         .route-insight-table tbody tr:hover {{background:#f8fbff;}}
                         
                         .route-rank {{
                             width:4%; padding-left:2px !important; padding-right:2px !important;
-                            text-align:center; font-weight:400; color:#64748b;
+                            text-align:center; font-weight:600; color:#475569;
                         }}
                         .route-name {{
                             width:38%; padding-left:3px !important;
-                            font-weight:400; color:#1e293b;
+                            font-weight:600; color:#1e293b;
                             white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
                         }}
                         .route-revenue {{width:32%;}}
-                        .route-value {{font-weight:400; color:#0f172a; margin-bottom:3px;}}
+                        .route-value {{font-weight:700; color:#0f172a; margin-bottom:3px;}}
                         .route-bar-track {{
                             width:100%; height:5px; border-radius:999px;
                             background:#e8eef8; overflow:hidden;
@@ -4445,11 +5008,11 @@ def show_overview():
                             height:5px; border-radius:999px;
                             background:linear-gradient(90deg,#2dd4bf,#0f766e);
                         }}
-                        .route-share {{width:12%; text-align:right; font-weight:400; color:#475569;}}
+                        .route-share {{width:12%; text-align:right; font-weight:600; color:#475569;}}
                         .route-yoy {{width:14%; text-align:right;}}
                         .route-growth {{
                             display:inline-block; min-width:50px; text-align:right;
-                            font-size:11px; font-weight:400;
+                            font-size:11px; font-weight:700;
                         }}
                         .route-growth.up {{color:#16a34a;}}
                         .route-growth.down {{color:#dc2626;}}

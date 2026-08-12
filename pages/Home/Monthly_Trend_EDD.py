@@ -92,19 +92,6 @@ LEFT JOIN (
     ON TAT.ORGCODE = D.ORGCODE
    AND TAT.DESTCODE = D.DESTCODE
 WHERE D.FTL = 'N'
-  AND ORG.HUBNAME IN (
-      'DELHI-NCR', 'GUJARAT', 'GUJARAT - ADI', 'GUJARAT - BRD',
-      'GUJARAT - VAPI', 'JHARKHAND CIRCLE', 'MAHARASHTRA',
-      'MAHARASHTRA - MUM', 'NCR AGENCIES', 'NCR OFFICE',
-      'PATNA CIRCLE', 'PUNJAB CIRCLE', 'REST OF GUJARAT CIRCLE',
-      'REST OF MAHARASHTRA CIRCLE', 'SILIGURI-HUB', 'WEST BENGAL',
-      'WEST BENGAL - KOL', 'WEST BENGAL - SLG', 'ASSAM - NE'
-  )
-  AND DEST.HUBNAME IN (
-      'INDO BORDER CIRCLE', 'NEPAL CIRCLE', 'WEST BENGAL',
-      'WEST BENGAL - KOL', 'WEST BENGAL - SLG', 'SILIGURI-HUB',
-      'ASSAM - NE', 'JHARKHAND CIRCLE'
-  )
   AND D.GRTYPE <> 'N'
   AND D.GRDT >= :from_date
   AND D.GRDT < DATEADD(DAY, 1, :to_date)
@@ -114,7 +101,7 @@ WHERE D.FTL = 'N'
 # Increment this value whenever the SQL source or returned columns change.
 # It is part of the Streamlit cache key and prevents an old query result from
 # being reused after deployment.
-EDD_DATA_CACHE_VERSION = "8.6.0"
+EDD_DATA_CACHE_VERSION = "8.6.1"
 
 
 
@@ -396,22 +383,29 @@ def show_monthly_trend_edd():
     with filter_col3:
         st.write("")
         st.write("")
-        if st.button(
-            "Refresh Report",
+        run_report = st.button(
+            "Run Report",
             type="primary",
             use_container_width=True,
-            key="monthly_trend_edd_refresh",
-        ):
-            load_sql_data.clear()
-            st.rerun()
+            key="monthly_trend_edd_run",
+        )
+
+    # Do not query SQL until the user explicitly presses Run Report.
+    if not run_report:
+        st.info("Select the From Date and To Date, then click **Run Report**.")
+        return
 
     if from_date > to_date:
         st.error("The From date cannot be later than the To date.")
-        st.stop()
+        return
 
     try:
+        # A fresh query is executed only when Run Report is pressed.
+        load_sql_data.clear()
+
         with st.spinner("Loading EDD data from SQL Server..."):
             raw_df = load_sql_data(from_date, to_date)
+
         detail_df = prepare_detail_data(raw_df)
         final_summary = calculate_monthly_summary(detail_df)
         unmapped_branch_summary = calculate_unmapped_branch_summary(detail_df)

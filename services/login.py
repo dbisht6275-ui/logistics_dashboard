@@ -1,6 +1,5 @@
 import streamlit as st
 from sqlalchemy import text
-from textwrap import dedent
 
 from services.database import get_engine
 from services.roles import (
@@ -13,19 +12,13 @@ def check_login(username: str, password: str):
     """
     Validate username and password from USERMAST.
 
-    Login behaviour:
+    Current behaviour preserved from the original code:
     - Username is case-insensitive.
     - Password is case-insensitive.
-    - Leading and trailing spaces are ignored.
+    - Leading/trailing spaces are ignored.
     - Expired users are not allowed.
     - Employee name is retrieved from EMPLOYEEMAST.
-
-    Returns:
-        tuple:
-            (True, employee_id, employee_name) when login succeeds.
-            (False, None, None) when login fails.
     """
-
     try:
         clean_username = username.strip()
         clean_password = password.strip()
@@ -62,10 +55,7 @@ def check_login(username: str, password: str):
             row = result.mappings().first()
 
         if row:
-            employee_id = row["EMPLOYEEID"]
-            employee_name = row["EMPLOYEE_NAME"]
-
-            return True, employee_id, employee_name
+            return True, row["EMPLOYEEID"], row["EMPLOYEE_NAME"]
 
         return False, None, None
 
@@ -75,158 +65,341 @@ def check_login(username: str, password: str):
 
 
 def login_page():
-    """
-    Display the Streamlit login page and authenticate the user.
-    """
+    """Display a compact, responsive Streamlit login page."""
+
+    st.set_page_config(
+        page_title="Sugam Group | Login",
+        page_icon="🔐",
+        layout="centered",
+        initial_sidebar_state="collapsed",
+    )
 
     st.markdown(
-        dedent(
-            """
-            <style>
-                .main .block-container {
-                    max-width: 900px;
-                    padding-top: 40px;
-                    padding-bottom: 40px;
-                }
+        """
+<style>
+/* ---------- App ---------- */
+.stApp {
+    background:
+        radial-gradient(circle at 8% 8%, rgba(219,239,255,.72), transparent 26%),
+        radial-gradient(circle at 92% 92%, rgba(224,241,255,.78), transparent 28%),
+        #f7fbff;
+}
 
-                .login-card {
-                    width: 100%;
-                    background: white;
-                    padding: 28px 20px;
-                    border-radius: 20px;
-                    box-shadow: 0 10px 35px rgba(0, 0, 0, 0.12);
-                    border: 1px solid #eeeeee;
-                    text-align: center;
-                    margin-bottom: 20px;
-                    box-sizing: border-box;
-                }
+#MainMenu, header, footer {
+    visibility: hidden;
+}
 
-                .login-title {
-                    font-size: 30px;
-                    font-weight: 600;
-                    color: #1f2937;
-                    margin-bottom: 5px;
-                    line-height: 1.25;
-                }
+.main .block-container,
+[data-testid="stMainBlockContainer"] {
+    max-width: 430px;
+    padding-top: 1.5rem;
+    padding-bottom: 1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
 
-                .login-subtitle {
-                    color: #6b7280;
-                    font-size: 15px;
-                    margin-top: 6px;
-                }
+/* ---------- Brand ---------- */
+.sg-brand {
+    text-align: center;
+    margin: 0 0 .75rem 0;
+}
 
-                div[data-baseweb="input"] > div {
-                    border-radius: 10px;
-                }
+.sg-logo {
+    width: 58px;
+    height: 58px;
+    margin: 0 auto .55rem auto;
+    border-radius: 17px;
+    background: linear-gradient(145deg, #1597e8, #1f5ed8);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 25px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    box-shadow: 0 9px 22px rgba(31,94,216,.22);
+}
 
-                div.stButton > button {
-                    width: 100%;
-                    background: linear-gradient(
-                        90deg,
-                        #0f766e,
-                        #2563eb
-                    );
-                    color: white;
-                    border: none;
-                    border-radius: 10px;
-                    height: 45px;
-                    font-weight: 600;
-                }
+.sg-name {
+    color: #102a56;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 2.7px;
+    line-height: 1.1;
+}
 
-                div.stButton > button:hover {
-                    color: white;
-                    border: none;
-                    background: linear-gradient(
-                        90deg,
-                        #115e59,
-                        #1d4ed8
-                    );
-                }
+.sg-tagline {
+    color: #71809a;
+    font-size: 9px;
+    letter-spacing: 2.2px;
+    margin-top: 5px;
+}
 
-                div.stButton > button:active {
-                    color: white;
-                    border: none;
-                }
-            </style>
-            """
-        ),
+.sg-title {
+    color: #10233f;
+    font-size: 24px;
+    font-weight: 750;
+    line-height: 1.15;
+    margin-top: 1rem;
+}
+
+.sg-subtitle {
+    color: #778398;
+    font-size: 13px;
+    margin-top: .25rem;
+}
+
+.sg-secure {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: .7rem;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(232,243,255,.9);
+    color: #52657f;
+    font-size: 12px;
+}
+
+/* ---------- Form card ---------- */
+[data-testid="stForm"] {
+    background: rgba(255,255,255,.97);
+    border: 1px solid #e4ebf4 !important;
+    border-radius: 18px;
+    padding: 1.15rem 1.15rem .95rem 1.15rem;
+    box-shadow: 0 14px 38px rgba(31,55,86,.10);
+}
+
+.field-heading {
+    color: #20324d;
+    font-size: 13px;
+    font-weight: 650;
+    margin: 0 0 5px 1px;
+}
+
+div[data-baseweb="input"] > div {
+    background: #f5f8fc;
+    border: 1px solid #e2e9f2;
+    border-radius: 10px;
+    min-height: 44px;
+}
+
+div[data-baseweb="input"] > div:focus-within {
+    border-color: #3987e8;
+    box-shadow: 0 0 0 3px rgba(57,135,232,.10);
+}
+
+div[data-baseweb="input"] input {
+    color: #25364f;
+    font-size: 14px;
+}
+
+div[data-baseweb="input"] input::placeholder {
+    color: #98a3b3;
+}
+
+div[data-testid="stTextInput"] label {
+    display: none;
+}
+
+button[kind="primaryFormSubmit"] {
+    width: 100%;
+    min-height: 44px;
+    border: 0;
+    border-radius: 10px;
+    background: linear-gradient(100deg, #188fe6, #2464dc);
+    color: white;
+    font-size: 14px;
+    font-weight: 750;
+    letter-spacing: .4px;
+    box-shadow: 0 8px 18px rgba(36,100,220,.20);
+}
+
+button[kind="primaryFormSubmit"]:hover {
+    border: 0;
+    color: white;
+    background: linear-gradient(100deg, #1184d9, #1d58cf);
+}
+
+.sg-safe {
+    text-align: center;
+    color: #718096;
+    font-size: 11px;
+    margin-top: .7rem;
+}
+
+.sg-restricted {
+    background: rgba(237,246,255,.90);
+    border: 1px solid #dcecff;
+    border-radius: 12px;
+    padding: 9px 12px;
+    margin-top: .7rem;
+    text-align: center;
+    color: #5a6d86;
+    font-size: 10.5px;
+    line-height: 1.45;
+}
+
+.sg-restricted strong {
+    color: #355273;
+    font-size: 11px;
+}
+
+.sg-footer {
+    text-align: center;
+    color: #8a96a8;
+    font-size: 9.5px;
+    margin-top: .65rem;
+    line-height: 1.45;
+}
+
+div[data-testid="stAlert"] {
+    border-radius: 10px;
+    margin-top: .65rem;
+}
+
+/* ---------- Small screens ---------- */
+@media (max-width: 600px) {
+    .main .block-container,
+    [data-testid="stMainBlockContainer"] {
+        max-width: 100%;
+        padding-top: .7rem;
+        padding-left: .75rem;
+        padding-right: .75rem;
+        padding-bottom: .6rem;
+    }
+
+    .sg-logo {
+        width: 50px;
+        height: 50px;
+        border-radius: 14px;
+        font-size: 22px;
+        margin-bottom: .4rem;
+    }
+
+    .sg-name {
+        font-size: 17px;
+        letter-spacing: 2.1px;
+    }
+
+    .sg-tagline {
+        font-size: 8px;
+        letter-spacing: 1.7px;
+    }
+
+    .sg-title {
+        font-size: 21px;
+        margin-top: .75rem;
+    }
+
+    .sg-subtitle {
+        font-size: 12px;
+    }
+
+    [data-testid="stForm"] {
+        border-radius: 15px;
+        padding: .95rem .9rem .8rem .9rem;
+    }
+
+    div[data-baseweb="input"] > div,
+    button[kind="primaryFormSubmit"] {
+        min-height: 42px;
+    }
+}
+</style>
+        """,
         unsafe_allow_html=True,
     )
 
-    left_col, login_col, right_col = st.columns([3, 2, 3])
+    # IMPORTANT:
+    # Keep the HTML at the left edge of the string.
+    # Indented HTML can be rendered by Markdown as a literal code block.
+    st.markdown(
+        """<div class="sg-brand">
+<div class="sg-logo">SG</div>
+<div class="sg-name">SUGAM GROUP</div>
+<div class="sg-title">Logistics Analytics Portal</div>
+<div class="sg-secure"><span>✓</span><span>Secure login to continue</span></div>
+</div>""",
+        unsafe_allow_html=True,
+    )
 
-    with login_col:
+    with st.form(key="login_form", clear_on_submit=False):
         st.markdown(
-            '<div class="login-card">'
-            '<div class="login-title">Dashboard Login</div>'
-            '<div class="login-subtitle">Secure login to continue</div>'
-            '</div>',
+            '<div class="field-heading">Username</div>',
             unsafe_allow_html=True,
         )
+        username = st.text_input(
+            "Username",
+            placeholder="Enter your username",
+            key="login_username",
+            label_visibility="collapsed",
+        )
 
-        with st.form(
-            key="login_form",
-            clear_on_submit=False,
-        ):
-            username = st.text_input(
-                label="Username",
-                placeholder="Enter your username",
-                key="login_username",
-            )
+        st.markdown(
+            '<div class="field-heading" style="margin-top:7px;">Password</div>',
+            unsafe_allow_html=True,
+        )
+        password = st.text_input(
+            "Password",
+            type="password",
+            placeholder="Enter your password",
+            key="login_password",
+            label_visibility="collapsed",
+        )
 
-            password = st.text_input(
-                label="Password",
-                type="password",
-                placeholder="Enter your password",
-                key="login_password",
-            )
+        login_clicked = st.form_submit_button(
+            "LOGIN",
+            use_container_width=True,
+        )
 
-            login_clicked = st.form_submit_button(
-                label="Login",
-                use_container_width=True,
-            )
+        st.markdown(
+            '<div class="sg-safe">🛡 Your data is safe and secure</div>',
+            unsafe_allow_html=True
+        )
 
-        if login_clicked:
-            if not username.strip() or not password.strip():
-                st.warning("Please enter username and password.")
-                return
+    st.markdown(
+        """<div class="sg-restricted">
+<strong>🔒 Restricted Access</strong><br>
+This system is for authorized users only. Dashboard access is subject to company security policies.
+</div>""",
+        unsafe_allow_html=True,
+    )
 
-            success, employee_id, employee_name = check_login(
-                username=username,
-                password=password,
-            )
+    if login_clicked:
+        if not username.strip() or not password.strip():
+            st.warning("Please enter username and password.")
+            return
 
-            if success:
-                try:
-                    role = get_role_for_employee(employee_id)
+        success, employee_id, employee_name = check_login(
+            username=username,
+            password=password,
+        )
 
-                    data_scope = get_data_scope_for_employee(
-                        employee_id
-                    )
+        if success:
+            try:
+                role = get_role_for_employee(employee_id)
+                data_scope = get_data_scope_for_employee(employee_id)
 
-                    st.session_state["logged_in"] = True
-                    st.session_state["employee_id"] = employee_id
-                    st.session_state["employee_name"] = (
-                        employee_name
-                        if employee_name
-                        else username.strip()
-                    )
-                    st.session_state["role"] = role
-                    st.session_state["data_scope"] = data_scope
-                    st.session_state["username"] = username.strip()
+                st.session_state["logged_in"] = True
+                st.session_state["employee_id"] = employee_id
+                st.session_state["employee_name"] = (
+                    employee_name if employee_name else username.strip()
+                )
+                st.session_state["role"] = role
+                st.session_state["data_scope"] = data_scope
+                st.session_state["username"] = username.strip()
 
-                    st.rerun()
+                st.rerun()
 
-                except Exception as e:
-                    st.session_state["logged_in"] = False
-
-                    st.error(
-                        "Login successful, but user access "
-                        f"could not be loaded: {e}"
-                    )
-
-            else:
-                st.error("Invalid username or password.")
+            except Exception as e:
+                st.session_state["logged_in"] = False
+                st.error(
+                    "Login successful, but user access could not be loaded: "
+                    f"{e}"
+                )
+        else:
+            st.error("Invalid username or password.")
 
 
 if __name__ == "__main__":
