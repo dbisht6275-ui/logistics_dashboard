@@ -407,7 +407,7 @@ def show_net_profit_dashboard():
     with filter_cols[2]:
         branches = st.multiselect(
             "Branch",
-            safe_options(branch_mast_df, "BRANCH"),
+            safe_options(branch_master_df, "BRANCH"),
             key="np_branch",
             placeholder="All branches",
         )
