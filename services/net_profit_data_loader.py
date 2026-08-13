@@ -23,7 +23,7 @@ from services.net_profit_branch_mast import load_net_profit_branch_mast
 #       = Branch Operational P&L - Branch Overhead
 #
 # Overhead:
-#   Salary + Godown Rent + Voucher Overhead + Claim
+#   Salary + Godown Rent + Voucher Overhead + Claim + Booking 6% + Destination 5%
 # ============================================================
 
 _CACHE_TTL_SECONDS = 24 * 60 * 60
@@ -683,6 +683,8 @@ def _prepare_overhead(df):
         "GODOWN RENT",
         "OVERHEAD EXPENSE",
         "CLAIM",
+        "BOOKING 6%",
+        "DESTINATION 5%",
         "TOTAL EXPENSE",
     ]
 
@@ -701,6 +703,8 @@ def _prepare_overhead(df):
         "GODOWN RENT": ["GODOWN RENT", "GODOWN_RENT"],
         "OVERHEAD EXPENSE": ["OVERHEAD EXPENSE", "OVERHEAD_EXPENSE"],
         "CLAIM": ["CLAIM"],
+        "BOOKING 6%": ["BOOKING 6%", "BOOKING_6", "BOOKING6"],
+        "DESTINATION 5%": ["DESTINATION 5%", "DESTINATION_5", "DESTINATION5"],
         "TOTAL EXPENSE": ["TOTAL EXPENSE", "TOTAL_EXPENSE"],
     }
 
@@ -744,6 +748,8 @@ def _prepare_overhead(df):
         "GODOWN RENT",
         "OVERHEAD EXPENSE",
         "CLAIM",
+        "BOOKING 6%",
+        "DESTINATION 5%",
         "TOTAL EXPENSE",
     ]:
         if column not in out.columns:
@@ -939,6 +945,8 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
             "GODOWN RENT",
             "OVERHEAD EXPENSE",
             "CLAIM",
+            "BOOKING 6%",
+            "DESTINATION 5%",
             "TOTAL EXPENSE",
         ]
     ].copy()
@@ -998,6 +1006,8 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         "GODOWN RENT",
         "OVERHEAD EXPENSE",
         "CLAIM",
+        "BOOKING 6%",
+        "DESTINATION 5%",
         "TOTAL EXPENSE",
     ]:
         final[column] = pd.to_numeric(
