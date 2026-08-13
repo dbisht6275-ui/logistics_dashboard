@@ -7,6 +7,7 @@ from sqlalchemy import text
 
 from services.database import get_engine
 from services.pnl_data_loader import load_pnl_data
+from services.net_profit_branch_mast import load_net_profit_branch_mast
 
 
 # ============================================================
@@ -646,8 +647,61 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
     destination = _aggregate_view_pnl(destination_df, "DESTINATION")
     overhead = _prepare_overhead(overhead_df)
 
-    # Revenue SP returns branch names; overhead query returns both branch
-    # code and branch name. Join using a normalised branch-name key.
+    # Branch Master is the source of truth. Every branch/agency must remain
+    # available even when it has no Origin P&L, no Destination P&L, or no overhead.
+    branch_master = load_net_profit_branch_mast()
+    if branch_master is None or branch_master.empty:
+        return pd.DataFrame()
+
+    master = branch_master.copy()
+    branch_col = _find_column(master, ["BRANCH", "branch", "branchname"])
+    code_col = _find_column(master, ["CODE", "BRANCHCODE", "branch_code"])
+    zone_col = _find_column(master, ["ZONE", "zone", "zonename"])
+    circle_col = _find_column(master, ["CIRCLE", "circle", "circlename", "hubname"])
+    company_col = _find_column(master, ["COMPNAME", "company", "companyname"])
+
+    if branch_col is None:
+        raise ValueError(
+            f"Net Profit Branch Master must contain BRANCH. Available columns: {list(master.columns)}"
+        )
+
+    master["BRANCH"] = master[branch_col].fillna("").astype(str).str.strip()
+    master["BRANCH_KEY"] = _normalise_branch_key(master["BRANCH"])
+    master["BRANCHCODE"] = (
+        _clean_code(master[code_col]) if code_col is not None else ""
+    )
+    master["zone"] = master[zone_col].fillna("Unknown") if zone_col is not None else "Unknown"
+    master["circle"] = master[circle_col].fillna("Unknown") if circle_col is not None else "Unknown"
+    master["COMPNAME"] = master[company_col].fillna("Unknown") if company_col is not None else "Unknown"
+    master = master[
+        master["BRANCH_KEY"].notna()
+        & master["BRANCH_KEY"].ne("")
+        & master["BRANCH_KEY"].ne("nan")
+    ][["BRANCH_KEY", "BRANCHCODE", "BRANCH", "zone", "circle", "COMPNAME"]].drop_duplicates("BRANCH_KEY")
+
+    # Build branch-month skeleton from the selected reporting period present in
+    # Origin, Destination, or Overhead. If a month has only overhead, it still survives.
+    month_parts = []
+    for source in [origin, destination, overhead]:
+        if source is not None and not source.empty and {"YEAR", "MONTHNO"}.issubset(source.columns):
+            month_parts.append(source[["YEAR", "MONTHNO"]])
+
+    if not month_parts:
+        return pd.DataFrame()
+
+    months = (
+        pd.concat(month_parts, ignore_index=True)
+        .dropna(subset=["YEAR", "MONTHNO"])
+        .drop_duplicates()
+    )
+    months["YEAR"] = pd.to_numeric(months["YEAR"], errors="coerce")
+    months["MONTHNO"] = pd.to_numeric(months["MONTHNO"], errors="coerce")
+    months = months.dropna(subset=["YEAR", "MONTHNO"])
+
+    master["_K"] = 1
+    months["_K"] = 1
+    base = master.merge(months, on="_K", how="inner").drop(columns="_K")
+
     keys = ["BRANCH_KEY", "YEAR", "MONTHNO"]
 
     origin = origin.rename(columns={"BRANCH": "ORIGIN_BRANCH"})
@@ -656,11 +710,15 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
     origin = _prefix_metrics(origin, "ORIGIN")
     destination = _prefix_metrics(destination, "DESTINATION")
 
-    # _prefix_metrics intentionally prefixes branch display fields too.
-    combined = origin.merge(
+    combined = base.merge(
+        origin,
+        on=keys,
+        how="left",
+        validate="one_to_one",
+    ).merge(
         destination,
         on=keys,
-        how="outer",
+        how="left",
         validate="one_to_one",
     )
 
@@ -687,9 +745,18 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
             if column not in combined.columns:
                 combined[column] = 0.0
 
-    # Optional organisation metadata.
+    # Keep organisation metadata from Branch Master as the primary source.
     for field in ["COMPNAME", "zone", "circle"]:
-        combined[field] = _coalesce_metadata(combined, field)
+        if field not in combined.columns:
+            combined[field] = _coalesce_metadata(combined, field)
+        else:
+            fallback = _coalesce_metadata(combined, field)
+            combined[field] = (
+                combined[field]
+                .replace("", pd.NA)
+                .fillna(fallback)
+                .fillna("Unknown")
+            )
 
     combined["BUSINESS"] = (
         combined["ORIGIN_BUSINESS"]
@@ -727,14 +794,14 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
     ].copy()
 
     final = combined.merge(
-        overhead_merge,
+        overhead_merge.drop(columns=["BRANCHCODE", "BRANCH"], errors="ignore"),
         on=keys,
         how="left",
         validate="one_to_one",
     )
 
-    # Pick the branch display name from overhead first; otherwise from
-    # Origin/Destination revenue data.
+    # Branch display/code come from Branch Master. Origin/Destination names
+    # are only fallback metadata when needed.
     origin_branch_col = next(
         (
             c for c in [
