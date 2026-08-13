@@ -258,6 +258,52 @@ def _fetch_complete_period(start_date, end_date, view_type):
     return result
 
 
+def _fetch_both_views_period(start_date, end_date):
+    """Fetch Origin + Destination revenue and the shared P&L SP only once.
+
+    The stored procedure result is independent of view type, so reusing it avoids
+    running the same heavy SP twice for the same reporting period.
+    """
+    started = time.perf_counter()
+
+    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="pnl-both") as executor:
+        origin_revenue_future = executor.submit(
+            load_booking_data, start_date, end_date, "ORIGIN"
+        )
+        destination_revenue_future = executor.submit(
+            load_booking_data, start_date, end_date, "DESTINATION"
+        )
+        pnl_future = executor.submit(_fetch_pnl_sp_data, start_date, end_date)
+
+        origin_revenue = origin_revenue_future.result()
+        destination_revenue = destination_revenue_future.result()
+        pnl_sp_df = pnl_future.result()
+
+    origin_df = (
+        _merge_revenue_and_pnl(origin_revenue, pnl_sp_df)
+        if origin_revenue is not None and not origin_revenue.empty
+        else pd.DataFrame()
+    )
+    destination_df = (
+        _merge_revenue_and_pnl(destination_revenue, pnl_sp_df)
+        if destination_revenue is not None and not destination_revenue.empty
+        else pd.DataFrame()
+    )
+
+    print(
+        f"[P&L Both Views] {start_date} to {end_date} | "
+        f"origin_rows={len(origin_df):,} | destination_rows={len(destination_df):,} | "
+        f"seconds={time.perf_counter() - started:.2f}"
+    )
+    return origin_df, destination_df
+
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=8)
+def load_pnl_both_views(start_date, end_date):
+    """Cached Origin + Destination P&L with one shared SP execution."""
+    return _fetch_both_views_period(start_date, end_date)
+
+
 @st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=12)
 def load_pnl_data(start_date, end_date, view_type="origin"):
     return _fetch_complete_period(
