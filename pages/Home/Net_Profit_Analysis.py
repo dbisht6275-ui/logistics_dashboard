@@ -7,6 +7,7 @@ import streamlit as st
 
 from services.data_loader import get_date_range
 from services.net_profit_data_loader import load_net_profit_data_pair
+from services.branch_agency_mast import load_stationmast_data
 
 
 # ============================================================
@@ -94,6 +95,69 @@ def apply_multi_filter(df, column, selected):
         return df
 
     return df[df[column].isin(selected)].copy()
+
+
+def _normalise_branch_name(value):
+    return " ".join(str(value).strip().casefold().split())
+
+
+def _filter_to_branch_scope(df, branch_names):
+    if df is None or df.empty or "BRANCH" not in df.columns or not branch_names:
+        return df
+
+    allowed = {_normalise_branch_name(value) for value in branch_names}
+    branch_key = df["BRANCH"].fillna("").map(_normalise_branch_name)
+    return df[branch_key.isin(allowed)].copy()
+
+
+def _apply_pnl_business_rule(df, all_branches):
+    """
+    All branches  -> Origin view P&L only.
+    Explicit branch selection -> Origin P&L + Destination P&L.
+    Overhead is deducted once in both cases.
+    """
+    if df is None or df.empty:
+        return df
+
+    out = df.copy()
+
+    for column in [
+        "ORIGIN_PNL",
+        "DESTINATION_PNL",
+        "ORIGIN_BUSINESS",
+        "DESTINATION_BUSINESS",
+        "ORIGIN_TOTAL_INCOME",
+        "DESTINATION_TOTAL_INCOME",
+        "ORIGIN_DIRECT_EXPENSE",
+        "DESTINATION_DIRECT_EXPENSE",
+        "TOTAL EXPENSE",
+    ]:
+        if column not in out.columns:
+            out[column] = 0.0
+        out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
+
+    if all_branches:
+        # Consolidated dashboard must not count the same GR-level P&L twice.
+        out["DESTINATION_PNL"] = 0.0
+        out["DESTINATION_BUSINESS"] = 0.0
+        out["DESTINATION_TOTAL_INCOME"] = 0.0
+        out["DESTINATION_DIRECT_EXPENSE"] = 0.0
+
+    out["BUSINESS"] = out["ORIGIN_BUSINESS"] + out["DESTINATION_BUSINESS"]
+    out["TOTAL_INCOME"] = out["ORIGIN_TOTAL_INCOME"] + out["DESTINATION_TOTAL_INCOME"]
+    out["DIRECT_EXPENSE"] = out["ORIGIN_DIRECT_EXPENSE"] + out["DESTINATION_DIRECT_EXPENSE"]
+    out["COMBINED_PNL"] = out["ORIGIN_PNL"] + out["DESTINATION_PNL"]
+    out["NET_PROFIT"] = out["COMBINED_PNL"] - out["TOTAL EXPENSE"]
+
+    out["NET_PROFIT_MARGIN"] = 0.0
+    valid_income = out["TOTAL_INCOME"].ne(0)
+    out.loc[valid_income, "NET_PROFIT_MARGIN"] = (
+        out.loc[valid_income, "NET_PROFIT"]
+        / out.loc[valid_income, "TOTAL_INCOME"]
+        * 100
+    )
+
+    return out
 
 
 def calculate_kpis(df):
@@ -304,6 +368,14 @@ def show_net_profit_dashboard():
     prev_fy = get_previous_fy(fy)
     prev_start, prev_end = get_date_range(prev_fy)
 
+    # Branch/Agency master is loaded first and becomes the dashboard branch scope.
+    branch_master_df = load_stationmast_data(start_date, end_date)
+    valid_branches = safe_options(branch_master_df, "BRANCH")
+
+    if not valid_branches:
+        st.warning("No valid branches found in Branch/Agency Master for selected financial year.")
+        return
+
     with st.spinner("Loading Origin, Destination and branch overhead..."):
         raw_df, raw_prev_df = load_net_profit_data_pair(
             start_date,
@@ -316,8 +388,13 @@ def show_net_profit_dashboard():
         st.warning("No Net Profit data found for selected financial year.")
         return
 
-    df = raw_df.copy()
-    prev_df = raw_prev_df.copy() if raw_prev_df is not None else pd.DataFrame()
+    # Restrict P&L/overhead to branches returned by Branch/Agency Master.
+    df = _filter_to_branch_scope(raw_df.copy(), valid_branches)
+    prev_df = (
+        _filter_to_branch_scope(raw_prev_df.copy(), valid_branches)
+        if raw_prev_df is not None
+        else pd.DataFrame()
+    )
 
     with filter_cols[1]:
         conversion_type = st.selectbox(
@@ -330,7 +407,7 @@ def show_net_profit_dashboard():
     with filter_cols[2]:
         branches = st.multiselect(
             "Branch",
-            safe_options(df, "BRANCH"),
+            valid_branches,
             key="np_branch",
             placeholder="All branches",
         )
@@ -383,6 +460,16 @@ def show_net_profit_dashboard():
     if df.empty:
         st.warning("No data found for selected filters.")
         return
+
+    # No explicit branch selection means consolidated All Branches mode.
+    # In this mode only Origin-view P&L is used.
+    all_branches = len(branches) == 0
+    df = _apply_pnl_business_rule(df, all_branches=all_branches)
+    prev_df = (
+        _apply_pnl_business_rule(prev_df, all_branches=all_branches)
+        if not prev_df.empty
+        else prev_df
+    )
 
     divisor, unit = get_conversion(conversion_type)
 
