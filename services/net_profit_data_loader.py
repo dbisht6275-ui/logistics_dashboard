@@ -320,11 +320,11 @@ def _get_branch_identity_column(df, view_type):
             "origin_branch_code",
             "BOOKINGBRANCHCODE",
             "booking_branch_code",
-            "BRANCHCODE",
-            "branch_code",
             "branch",
             "BRANCH",
             "branchname",
+            "BRANCHCODE",
+            "branch_code",
         ]
     elif view == "DESTINATION":
         candidates = [
@@ -333,11 +333,11 @@ def _get_branch_identity_column(df, view_type):
             "destination_branch_code",
             "DELIVERYBRANCHCODE",
             "delivery_branch_code",
-            "BRANCHCODE",
-            "branch_code",
             "branch",
             "BRANCH",
             "branchname",
+            "BRANCHCODE",
+            "branch_code",
         ]
     else:
         raise ValueError(f"Unsupported view type: {view_type!r}")
