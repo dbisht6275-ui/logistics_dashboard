@@ -170,6 +170,8 @@ def calculate_kpis(df):
             "godown": 0.0,
             "overhead": 0.0,
             "claim": 0.0,
+            "booking_6": 0.0,
+            "destination_5": 0.0,
             "total_expense": 0.0,
             "net_profit": 0.0,
             "total_income": 0.0,
@@ -184,6 +186,8 @@ def calculate_kpis(df):
         "godown": float(df["GODOWN RENT"].sum()),
         "overhead": float(df["OVERHEAD EXPENSE"].sum()),
         "claim": float(df["CLAIM"].sum()),
+        "booking_6": float(df["BOOKING 6%"].sum()) if "BOOKING 6%" in df.columns else 0.0,
+        "destination_5": float(df["DESTINATION 5%"].sum()) if "DESTINATION 5%" in df.columns else 0.0,
         "total_expense": float(df["TOTAL EXPENSE"].sum()),
         "net_profit": float(df["NET_PROFIT"].sum()),
         "total_income": float(df["TOTAL_INCOME"].sum()),
@@ -510,13 +514,15 @@ def show_net_profit_dashboard():
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-    overhead_cols = st.columns(4, gap="small")
+    overhead_cols = st.columns(6, gap="small")
 
     overhead_kpis = [
         ("Salary", current["salary"], previous["salary"]),
         ("Godown Rent", current["godown"], previous["godown"]),
         ("Overhead Expense", current["overhead"], previous["overhead"]),
         ("Claim", current["claim"], previous["claim"]),
+        ("Booking 6%", current["booking_6"], previous["booking_6"]),
+        ("Destination 5%", current["destination_5"], previous["destination_5"]),
     ]
 
     for index, (title, cy, ly) in enumerate(overhead_kpis):
@@ -651,12 +657,16 @@ def show_net_profit_dashboard():
                         "Godown Rent",
                         "Overhead Expense",
                         "Claim",
+                        "Booking 6%",
+                        "Destination 5%",
                     ],
                     "Amount": [
                         current["salary"],
                         current["godown"],
                         current["overhead"],
                         current["claim"],
+                        current["booking_6"],
+                        current["destination_5"],
                     ],
                 }
             )
@@ -754,6 +764,8 @@ def show_net_profit_dashboard():
                 Godown_Rent=("GODOWN RENT", "sum"),
                 Overhead_Expense=("OVERHEAD EXPENSE", "sum"),
                 Claim=("CLAIM", "sum"),
+                Booking_6=("BOOKING 6%", "sum"),
+                Destination_5=("DESTINATION 5%", "sum"),
                 Total_Overhead=("TOTAL EXPENSE", "sum"),
                 Net_Profit=("NET_PROFIT", "sum"),
                 Total_Income=("TOTAL_INCOME", "sum"),
@@ -836,6 +848,8 @@ def show_net_profit_dashboard():
             "Godown_Rent",
             "Overhead_Expense",
             "Claim",
+            "Booking_6",
+            "Destination_5",
             "Total_Overhead",
             "Net_Profit",
             "Total_Income",
@@ -859,6 +873,8 @@ def show_net_profit_dashboard():
                 "Godown_Rent": f"Godown Rent ({unit})",
                 "Overhead_Expense": f"Overhead Expense ({unit})",
                 "Claim": f"Claim ({unit})",
+                "Booking_6": f"Booking 6% ({unit})",
+                "Destination_5": f"Destination 5% ({unit})",
                 "Total_Overhead": f"Total Overhead ({unit})",
                 "Net_Profit": f"Net Profit ({unit})",
                 "Total_Income": f"Total Income ({unit})",
@@ -905,6 +921,8 @@ def show_net_profit_dashboard():
             "GODOWN RENT",
             "OVERHEAD EXPENSE",
             "CLAIM",
+            "BOOKING 6%",
+            "DESTINATION 5%",
             "TOTAL EXPENSE",
             "NET_PROFIT",
             "NET_PROFIT_MARGIN",
