@@ -7,7 +7,7 @@ import streamlit as st
 
 from services.data_loader import get_date_range
 from services.net_profit_data_loader import load_net_profit_data_pair
-from services.branch_agency_mast import load_stationmast_data
+from services.net_profit_branch_mast import load_net_profit_branch_mast
 
 
 # ============================================================
@@ -369,7 +369,7 @@ def show_net_profit_dashboard():
     prev_start, prev_end = get_date_range(prev_fy)
 
     # Branch/Agency master is loaded first and becomes the dashboard branch scope.
-    branch_master_df = load_stationmast_data(start_date, end_date)
+    branch_master_df = load_net_profit_branch_mast()
     valid_branches = safe_options(branch_master_df, "BRANCH")
 
     if not valid_branches:
@@ -407,7 +407,7 @@ def show_net_profit_dashboard():
     with filter_cols[2]:
         branches = st.multiselect(
             "Branch",
-            valid_branches,
+            safe_options(branch_mast_df, "BRANCH"),
             key="np_branch",
             placeholder="All branches",
         )
