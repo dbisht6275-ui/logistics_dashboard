@@ -6,7 +6,7 @@ import streamlit as st
 from sqlalchemy import text
 
 from services.database import get_engine
-from services.pnl_data_loader import load_pnl_data
+from services.pnl_data_loader import load_pnl_both_views
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
 
@@ -1101,23 +1101,17 @@ def _fetch_complete_net_profit_period(start_date, end_date):
     """
     started = time.perf_counter()
 
+    # Origin and Destination share the same heavy P&L stored-procedure output.
+    # Fetch both views together so that SP executes only once for this period.
     with ThreadPoolExecutor(
-        max_workers=3,
+        max_workers=2,
         thread_name_prefix="net-profit",
     ) as executor:
 
-        origin_future = executor.submit(
-            load_pnl_data,
+        pnl_views_future = executor.submit(
+            load_pnl_both_views,
             start_date,
             end_date,
-            "origin",
-        )
-
-        destination_future = executor.submit(
-            load_pnl_data,
-            start_date,
-            end_date,
-            "destination",
         )
 
         overhead_future = executor.submit(
@@ -1126,8 +1120,7 @@ def _fetch_complete_net_profit_period(start_date, end_date):
             end_date,
         )
 
-        origin_df = origin_future.result()
-        destination_df = destination_future.result()
+        origin_df, destination_df = pnl_views_future.result()
         overhead_df = overhead_future.result()
 
     final = _build_net_profit(
@@ -1184,7 +1177,7 @@ def load_net_profit_data_pair(
         f"{start_date} to {end_date}"
     )
 
-    current_df = _fetch_complete_net_profit_period(
+    current_df = load_net_profit_data(
         start_date,
         end_date,
     )
@@ -1199,7 +1192,7 @@ def load_net_profit_data_pair(
         f"{prev_start} to {prev_end}"
     )
 
-    previous_df = _fetch_complete_net_profit_period(
+    previous_df = load_net_profit_data(
         prev_start,
         prev_end,
     )
