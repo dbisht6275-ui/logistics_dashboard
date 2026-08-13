@@ -85,6 +85,54 @@ def safe_options(df, column):
     )
 
 
+def _find_column(df, *candidates):
+    """Return the actual dataframe column matching any candidate, ignoring case/spaces."""
+    if df is None or df.empty:
+        return None
+
+    lookup = {str(col).strip().casefold(): col for col in df.columns}
+    for candidate in candidates:
+        found = lookup.get(str(candidate).strip().casefold())
+        if found is not None:
+            return found
+    return None
+
+
+def _attach_branch_hierarchy(df, branch_master_df):
+    """Ensure canonical zone/circle columns exist, using Branch Master as fallback."""
+    if df is None or df.empty:
+        return df
+
+    out = df.copy()
+    branch_col = _find_column(out, "BRANCH")
+    master_branch_col = _find_column(branch_master_df, "BRANCH")
+
+    for canonical, candidates in {
+        "zone": ("zone", "ZONE"),
+        "circle": ("circle", "CIRCLE"),
+    }.items():
+        source_col = _find_column(out, *candidates)
+        if source_col is not None:
+            if source_col != canonical:
+                out[canonical] = out[source_col]
+            continue
+
+        master_col = _find_column(branch_master_df, *candidates)
+        if branch_col is None or master_branch_col is None or master_col is None:
+            continue
+
+        hierarchy_map = (
+            branch_master_df[[master_branch_col, master_col]]
+            .dropna(subset=[master_branch_col])
+            .assign(_branch_key=lambda x: x[master_branch_col].map(_normalise_branch_name))
+            .drop_duplicates("_branch_key")
+            .set_index("_branch_key")[master_col]
+        )
+        out[canonical] = out[branch_col].map(_normalise_branch_name).map(hierarchy_map)
+
+    return out
+
+
 def apply_multi_filter(df, column, selected):
     if (
         df is None
@@ -175,6 +223,7 @@ def calculate_kpis(df):
             "total_expense": 0.0,
             "net_profit": 0.0,
             "total_income": 0.0,
+            "business": 0.0,
             "margin": 0.0,
         }
 
@@ -191,6 +240,7 @@ def calculate_kpis(df):
         "total_expense": float(df["TOTAL EXPENSE"].sum()),
         "net_profit": float(df["NET_PROFIT"].sum()),
         "total_income": float(df["TOTAL_INCOME"].sum()),
+        "business": float(df["BUSINESS"].sum()) if "BUSINESS" in df.columns else 0.0,
     }
 
     values["margin"] = (
@@ -393,9 +443,16 @@ def show_net_profit_dashboard():
         return
 
     # Restrict P&L/overhead to branches returned by Branch/Agency Master.
-    df = _filter_to_branch_scope(raw_df.copy(), valid_branches)
+    # Also backfill Zone/Circle from Branch Master when the raw P&L data does not carry them.
+    df = _attach_branch_hierarchy(
+        _filter_to_branch_scope(raw_df.copy(), valid_branches),
+        branch_master_df,
+    )
     prev_df = (
-        _filter_to_branch_scope(raw_prev_df.copy(), valid_branches)
+        _attach_branch_hierarchy(
+            _filter_to_branch_scope(raw_prev_df.copy(), valid_branches),
+            branch_master_df,
+        )
         if raw_prev_df is not None
         else pd.DataFrame()
     )
@@ -492,7 +549,7 @@ def show_net_profit_dashboard():
         ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False),
         ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False),
         ("Combined P&L", current["combined_pnl"], previous["combined_pnl"], False),
-        ("Total Overhead", current["total_expense"], previous["total_expense"], True),
+        ("Business / Revenue", current["business"], previous["business"], False),
         ("Net Profit", current["net_profit"], previous["net_profit"], False),
         ("Net Profit Margin", current["margin"], previous["margin"], False),
     ]
@@ -725,6 +782,16 @@ def show_net_profit_dashboard():
                     fig_overhead,
                     width="stretch",
                     config={"displayModeBar": False},
+                )
+
+                overhead_change = pct_change(
+                    current["total_expense"],
+                    previous["total_expense"],
+                )
+                st.caption(
+                    f"Total Overhead insight: {amount_text(current['total_expense'], conversion_type)} "
+                    f"vs LY {amount_text(previous['total_expense'], conversion_type)} "
+                    f"({overhead_change:+.1f}%)."
                 )
 
     # --------------------------------------------------------
