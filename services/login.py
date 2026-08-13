@@ -1,3 +1,6 @@
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import streamlit as st
 from sqlalchemy import text
 
@@ -350,7 +353,7 @@ div[data-testid="stAlert"] {
 
         login_clicked = st.form_submit_button(
             "LOGIN",
-            use_container_width=True,
+            width="stretch",
         )
 
         st.markdown(
@@ -371,15 +374,39 @@ This system is for authorized users only. Dashboard access is subject to company
             st.warning("Please enter username and password.")
             return
 
+        login_started = time.perf_counter()
+
         success, employee_id, employee_name = check_login(
             username=username,
             password=password,
         )
 
+        auth_seconds = time.perf_counter() - login_started
+
         if success:
             try:
-                role = get_role_for_employee(employee_id)
-                data_scope = get_data_scope_for_employee(employee_id)
+                access_started = time.perf_counter()
+
+                # Role and data-scope are independent lookups. Fetch them in
+                # parallel so login waits for the slower lookup instead of the
+                # sum of both lookup times.
+                with ThreadPoolExecutor(
+                    max_workers=2,
+                    thread_name_prefix="login-access",
+                ) as executor:
+                    role_future = executor.submit(
+                        get_role_for_employee,
+                        employee_id,
+                    )
+                    scope_future = executor.submit(
+                        get_data_scope_for_employee,
+                        employee_id,
+                    )
+
+                    role = role_future.result()
+                    data_scope = scope_future.result()
+
+                access_seconds = time.perf_counter() - access_started
 
                 st.session_state["logged_in"] = True
                 st.session_state["employee_id"] = employee_id
@@ -389,6 +416,12 @@ This system is for authorized users only. Dashboard access is subject to company
                 st.session_state["role"] = role
                 st.session_state["data_scope"] = data_scope
                 st.session_state["username"] = username.strip()
+
+                print(
+                    f"[Login Timing] auth={auth_seconds:.2f}s | "
+                    f"access={access_seconds:.2f}s | "
+                    f"total={time.perf_counter() - login_started:.2f}s"
+                )
 
                 st.rerun()
 
