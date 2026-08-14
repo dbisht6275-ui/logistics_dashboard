@@ -1243,7 +1243,6 @@ def show_net_profit_dashboard():
             hide_index=True,
         )
 
-
 # Optional direct-run support.
 if __name__ == "__main__":
     show_net_profit_dashboard()
