@@ -61,7 +61,14 @@ def _clean_grno(series):
     )
 
 
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=8)
 def _fetch_pnl_sp_data(start_date, end_date):
+    """Fetch the heavy P&L SP once per period and reuse the cached dataframe.
+
+    Both the Origin/Destination P&L loader and the direct Revenue KPI call this
+    function, so caching here prevents the stored procedure from executing twice
+    for the same FY/date range.
+    """
     started = time.perf_counter()
     engine = get_engine()
     with engine.connect() as conn:
@@ -76,7 +83,7 @@ def _fetch_pnl_sp_data(start_date, end_date):
             },
         )
     print(
-        f"[P&L SP Loader] {start_date} to {end_date} | rows={len(df):,} | "
+        f"[P&L SP DB EXECUTION] {start_date} to {end_date} | rows={len(df):,} | "
         f"seconds={time.perf_counter() - started:.2f}"
     )
     return df
