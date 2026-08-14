@@ -1036,147 +1036,165 @@ def _render_phase1_pnl_insights(
 
     with zone_col:
         with st.container(border=True):
-            st.markdown(
-                '<div class="np-section-title">P&amp;L by Zone</div>',
-                unsafe_allow_html=True,
-            )
+            title_col, filter_col = st.columns([2, 2], gap="small", vertical_alignment="center")
 
-            if "zone" not in insight_df.columns:
-                st.info("Zone is not available in P&L insight data.")
-            else:
-                zone_df = (
-                    insight_df.groupby("zone", as_index=False)["PNL"]
-                    .sum()
-                    .sort_values("PNL", ascending=False)
-                    .reset_index(drop=True)
+            np_trend_options = ["Daily", "Weekly", "Monthly", "Quarterly"]
+            np_trend_type = st.session_state.get("np_net_profit_performance_trend_value", "Monthly")
+            if np_trend_type not in np_trend_options:
+                np_trend_type = "Monthly"
+                st.session_state["np_net_profit_performance_trend_value"] = "Monthly"
+
+            with title_col:
+                st.markdown(
+                    '<div style="font-size:14px;font-weight:400;color:#0f172a;">Net Profit Performance Trend</div>',
+                    unsafe_allow_html=True,
                 )
-                zone_df = zone_df[zone_df["PNL"].abs() > 0].copy()
 
-                if zone_df.empty:
-                    st.info("No zone P&L available.")
+            with filter_col:
+                np_trend_btn_cols = st.columns(len(np_trend_options), gap="small")
+                for trend_index, trend_label in enumerate(np_trend_options):
+                    with np_trend_btn_cols[trend_index]:
+                        if st.button(
+                            trend_label,
+                            key=f"np_pnl_trend_btn_np_perf_{trend_index}",
+                            type="primary" if np_trend_type == trend_label else "secondary",
+                            use_container_width=True,
+                        ):
+                            st.session_state["np_net_profit_performance_trend_value"] = trend_label
+                            st.rerun()
+
+            def _build_np_trend(current_df, previous_df, trend_type):
+                if current_df is None or current_df.empty or "NET_PROFIT" not in current_df.columns:
+                    return pd.DataFrame(columns=["Period", "CY", "LY"]), "No Net Profit data available."
+
+                current_df = current_df.copy()
+                previous_df = previous_df.copy() if previous_df is not None else pd.DataFrame()
+
+                date_candidates = ["grdt", "GRDT", "grdate", "GRDATE", "bookingdate", "BOOKINGDATE", "date", "DATE"]
+                cur_date = next((c for c in date_candidates if c in current_df.columns), None)
+                prev_date = next((c for c in date_candidates if c in previous_df.columns), None)
+
+                if trend_type in ("Daily", "Weekly"):
+                    if cur_date is None:
+                        return pd.DataFrame(columns=["Period", "CY", "LY"]), f"{trend_type} Net Profit cannot be calculated because no date column is available."
+
+                    cur = current_df[[cur_date, "NET_PROFIT"]].copy()
+                    cur[cur_date] = pd.to_datetime(cur[cur_date], errors="coerce")
+                    cur = cur[cur[cur_date].notna()]
+                    if cur.empty:
+                        return pd.DataFrame(columns=["Period", "CY", "LY"]), f"No {trend_type.lower()} Net Profit data available."
+
+                    if trend_type == "Daily":
+                        cur["Key"] = (cur[cur_date].dt.normalize() - pd.Timestamp(start_date)).dt.days
+                        cy = cur.groupby("Key", as_index=False)["NET_PROFIT"].sum().rename(columns={"NET_PROFIT": "CY"})
+                        cy["Period"] = (pd.Timestamp(start_date) + pd.to_timedelta(cy["Key"], unit="D")).dt.strftime("%d %b")
+                    else:
+                        cur["Key"] = ((cur[cur_date].dt.normalize() - pd.Timestamp(start_date)).dt.days // 7)
+                        cy = cur.groupby("Key", as_index=False)["NET_PROFIT"].sum().rename(columns={"NET_PROFIT": "CY"})
+                        cy["Period"] = "W" + (cy["Key"] + 1).astype(str)
+
+                    if not previous_df.empty and prev_date and "NET_PROFIT" in previous_df.columns:
+                        prev = previous_df[[prev_date, "NET_PROFIT"]].copy()
+                        prev[prev_date] = pd.to_datetime(prev[prev_date], errors="coerce")
+                        prev = prev[prev[prev_date].notna()]
+                        if trend_type == "Daily":
+                            prev["Key"] = (prev[prev_date].dt.normalize() - pd.Timestamp(prev_start)).dt.days
+                        else:
+                            prev["Key"] = ((prev[prev_date].dt.normalize() - pd.Timestamp(prev_start)).dt.days // 7)
+                        ly = prev.groupby("Key", as_index=False)["NET_PROFIT"].sum().rename(columns={"NET_PROFIT": "LY"})
+                    else:
+                        ly = pd.DataFrame(columns=["Key", "LY"])
+
+                    result = cy.merge(ly, on="Key", how="left")
+                    result["LY"] = pd.to_numeric(result["LY"], errors="coerce").fillna(0.0)
+                    return result[["Period", "CY", "LY"]], None
+
+                if trend_type == "Quarterly":
+                    if "QUARTER" not in current_df.columns:
+                        return pd.DataFrame(columns=["Period", "CY", "LY"]), "Quarter is unavailable in Net Profit data."
+                    cy = current_df.groupby("QUARTER", as_index=False)["NET_PROFIT"].sum().rename(columns={"QUARTER": "Period", "NET_PROFIT": "CY"})
+                    cy["Period"] = pd.Categorical(cy["Period"], categories=QUARTER_ORDER, ordered=True)
+                    cy = cy.sort_values("Period")
+                    cy["Key"] = cy["Period"].astype(str)
+                    if not previous_df.empty and "QUARTER" in previous_df.columns:
+                        ly = previous_df.groupby("QUARTER", as_index=False)["NET_PROFIT"].sum().rename(columns={"QUARTER": "Key", "NET_PROFIT": "LY"})
+                    else:
+                        ly = pd.DataFrame(columns=["Key", "LY"])
                 else:
-                    zone_df["Display"] = zone_df["PNL"] / divisor
-                    absolute_zone_total = float(zone_df["PNL"].abs().sum())
-                    zone_df["Pct"] = (
-                        zone_df["PNL"].abs() / absolute_zone_total * 100
-                        if absolute_zone_total else 0.0
-                    )
+                    if "MONTH" not in current_df.columns:
+                        return pd.DataFrame(columns=["Period", "CY", "LY"]), "Month is unavailable in Net Profit data."
+                    cy = current_df.groupby("MONTH", as_index=False)["NET_PROFIT"].sum().rename(columns={"MONTH": "Period", "NET_PROFIT": "CY"})
+                    cy["Period"] = pd.Categorical(cy["Period"], categories=MONTH_ORDER, ordered=True)
+                    cy = cy.sort_values("Period")
+                    cy["Key"] = cy["Period"].astype(str)
+                    if not previous_df.empty and "MONTH" in previous_df.columns:
+                        ly = previous_df.groupby("MONTH", as_index=False)["NET_PROFIT"].sum().rename(columns={"MONTH": "Key", "NET_PROFIT": "LY"})
+                    else:
+                        ly = pd.DataFrame(columns=["Key", "LY"])
 
-                    zone_name_map = {
-                        "NORTH ZONE": "North",
-                        "WEST ZONE": "West",
-                        "SOUTH ZONE": "South",
-                        "EAST ZONE": "East",
-                        "NORTH EAST ZONE": "NE",
-                        "NEPAL ZONE": "Nepal",
-                        "North Zone": "North",
-                        "West Zone": "West",
-                        "South Zone": "South",
-                        "East Zone": "East",
-                        "North East Zone": "NE",
-                        "Nepal Zone": "Nepal",
-                    }
-                    zone_df["Display Zone"] = (
-                        zone_df["zone"].map(zone_name_map).fillna(zone_df["zone"])
-                    )
-                    zone_colors = [
-                        "#2563eb", "#0f766e", "#f59e0b",
-                        "#7c3aed", "#ec4899", "#ef5b5b", "#64748b",
-                    ]
+                result = cy.merge(ly, on="Key", how="left")
+                result["LY"] = pd.to_numeric(result["LY"], errors="coerce").fillna(0.0)
+                return result[["Period", "CY", "LY"]], None
 
-                    fig_zone = go.Figure(
-                        go.Pie(
-                            labels=zone_df["Display Zone"],
-                            values=zone_df["PNL"].abs(),
-                            customdata=zone_df[["Display", "Pct"]],
-                            hole=0.64,
-                            sort=False,
-                            rotation=90,
-                            direction="clockwise",
-                            domain=dict(x=[0.00, 0.60], y=[0.03, 0.97]),
-                            marker=dict(
-                                colors=zone_colors[:len(zone_df)],
-                                line=dict(color="#ffffff", width=2),
-                            ),
-                            textinfo="none",
-                            hovertemplate=(
-                                f"<b>%{{label}}</b><br>"
-                                f"P&L: ₹%{{customdata[0]:.2f}} {unit}<br>"
-                                "Contribution: %{customdata[1]:.1f}%<extra></extra>"
-                            ),
-                        )
-                    )
+            np_trend_df, np_trend_error = _build_np_trend(net_profit_df, net_profit_prev_df, np_trend_type)
 
-                    legend_step = 0.17 if len(zone_df) <= 6 else 0.125
-                    for idx, row in zone_df.iterrows():
-                        y_pos = 0.91 - idx * legend_step
-                        color = zone_colors[idx % len(zone_colors)]
+            if np_trend_error:
+                st.info(np_trend_error)
+            elif np_trend_df.empty:
+                st.info("No Net Profit trend data is available for the selected filters.")
+            else:
+                np_trend_df["CY Display"] = pd.to_numeric(np_trend_df["CY"], errors="coerce").fillna(0.0) / divisor
+                np_trend_df["LY Display"] = pd.to_numeric(np_trend_df["LY"], errors="coerce").fillna(0.0) / divisor
+                np_trend_df["Growth %"] = np_trend_df.apply(lambda row: pct_change(row["CY"], row["LY"]), axis=1)
+                np_trend_df["Growth Label"] = np_trend_df["Growth %"].apply(
+                    lambda value: f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
+                )
 
-                        fig_zone.add_annotation(
-                            x=0.65,
-                            y=y_pos,
-                            xref="paper",
-                            yref="paper",
-                            text="●",
-                            showarrow=False,
-                            xanchor="left",
-                            font=dict(size=19, color=color),
-                        )
-                        fig_zone.add_annotation(
-                            x=0.705,
-                            y=y_pos,
-                            xref="paper",
-                            yref="paper",
-                            text=(
-                                f"<b>{escape(str(row['Display Zone']))}</b><br>"
-                                f"₹{row['Display']:.2f} {unit} "
-                                f"<span style='color:{color}'>"
-                                f"({row['Pct']:.1f}%)</span>"
-                            ),
-                            showarrow=False,
-                            xanchor="left",
-                            align="left",
-                            font=dict(size=14, color="#1f2937"),
+                fig_np_trend = go.Figure()
+                fig_np_trend.add_trace(go.Bar(
+                    x=np_trend_df["Period"], y=np_trend_df["LY Display"],
+                    name=f"LY ({prev_fy})",
+                    marker=dict(color="#d8dee9", line=dict(color="#94a3b8", width=1.2)),
+                    text=np_trend_df["LY Display"], texttemplate="%{text:.2f}", textposition="outside",
+                    textfont=dict(size=10, color="#475569", family="Arial"), cliponaxis=False,
+                    hovertemplate=f"<b>%{{x}}</b><br>LY Net Profit: ₹%{{y:.2f}} {unit}<extra></extra>",
+                ))
+                fig_np_trend.add_trace(go.Bar(
+                    x=np_trend_df["Period"], y=np_trend_df["CY Display"],
+                    name=f"Current ({fy})",
+                    marker=dict(color="#14b8a6", line=dict(color="#0f766e", width=1.3)),
+                    text=np_trend_df["CY Display"], texttemplate="%{text:.2f}", textposition="outside",
+                    textfont=dict(size=10, color="#0f766e", family="Arial"), cliponaxis=False,
+                    hovertemplate=f"<b>%{{x}}</b><br>Net Profit: ₹%{{y:.2f}} {unit}<extra></extra>",
+                ))
+
+                trend_abs_max = max(float(pd.concat([np_trend_df["CY Display"].abs(), np_trend_df["LY Display"].abs()]).max() or 0), 1.0)
+                if len(np_trend_df) <= 40:
+                    for _, trend_row in np_trend_df.iterrows():
+                        growth_value = float(trend_row["Growth %"] or 0)
+                        current_value = float(trend_row["CY Display"] or 0)
+                        previous_value = float(trend_row["LY Display"] or 0)
+                        positive_top = max(current_value, previous_value, 0)
+                        negative_bottom = min(current_value, previous_value, 0)
+                        gap = trend_abs_max * (0.20 if np_trend_type == "Monthly" else 0.14)
+                        annotation_y = positive_top + gap if positive_top > 0 else negative_bottom - gap
+                        fig_np_trend.add_annotation(
+                            x=trend_row["Period"], y=annotation_y,
+                            text=trend_row["Growth Label"], showarrow=False,
+                            font=dict(size=10, color="#15803d" if growth_value >= 0 else "#dc2626", family="Arial"),
                         )
 
-                    net_zone_pnl = float(zone_df["Display"].sum())
-                    fig_zone.add_annotation(
-                        x=0.30,
-                        y=0.53,
-                        xref="paper",
-                        yref="paper",
-                        text=f"<b>₹{net_zone_pnl:.2f} {unit}</b>",
-                        showarrow=False,
-                        xanchor="center",
-                        yanchor="middle",
-                        align="center",
-                        font=dict(size=25, color="#17152f", family="Arial"),
-                    )
-                    fig_zone.add_annotation(
-                        x=0.30,
-                        y=0.43,
-                        xref="paper",
-                        yref="paper",
-                        text="Net P&L",
-                        showarrow=False,
-                        xanchor="center",
-                        yanchor="middle",
-                        align="center",
-                        font=dict(size=14, color="#746d91", family="Arial"),
-                    )
-
-                    fig_zone.update_layout(
-                        height=335,
-                        margin=dict(l=0, r=0, t=0, b=0),
-                        showlegend=False,
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="rgba(0,0,0,0)",
-                    )
-                    st.plotly_chart(
-                        fig_zone,
-                        width="stretch",
-                        config={"displayModeBar": False, "responsive": True},
-                    )
+                fig_np_trend.add_hline(y=0, line_width=1, line_color="#64748b")
+                fig_np_trend.update_layout(
+                    barmode="group", height=300, margin=dict(l=6, r=6, t=34, b=4),
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#fbfdff",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.04, x=0, font=dict(size=10)),
+                    xaxis_title="", yaxis_title=f"Net Profit ({unit})",
+                    bargap=0.22, bargroupgap=0.08,
+                )
+                fig_np_trend.update_xaxes(showgrid=False)
+                fig_np_trend.update_yaxes(showgrid=False)
+                st.plotly_chart(fig_np_trend, width="stretch", config={"displayModeBar": False})
 
 
     # Full-width original-style Branch Monthly Avg P&L insight.
