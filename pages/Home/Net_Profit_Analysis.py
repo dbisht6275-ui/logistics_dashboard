@@ -1,5 +1,4 @@
 from html import escape
-
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -8,8 +7,6 @@ import streamlit as st
 from services.data_loader import get_date_range
 from services.net_profit_data_loader import load_net_profit_data_pair
 from services.net_profit_branch_mast import load_net_profit_branch_mast
-
-
 # ============================================================
 # NET PROFIT DASHBOARD
 #
