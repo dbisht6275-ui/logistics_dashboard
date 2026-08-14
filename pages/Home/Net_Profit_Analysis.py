@@ -7,6 +7,7 @@ import streamlit as st
 
 from services.data_loader import get_date_range
 from services.net_profit_data_loader import load_net_profit_data_pair
+from services.pnl_data_loader import load_pnl_sp_revenue_total
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
 
@@ -603,6 +604,13 @@ def show_net_profit_dashboard():
             prev_end,
         )
 
+        # Consolidated All-Branches booking/origin revenue must come directly
+        # from the P&L revenue stored procedure. Summing the branch-joined
+        # ORIGIN_BUSINESS rows can understate revenue because some booking
+        # records may be lost/repeated by branch mapping joins.
+        sp_revenue_total = load_pnl_sp_revenue_total(start_date, end_date)
+        sp_prev_revenue_total = load_pnl_sp_revenue_total(prev_start, prev_end)
+
     if raw_df is None or raw_df.empty:
         st.warning("No Net Profit data found for selected financial year.")
         return
@@ -711,11 +719,20 @@ def show_net_profit_dashboard():
     previous = calculate_kpis(prev_df)
 
     # Business KPI display rule:
-    # - All Branches: Booking KPI shows ONLY Origin/Booking revenue.
-    #   Destination KPI is disabled so destination revenue is not added again.
+    # - Fully consolidated All Branches (no Branch/Zone/Circle/Quarter/Month filter):
+    #   show the exact P&L SP revenue total in the Booking/Origin KPI. This is the
+    #   authoritative origin-basis consolidated revenue and avoids understatement
+    #   caused by branch joins. Destination KPI stays disabled.
+    # - All Branches with hierarchy/time filters: use filtered ORIGIN_BUSINESS only.
     # - Explicit branch selection: show Booking and Destination revenue separately.
-    booking_business_current = current["origin_business"]
-    booking_business_previous = previous["origin_business"]
+    no_business_scope_filters = not (branches or zones or circles or quarters or months)
+
+    if all_branches and no_business_scope_filters:
+        booking_business_current = float(sp_revenue_total or 0.0)
+        booking_business_previous = float(sp_prev_revenue_total or 0.0)
+    else:
+        booking_business_current = current["origin_business"]
+        booking_business_previous = previous["origin_business"]
 
     # --------------------------------------------------------
     # KPI ROW 1
