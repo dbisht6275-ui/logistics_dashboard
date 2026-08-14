@@ -1058,7 +1058,7 @@ def _render_phase1_pnl_insights(
                     st.plotly_chart(fig_zone, width="stretch", config={"displayModeBar": False})
 
     # Keep MoM compact so the branch-slab insight gets enough room to breathe.
-    mom_col, branch_col = st.columns([0.82, 1.18], gap="medium")
+    branch_col, mom_col = st.columns([1.18, 0.82], gap="medium")
     with mom_col:
         with st.container(border=True):
             st.markdown('<div class="np-section-title">Month on Month P&amp;L &amp; Growth</div>', unsafe_allow_html=True)
