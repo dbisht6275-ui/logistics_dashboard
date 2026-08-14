@@ -324,16 +324,36 @@ def _inject_css():
             color:#64748b;
         }
 
-        .np-overhead-card {
+        .np-overhead-strip {
+            width:100%;
             min-height:72px;
             border:1px solid #e6edf5;
             border-radius:12px;
-            padding:8px 10px;
             background:#ffffff;
             box-shadow:0 4px 12px rgba(15,42,67,.06);
             display:flex;
+            align-items:stretch;
+            overflow:hidden;
+        }
+
+        .np-overhead-item {
+            flex:1 1 0;
+            min-width:0;
+            padding:8px 12px;
+            display:flex;
             align-items:center;
             gap:9px;
+            position:relative;
+        }
+
+        .np-overhead-item:not(:last-child)::after {
+            content:"";
+            position:absolute;
+            right:0;
+            top:12px;
+            bottom:12px;
+            width:1px;
+            background:#dfe7f0;
         }
 
         .np-overhead-icon {
@@ -434,7 +454,7 @@ def render_kpi_card(title, current, previous, conversion_type=None, percent=Fals
 
 
 
-def render_overhead_kpi_card(title, current, previous, conversion_type, icon):
+def overhead_kpi_item_html(title, current, previous, conversion_type, icon):
     current_text = amount_text(current, conversion_type)
     previous_text = amount_text(previous, conversion_type)
     growth = pct_change(current, previous)
@@ -444,9 +464,8 @@ def render_overhead_kpi_card(title, current, previous, conversion_type, icon):
     class_name = "np-positive" if growth <= 0 else "np-negative"
     arrow = "▼" if growth < 0 else "▲" if growth > 0 else "–"
 
-    st.markdown(
-        f"""
-        <div class="np-overhead-card">
+    return f"""
+        <div class="np-overhead-item">
             <div class="np-overhead-icon">{escape(icon)}</div>
             <div class="np-overhead-body">
                 <div class="np-overhead-title">{escape(title)}</div>
@@ -458,9 +477,7 @@ def render_overhead_kpi_card(title, current, previous, conversion_type, icon):
                 </div>
             </div>
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    """
 
 def _apply_same_filters(df, filters):
     out = df.copy()
@@ -666,8 +683,6 @@ def show_net_profit_dashboard():
 
     st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-    overhead_cols = st.columns(6, gap="small")
-
     overhead_kpis = [
         ("Salary", current["salary"], previous["salary"], "●"),
         ("Overhead Expense", current["overhead"], previous["overhead"], "▦"),
@@ -677,15 +692,14 @@ def show_net_profit_dashboard():
         ("Godown Rent", current["godown"], previous["godown"], "▥"),
     ]
 
-    for index, (title, cy, ly, icon) in enumerate(overhead_kpis):
-        with overhead_cols[index]:
-            render_overhead_kpi_card(
-                title,
-                cy,
-                ly,
-                conversion_type,
-                icon,
-            )
+    overhead_items_html = "".join(
+        overhead_kpi_item_html(title, cy, ly, conversion_type, icon)
+        for title, cy, ly, icon in overhead_kpis
+    )
+    st.markdown(
+        f'<div class="np-overhead-strip">{overhead_items_html}</div>',
+        unsafe_allow_html=True,
+    )
 
     # --------------------------------------------------------
     # MONTHLY TREND + OVERHEAD BREAKUP
