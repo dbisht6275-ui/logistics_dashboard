@@ -10,7 +10,6 @@ from services.net_profit_data_loader import load_net_profit_data_pair
 from services.pnl_data_loader import load_pnl_sp_revenue_total, load_pnl_data_pair
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
-
 # ============================================================
 # NET PROFIT DASHBOARD
 #
@@ -36,7 +35,6 @@ MONTH_ORDER = [
 
 QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
 
-
 # ============================================================
 # HELPERS
 # ============================================================
@@ -51,11 +49,9 @@ def get_conversion(conversion_type):
         return 100_000, "Lac"
     return 10_000_000, "Cr"
 
-
 def amount_text(value, conversion_type):
     divisor, unit = get_conversion(conversion_type)
     return f"₹{float(value or 0) / divisor:,.2f} {unit}"
-
 
 def pct_change(current, previous):
     current = float(current or 0)
@@ -65,7 +61,6 @@ def pct_change(current, previous):
         return 0.0
 
     return ((current - previous) / abs(previous)) * 100
-
 
 def safe_options(df, column):
     if df is None or df.empty or column not in df.columns:
@@ -85,11 +80,9 @@ def safe_options(df, column):
         key=str.casefold,
     )
 
-
 def _normalise_column_name(value):
     """Normalise a column heading so spaces, underscores, hyphens and case do not matter."""
     return "".join(ch for ch in str(value).casefold() if ch.isalnum())
-
 
 def _find_column(df, *candidates):
     """Return the actual dataframe column matching any candidate using a tolerant header match."""
@@ -102,7 +95,6 @@ def _find_column(df, *candidates):
         if found is not None:
             return found
     return None
-
 
 def _attach_branch_hierarchy(df, branch_master_df):
     """Attach clean Zone/Circle values, preferring Branch Master for missing/Unknown values."""
@@ -160,7 +152,6 @@ def _attach_branch_hierarchy(df, branch_master_df):
 
     return out
 
-
 def apply_multi_filter(df, column, selected):
     if (
         df is None
@@ -172,10 +163,8 @@ def apply_multi_filter(df, column, selected):
 
     return df[df[column].isin(selected)].copy()
 
-
 def _normalise_branch_name(value):
     return " ".join(str(value).strip().casefold().split())
-
 
 def _filter_to_branch_scope(df, branch_names):
     if df is None or df.empty or "BRANCH" not in df.columns or not branch_names:
