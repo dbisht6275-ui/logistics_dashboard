@@ -886,6 +886,7 @@ def _render_phase1_pnl_insights(
     fy, prev_fy,
     zones, circles, branches, quarters, months, valid_branches,
     divisor, unit,
+    net_profit_df=None, net_profit_prev_df=None,
 ):
     """Render isolated P&L insights in the same visual language as Net Profit."""
     st.markdown("<div style='height:3px'></div>", unsafe_allow_html=True)
@@ -1092,31 +1093,182 @@ def _render_phase1_pnl_insights(
             fig_mom = go.Figure()
             fig_mom.add_trace(go.Bar(
                 x=mom["MONTH"], y=mom["P&L Display"], name="P&L",
-                marker=dict(color="#3b82f6", line=dict(color="#1d4ed8", width=1.2)),
+                marker=dict(color="#99f6e4", line=dict(color="#0f766e", width=1.4)),
                 text=mom["P&L Display"], texttemplate="₹%{text:.2f}", textposition="outside",
-                textfont=dict(size=9, color="#1e3a8a", family="Arial"), cliponaxis=False,
+                textfont=dict(size=9, color="#0f766e", family="Arial"), cliponaxis=False,
                 hovertemplate=f"<b>%{{x}}</b><br>P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
             ))
             fig_mom.add_trace(go.Scatter(
                 x=mom["MONTH"], y=mom["MoM Growth"], name="MoM Growth",
                 mode="lines+markers+text", yaxis="y2",
-                line=dict(color="#f59e0b", width=2.4),
+                line=dict(color="#7c3aed", width=2.6),
                 marker=dict(size=7, color=growth_colors, line=dict(color="#ffffff", width=1.5)),
                 text=mom["Growth Label"], textposition="top center",
-                textfont=dict(size=9, color="#334155"), connectgaps=False,
+                textfont=dict(size=10, color="#6d28d9"), connectgaps=False,
                 hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.1f}%<extra></extra>",
             ))
+            mom_growth_values = mom["MoM Growth"].dropna()
+            if mom_growth_values.empty:
+                mom_growth_range = [-100, 100]
+            else:
+                mom_growth_min = float(mom_growth_values.min())
+                mom_growth_max = float(mom_growth_values.max())
+                mom_growth_pad = max((mom_growth_max - mom_growth_min) * 0.30, 18.0)
+                mom_growth_range = [
+                    min(mom_growth_min - mom_growth_pad, -10),
+                    max(mom_growth_max + mom_growth_pad, 10),
+                ]
+
             fig_mom.update_layout(
-                height=235, margin=dict(l=4, r=8, t=26, b=2),
+                height=235, margin=dict(l=4, r=10, t=34, b=2),
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#fbfdff",
                 legend=dict(orientation="h", yanchor="bottom", y=1.03, x=0, font=dict(size=9)),
                 bargap=0.30,
                 xaxis=dict(showgrid=False, tickfont=dict(size=9)),
                 yaxis=dict(title=f"P&L ({unit})", showgrid=False, tickfont=dict(size=9), title_font=dict(size=10)),
-                yaxis2=dict(title="Growth %", overlaying="y", side="right", showgrid=False,
-                            ticksuffix="%", tickfont=dict(size=9), title_font=dict(size=10)),
+                yaxis2=dict(
+                    title="Growth %", overlaying="y", side="right", showgrid=False,
+                    ticksuffix="%", tickfont=dict(size=9), title_font=dict(size=10),
+                    range=mom_growth_range,
+                ),
             )
             st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False})
+
+        # Net Profit MoM uses the already-filtered Net Profit dataframe.
+        with st.container(border=True):
+            st.markdown(
+                '<div class="np-section-title">Month on Month Net Profit &amp; Growth</div>',
+                unsafe_allow_html=True,
+            )
+
+            if (
+                net_profit_df is None
+                or net_profit_df.empty
+                or "MONTH" not in net_profit_df.columns
+                or "NET_PROFIT" not in net_profit_df.columns
+            ):
+                st.info("Net Profit MoM is not available for the selected filters.")
+            else:
+                np_mom = (
+                    net_profit_df.groupby("MONTH", as_index=False)["NET_PROFIT"]
+                    .sum()
+                )
+                np_mom["MONTH"] = pd.Categorical(
+                    np_mom["MONTH"], MONTH_ORDER, ordered=True
+                )
+                np_mom = np_mom.sort_values("MONTH").reset_index(drop=True)
+                np_mom["Net Profit Display"] = (
+                    pd.to_numeric(np_mom["NET_PROFIT"], errors="coerce")
+                    .fillna(0.0) / divisor
+                )
+                np_mom["MoM Growth"] = _safe_mom_growth(np_mom["NET_PROFIT"])
+                np_mom["Growth Label"] = np_mom["MoM Growth"].apply(
+                    lambda value: (
+                        f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
+                        if pd.notna(value) else ""
+                    )
+                )
+
+                np_growth_colors = [
+                    "#16a34a" if pd.notna(value) and value >= 0 else "#dc2626"
+                    for value in np_mom["MoM Growth"]
+                ]
+
+                fig_np_mom = go.Figure()
+                fig_np_mom.add_trace(
+                    go.Bar(
+                        x=np_mom["MONTH"],
+                        y=np_mom["Net Profit Display"],
+                        name="Net Profit",
+                        marker=dict(
+                            color="#ddd6fe",
+                            line=dict(color="#7c3aed", width=1.4),
+                        ),
+                        text=np_mom["Net Profit Display"],
+                        texttemplate="₹%{text:.2f}",
+                        textposition="outside",
+                        textfont=dict(size=9, color="#6d28d9", family="Arial"),
+                        cliponaxis=False,
+                        hovertemplate=(
+                            f"<b>%{{x}}</b><br>Net Profit: ₹%{{y:.2f}} "
+                            f"{unit}<extra></extra>"
+                        ),
+                    )
+                )
+                fig_np_mom.add_trace(
+                    go.Scatter(
+                        x=np_mom["MONTH"],
+                        y=np_mom["MoM Growth"],
+                        name="MoM Growth",
+                        mode="lines+markers+text",
+                        yaxis="y2",
+                        line=dict(color="#f59e0b", width=2.6),
+                        marker=dict(
+                            size=7,
+                            color=np_growth_colors,
+                            line=dict(color="#ffffff", width=1.5),
+                        ),
+                        text=np_mom["Growth Label"],
+                        textposition="top center",
+                        textfont=dict(size=10, color="#b45309"),
+                        connectgaps=False,
+                        hovertemplate=(
+                            "<b>%{x}</b><br>MoM Growth: %{y:.1f}%<extra></extra>"
+                        ),
+                    )
+                )
+
+                np_growth_values = np_mom["MoM Growth"].dropna()
+                if np_growth_values.empty:
+                    np_growth_range = [-100, 100]
+                else:
+                    np_growth_min = float(np_growth_values.min())
+                    np_growth_max = float(np_growth_values.max())
+                    np_growth_pad = max(
+                        (np_growth_max - np_growth_min) * 0.30, 18.0
+                    )
+                    np_growth_range = [
+                        min(np_growth_min - np_growth_pad, -10),
+                        max(np_growth_max + np_growth_pad, 10),
+                    ]
+
+                fig_np_mom.add_hline(y=0, line_color="#94a3b8", line_width=1)
+                fig_np_mom.update_layout(
+                    height=235,
+                    margin=dict(l=4, r=10, t=34, b=2),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="#fbfdff",
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.03,
+                        x=0,
+                        font=dict(size=9),
+                    ),
+                    bargap=0.30,
+                    xaxis=dict(showgrid=False, tickfont=dict(size=9)),
+                    yaxis=dict(
+                        title=f"Net Profit ({unit})",
+                        showgrid=False,
+                        tickfont=dict(size=9),
+                        title_font=dict(size=10),
+                    ),
+                    yaxis2=dict(
+                        title="Growth %",
+                        overlaying="y",
+                        side="right",
+                        showgrid=False,
+                        ticksuffix="%",
+                        tickfont=dict(size=9),
+                        title_font=dict(size=10),
+                        range=np_growth_range,
+                    ),
+                )
+                st.plotly_chart(
+                    fig_np_mom,
+                    width="stretch",
+                    config={"displayModeBar": False},
+                )
 
     with branch_col:
         with st.container(border=True):
@@ -1520,6 +1672,8 @@ def show_net_profit_dashboard():
         valid_branches=valid_branches,
         divisor=divisor,
         unit=unit,
+        net_profit_df=df,
+        net_profit_prev_df=prev_df,
     )
 
     # --------------------------------------------------------
