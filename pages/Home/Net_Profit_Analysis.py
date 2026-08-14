@@ -231,7 +231,6 @@ def _apply_pnl_business_rule(df, all_branches):
 
     return out
 
-
 def calculate_kpis(df):
     if df is None or df.empty:
         return {
@@ -278,7 +277,6 @@ def calculate_kpis(df):
     )
 
     return values
-
 
 def _inject_css():
     st.markdown(
