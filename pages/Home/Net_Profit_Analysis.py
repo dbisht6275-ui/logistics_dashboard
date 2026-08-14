@@ -522,6 +522,16 @@ def _inject_css():
             overflow:hidden;
         }
 
+        /* Dataframe header: dark navy background with white labels. */
+        [data-testid="stDataFrame"] [role="columnheader"] {
+            background:#102a43 !important;
+            color:#ffffff !important;
+            font-weight:700 !important;
+        }
+        [data-testid="stDataFrame"] [role="columnheader"] * {
+            color:#ffffff !important;
+        }
+
         div[data-testid="stDownloadButton"] button {
             min-height:32px !important;
             border-radius:8px !important;
@@ -1210,12 +1220,7 @@ def show_net_profit_dashboard():
 
     st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
-    with st.container(border=True):
-        st.markdown(
-            '<div class="np-section-title">Branch Net Profit Detail</div>',
-            unsafe_allow_html=True,
-        )
-
+    with st.expander("Branch Net Profit Detail", expanded=True):
         display = branch_summary.copy()
 
         money_columns = [
