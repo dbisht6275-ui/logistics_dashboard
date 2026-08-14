@@ -1027,6 +1027,8 @@ def show_net_profit_dashboard():
             )
             .agg(
                 Revenue=("BUSINESS", "sum"),
+                Booking_Business=("ORIGIN_BUSINESS", "sum"),
+                Delivery_Business=("DESTINATION_BUSINESS", "sum"),
                 Origin_PNL=("ORIGIN_PNL", "sum"),
                 Destination_PNL=("DESTINATION_PNL", "sum"),
                 Combined_PNL=("COMBINED_PNL", "sum"),
@@ -1112,6 +1114,8 @@ def show_net_profit_dashboard():
 
         money_columns = [
             "Revenue",
+            "Booking_Business",
+            "Delivery_Business",
             "Origin_PNL",
             "Destination_PNL",
             "Combined_PNL",
@@ -1138,6 +1142,8 @@ def show_net_profit_dashboard():
                 "BRANCHCODE": "Branch Code",
                 "BRANCH": "Branch",
                 "Revenue": f"Revenue ({unit})",
+                "Booking_Business": f"Booking Business ({unit})",
+                "Delivery_Business": f"Delivery Business ({unit})",
                 "Origin_PNL": f"Origin P&L ({unit})",
                 "Destination_PNL": f"Destination P&L ({unit})",
                 "Combined_PNL": f"Combined P&L ({unit})",
@@ -1187,6 +1193,8 @@ def show_net_profit_dashboard():
             "MONTHNO",
             "MONTH",
             "BUSINESS",
+            "ORIGIN_BUSINESS",
+            "DESTINATION_BUSINESS",
             "ORIGIN_PNL",
             "DESTINATION_PNL",
             "COMBINED_PNL",
