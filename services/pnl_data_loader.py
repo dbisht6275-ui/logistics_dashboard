@@ -83,36 +83,37 @@ def _fetch_pnl_sp_data(start_date, end_date):
 
 
 def _prepare_revenue_data(df):
-    """Prepare booking/view data only as GR-level metadata.
-
-    REVENUE is intentionally NOT read from booking data. Revenue is sourced
-    exclusively from the P&L stored procedure.
-    """
     if df is None or df.empty:
         return pd.DataFrame()
 
     out = df.copy()
     gr_col = _find_column(out, ["GRNO", "grno", "gr_no", "grnumber", "gr_number"])
+    revenue_col = _find_column(
+        out,
+        ["REVENUE", "revenue", "freight", "business", "totalfreight", "total_freight"],
+    )
 
-    if gr_col is None:
+    if gr_col is None or revenue_col is None:
         raise ValueError(
-            "Booking/view data requires GRNO for joining with the P&L SP. "
+            "Revenue data requires GRNO and REVENUE/FREIGHT columns. "
             f"Available columns: {list(out.columns)}"
         )
 
+    rename_map = {}
     if gr_col != "grno":
-        out = out.rename(columns={gr_col: "grno"})
+        rename_map[gr_col] = "grno"
+    if revenue_col != "REVENUE":
+        rename_map[revenue_col] = "REVENUE"
+    out = out.rename(columns=rename_map)
 
     out["grno"] = _clean_grno(out["grno"])
+    out["REVENUE"] = pd.to_numeric(out["REVENUE"], errors="coerce").fillna(0.0)
     out = out[
         out["grno"].notna()
         & out["grno"].ne("")
         & out["grno"].str.lower().ne("nan")
     ].copy()
-
-    # Keep a single metadata row per GR so the one-row-per-GR P&L SP
-    # revenue cannot be duplicated during the merge.
-    return out.drop_duplicates(subset=["grno"], keep="first")
+    return out
 
 
 def _prepare_pnl_sp_data(df):
@@ -302,18 +303,52 @@ def _fetch_both_views_period(start_date, end_date):
     return origin_df, destination_df
 
 
-@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=12)
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=8)
 def load_pnl_sp_revenue_total(start_date, end_date):
-    """Return Business / Revenue directly from the P&L stored procedure.
+    """Return total REVENUE directly from the P&L stored procedure.
 
-    The SP now returns one row per GR, so REVENUE is summed directly from the
-    SP output and does not depend on Origin/Destination booking-data merges.
+    This is intentionally independent of booking-data/branch joins so the
+    consolidated Business / Revenue KPI exactly matches the P&L SP.
     """
-    pnl_sp_df = _fetch_pnl_sp_data(start_date, end_date)
-    pnl_data = _prepare_pnl_sp_data(pnl_sp_df)
-    if pnl_data is None or pnl_data.empty or "REVENUE" not in pnl_data.columns:
+    df = _fetch_pnl_sp_data(start_date, end_date)
+    if df is None or df.empty:
         return 0.0
-    return float(pd.to_numeric(pnl_data["REVENUE"], errors="coerce").fillna(0.0).sum())
+
+    gr_col = _find_column(df, ["GRNO", "grno", "gr_no", "grnumber", "gr_number"])
+    revenue_col = _find_column(
+        df,
+        ["REVENUE", "revenue", "freight", "business", "totalfreight", "total_freight"],
+    )
+
+    if revenue_col is None:
+        raise ValueError(
+            "P&L SP did not return REVENUE. "
+            f"Available columns: {list(df.columns)}"
+        )
+
+    out = df.copy()
+    out["_REVENUE"] = pd.to_numeric(out[revenue_col], errors="coerce").fillna(0.0)
+
+    # The SP currently returns one row per GR. Keep this de-duplication guard
+    # so the KPI remains correct even if detail rows are added later.
+    if gr_col is not None:
+        out["_GRNO"] = _clean_grno(out[gr_col])
+        out = (
+            out[
+                out["_GRNO"].notna()
+                & out["_GRNO"].ne("")
+                & out["_GRNO"].str.lower().ne("nan")
+            ]
+            .groupby("_GRNO", as_index=False, dropna=False)["_REVENUE"]
+            .first()
+        )
+
+    total = float(out["_REVENUE"].sum())
+    print(
+        f"[P&L SP Revenue KPI] {start_date} to {end_date} | "
+        f"revenue={total:,.2f}"
+    )
+    return total
 
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=8)
