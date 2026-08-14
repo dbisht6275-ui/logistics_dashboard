@@ -2016,6 +2016,9 @@ def _render_phase1_pnl_insights(
 # DASHBOARD
 # ============================================================
 
+    return insight_df, insight_prev_df
+
+
 def show_net_profit_dashboard():
     _inject_css()
 
@@ -2317,7 +2320,7 @@ def show_net_profit_dashboard():
     # PHASE 1: P&L INSIGHTS (ISOLATED; EXISTING NET PROFIT KPIs/TABLES UNCHANGED)
     # --------------------------------------------------------
 
-    _render_phase1_pnl_insights(
+    pnl_detail_df, pnl_detail_prev_df = _render_phase1_pnl_insights(
         start_date=start_date,
         end_date=end_date,
         prev_start=prev_start,
@@ -2337,12 +2340,24 @@ def show_net_profit_dashboard():
     )
 
     # --------------------------------------------------------
-    # DETAIL TABLE
+    # DETAIL RENDER TABS - P&L DASHBOARD STYLE
     # --------------------------------------------------------
 
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-    with st.expander("Branch Net Profit Detail", expanded=True):
+    detail_tab, audit_tab, gr_tab, monthly_tab = st.tabs(
+        [
+            "Branch Net Profit Detail",
+            "Monthly Calculation Audit",
+            "Detailed GR Records",
+            "Monthly Summary",
+        ]
+    )
+
+    # --------------------------------------------------------
+    # TAB 1: BRANCH NET PROFIT DETAIL
+    # --------------------------------------------------------
+    with detail_tab:
         display = branch_summary.copy()
 
         money_columns = [
@@ -2413,7 +2428,9 @@ def show_net_profit_dashboard():
             f"Total Income ({unit})",
             "Net Profit Margin %",
         ]
-        display = display[[column for column in detail_columns if column in display.columns]]
+        display = display[
+            [column for column in detail_columns if column in display.columns]
+        ]
 
         st.dataframe(
             display,
@@ -2431,14 +2448,12 @@ def show_net_profit_dashboard():
             },
         )
 
-        # Prepare CSV here, but render the download control at the very end of the dashboard.
         csv_data = display.to_csv(index=False).encode("utf-8-sig")
 
     # --------------------------------------------------------
-    # MONTH-WISE AUDIT TABLE
+    # TAB 2: MONTHLY CALCULATION AUDIT
     # --------------------------------------------------------
-
-    with st.expander("Monthly calculation audit"):
+    with audit_tab:
         audit_columns = [
             "BRANCHCODE",
             "BRANCH",
@@ -2463,17 +2478,207 @@ def show_net_profit_dashboard():
         ]
 
         audit_columns = [
+            column for column in audit_columns if column in df.columns
+        ]
+
+        audit_display = df[audit_columns].copy()
+        audit_sort = [
             column
-            for column in audit_columns
-            if column in df.columns
+            for column in ["BRANCH", "YEAR", "MONTHNO"]
+            if column in audit_display.columns
+        ]
+        if audit_sort:
+            audit_display = audit_display.sort_values(audit_sort)
+
+        st.dataframe(
+            audit_display,
+            width="stretch",
+            hide_index=True,
+        )
+
+    # --------------------------------------------------------
+    # TAB 3: DETAILED GR RECORDS
+    # Same filtered P&L insight source; no LOADTYPE filter is applied.
+    # --------------------------------------------------------
+    with gr_tab:
+        if pnl_detail_df is None or pnl_detail_df.empty:
+            st.info("No detailed GR records are available for the selected filters.")
+        else:
+            gr_columns_preferred = [
+                "grno",
+                "grdt",
+                "COMPNAME",
+                "zone",
+                "circle",
+                "branch",
+                "GRTYPE",
+                "Consignor",
+                "Consignee",
+                "Route",
+                "REVENUE",
+                "EXPENSE",
+                "PNL",
+                "FIN_MONTH",
+                "MONTH",
+                "QUARTER",
+            ]
+            gr_columns = [
+                column
+                for column in gr_columns_preferred
+                if column in pnl_detail_df.columns
+            ]
+
+            # If the SP returns extra useful columns, keep the table focused on the
+            # P&L dashboard's GR-detail dimensions rather than dumping every field.
+            gr_display = pnl_detail_df[gr_columns].copy()
+
+            if "grdt" in gr_display.columns:
+                gr_display["grdt"] = pd.to_datetime(
+                    gr_display["grdt"], errors="coerce"
+                ).dt.strftime("%d-%m-%Y")
+
+            for column in ["REVENUE", "EXPENSE", "PNL"]:
+                if column in gr_display.columns:
+                    gr_display[column] = (
+                        pd.to_numeric(
+                            gr_display[column], errors="coerce"
+                        ).fillna(0.0) / divisor
+                    )
+
+            gr_display = gr_display.rename(
+                columns={
+                    "grno": "GR No",
+                    "grdt": "GR Date",
+                    "COMPNAME": "Company",
+                    "zone": "Zone",
+                    "circle": "Circle",
+                    "branch": "Branch",
+                    "GRTYPE": "GR Type",
+                    "Consignor": "Consignor",
+                    "Consignee": "Consignee",
+                    "Route": "Route",
+                    "REVENUE": f"Revenue ({unit})",
+                    "EXPENSE": f"Expense ({unit})",
+                    "PNL": f"P&L ({unit})",
+                    "FIN_MONTH": "Fin Month",
+                    "MONTH": "Month",
+                    "QUARTER": "Quarter",
+                }
+            )
+
+            st.dataframe(
+                gr_display,
+                width="stretch",
+                hide_index=True,
+                height=520,
+            )
+
+    # --------------------------------------------------------
+    # TAB 4: MONTHLY SUMMARY
+    # Net Profit summary using the existing filtered Net Profit dataframe.
+    # --------------------------------------------------------
+    with monthly_tab:
+        monthly_summary = (
+            df.groupby(["FIN_MONTH", "MONTH"], as_index=False)
+            .agg(
+                Booking_Business=("ORIGIN_BUSINESS", "sum"),
+                Delivery_Business=("DESTINATION_BUSINESS", "sum"),
+                Total_Business=("BUSINESS", "sum"),
+                Origin_PNL=("ORIGIN_PNL", "sum"),
+                Destination_PNL=("DESTINATION_PNL", "sum"),
+                Combined_PNL=("COMBINED_PNL", "sum"),
+                Indirect_Expense=("TOTAL EXPENSE", "sum"),
+                Net_Profit=("NET_PROFIT", "sum"),
+                Total_Income=("TOTAL_INCOME", "sum"),
+            )
+            .sort_values("FIN_MONTH")
+            .reset_index(drop=True)
+        )
+
+        monthly_summary["P&L %"] = 0.0
+        valid_business = monthly_summary["Total_Business"].ne(0)
+        monthly_summary.loc[valid_business, "P&L %"] = (
+            monthly_summary.loc[valid_business, "Combined_PNL"]
+            / monthly_summary.loc[valid_business, "Total_Business"]
+            * 100
+        )
+
+        monthly_summary["Net Profit %"] = 0.0
+        valid_income = monthly_summary["Total_Income"].ne(0)
+        monthly_summary.loc[valid_income, "Net Profit %"] = (
+            monthly_summary.loc[valid_income, "Net_Profit"]
+            / monthly_summary.loc[valid_income, "Total_Income"]
+            * 100
+        )
+
+        monthly_money_columns = [
+            "Booking_Business",
+            "Delivery_Business",
+            "Total_Business",
+            "Origin_PNL",
+            "Destination_PNL",
+            "Combined_PNL",
+            "Indirect_Expense",
+            "Net_Profit",
+            "Total_Income",
+        ]
+        for column in monthly_money_columns:
+            monthly_summary[column] = (
+                pd.to_numeric(
+                    monthly_summary[column], errors="coerce"
+                ).fillna(0.0) / divisor
+            )
+
+        monthly_summary = monthly_summary.rename(
+            columns={
+                "MONTH": "Month",
+                "Booking_Business": f"Booking Business ({unit})",
+                "Delivery_Business": f"Delivery Business ({unit})",
+                "Total_Business": f"Total Business ({unit})",
+                "Origin_PNL": f"Origin P&L ({unit})",
+                "Destination_PNL": f"Destination P&L ({unit})",
+                "Combined_PNL": f"Combined P&L ({unit})",
+                "Indirect_Expense": f"Indirect Exp ({unit})",
+                "Net_Profit": f"Net Profit ({unit})",
+                "Total_Income": f"Total Income ({unit})",
+            }
+        )
+
+        monthly_display_columns = [
+            "Month",
+            f"Booking Business ({unit})",
+            f"Delivery Business ({unit})",
+            f"Total Business ({unit})",
+            f"Origin P&L ({unit})",
+            f"Destination P&L ({unit})",
+            f"Combined P&L ({unit})",
+            "P&L %",
+            f"Indirect Exp ({unit})",
+            f"Net Profit ({unit})",
+            "Net Profit %",
+        ]
+        monthly_summary = monthly_summary[
+            [
+                column
+                for column in monthly_display_columns
+                if column in monthly_summary.columns
+            ]
         ]
 
         st.dataframe(
-            df[audit_columns].sort_values(
-                ["BRANCH", "YEAR", "MONTHNO"]
-            ),
+            monthly_summary,
             width="stretch",
             hide_index=True,
+            column_config={
+                "P&L %": st.column_config.NumberColumn(
+                    "P&L %",
+                    format="%.2f%%",
+                ),
+                "Net Profit %": st.column_config.NumberColumn(
+                    "Net Profit %",
+                    format="%.2f%%",
+                ),
+            },
         )
 
     # Keep CSV download as the final dashboard action.
