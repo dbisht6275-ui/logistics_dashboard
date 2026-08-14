@@ -324,6 +324,55 @@ def _inject_css():
             color:#64748b;
         }
 
+        .np-overhead-card {
+            min-height:72px;
+            border:1px solid #e6edf5;
+            border-radius:12px;
+            padding:8px 10px;
+            background:#ffffff;
+            box-shadow:0 4px 12px rgba(15,42,67,.06);
+            display:flex;
+            align-items:center;
+            gap:9px;
+        }
+
+        .np-overhead-icon {
+            width:34px;
+            height:34px;
+            min-width:34px;
+            border-radius:50%;
+            background:#eaf4ff;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            color:#1677e8;
+            font-size:17px;
+            line-height:1;
+        }
+
+        .np-overhead-body { min-width:0; flex:1; }
+        .np-overhead-title {
+            font-size:9px;
+            color:#334155;
+            font-weight:700;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+        }
+        .np-overhead-value {
+            margin-top:2px;
+            font-size:14px;
+            color:#102a43;
+            font-weight:850;
+            white-space:nowrap;
+        }
+        .np-overhead-footer {
+            margin-top:3px;
+            font-size:8px;
+            color:#64748b;
+            white-space:nowrap;
+        }
+
         .np-positive { color:#15803d; }
         .np-negative { color:#dc2626; }
 
@@ -383,6 +432,35 @@ def render_kpi_card(title, current, previous, conversion_type=None, percent=Fals
         unsafe_allow_html=True,
     )
 
+
+
+def render_overhead_kpi_card(title, current, previous, conversion_type, icon):
+    current_text = amount_text(current, conversion_type)
+    previous_text = amount_text(previous, conversion_type)
+    growth = pct_change(current, previous)
+    growth_label = f"{growth:+.2f}%"
+
+    # Lower overhead is favourable; higher overhead is adverse.
+    class_name = "np-positive" if growth <= 0 else "np-negative"
+    arrow = "▼" if growth < 0 else "▲" if growth > 0 else "–"
+
+    st.markdown(
+        f"""
+        <div class="np-overhead-card">
+            <div class="np-overhead-icon">{escape(icon)}</div>
+            <div class="np-overhead-body">
+                <div class="np-overhead-title">{escape(title)}</div>
+                <div class="np-overhead-value">{escape(current_text)}</div>
+                <div class="np-overhead-footer">
+                    LY: {escape(previous_text)}
+                    &nbsp;|&nbsp;
+                    <span class="{class_name}">{escape(arrow)} {escape(growth_label)}</span>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 def _apply_same_filters(df, filters):
     out = df.copy()
@@ -591,22 +669,22 @@ def show_net_profit_dashboard():
     overhead_cols = st.columns(6, gap="small")
 
     overhead_kpis = [
-        ("Salary", current["salary"], previous["salary"]),
-        ("Godown Rent", current["godown"], previous["godown"]),
-        ("Overhead Expense", current["overhead"], previous["overhead"]),
-        ("Claim", current["claim"], previous["claim"]),
-        ("Booking 6%", current["booking_6"], previous["booking_6"]),
-        ("Destination 5%", current["destination_5"], previous["destination_5"]),
+        ("Salary", current["salary"], previous["salary"], "●"),
+        ("Overhead Expense", current["overhead"], previous["overhead"], "▦"),
+        ("Claim", current["claim"], previous["claim"], "◆"),
+        ("Booking (Freight)", current["booking_6"], previous["booking_6"], "▣"),
+        ("Destination (Freight)", current["destination_5"], previous["destination_5"], "●"),
+        ("Godown Rent", current["godown"], previous["godown"], "▥"),
     ]
 
-    for index, (title, cy, ly) in enumerate(overhead_kpis):
+    for index, (title, cy, ly, icon) in enumerate(overhead_kpis):
         with overhead_cols[index]:
-            render_kpi_card(
+            render_overhead_kpi_card(
                 title,
                 cy,
                 ly,
-                conversion_type=conversion_type,
-                reverse_good=True,
+                conversion_type,
+                icon,
             )
 
     # --------------------------------------------------------
