@@ -7,7 +7,7 @@ import streamlit as st
 
 from services.data_loader import get_date_range
 from services.net_profit_data_loader import load_net_profit_data_pair
-from services.pnl_data_loader import load_pnl_sp_revenue_total
+from services.pnl_data_loader import load_pnl_sp_revenue_total, load_pnl_data_pair
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
 
@@ -642,6 +642,396 @@ def _apply_same_filters(df, filters):
 
 
 # ============================================================
+# P&L INSIGHT HELPERS (ISOLATED FROM NET PROFIT CALCULATIONS)
+# ============================================================
+
+def _normalise_insight_pnl(df):
+    """Normalise P&L SP output for insight visuals only.
+
+    IMPORTANT: this dataframe is never used by Net Profit KPIs/tables.
+    Load-type analysis is intentionally not used in Phase 1.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    out = df.copy()
+    aliases = {
+        "COMPNAME": ("COMPNAME", "company", "companyname"),
+        "zone": ("zone", "zonename", "ZONE"),
+        "circle": ("circle", "circlename", "hubname", "CIRCLE"),
+        "branch": ("branch", "branchname", "BRANCH"),
+        "grno": ("grno", "gr_no", "grnumber", "GRNO"),
+        "grdt": ("grdt", "grdate", "bookingdate", "GRDT"),
+        "FIN_MONTH": ("FIN_MONTH", "fin_month", "financialmonth"),
+        "REVENUE": ("REVENUE", "revenue", "business"),
+        "EXPENSE": ("EXPENSE", "expense", "expenses", "cost"),
+        "PNL": ("PNL", "pnl", "profitloss", "profit_loss", "profitandloss"),
+        "Consignor": ("Consignor", "consignor", "consignorname"),
+        "Consignee": ("Consignee", "consignee", "consigneename"),
+        "Route": ("Route", "route", "routename"),
+    }
+
+    rename_map = {}
+    for target, candidates in aliases.items():
+        source = _find_column(out, *candidates)
+        if source is not None and source != target:
+            rename_map[source] = target
+    out = out.rename(columns=rename_map)
+
+    for col in ["REVENUE", "EXPENSE", "PNL", "FIN_MONTH"]:
+        if col in out.columns:
+            out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0)
+
+    if "grdt" in out.columns:
+        out["grdt"] = pd.to_datetime(out["grdt"], errors="coerce")
+
+    month_map = {1: "Apr", 2: "May", 3: "Jun", 4: "Jul", 5: "Aug", 6: "Sep", 7: "Oct", 8: "Nov", 9: "Dec", 10: "Jan", 11: "Feb", 12: "Mar"}
+    quarter_map = {1: "Q1", 2: "Q1", 3: "Q1", 4: "Q2", 5: "Q2", 6: "Q2", 7: "Q3", 8: "Q3", 9: "Q3", 10: "Q4", 11: "Q4", 12: "Q4"}
+    if "FIN_MONTH" in out.columns:
+        out["FIN_MONTH"] = pd.to_numeric(out["FIN_MONTH"], errors="coerce").fillna(0).astype(int)
+        out["MONTH"] = out["FIN_MONTH"].map(month_map)
+        out["QUARTER"] = out["FIN_MONTH"].map(quarter_map)
+
+    return out
+
+
+def _apply_insight_values(df, column, selected):
+    """Case-insensitive multi-value filter for the isolated P&L insight dataset."""
+    if df is None or df.empty or column not in df.columns or not selected:
+        return df
+    selected_keys = {_normalise_branch_name(value) for value in selected}
+    keys = df[column].fillna("").astype(str).map(_normalise_branch_name)
+    return df[keys.isin(selected_keys)].copy()
+
+
+def _filter_pnl_insight_scope(df, zones, circles, branches, quarters, months):
+    out = df.copy() if df is not None else pd.DataFrame()
+    out = _apply_insight_values(out, "zone", zones)
+    out = _apply_insight_values(out, "circle", circles)
+    out = _apply_insight_values(out, "branch", branches)
+    out = _apply_insight_values(out, "QUARTER", quarters)
+    out = _apply_insight_values(out, "MONTH", months)
+    return out
+
+
+def _build_pnl_insight_trend(current_df, previous_df, trend_type, start_date, prev_start):
+    """Return CY and LY P&L on a comparable financial-period key."""
+    if current_df is None or current_df.empty or "PNL" not in current_df.columns:
+        return pd.DataFrame(columns=["Period", "PNL", "PY_PNL"])
+
+    cur = current_df.copy()
+    prev = previous_df.copy() if previous_df is not None else pd.DataFrame()
+
+    if trend_type in ("Daily", "Weekly") and "grdt" not in cur.columns:
+        trend_type = "Monthly"
+
+    if trend_type == "Daily":
+        cur = cur[cur["grdt"].notna()].copy()
+        cur["Key"] = (cur["grdt"].dt.normalize() - pd.Timestamp(start_date)).dt.days
+        cy = cur.groupby("Key", as_index=False)["PNL"].sum()
+        cy["Period"] = (pd.Timestamp(start_date) + pd.to_timedelta(cy["Key"], unit="D")).dt.strftime("%d-%b")
+        if not prev.empty and "grdt" in prev.columns:
+            prev = prev[prev["grdt"].notna()].copy()
+            prev["Key"] = (prev["grdt"].dt.normalize() - pd.Timestamp(prev_start)).dt.days
+            py = prev.groupby("Key", as_index=False)["PNL"].sum().rename(columns={"PNL": "PY_PNL"})
+        else:
+            py = pd.DataFrame(columns=["Key", "PY_PNL"])
+    elif trend_type == "Weekly":
+        cur = cur[cur["grdt"].notna()].copy()
+        cur["Key"] = ((cur["grdt"].dt.normalize() - pd.Timestamp(start_date)).dt.days // 7).astype(int)
+        cy = cur.groupby("Key", as_index=False)["PNL"].sum()
+        cy["Period"] = "W" + (cy["Key"] + 1).astype(str)
+        if not prev.empty and "grdt" in prev.columns:
+            prev = prev[prev["grdt"].notna()].copy()
+            prev["Key"] = ((prev["grdt"].dt.normalize() - pd.Timestamp(prev_start)).dt.days // 7).astype(int)
+            py = prev.groupby("Key", as_index=False)["PNL"].sum().rename(columns={"PNL": "PY_PNL"})
+        else:
+            py = pd.DataFrame(columns=["Key", "PY_PNL"])
+    elif trend_type == "Quarterly":
+        cy = cur.groupby("QUARTER", as_index=False)["PNL"].sum().rename(columns={"QUARTER": "Period"})
+        cy["Period"] = pd.Categorical(cy["Period"], QUARTER_ORDER, ordered=True)
+        cy = cy.sort_values("Period")
+        cy["Key"] = cy["Period"].astype(str)
+        if not prev.empty and "QUARTER" in prev.columns:
+            py = prev.groupby("QUARTER", as_index=False)["PNL"].sum().rename(columns={"QUARTER": "Key", "PNL": "PY_PNL"})
+        else:
+            py = pd.DataFrame(columns=["Key", "PY_PNL"])
+    else:
+        cy = cur.groupby("MONTH", as_index=False)["PNL"].sum().rename(columns={"MONTH": "Period"})
+        cy["Period"] = pd.Categorical(cy["Period"], MONTH_ORDER, ordered=True)
+        cy = cy.sort_values("Period")
+        cy["Key"] = cy["Period"].astype(str)
+        if not prev.empty and "MONTH" in prev.columns:
+            py = prev.groupby("MONTH", as_index=False)["PNL"].sum().rename(columns={"MONTH": "Key", "PNL": "PY_PNL"})
+        else:
+            py = pd.DataFrame(columns=["Key", "PY_PNL"])
+
+    result = cy.merge(py[["Key", "PY_PNL"]], on="Key", how="left")
+    result["PY_PNL"] = pd.to_numeric(result["PY_PNL"], errors="coerce").fillna(0.0)
+    return result
+
+
+def _top_pnl_insight_table(df, prev_df, group_col, label, divisor, unit, top_n=10):
+    if df is None or df.empty or group_col not in df.columns:
+        st.info(f"{label} insight is not available in the P&L dataset.")
+        return
+
+    cur = (
+        df[[group_col, "PNL"]]
+        .dropna(subset=[group_col])
+        .groupby(group_col, dropna=False, as_index=False)["PNL"].sum()
+        .rename(columns={"PNL": "Current P&L"})
+    )
+    if prev_df is not None and not prev_df.empty and group_col in prev_df.columns:
+        prev = (
+            prev_df[[group_col, "PNL"]]
+            .dropna(subset=[group_col])
+            .groupby(group_col, dropna=False, as_index=False)["PNL"].sum()
+            .rename(columns={"PNL": "LY P&L"})
+        )
+    else:
+        prev = pd.DataFrame(columns=[group_col, "LY P&L"])
+
+    result = cur.merge(prev, on=group_col, how="left")
+    result["LY P&L"] = pd.to_numeric(result["LY P&L"], errors="coerce").fillna(0.0)
+    total_abs = float(result["Current P&L"].abs().sum())
+    result["Share %"] = result["Current P&L"].abs() / total_abs * 100 if total_abs else 0.0
+    result["vs LY %"] = result.apply(
+        lambda row: pct_change(row["Current P&L"], row["LY P&L"]) if row["LY P&L"] else 0.0,
+        axis=1,
+    )
+    result = result.sort_values("Current P&L", ascending=False).head(top_n).copy()
+    result[f"P&L ({unit})"] = result["Current P&L"] / divisor
+    result[f"LY P&L ({unit})"] = result["LY P&L"] / divisor
+    result = result.rename(columns={group_col: label})
+    display_cols = [label, f"P&L ({unit})", "Share %", f"LY P&L ({unit})", "vs LY %"]
+    st.dataframe(
+        result[display_cols],
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "Share %": st.column_config.NumberColumn("Share %", format="%.2f%%"),
+            "vs LY %": st.column_config.NumberColumn("vs LY %", format="%.1f%%"),
+        },
+    )
+
+
+def _render_phase1_pnl_insights(
+    start_date, end_date, prev_start, prev_end,
+    zones, circles, branches, quarters, months, valid_branches,
+    divisor, unit,
+):
+    """Render Phase-1 P&L insights without changing Net Profit KPIs/tables."""
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    with st.container(border=True):
+        header_left, header_right = st.columns([3.5, 1.0], gap="small", vertical_alignment="center")
+        with header_left:
+            st.markdown(
+                '<div class="np-section-title" style="margin-bottom:0;">P&amp;L Insights</div>'
+                '<div style="font-size:10px;color:#64748b;margin:1px 0 2px 1px;">'
+                'Operational P&amp;L analysis from the P&amp;L data source. Net Profit KPIs and tables remain independent.'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        with header_right:
+            insight_view = st.radio(
+                "P&L Insight View",
+                ["Origin", "Destination"],
+                horizontal=True,
+                key="np_pnl_insight_view",
+                label_visibility="collapsed",
+            )
+
+        try:
+            with st.spinner(f"Loading {insight_view} P&L insights..."):
+                raw_insight_df, raw_insight_prev_df = load_pnl_data_pair(
+                    start_date, end_date, prev_start, prev_end, insight_view
+                )
+        except Exception as exc:
+            st.warning(f"P&L insights could not be loaded: {exc}")
+            return
+
+        insight_df = _normalise_insight_pnl(raw_insight_df)
+        insight_prev_df = _normalise_insight_pnl(raw_insight_prev_df)
+
+        required = {"PNL", "FIN_MONTH"}
+        if insight_df.empty or not required.issubset(insight_df.columns):
+            st.info("P&L insight data is not available for the selected financial year.")
+            return
+
+        # Keep the same Branch/Agency Master scope used by Net Profit.
+        insight_df = _apply_insight_values(insight_df, "branch", valid_branches)
+        if not insight_prev_df.empty:
+            insight_prev_df = _apply_insight_values(insight_prev_df, "branch", valid_branches)
+
+        # Same active Net Profit filters; no load-type filtering is applied.
+        insight_df = _filter_pnl_insight_scope(
+            insight_df, zones, circles, branches, quarters, months
+        )
+        insight_prev_df = _filter_pnl_insight_scope(
+            insight_prev_df, zones, circles, branches, quarters, months
+        ) if not insight_prev_df.empty else insight_prev_df
+
+        if insight_df.empty:
+            st.info("No P&L insight data found for the selected Net Profit filters.")
+            return
+
+        # ----------------------------------------------------
+        # 1. P&L PERFORMANCE TREND + ZONE P&L
+        # ----------------------------------------------------
+        trend_col, zone_col = st.columns([1.45, 0.85], gap="medium")
+
+        with trend_col:
+            st.markdown('<div class="np-section-title">P&amp;L Performance Trend</div>', unsafe_allow_html=True)
+            trend_type = st.segmented_control(
+                "Trend grain",
+                ["Daily", "Weekly", "Monthly", "Quarterly"],
+                default="Monthly",
+                key="np_pnl_insight_trend_type",
+                label_visibility="collapsed",
+            ) if hasattr(st, "segmented_control") else st.selectbox(
+                "Trend grain",
+                ["Daily", "Weekly", "Monthly", "Quarterly"],
+                index=2,
+                key="np_pnl_insight_trend_type_fallback",
+            )
+            trend_type = trend_type or "Monthly"
+            trend_df = _build_pnl_insight_trend(
+                insight_df, insight_prev_df, trend_type, start_date, prev_start
+            )
+            trend_df["CY"] = trend_df["PNL"] / divisor
+            trend_df["LY"] = trend_df["PY_PNL"] / divisor
+            fig_trend = go.Figure()
+            fig_trend.add_trace(go.Bar(
+                x=trend_df["Period"], y=trend_df["LY"], name="LY",
+                marker_color="#cbd5e1",
+                hovertemplate=f"<b>%{{x}}</b><br>LY P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
+            ))
+            fig_trend.add_trace(go.Bar(
+                x=trend_df["Period"], y=trend_df["CY"], name="CY",
+                marker_color="#2563eb",
+                hovertemplate=f"<b>%{{x}}</b><br>CY P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
+            ))
+            fig_trend.add_hline(y=0, line_width=1, line_color="#64748b")
+            fig_trend.update_layout(
+                barmode="group", height=300, margin=dict(l=5, r=5, t=8, b=5),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#fbfdff",
+                legend=dict(orientation="h", y=1.03, x=0),
+                xaxis_title="", yaxis_title=f"P&L ({unit})",
+            )
+            fig_trend.update_xaxes(showgrid=False)
+            fig_trend.update_yaxes(showgrid=False)
+            st.plotly_chart(fig_trend, width="stretch", config={"displayModeBar": False})
+
+        with zone_col:
+            st.markdown('<div class="np-section-title">P&amp;L by Zone</div>', unsafe_allow_html=True)
+            if "zone" not in insight_df.columns:
+                st.info("Zone is not available in P&L insight data.")
+            else:
+                zone_df = insight_df.groupby("zone", as_index=False)["PNL"].sum().sort_values("PNL", ascending=False)
+                zone_df = zone_df[zone_df["PNL"].abs() > 0].copy()
+                if zone_df.empty:
+                    st.info("No zone P&L available.")
+                else:
+                    zone_df["Display"] = zone_df["PNL"] / divisor
+                    fig_zone = go.Figure(go.Pie(
+                        labels=zone_df["zone"],
+                        values=zone_df["PNL"].abs(),
+                        customdata=zone_df["Display"],
+                        hole=0.62,
+                        textinfo="percent+label",
+                        hovertemplate=f"<b>%{{label}}</b><br>P&L: ₹%{{customdata:.2f}} {unit}<extra></extra>",
+                    ))
+                    fig_zone.update_layout(
+                        height=300, margin=dict(l=0, r=0, t=5, b=0),
+                        showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
+                    )
+                    st.plotly_chart(fig_zone, width="stretch", config={"displayModeBar": False})
+
+        # ----------------------------------------------------
+        # 2. MONTH-ON-MONTH P&L GROWTH + BRANCH MONTHLY AVG
+        # ----------------------------------------------------
+        mom_col, branch_col = st.columns([1.1, 1.0], gap="medium")
+        with mom_col:
+            st.markdown('<div class="np-section-title">Month on Month P&amp;L &amp; Growth</div>', unsafe_allow_html=True)
+            mom = insight_df.groupby("MONTH", as_index=False)["PNL"].sum()
+            mom["MONTH"] = pd.Categorical(mom["MONTH"], MONTH_ORDER, ordered=True)
+            mom = mom.sort_values("MONTH").reset_index(drop=True)
+            mom["P&L Display"] = mom["PNL"] / divisor
+            mom["MoM Growth"] = mom["PNL"].pct_change().replace([float("inf"), float("-inf")], pd.NA) * 100
+            fig_mom = go.Figure()
+            fig_mom.add_trace(go.Bar(
+                x=mom["MONTH"], y=mom["P&L Display"], name="P&L",
+                marker_color="#bfdbfe", marker_line_color="#2563eb", marker_line_width=1,
+                hovertemplate=f"<b>%{{x}}</b><br>P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
+            ))
+            fig_mom.add_trace(go.Scatter(
+                x=mom["MONTH"], y=mom["MoM Growth"], name="MoM Growth",
+                mode="lines+markers", yaxis="y2", line=dict(color="#f59e0b", width=2),
+                hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.1f}%<extra></extra>",
+            ))
+            fig_mom.update_layout(
+                height=295, margin=dict(l=5, r=10, t=8, b=5),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#fbfdff",
+                legend=dict(orientation="h", y=1.03, x=0),
+                xaxis=dict(showgrid=False), yaxis=dict(title=f"P&L ({unit})", showgrid=False),
+                yaxis2=dict(title="Growth %", overlaying="y", side="right", showgrid=False),
+            )
+            st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False})
+
+        with branch_col:
+            st.markdown('<div class="np-section-title">Branches by Monthly Avg P&amp;L</div>', unsafe_allow_html=True)
+            if "branch" not in insight_df.columns:
+                st.info("Branch is not available in P&L insight data.")
+            else:
+                month_count = max(int(insight_df["FIN_MONTH"].nunique()), 1)
+                branch_avg = insight_df.groupby("branch", as_index=False)["PNL"].sum()
+                branch_avg["Monthly Avg P&L"] = branch_avg["PNL"] / month_count
+                slab_options = [
+                    "All", "Loss", "₹0–5 Lac", "₹5–10 Lac", "₹10–15 Lac",
+                    "₹15–25 Lac", "₹25–50 Lac", "₹50 Lac & Above",
+                ]
+                slab = st.selectbox("P&L slab", slab_options, key="np_pnl_insight_branch_slab")
+                ranges = {
+                    "All": (None, None), "Loss": (None, 0),
+                    "₹0–5 Lac": (0, 500_000), "₹5–10 Lac": (500_000, 1_000_000),
+                    "₹10–15 Lac": (1_000_000, 1_500_000), "₹15–25 Lac": (1_500_000, 2_500_000),
+                    "₹25–50 Lac": (2_500_000, 5_000_000), "₹50 Lac & Above": (5_000_000, None),
+                }
+                low, high = ranges[slab]
+                scoped = branch_avg.copy()
+                if slab == "Loss":
+                    scoped = scoped[scoped["Monthly Avg P&L"] < 0]
+                else:
+                    if low is not None:
+                        scoped = scoped[scoped["Monthly Avg P&L"] >= low]
+                    if high is not None:
+                        scoped = scoped[scoped["Monthly Avg P&L"] < high]
+                scoped = scoped.sort_values("Monthly Avg P&L", ascending=False).head(20).copy()
+                scoped[f"Monthly Avg P&L ({unit})"] = scoped["Monthly Avg P&L"] / divisor
+                st.dataframe(
+                    scoped[["branch", f"Monthly Avg P&L ({unit})"]].rename(columns={"branch": "Branch"}),
+                    width="stretch", hide_index=True,
+                )
+
+        # ----------------------------------------------------
+        # 3. TOP CUSTOMERS + TOP ROUTES
+        # ----------------------------------------------------
+        customer_col, route_col = st.columns(2, gap="medium")
+        customer_field = "Consignee" if insight_view == "Destination" else "Consignor"
+        with customer_col:
+            st.markdown('<div class="np-section-title">Top Customers by P&amp;L</div>', unsafe_allow_html=True)
+            _top_pnl_insight_table(
+                insight_df, insight_prev_df, customer_field, "Customer", divisor, unit, top_n=10
+            )
+        with route_col:
+            st.markdown('<div class="np-section-title">Top Routes by P&amp;L</div>', unsafe_allow_html=True)
+            _top_pnl_insight_table(
+                insight_df, insight_prev_df, "Route", "Route", divisor, unit, top_n=10
+            )
+
+
+# ============================================================
 # DASHBOARD
 # ============================================================
 
@@ -1213,6 +1603,25 @@ def show_net_profit_dashboard():
             width="stretch",
             config={"displayModeBar": False},
         )
+
+    # --------------------------------------------------------
+    # PHASE 1: P&L INSIGHTS (ISOLATED; EXISTING NET PROFIT KPIs/TABLES UNCHANGED)
+    # --------------------------------------------------------
+
+    _render_phase1_pnl_insights(
+        start_date=start_date,
+        end_date=end_date,
+        prev_start=prev_start,
+        prev_end=prev_end,
+        zones=zones,
+        circles=circles,
+        branches=branches,
+        quarters=quarters,
+        months=months,
+        valid_branches=valid_branches,
+        divisor=divisor,
+        unit=unit,
+    )
 
     # --------------------------------------------------------
     # DETAIL TABLE
