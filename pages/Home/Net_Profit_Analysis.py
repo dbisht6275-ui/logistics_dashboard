@@ -328,6 +328,18 @@ def _inject_css():
             box-shadow:0 5px 14px rgba(15,42,67,.07);
         }
 
+        .np-card-disabled {
+            opacity:.52;
+            background:#f1f5f9;
+            box-shadow:none;
+        }
+
+        .np-card-disabled .np-card-value,
+        .np-card-disabled .np-card-title,
+        .np-card-disabled .np-card-footer {
+            color:#94a3b8 !important;
+        }
+
         .np-card-title {
             font-size:10px;
             color:#64748b;
@@ -448,7 +460,28 @@ def _inject_css():
     )
 
 
-def render_kpi_card(title, current, previous, conversion_type=None, percent=False, reverse_good=False):
+def render_kpi_card(
+    title,
+    current,
+    previous,
+    conversion_type=None,
+    percent=False,
+    reverse_good=False,
+    disabled=False,
+):
+    if disabled:
+        st.markdown(
+            f"""
+            <div class="np-card np-card-disabled">
+                <div class="np-card-title">{escape(title)}</div>
+                <div class="np-card-value">--</div>
+                <div class="np-card-footer">Select a branch to view</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        return
+
     if percent:
         current_text = f"{current:,.2f}%"
         previous_text = f"{previous:,.2f}%"
@@ -677,10 +710,16 @@ def show_net_profit_dashboard():
     current = calculate_kpis(df)
     previous = calculate_kpis(prev_df)
 
-    # Business KPIs are shown separately for audit clarity:
-    # Origin Business = Booking revenue.
-    # Destination Business = Delivery revenue.
-    # The combined BUSINESS column is still retained for downstream tables/calculations.
+    # Business KPI display rule:
+    # - All Branches: put total Business (Booking + Delivery) on the Booking KPI and
+    #   disable the Destination KPI to avoid presenting the same consolidated revenue twice.
+    # - Explicit branch selection: show Booking and Destination revenue separately.
+    if all_branches:
+        booking_business_current = current["business"]
+        booking_business_previous = previous["business"]
+    else:
+        booking_business_current = current["origin_business"]
+        booking_business_previous = previous["origin_business"]
 
     # --------------------------------------------------------
     # KPI ROW 1
@@ -691,16 +730,22 @@ def show_net_profit_dashboard():
     kpi_cols = st.columns(7, gap="small")
 
     kpis = [
-        ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False),
-        ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False),
-        ("Combined P&L", current["combined_pnl"], previous["combined_pnl"], False),
-        ("Origin Business / Booking", current["origin_business"], previous["origin_business"], False),
-        ("Destination Business / Delivery", current["destination_business"], previous["destination_business"], False),
-        ("Net Profit", current["net_profit"], previous["net_profit"], False),
-        ("Net Profit Margin", current["margin"], previous["margin"], False),
+        ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False, False),
+        ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False, False),
+        ("Combined P&L", current["combined_pnl"], previous["combined_pnl"], False, False),
+        ("Origin Business / Booking", booking_business_current, booking_business_previous, False, False),
+        (
+            "Destination Business / Delivery",
+            current["destination_business"],
+            previous["destination_business"],
+            False,
+            all_branches,
+        ),
+        ("Net Profit", current["net_profit"], previous["net_profit"], False, False),
+        ("Net Profit Margin", current["margin"], previous["margin"], False, False),
     ]
 
-    for index, (title, cy, ly, reverse_good) in enumerate(kpis):
+    for index, (title, cy, ly, reverse_good, disabled) in enumerate(kpis):
         with kpi_cols[index]:
             render_kpi_card(
                 title,
@@ -709,6 +754,7 @@ def show_net_profit_dashboard():
                 conversion_type=conversion_type,
                 percent=(title == "Net Profit Margin"),
                 reverse_good=reverse_good,
+                disabled=disabled,
             )
 
     # --------------------------------------------------------
