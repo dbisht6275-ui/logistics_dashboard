@@ -821,81 +821,71 @@ def _render_phase1_pnl_insights(
     zones, circles, branches, quarters, months, valid_branches,
     divisor, unit,
 ):
-    """Render Phase-1 P&L insights without changing Net Profit KPIs/tables."""
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    """Render isolated P&L insights in the same visual language as Net Profit."""
+    st.markdown("<div style='height:3px'></div>", unsafe_allow_html=True)
+
     with st.container(border=True):
-        header_left, header_right = st.columns([3.5, 1.0], gap="small", vertical_alignment="center")
-        with header_left:
+        title_col, view_col = st.columns([5, 1], gap="small", vertical_alignment="center")
+        with title_col:
             st.markdown(
-                '<div class="np-section-title" style="margin-bottom:0;">P&amp;L Insights</div>'
-                '<div style="font-size:10px;color:#64748b;margin:1px 0 2px 1px;">'
-                'Operational P&amp;L analysis from the P&amp;L data source. Net Profit KPIs and tables remain independent.'
+                '<div class="np-section-title" style="margin-bottom:1px;">P&amp;L Insights</div>'
+                '<div class="np-subtitle" style="margin:0 0 1px 1px;">'
+                'Operational P&amp;L analysis using the active Net Profit filters'
                 '</div>',
                 unsafe_allow_html=True,
             )
-        with header_right:
-            insight_view = st.radio(
-                "P&L Insight View",
+        with view_col:
+            insight_view = st.selectbox(
+                "Insight View",
                 ["Origin", "Destination"],
-                horizontal=True,
                 key="np_pnl_insight_view",
                 label_visibility="collapsed",
             )
 
-        try:
-            with st.spinner(f"Loading {insight_view} P&L insights..."):
-                raw_insight_df, raw_insight_prev_df = load_pnl_data_pair(
-                    start_date, end_date, prev_start, prev_end, insight_view
-                )
-        except Exception as exc:
-            st.warning(f"P&L insights could not be loaded: {exc}")
-            return
+    try:
+        with st.spinner(f"Loading {insight_view} P&L insights..."):
+            raw_insight_df, raw_insight_prev_df = load_pnl_data_pair(
+                start_date, end_date, prev_start, prev_end, insight_view
+            )
+    except Exception as exc:
+        st.warning(f"P&L insights could not be loaded: {exc}")
+        return
 
-        insight_df = _normalise_insight_pnl(raw_insight_df)
-        insight_prev_df = _normalise_insight_pnl(raw_insight_prev_df)
+    insight_df = _normalise_insight_pnl(raw_insight_df)
+    insight_prev_df = _normalise_insight_pnl(raw_insight_prev_df)
+    if insight_df.empty or not {"PNL", "FIN_MONTH"}.issubset(insight_df.columns):
+        st.info("P&L insight data is not available for the selected financial year.")
+        return
 
-        required = {"PNL", "FIN_MONTH"}
-        if insight_df.empty or not required.issubset(insight_df.columns):
-            st.info("P&L insight data is not available for the selected financial year.")
-            return
+    insight_df = _apply_insight_values(insight_df, "branch", valid_branches)
+    if not insight_prev_df.empty:
+        insight_prev_df = _apply_insight_values(insight_prev_df, "branch", valid_branches)
 
-        # Keep the same Branch/Agency Master scope used by Net Profit.
-        insight_df = _apply_insight_values(insight_df, "branch", valid_branches)
-        if not insight_prev_df.empty:
-            insight_prev_df = _apply_insight_values(insight_prev_df, "branch", valid_branches)
-
-        # Same active Net Profit filters; no load-type filtering is applied.
-        insight_df = _filter_pnl_insight_scope(
-            insight_df, zones, circles, branches, quarters, months
-        )
+    # Same FY / Zone / Circle / Branch / Quarter / Month scope. No LOADTYPE logic.
+    insight_df = _filter_pnl_insight_scope(insight_df, zones, circles, branches, quarters, months)
+    if not insight_prev_df.empty:
         insight_prev_df = _filter_pnl_insight_scope(
             insight_prev_df, zones, circles, branches, quarters, months
-        ) if not insight_prev_df.empty else insight_prev_df
+        )
 
-        if insight_df.empty:
-            st.info("No P&L insight data found for the selected Net Profit filters.")
-            return
+    if insight_df.empty:
+        st.info("No P&L insight data found for the selected Net Profit filters.")
+        return
 
-        # ----------------------------------------------------
-        # 1. P&L PERFORMANCE TREND + ZONE P&L
-        # ----------------------------------------------------
-        trend_col, zone_col = st.columns([1.45, 0.85], gap="medium")
-
-        with trend_col:
-            st.markdown('<div class="np-section-title">P&amp;L Performance Trend</div>', unsafe_allow_html=True)
-            trend_type = st.segmented_control(
-                "Trend grain",
-                ["Daily", "Weekly", "Monthly", "Quarterly"],
-                default="Monthly",
-                key="np_pnl_insight_trend_type",
-                label_visibility="collapsed",
-            ) if hasattr(st, "segmented_control") else st.selectbox(
-                "Trend grain",
-                ["Daily", "Weekly", "Monthly", "Quarterly"],
-                index=2,
-                key="np_pnl_insight_trend_type_fallback",
-            )
-            trend_type = trend_type or "Monthly"
+    trend_col, zone_col = st.columns([1.55, 0.85], gap="medium")
+    with trend_col:
+        with st.container(border=True):
+            title_left, grain_col = st.columns([2.3, 1.7], gap="small", vertical_alignment="center")
+            with title_left:
+                st.markdown('<div class="np-section-title">P&amp;L Performance Trend</div>', unsafe_allow_html=True)
+            with grain_col:
+                trend_type = st.selectbox(
+                    "Trend Grain",
+                    ["Daily", "Weekly", "Monthly", "Quarterly"],
+                    index=2,
+                    key="np_pnl_insight_trend_type",
+                    label_visibility="collapsed",
+                )
             trend_df = _build_pnl_insight_trend(
                 insight_df, insight_prev_df, trend_type, start_date, prev_start
             )
@@ -914,16 +904,17 @@ def _render_phase1_pnl_insights(
             ))
             fig_trend.add_hline(y=0, line_width=1, line_color="#64748b")
             fig_trend.update_layout(
-                barmode="group", height=300, margin=dict(l=5, r=5, t=8, b=5),
+                barmode="group", height=285, margin=dict(l=6, r=6, t=14, b=4),
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#fbfdff",
-                legend=dict(orientation="h", y=1.03, x=0),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
                 xaxis_title="", yaxis_title=f"P&L ({unit})",
             )
             fig_trend.update_xaxes(showgrid=False)
             fig_trend.update_yaxes(showgrid=False)
             st.plotly_chart(fig_trend, width="stretch", config={"displayModeBar": False})
 
-        with zone_col:
+    with zone_col:
+        with st.container(border=True):
             st.markdown('<div class="np-section-title">P&amp;L by Zone</div>', unsafe_allow_html=True)
             if "zone" not in insight_df.columns:
                 st.info("Zone is not available in P&L insight data.")
@@ -935,24 +926,20 @@ def _render_phase1_pnl_insights(
                 else:
                     zone_df["Display"] = zone_df["PNL"] / divisor
                     fig_zone = go.Figure(go.Pie(
-                        labels=zone_df["zone"],
-                        values=zone_df["PNL"].abs(),
-                        customdata=zone_df["Display"],
-                        hole=0.62,
+                        labels=zone_df["zone"], values=zone_df["PNL"].abs(),
+                        customdata=zone_df["Display"], hole=0.62,
                         textinfo="percent+label",
                         hovertemplate=f"<b>%{{label}}</b><br>P&L: ₹%{{customdata:.2f}} {unit}<extra></extra>",
                     ))
                     fig_zone.update_layout(
-                        height=300, margin=dict(l=0, r=0, t=5, b=0),
+                        height=285, margin=dict(l=4, r=4, t=4, b=2),
                         showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
                     )
                     st.plotly_chart(fig_zone, width="stretch", config={"displayModeBar": False})
 
-        # ----------------------------------------------------
-        # 2. MONTH-ON-MONTH P&L GROWTH + BRANCH MONTHLY AVG
-        # ----------------------------------------------------
-        mom_col, branch_col = st.columns([1.1, 1.0], gap="medium")
-        with mom_col:
+    mom_col, branch_col = st.columns([1.55, 0.85], gap="medium")
+    with mom_col:
+        with st.container(border=True):
             st.markdown('<div class="np-section-title">Month on Month P&amp;L &amp; Growth</div>', unsafe_allow_html=True)
             mom = insight_df.groupby("MONTH", as_index=False)["PNL"].sum()
             mom["MONTH"] = pd.Categorical(mom["MONTH"], MONTH_ORDER, ordered=True)
@@ -971,15 +958,17 @@ def _render_phase1_pnl_insights(
                 hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.1f}%<extra></extra>",
             ))
             fig_mom.update_layout(
-                height=295, margin=dict(l=5, r=10, t=8, b=5),
+                height=285, margin=dict(l=6, r=10, t=14, b=4),
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#fbfdff",
-                legend=dict(orientation="h", y=1.03, x=0),
-                xaxis=dict(showgrid=False), yaxis=dict(title=f"P&L ({unit})", showgrid=False),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+                xaxis=dict(showgrid=False),
+                yaxis=dict(title=f"P&L ({unit})", showgrid=False),
                 yaxis2=dict(title="Growth %", overlaying="y", side="right", showgrid=False),
             )
             st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False})
 
-        with branch_col:
+    with branch_col:
+        with st.container(border=True):
             st.markdown('<div class="np-section-title">Branches by Monthly Avg P&amp;L</div>', unsafe_allow_html=True)
             if "branch" not in insight_df.columns:
                 st.info("Branch is not available in P&L insight data.")
@@ -1014,17 +1003,16 @@ def _render_phase1_pnl_insights(
                     width="stretch", hide_index=True,
                 )
 
-        # ----------------------------------------------------
-        # 3. TOP CUSTOMERS + TOP ROUTES
-        # ----------------------------------------------------
-        customer_col, route_col = st.columns(2, gap="medium")
-        customer_field = "Consignee" if insight_view == "Destination" else "Consignor"
-        with customer_col:
+    customer_col, route_col = st.columns(2, gap="medium")
+    customer_field = "Consignee" if insight_view == "Destination" else "Consignor"
+    with customer_col:
+        with st.container(border=True):
             st.markdown('<div class="np-section-title">Top Customers by P&amp;L</div>', unsafe_allow_html=True)
             _top_pnl_insight_table(
                 insight_df, insight_prev_df, customer_field, "Customer", divisor, unit, top_n=10
             )
-        with route_col:
+    with route_col:
+        with st.container(border=True):
             st.markdown('<div class="np-section-title">Top Routes by P&amp;L</div>', unsafe_allow_html=True)
             _top_pnl_insight_table(
                 insight_df, insight_prev_df, "Route", "Route", divisor, unit, top_n=10
@@ -1295,314 +1283,100 @@ def show_net_profit_dashboard():
     )
 
     # --------------------------------------------------------
-    # MONTHLY TREND + OVERHEAD BREAKUP
+    # OVERHEAD COMPOSITION
     # --------------------------------------------------------
-
-    left, right = st.columns([1.55, 0.85], gap="medium")
-
-    with left:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="np-section-title">Monthly Net Profit Trend</div>',
-                unsafe_allow_html=True,
-            )
-
-            monthly = (
-                df.groupby(["FIN_MONTH", "MONTH"], as_index=False)
-                .agg(
-                    Origin_PNL=("ORIGIN_PNL", "sum"),
-                    Destination_PNL=("DESTINATION_PNL", "sum"),
-                    Combined_PNL=("COMBINED_PNL", "sum"),
-                    Overhead=("TOTAL EXPENSE", "sum"),
-                    Net_Profit=("NET_PROFIT", "sum"),
-                )
-                .sort_values("FIN_MONTH")
-            )
-
-            prev_monthly = (
-                prev_df.groupby(["FIN_MONTH", "MONTH"], as_index=False)
-                .agg(LY_Net_Profit=("NET_PROFIT", "sum"))
-                if prev_df is not None and not prev_df.empty
-                else pd.DataFrame(columns=["FIN_MONTH", "MONTH", "LY_Net_Profit"])
-            )
-
-            monthly = monthly.merge(
-                prev_monthly[["FIN_MONTH", "LY_Net_Profit"]],
-                on="FIN_MONTH",
-                how="left",
-            )
-
-            monthly["LY_Net_Profit"] = pd.to_numeric(
-                monthly["LY_Net_Profit"],
-                errors="coerce",
-            ).fillna(0.0)
-
-            monthly["Net Profit"] = monthly["Net_Profit"] / divisor
-            monthly["LY Net Profit"] = monthly["LY_Net_Profit"] / divisor
-
-            fig = go.Figure()
-
-            fig.add_trace(
-                go.Bar(
-                    x=monthly["MONTH"],
-                    y=monthly["LY Net Profit"],
-                    name=f"LY ({prev_fy})",
-                    marker_color="#cbd5e1",
-                    hovertemplate=(
-                        f"<b>%{{x}}</b><br>"
-                        f"LY Net Profit: ₹%{{y:.2f}} {unit}<extra></extra>"
-                    ),
-                )
-            )
-
-            fig.add_trace(
-                go.Bar(
-                    x=monthly["MONTH"],
-                    y=monthly["Net Profit"],
-                    name=f"Current ({fy})",
-                    marker_color="#2563eb",
-                    hovertemplate=(
-                        f"<b>%{{x}}</b><br>"
-                        f"Net Profit: ₹%{{y:.2f}} {unit}<extra></extra>"
-                    ),
-                )
-            )
-
-            fig.add_hline(y=0, line_width=1, line_color="#64748b")
-
-            fig.update_layout(
-                barmode="group",
-                height=285,
-                margin=dict(l=6, r=6, t=14, b=4),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="#fbfdff",
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    x=0,
-                ),
-                xaxis_title="",
-                yaxis_title=f"Net Profit ({unit})",
-            )
-
-            fig.update_xaxes(
-                categoryorder="array",
-                categoryarray=MONTH_ORDER,
-                showgrid=False,
-            )
-
-            fig.update_yaxes(showgrid=False)
-
-            st.plotly_chart(
-                fig,
-                width="stretch",
-                config={"displayModeBar": False},
-            )
-
-    with right:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="np-section-title">Overhead Composition</div>',
-                unsafe_allow_html=True,
-            )
-
-            overhead_values = pd.DataFrame(
-                {
-                    "Expense": [
-                        "Salary",
-                        "Godown Rent",
-                        "Overhead Expense",
-                        "Claim",
-                        "Booking 6%",
-                        "Destination 5%",
-                    ],
-                    "Amount": [
-                        current["salary"],
-                        current["godown"],
-                        current["overhead"],
-                        current["claim"],
-                        current["booking_6"],
-                        current["destination_5"],
-                    ],
-                }
-            )
-
-            overhead_values = overhead_values[
-                overhead_values["Amount"].abs() > 0
-            ].copy()
-
-            if overhead_values.empty:
-                st.info("No overhead found for selected filters.")
-            else:
-                fig_overhead = px.pie(
-                    overhead_values,
-                    names="Expense",
-                    values="Amount",
-                    hole=0.62,
-                )
-
-                fig_overhead.update_traces(
-                    textposition="outside",
-                    textinfo="percent+label",
-                    hovertemplate=(
-                        "<b>%{label}</b><br>"
-                        "Amount: ₹%{value:,.2f}<br>"
-                        "Share: %{percent}<extra></extra>"
-                    ),
-                )
-
-                fig_overhead.update_layout(
-                    height=285,
-                    margin=dict(l=4, r=4, t=4, b=2),
-                    showlegend=False,
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    annotations=[
-                        dict(
-                            text=amount_text(
-                                current["total_expense"],
-                                conversion_type,
-                            ),
-                            x=0.5,
-                            y=0.53,
-                            font_size=16,
-                            showarrow=False,
-                        ),
-                        dict(
-                            text="Total Overhead",
-                            x=0.5,
-                            y=0.43,
-                            font_size=10,
-                            showarrow=False,
-                        ),
-                    ],
-                )
-
-                st.plotly_chart(
-                    fig_overhead,
-                    width="stretch",
-                    config={"displayModeBar": False},
-                )
-
-                overhead_change = pct_change(
-                    current["total_expense"],
-                    previous["total_expense"],
-                )
-                st.caption(
-                    f"Total Overhead insight: {amount_text(current['total_expense'], conversion_type)} "
-                    f"vs LY {amount_text(previous['total_expense'], conversion_type)} "
-                    f"({overhead_change:+.1f}%)."
-                )
-
-    # --------------------------------------------------------
-    # BRANCH PROFITABILITY
-    # --------------------------------------------------------
-
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
     with st.container(border=True):
-        top_left, top_right = st.columns([5, 1], gap="small")
+        st.markdown(
+            '<div class="np-section-title">Overhead Composition</div>',
+            unsafe_allow_html=True,
+        )
 
-        with top_left:
-            st.markdown(
-                '<div class="np-section-title">Branch-wise Net Profit</div>',
-                unsafe_allow_html=True,
+        overhead_values = pd.DataFrame(
+            {
+                "Expense": [
+                    "Salary", "Godown Rent", "Overhead Expense",
+                    "Claim", "Booking 6%", "Destination 5%",
+                ],
+                "Amount": [
+                    current["salary"], current["godown"], current["overhead"],
+                    current["claim"], current["booking_6"], current["destination_5"],
+                ],
+            }
+        )
+        overhead_values = overhead_values[overhead_values["Amount"].abs() > 0].copy()
+
+        if overhead_values.empty:
+            st.info("No overhead found for selected filters.")
+        else:
+            fig_overhead = px.pie(
+                overhead_values, names="Expense", values="Amount", hole=0.62,
+            )
+            fig_overhead.update_traces(
+                textposition="outside", textinfo="percent+label",
+                hovertemplate=(
+                    "<b>%{label}</b><br>Amount: ₹%{value:,.2f}<br>"
+                    "Share: %{percent}<extra></extra>"
+                ),
+            )
+            fig_overhead.update_layout(
+                height=265, margin=dict(l=4, r=4, t=4, b=2),
+                showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
+                annotations=[
+                    dict(
+                        text=amount_text(current["total_expense"], conversion_type),
+                        x=0.5, y=0.53, font_size=16, showarrow=False,
+                    ),
+                    dict(text="Total Overhead", x=0.5, y=0.43, font_size=10, showarrow=False),
+                ],
+            )
+            st.plotly_chart(
+                fig_overhead, width="stretch", config={"displayModeBar": False},
+            )
+            overhead_change = pct_change(current["total_expense"], previous["total_expense"])
+            st.caption(
+                f"Total Overhead insight: {amount_text(current['total_expense'], conversion_type)} "
+                f"vs LY {amount_text(previous['total_expense'], conversion_type)} "
+                f"({overhead_change:+.1f}%)."
             )
 
-        with top_right:
-            top_n = st.selectbox(
-                "Top branches",
-                [10, 20, 30, 50],
-                key="np_top_n",
-                label_visibility="collapsed",
-            )
+    # --------------------------------------------------------
+    # BRANCH SUMMARY (feeds Branch Net Profit Detail; no chart rendered)
+    # --------------------------------------------------------
 
-        branch_summary = (
-            df.groupby(
-                ["BRANCHCODE", "BRANCH"],
-                as_index=False,
-                dropna=False,
-            )
-            .agg(
-                Revenue=("BUSINESS", "sum"),
-                Booking_Business=("ORIGIN_BUSINESS", "sum"),
-                Delivery_Business=("DESTINATION_BUSINESS", "sum"),
-                Origin_PNL=("ORIGIN_PNL", "sum"),
-                Destination_PNL=("DESTINATION_PNL", "sum"),
-                Combined_PNL=("COMBINED_PNL", "sum"),
-                Salary=("SALARY", "sum"),
-                Godown_Rent=("GODOWN RENT", "sum"),
-                Overhead_Expense=("OVERHEAD EXPENSE", "sum"),
-                Claim=("CLAIM", "sum"),
-                Booking_6=("BOOKING 6%", "sum"),
-                Destination_5=("DESTINATION 5%", "sum"),
-                Total_Overhead=("TOTAL EXPENSE", "sum"),
-                Net_Profit=("NET_PROFIT", "sum"),
-                Total_Income=("TOTAL_INCOME", "sum"),
-            )
+    branch_summary = (
+        df.groupby(["BRANCHCODE", "BRANCH"], as_index=False, dropna=False)
+        .agg(
+            Revenue=("BUSINESS", "sum"),
+            Booking_Business=("ORIGIN_BUSINESS", "sum"),
+            Delivery_Business=("DESTINATION_BUSINESS", "sum"),
+            Origin_PNL=("ORIGIN_PNL", "sum"),
+            Destination_PNL=("DESTINATION_PNL", "sum"),
+            Combined_PNL=("COMBINED_PNL", "sum"),
+            Salary=("SALARY", "sum"),
+            Godown_Rent=("GODOWN RENT", "sum"),
+            Overhead_Expense=("OVERHEAD EXPENSE", "sum"),
+            Claim=("CLAIM", "sum"),
+            Booking_6=("BOOKING 6%", "sum"),
+            Destination_5=("DESTINATION 5%", "sum"),
+            Total_Overhead=("TOTAL EXPENSE", "sum"),
+            Net_Profit=("NET_PROFIT", "sum"),
+            Total_Income=("TOTAL_INCOME", "sum"),
         )
-
-        branch_summary["P&L %"] = 0.0
-        valid_business = branch_summary["Revenue"].ne(0)
-        branch_summary.loc[valid_business, "P&L %"] = (
-            branch_summary.loc[valid_business, "Combined_PNL"]
-            / branch_summary.loc[valid_business, "Revenue"]
-            * 100
-        )
-
-        branch_summary["Net Profit Margin %"] = 0.0
-        valid_income = branch_summary["Total_Income"].ne(0)
-
-        branch_summary.loc[valid_income, "Net Profit Margin %"] = (
-            branch_summary.loc[valid_income, "Net_Profit"]
-            / branch_summary.loc[valid_income, "Total_Income"]
-            * 100
-        )
-
-        branch_summary = branch_summary.sort_values(
-            "Net_Profit",
-            ascending=False,
-        ).reset_index(drop=True)
-
-        chart_df = branch_summary.head(top_n).copy()
-        chart_df["Net Profit Display"] = chart_df["Net_Profit"] / divisor
-
-        fig_branch = px.bar(
-            chart_df,
-            x="Net Profit Display",
-            y="BRANCH",
-            orientation="h",
-            labels={
-                "Net Profit Display": f"Net Profit ({unit})",
-                "BRANCH": "Branch",
-            },
-            hover_data={
-                "BRANCHCODE": True,
-                "Origin_PNL": ":,.2f",
-                "Destination_PNL": ":,.2f",
-                "Combined_PNL": ":,.2f",
-                "Total_Overhead": ":,.2f",
-                "Net Profit Display": ":.2f",
-            },
-        )
-
-        fig_branch.update_layout(
-            height=max(300, min(620, 31 * len(chart_df) + 75)),
-            margin=dict(l=6, r=6, t=4, b=4),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="#fbfdff",
-            yaxis=dict(autorange="reversed"),
-            showlegend=False,
-        )
-
-        fig_branch.update_xaxes(showgrid=False)
-        fig_branch.update_yaxes(showgrid=False)
-
-        st.plotly_chart(
-            fig_branch,
-            width="stretch",
-            config={"displayModeBar": False},
-        )
+    )
+    branch_summary["P&L %"] = 0.0
+    valid_business = branch_summary["Revenue"].ne(0)
+    branch_summary.loc[valid_business, "P&L %"] = (
+        branch_summary.loc[valid_business, "Combined_PNL"]
+        / branch_summary.loc[valid_business, "Revenue"] * 100
+    )
+    branch_summary["Net Profit Margin %"] = 0.0
+    valid_income = branch_summary["Total_Income"].ne(0)
+    branch_summary.loc[valid_income, "Net Profit Margin %"] = (
+        branch_summary.loc[valid_income, "Net_Profit"]
+        / branch_summary.loc[valid_income, "Total_Income"] * 100
+    )
+    branch_summary = branch_summary.sort_values("Net_Profit", ascending=False).reset_index(drop=True)
 
     # --------------------------------------------------------
     # PHASE 1: P&L INSIGHTS (ISOLATED; EXISTING NET PROFIT KPIs/TABLES UNCHANGED)
