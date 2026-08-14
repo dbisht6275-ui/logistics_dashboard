@@ -7,6 +7,7 @@ import streamlit as st
 
 from services.data_loader import get_date_range
 from services.net_profit_data_loader import load_net_profit_data_pair
+from services.pnl_data_loader import load_pnl_sp_revenue_total
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
 
@@ -438,6 +439,10 @@ def show_net_profit_dashboard():
             prev_end,
         )
 
+        # Consolidated Business / Revenue KPI must match the P&L SP directly.
+        sp_revenue_total = load_pnl_sp_revenue_total(start_date, end_date)
+        sp_prev_revenue_total = load_pnl_sp_revenue_total(prev_start, prev_end)
+
     if raw_df is None or raw_df.empty:
         st.warning("No Net Profit data found for selected financial year.")
         return
@@ -536,6 +541,17 @@ def show_net_profit_dashboard():
 
     current = calculate_kpis(df)
     previous = calculate_kpis(prev_df)
+
+    # MAIN Business / Revenue KPI:
+    # When no branch/hierarchy/month/quarter filters are applied, show the
+    # exact REVENUE total returned by the P&L stored procedure. This prevents
+    # revenue from being understated by booking/branch joins.
+    no_business_scope_filters = not (
+        branches or zones or circles or quarters or months
+    )
+    if all_branches and no_business_scope_filters:
+        current["business"] = float(sp_revenue_total or 0.0)
+        previous["business"] = float(sp_prev_revenue_total or 0.0)
 
     # --------------------------------------------------------
     # KPI ROW 1
@@ -824,6 +840,7 @@ def show_net_profit_dashboard():
                 dropna=False,
             )
             .agg(
+                Revenue=("BUSINESS", "sum"),
                 Origin_PNL=("ORIGIN_PNL", "sum"),
                 Destination_PNL=("DESTINATION_PNL", "sum"),
                 Combined_PNL=("COMBINED_PNL", "sum"),
@@ -908,6 +925,7 @@ def show_net_profit_dashboard():
         display = branch_summary.copy()
 
         money_columns = [
+            "Revenue",
             "Origin_PNL",
             "Destination_PNL",
             "Combined_PNL",
@@ -933,6 +951,7 @@ def show_net_profit_dashboard():
             columns={
                 "BRANCHCODE": "Branch Code",
                 "BRANCH": "Branch",
+                "Revenue": f"Revenue ({unit})",
                 "Origin_PNL": f"Origin P&L ({unit})",
                 "Destination_PNL": f"Destination P&L ({unit})",
                 "Combined_PNL": f"Combined P&L ({unit})",
@@ -981,6 +1000,7 @@ def show_net_profit_dashboard():
             "YEAR",
             "MONTHNO",
             "MONTH",
+            "BUSINESS",
             "ORIGIN_PNL",
             "DESTINATION_PNL",
             "COMBINED_PNL",
