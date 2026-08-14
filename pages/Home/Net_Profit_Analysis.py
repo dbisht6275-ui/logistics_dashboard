@@ -651,23 +651,8 @@ def show_net_profit_dashboard():
         else pd.DataFrame()
     )
 
-    with filter_cols[1]:
-        conversion_type = st.selectbox(
-            "₹ Conversion",
-            ["Crore", "Lac"],
-            key="np_conversion",
-        )
-
     # Use whichever hierarchy columns are actually available.
-    with filter_cols[2]:
-        branches = st.multiselect(
-            "Branch",
-            safe_options(branch_master_df, "BRANCH"),
-            key="np_branch",
-            placeholder="All branches",
-        )
-
-    with filter_cols[3]:
+    with filter_cols[1]:
         zones = st.multiselect(
             "Zone",
             safe_options(df, "zone"),
@@ -680,11 +665,10 @@ def show_net_profit_dashboard():
     # option list from the unscoped dataframe can leave the widget empty when
     # hierarchy values are populated from Branch Master.
     circle_scope = df.copy()
-    circle_scope = apply_multi_filter(circle_scope, "BRANCH", branches)
     circle_scope = apply_multi_filter(circle_scope, "zone", zones)
     circle_options = safe_options(circle_scope, "circle")
 
-    with filter_cols[4]:
+    with filter_cols[2]:
         circles = st.multiselect(
             "Circle",
             circle_options,
@@ -693,7 +677,21 @@ def show_net_profit_dashboard():
             disabled=("circle" not in df.columns or not circle_options),
         )
 
-    with filter_cols[5]:
+    # Branch choices follow the selected Zone/Circle scope.
+    branch_scope = df.copy()
+    branch_scope = apply_multi_filter(branch_scope, "zone", zones)
+    branch_scope = apply_multi_filter(branch_scope, "circle", circles)
+    branch_options = safe_options(branch_scope, "BRANCH")
+
+    with filter_cols[3]:
+        branches = st.multiselect(
+            "Branch",
+            branch_options,
+            key="np_branch",
+            placeholder="All branches",
+        )
+
+    with filter_cols[4]:
         quarters = st.multiselect(
             "Quarter",
             QUARTER_ORDER,
@@ -701,12 +699,19 @@ def show_net_profit_dashboard():
             placeholder="All quarters",
         )
 
-    with filter_cols[6]:
+    with filter_cols[5]:
         months = st.multiselect(
             "Month",
             MONTH_ORDER,
             key="np_month",
             placeholder="All months",
+        )
+
+    with filter_cols[6]:
+        conversion_type = st.selectbox(
+            "₹ Conversion",
+            ["Crore", "Lac"],
+            key="np_conversion",
         )
 
     filters = {
@@ -761,23 +766,34 @@ def show_net_profit_dashboard():
 
     st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
-    kpi_cols = st.columns(7, gap=None)
-
     kpis = [
-        ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False, False),
-        ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False, False),
-        ("Combined P&L", current["combined_pnl"], previous["combined_pnl"], False, False),
         ("Origin Business / Booking", booking_business_current, booking_business_previous, False, False),
-        (
-            "Destination Business / Delivery",
-            current["destination_business"],
-            previous["destination_business"],
-            False,
-            all_branches,
-        ),
-        ("Net Profit", current["net_profit"], previous["net_profit"], False, False),
-        ("Net Profit Margin", current["margin"], previous["margin"], False, False),
     ]
+
+    # In All Branches mode Delivery Business must not be shown at all.
+    if not all_branches:
+        kpis.append(
+            (
+                "Destination Business / Delivery",
+                current["destination_business"],
+                previous["destination_business"],
+                False,
+                False,
+            )
+        )
+
+    kpis.extend(
+        [
+            ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False, False),
+            ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False, False),
+            ("Combined P&L", current["combined_pnl"], previous["combined_pnl"], False, False),
+            ("Indirect Exp", current["total_expense"], previous["total_expense"], True, False),
+            ("Net Profit", current["net_profit"], previous["net_profit"], False, False),
+            ("Net Profit %", current["margin"], previous["margin"], False, False),
+        ]
+    )
+
+    kpi_cols = st.columns(len(kpis), gap=None)
 
     for index, (title, cy, ly, reverse_good, disabled) in enumerate(kpis):
         with kpi_cols[index]:
@@ -786,7 +802,7 @@ def show_net_profit_dashboard():
                 cy,
                 ly,
                 conversion_type=conversion_type,
-                percent=(title == "Net Profit Margin"),
+                percent=(title == "Net Profit %"),
                 reverse_good=reverse_good,
                 disabled=disabled,
             )
@@ -1063,6 +1079,14 @@ def show_net_profit_dashboard():
             )
         )
 
+        branch_summary["P&L %"] = 0.0
+        valid_business = branch_summary["Revenue"].ne(0)
+        branch_summary.loc[valid_business, "P&L %"] = (
+            branch_summary.loc[valid_business, "Combined_PNL"]
+            / branch_summary.loc[valid_business, "Revenue"]
+            * 100
+        )
+
         branch_summary["Net Profit Margin %"] = 0.0
         valid_income = branch_summary["Total_Income"].ne(0)
 
@@ -1160,7 +1184,7 @@ def show_net_profit_dashboard():
             columns={
                 "BRANCHCODE": "Branch Code",
                 "BRANCH": "Branch",
-                "Revenue": f"Revenue ({unit})",
+                "Revenue": f"Total Business ({unit})",
                 "Booking_Business": f"Booking Business ({unit})",
                 "Delivery_Business": f"Delivery Business ({unit})",
                 "Origin_PNL": f"Origin P&L ({unit})",
@@ -1178,13 +1202,26 @@ def show_net_profit_dashboard():
             }
         )
 
+        detail_columns = [
+            "Branch Code",
+            "Branch",
+            f"Booking Business ({unit})",
+            f"Delivery Business ({unit})",
+            f"Total Business ({unit})",
+            f"Origin P&L ({unit})",
+            f"Destination P&L ({unit})",
+            f"Combined P&L ({unit})",
+            "P&L %",
+        ]
+        display = display[[column for column in detail_columns if column in display.columns]]
+
         st.dataframe(
             display,
             width="stretch",
             hide_index=True,
             column_config={
-                "Net Profit Margin %": st.column_config.NumberColumn(
-                    "Net Profit Margin %",
+                "P&L %": st.column_config.NumberColumn(
+                    "P&L %",
                     format="%.2f%%",
                 ),
             },
