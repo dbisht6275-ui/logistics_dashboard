@@ -1,1005 +1,946 @@
-from html import escape
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
+from sqlalchemy import text
 
-from services.data_loader import get_date_range
-from services.net_profit_data_loader import load_net_profit_data_pair
-from services.pnl_data_loader import load_pnl_sp_revenue_total
+from services.database import get_engine
+from services.pnl_data_loader import load_pnl_both_views
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
 
 # ============================================================
-# NET PROFIT DASHBOARD
+# NET PROFIT DATA LOADER
 #
-# Separate dashboard.
-# Existing PNL_Analysis.py is not changed.
+# Existing files are NOT modified.
+#
+# Logic:
+#   Branch Operational P&L
+#       = Origin P&L + Destination P&L
+#
+#   Branch Net Profit
+#       = Branch Operational P&L - Branch Overhead
+#
+# Overhead:
+#   Salary + Godown Rent + Voucher Overhead + Claim + Booking 6% + Destination 5%
 # ============================================================
 
-FY_OPTIONS = [
-    "Select FY",
-    "2026-2027",
-    "2025-2026",
-    "2024-2025",
-    "2023-2024",
-    "2022-2023",
-    "2021-2022",
-    "2020-2021",
-]
+_CACHE_TTL_SECONDS = 24 * 60 * 60
 
-MONTH_ORDER = [
-    "Apr", "May", "Jun", "Jul", "Aug", "Sep",
-    "Oct", "Nov", "Dec", "Jan", "Feb", "Mar",
-]
 
-QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
+_OVERHEAD_QUERY = text("""
+DECLARE @FROMDATE DATE = :from_date;
+DECLARE @TODATE   DATE = :to_date;
+
+/* ================= SALARY ================= */
+
+IF OBJECT_ID('tempdb..#SALARY') IS NOT NULL
+    DROP TABLE #SALARY;
+
+SELECT
+    SS.BRANCHCODE,
+    SS.[YEAR],
+    SS.[MONTHNO],
+    SUM(SS.NETAMT) AS NETAMT
+INTO #SALARY
+FROM
+(
+    SELECT
+        SD.BRANCHCODE,
+        YEAR(SD.FROMDT) AS [YEAR],
+        MONTH(SD.FROMDT) AS [MONTHNO],
+
+        CAST(
+            SUM(SD.EAMOUNT)
+            +
+            IIF(
+                ESI.CNTR = 0,
+                0,
+                SUM(SD.EAMOUNT - SD.PFAMOUNT) * 3.25 / 100
+            )
+        AS NUMERIC(12,2)) AS NETAMT
+
+    FROM VIEWSALARYFORBRANCHPERFORMANCE SD
+
+    CROSS APPLY
+    (
+        SELECT COUNT(*) AS CNTR
+        FROM VIEWSALARY D
+        WHERE D.BRANCHCODE = SD.BRANCHCODE
+          AND D.EMPLOYEEID = SD.EMPLOYEEID
+          AND D.FROMDT BETWEEN @FROMDATE AND @TODATE
+          AND D.SALARYVNO IS NOT NULL
+          AND D.SALARYCATEGORY = 'S'
+          AND D.SALARYHEADID = 9
+    ) ESI
+
+    WHERE SD.FROMDT BETWEEN @FROMDATE AND @TODATE
+      AND SD.SALARYVNO IS NOT NULL
+      AND SD.SALARYCATEGORY = 'S'
+
+    GROUP BY
+        SD.BRANCHCODE,
+        YEAR(SD.FROMDT),
+        MONTH(SD.FROMDT),
+        ESI.CNTR
+
+) SS
+
+GROUP BY
+    SS.BRANCHCODE,
+    SS.[YEAR],
+    SS.[MONTHNO];
+
+
+/* ================= GODOWN RENT ================= */
+
+IF OBJECT_ID('tempdb..#GODOWN') IS NOT NULL
+    DROP TABLE #GODOWN;
+
+SELECT
+    H.BRANCHCODE,
+    YEAR(H.FROMDT) AS [YEAR],
+    MONTH(H.FROMDT) AS [MONTHNO],
+    ISNULL(SUM(D.AMOUNT), 0) AS NETAMT
+INTO #GODOWN
+
+FROM PURCHASEMRNDETAIL D WITH (NOLOCK)
+
+INNER JOIN PURCHASEMRNHEAD H WITH (NOLOCK)
+    ON H.MRNID = D.MRNID
+
+WHERE D.ITEMCODE = '30'
+  AND H.CANCEL <> 'Y'
+  AND H.VNO IS NOT NULL
+  AND H.FROMDT BETWEEN @FROMDATE AND @TODATE
+  AND H.TODT BETWEEN @FROMDATE AND @TODATE
+
+GROUP BY
+    H.BRANCHCODE,
+    YEAR(H.FROMDT),
+    MONTH(H.FROMDT);
+
+
+/* ================= VOUCHER OVERHEAD EXPENSE ================= */
+
+IF OBJECT_ID('tempdb..#VOUCHEREXP') IS NOT NULL
+    DROP TABLE #VOUCHEREXP;
+
+SELECT
+    VM.BRANCHCODE,
+    YEAR(VM.VDATE) AS [YEAR],
+    MONTH(VM.VDATE) AS [MONTHNO],
+    ISNULL(SUM(VM.DRAMOUNT - VM.CRAMOUNT), 0) AS NETAMT
+INTO #VOUCHEREXP
+
+FROM VIEWVOUCHER VM WITH (NOLOCK)
+
+INNER JOIN VIEWLEDGER L
+    ON L.LEDCODE = VM.LEDCODE
+
+WHERE VM.VDATE BETWEEN @FROMDATE AND @TODATE
+  AND L.MAINGRP = 'AM203'
+  AND L.LEDCODE <> '0000001172'
+
+GROUP BY
+    VM.BRANCHCODE,
+    YEAR(VM.VDATE),
+    MONTH(VM.VDATE);
+
+
+/* ================= CLAIM ================= */
+
+IF OBJECT_ID('tempdb..#CLAIM') IS NOT NULL
+    DROP TABLE #CLAIM;
+
+SELECT
+    BRANCHCODE,
+    YEAR(VDATE) AS [YEAR],
+    MONTH(VDATE) AS [MONTHNO],
+    ISNULL(SUM(DRAMOUNT - CRAMOUNT), 0) AS NETAMT
+INTO #CLAIM
+
+FROM VIEWVOUCHER WITH (NOLOCK)
+
+WHERE VDATE BETWEEN @FROMDATE AND @TODATE
+  AND LEDCODE = '0000001289'
+
+GROUP BY
+    BRANCHCODE,
+    YEAR(VDATE),
+    MONTH(VDATE);
+
+
+/* ================= BOOKING 6% ================= */
+
+IF OBJECT_ID('tempdb..#BOOKING6') IS NOT NULL
+    DROP TABLE #BOOKING6;
+
+SELECT
+    CN.ORGCODE AS BRANCHCODE,
+    YEAR(CN.GRDT) AS [YEAR],
+    MONTH(CN.GRDT) AS [MONTHNO],
+
+    ROUND(
+        ISNULL(SUM(CN.FREIGHT), 0) * 6 / 100,
+        2
+    ) AS NETAMT
+
+INTO #BOOKING6
+
+FROM CNMT CN WITH (NOLOCK)
+
+WHERE CN.GRDT BETWEEN @FROMDATE AND @TODATE
+  AND CN.GRTYPE <> 'N'
+
+GROUP BY
+    CN.ORGCODE,
+    YEAR(CN.GRDT),
+    MONTH(CN.GRDT);
+
+
+/* ================= DESTINATION 5% ================= */
+
+IF OBJECT_ID('tempdb..#DESTINATION5') IS NOT NULL
+    DROP TABLE #DESTINATION5;
+
+SELECT
+
+    CASE
+        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '704' THEN '602'
+        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '705' THEN '601'
+        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '708' THEN '603'
+        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '712' THEN '171'
+        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '709' THEN '607'
+        ELSE COALESCE(MRG.STNCODE, DEST.STNCODE)
+    END AS BRANCHCODE,
+
+    YEAR(CN.GRDT) AS [YEAR],
+    MONTH(CN.GRDT) AS [MONTHNO],
+
+    ROUND(
+        ISNULL(SUM(CN.FREIGHT), 0) * 5 / 100,
+        2
+    ) AS NETAMT
+
+INTO #DESTINATION5
+
+FROM CNMT CN WITH (NOLOCK)
+
+INNER JOIN STATIONMAST DEST
+    ON DEST.STNCODE = CN.DESTCODE
+
+LEFT JOIN STATIONMAST MRG
+    ON MRG.STNCODE = DEST.MERGESTNCODE
+
+WHERE CN.GRDT BETWEEN @FROMDATE AND @TODATE
+  AND CN.GRTYPE <> 'N'
+
+GROUP BY
+
+    CASE
+        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '704' THEN '602'
+        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '705' THEN '601'
+        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '708' THEN '603'
+        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '712' THEN '171'
+        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '709' THEN '607'
+        ELSE COALESCE(MRG.STNCODE, DEST.STNCODE)
+    END,
+
+    YEAR(CN.GRDT),
+    MONTH(CN.GRDT);
+
+
+/* ================= MONTH / BRANCH LIST ================= */
+
+IF OBJECT_ID('tempdb..#MONTHS') IS NOT NULL
+    DROP TABLE #MONTHS;
+
+SELECT DISTINCT
+    BRANCHCODE,
+    [YEAR],
+    [MONTHNO]
+INTO #MONTHS
+
+FROM
+(
+    SELECT BRANCHCODE, [YEAR], [MONTHNO]
+    FROM #SALARY
+
+    UNION
+
+    SELECT BRANCHCODE, [YEAR], [MONTHNO]
+    FROM #GODOWN
+
+    UNION
+
+    SELECT BRANCHCODE, [YEAR], [MONTHNO]
+    FROM #VOUCHEREXP
+
+    UNION
+
+    SELECT BRANCHCODE, [YEAR], [MONTHNO]
+    FROM #CLAIM
+
+    UNION
+
+    SELECT BRANCHCODE, [YEAR], [MONTHNO]
+    FROM #BOOKING6
+
+    UNION
+
+    SELECT BRANCHCODE, [YEAR], [MONTHNO]
+    FROM #DESTINATION5
+
+) M;
+
+
+/* ================= FINAL OUTPUT ================= */
+
+SELECT
+    STN.STNCODE AS BRANCHCODE,
+    STN.STNNAME AS BRANCH,
+    M.[YEAR],
+    M.[MONTHNO] AS [MONTH NO],
+    DATENAME(
+        MONTH,
+        DATEFROMPARTS(M.[YEAR], M.[MONTHNO], 1)
+    ) AS [MONTH],
+
+    ROUND(
+        ISNULL(SAL.NETAMT, 0),
+        2
+    ) AS [SALARY],
+
+    ROUND(
+        ISNULL(GOD.NETAMT, 0),
+        2
+    ) AS [GODOWN RENT],
+
+    ROUND(
+        ISNULL(VEXP.NETAMT, 0),
+        2
+    ) AS [OVERHEAD EXPENSE],
+
+    ROUND(
+        ISNULL(CL.NETAMT, 0),
+        2
+    ) AS [CLAIM],
+
+    ROUND(
+        ISNULL(BK6.NETAMT, 0),
+        2
+    ) AS [BOOKING 6%],
+
+    ROUND(
+        ISNULL(DEST5.NETAMT, 0),
+        2
+    ) AS [DESTINATION 5%],
+
+    ROUND(
+          ISNULL(SAL.NETAMT, 0)
+        + ISNULL(GOD.NETAMT, 0)
+        + ISNULL(VEXP.NETAMT, 0)
+        + ISNULL(CL.NETAMT, 0)
+        + ISNULL(BK6.NETAMT, 0)
+        + ISNULL(DEST5.NETAMT, 0),
+        2
+    ) AS [TOTAL EXPENSE]
+
+FROM #MONTHS M
+
+INNER JOIN STATIONMAST STN
+    ON STN.STNCODE = M.BRANCHCODE
+
+LEFT JOIN #SALARY SAL
+    ON SAL.BRANCHCODE = M.BRANCHCODE
+   AND SAL.[YEAR] = M.[YEAR]
+   AND SAL.[MONTHNO] = M.[MONTHNO]
+
+LEFT JOIN #GODOWN GOD
+    ON GOD.BRANCHCODE = M.BRANCHCODE
+   AND GOD.[YEAR] = M.[YEAR]
+   AND GOD.[MONTHNO] = M.[MONTHNO]
+
+LEFT JOIN #VOUCHEREXP VEXP
+    ON VEXP.BRANCHCODE = M.BRANCHCODE
+   AND VEXP.[YEAR] = M.[YEAR]
+   AND VEXP.[MONTHNO] = M.[MONTHNO]
+
+LEFT JOIN #CLAIM CL
+    ON CL.BRANCHCODE = M.BRANCHCODE
+   AND CL.[YEAR] = M.[YEAR]
+   AND CL.[MONTHNO] = M.[MONTHNO]
+
+LEFT JOIN #BOOKING6 BK6
+    ON BK6.BRANCHCODE = M.BRANCHCODE
+   AND BK6.[YEAR] = M.[YEAR]
+   AND BK6.[MONTHNO] = M.[MONTHNO]
+
+LEFT JOIN #DESTINATION5 DEST5
+    ON DEST5.BRANCHCODE = M.BRANCHCODE
+   AND DEST5.[YEAR] = M.[YEAR]
+   AND DEST5.[MONTHNO] = M.[MONTHNO]
+
+ORDER BY
+    STN.STNNAME,
+    M.[YEAR],
+    M.[MONTHNO];
+""")
 
 
 # ============================================================
-# HELPERS
+# GENERIC HELPERS
 # ============================================================
 
-def get_previous_fy(fy):
-    start_year, end_year = map(int, fy.split("-"))
-    return f"{start_year - 1}-{end_year - 1}"
+def _normalise_name(value):
+    return str(value).strip().replace("_", "").replace(" ", "").casefold()
 
 
-def get_conversion(conversion_type):
-    if conversion_type == "Lac":
-        return 100_000, "Lac"
-    return 10_000_000, "Cr"
-
-
-def amount_text(value, conversion_type):
-    divisor, unit = get_conversion(conversion_type)
-    return f"₹{float(value or 0) / divisor:,.2f} {unit}"
-
-
-def pct_change(current, previous):
-    current = float(current or 0)
-    previous = float(previous or 0)
-
-    if previous == 0:
-        return 0.0
-
-    return ((current - previous) / abs(previous)) * 100
-
-
-def safe_options(df, column):
-    if df is None or df.empty or column not in df.columns:
-        return []
-
-    values = (
-        df[column]
-        .dropna()
-        .astype(str)
-        .str.strip()
-    )
-
-    values = values[values.ne("")]
-
-    return sorted(
-        values.unique().tolist(),
-        key=str.casefold,
-    )
-
-
-def _find_column(df, *candidates):
-    """Return the actual dataframe column matching any candidate, ignoring case/spaces."""
-    if df is None or df.empty:
+def _find_column(df, candidates):
+    if df is None:
         return None
 
-    lookup = {str(col).strip().casefold(): col for col in df.columns}
+    mapping = {
+        _normalise_name(column): column
+        for column in df.columns
+    }
+
     for candidate in candidates:
-        found = lookup.get(str(candidate).strip().casefold())
+        found = mapping.get(_normalise_name(candidate))
         if found is not None:
             return found
+
     return None
 
 
-def _attach_branch_hierarchy(df, branch_master_df):
-    """Ensure canonical zone/circle columns exist, using Branch Master as fallback."""
-    if df is None or df.empty:
-        return df
+def _clean_code(series):
+    return (
+        series.astype(str)
+        .str.strip()
+        .str.replace(r"\.0$", "", regex=True)
+    )
 
-    out = df.copy()
-    branch_col = _find_column(out, "BRANCH")
-    master_branch_col = _find_column(branch_master_df, "BRANCH")
 
-    for canonical, candidates in {
-        "zone": ("zone", "ZONE"),
-        "circle": ("circle", "CIRCLE"),
-    }.items():
-        source_col = _find_column(out, *candidates)
-        if source_col is not None:
-            if source_col != canonical:
-                out[canonical] = out[source_col]
-            continue
+def _first_existing_metadata(df):
+    """
+    Return available organisation metadata.
+    This is intentionally optional so the Net Profit loader does not fail
+    merely because a stored procedure returns fewer hierarchy columns.
+    """
+    aliases = {
+        "COMPNAME": ["COMPNAME", "company", "companyname"],
+        "zone": ["zone", "zonename"],
+        "circle": ["circle", "circlename", "hubname"],
+    }
 
-        master_col = _find_column(branch_master_df, *candidates)
-        if branch_col is None or master_branch_col is None or master_col is None:
-            continue
+    result = {}
 
-        hierarchy_map = (
-            branch_master_df[[master_branch_col, master_col]]
-            .dropna(subset=[master_branch_col])
-            .assign(_branch_key=lambda x: x[master_branch_col].map(_normalise_branch_name))
-            .drop_duplicates("_branch_key")
-            .set_index("_branch_key")[master_col]
+    for target, candidates in aliases.items():
+        column = _find_column(df, candidates)
+        if column is not None:
+            result[target] = column
+
+    return result
+
+
+# ============================================================
+# VIEW-SPECIFIC BRANCH IDENTIFICATION
+# ============================================================
+
+def _get_branch_identity_column(df, view_type):
+    """
+    The current booking stored procedure returns a display branch column
+    ('branch') rather than a dedicated ORIGINBRANCHCODE / DESTBRANCHCODE.
+
+    For Net Profit we therefore use the branch represented by the selected
+    view as the operational branch identity:
+
+      ViewType=ORIGIN      -> df['branch'] is the booking/origin branch
+      ViewType=DESTINATION -> df['branch'] is the delivery/destination branch
+
+    Dedicated branch-code columns are still preferred if the SP starts
+    returning them in future.
+    """
+    view = str(view_type).strip().upper()
+
+    if view == "ORIGIN":
+        candidates = [
+            "ORIGINBRANCHCODE",
+            "origin_branch_code",
+            "BOOKINGBRANCHCODE",
+            "booking_branch_code",
+            "branch",
+            "BRANCH",
+            "branchname",
+            "BRANCHCODE",
+            "branch_code",
+        ]
+    elif view == "DESTINATION":
+        candidates = [
+            "DESTBRANCHCODE",
+            "DESTINATIONBRANCHCODE",
+            "destination_branch_code",
+            "DELIVERYBRANCHCODE",
+            "delivery_branch_code",
+            "branch",
+            "BRANCH",
+            "branchname",
+            "BRANCHCODE",
+            "branch_code",
+        ]
+    else:
+        raise ValueError(f"Unsupported view type: {view_type!r}")
+
+    branch_col = _find_column(df, candidates)
+
+    if branch_col is None:
+        raise ValueError(
+            f"Could not identify {view.title()} branch. "
+            f"Expected one of {candidates}. "
+            f"Available columns: {list(df.columns)}"
         )
-        out[canonical] = out[branch_col].map(_normalise_branch_name).map(hierarchy_map)
 
-    return out
-
-
-def apply_multi_filter(df, column, selected):
-    if (
-        df is None
-        or df.empty
-        or column not in df.columns
-        or not selected
-    ):
-        return df
-
-    return df[df[column].isin(selected)].copy()
+    return branch_col
 
 
-def _normalise_branch_name(value):
-    return " ".join(str(value).strip().casefold().split())
+def _normalise_branch_key(series):
+    """Normalised branch-name/code key used only for joins."""
+    return (
+        series.astype(str)
+        .str.strip()
+        .str.casefold()
+        .str.replace(r"\s+", " ", regex=True)
+    )
+
+def _get_date_column(df):
+    date_col = _find_column(
+        df,
+        [
+            "GRDT",
+            "grdt",
+            "GRDATE",
+            "GR_DATE",
+            "BOOKINGDATE",
+            "booking_date",
+            "DATE",
+        ],
+    )
+
+    if date_col is None:
+        raise ValueError(
+            "Could not identify GR/booking date required for month-wise "
+            f"Net Profit. Available columns: {list(df.columns)}"
+        )
+
+    return date_col
 
 
-def _filter_to_branch_scope(df, branch_names):
-    if df is None or df.empty or "BRANCH" not in df.columns or not branch_names:
-        return df
+# ============================================================
+# PREPARE ORIGIN / DESTINATION BRANCH-MONTH P&L
+# ============================================================
 
-    allowed = {_normalise_branch_name(value) for value in branch_names}
-    branch_key = df["BRANCH"].fillna("").map(_normalise_branch_name)
-    return df[branch_key.isin(allowed)].copy()
-
-
-def _apply_pnl_business_rule(df, all_branches):
-    """
-    All branches  -> Origin view P&L only.
-    Explicit branch selection -> Origin P&L + Destination P&L.
-    Overhead is deducted once in both cases.
-    """
+def _aggregate_view_pnl(df, view_type):
     if df is None or df.empty:
-        return df
+        return pd.DataFrame(
+            columns=[
+                "BRANCH_KEY",
+                "BRANCH",
+                "YEAR",
+                "MONTHNO",
+                "BUSINESS",
+                "TOTAL_INCOME",
+                "DIRECT_EXPENSE",
+                "PNL",
+            ]
+        )
 
     out = df.copy()
+
+    branch_col = _get_branch_identity_column(out, view_type)
+    date_col = _get_date_column(out)
+
+    required_metrics = {
+        "REVENUE": ["REVENUE", "revenue", "business"],
+        "EXPENSE": ["EXPENSE", "expense", "cost"],
+        "PNL": ["PNL", "pnl", "profitloss", "profit_loss"],
+    }
+
+    rename_map = {}
+
+    for target, candidates in required_metrics.items():
+        source = _find_column(out, candidates)
+        if source is None:
+            raise ValueError(
+                f"{view_type} P&L data is missing {target}. "
+                f"Available columns: {list(out.columns)}"
+            )
+        if source != target:
+            rename_map[source] = target
+
+    out = out.rename(columns=rename_map)
+
+    out["_BRANCH"] = (
+        out[branch_col]
+        .fillna("Unknown")
+        .astype(str)
+        .str.strip()
+        .replace("", "Unknown")
+    )
+    out["_BRANCH_KEY"] = _normalise_branch_key(out["_BRANCH"])
+
+    dt = pd.to_datetime(out[date_col], errors="coerce")
+    out["_YEAR"] = dt.dt.year
+    out["_MONTHNO"] = dt.dt.month
+
+    for column in ["REVENUE", "EXPENSE", "PNL"]:
+        out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
+
+    # Business rule for this Net Profit dashboard:
+    # TOTAL_INCOME is the P&L amount itself.
+    out["TOTAL_INCOME"] = out["PNL"]
+
+    out = out[
+        out["_BRANCH_KEY"].notna()
+        & out["_BRANCH_KEY"].ne("")
+        & out["_BRANCH_KEY"].ne("nan")
+        & out["_YEAR"].notna()
+        & out["_MONTHNO"].notna()
+    ].copy()
+
+    # Keep optional hierarchy metadata.
+    metadata = _first_existing_metadata(out)
+
+    agg_spec = {
+        "BUSINESS": ("REVENUE", "sum"),
+        "TOTAL_INCOME": ("TOTAL_INCOME", "sum"),
+        "DIRECT_EXPENSE": ("EXPENSE", "sum"),
+        "PNL": ("PNL", "sum"),
+    }
+
+    for target, source in metadata.items():
+        agg_spec[target] = (source, "first")
+
+    summary = (
+        out.groupby(
+            ["_BRANCH_KEY", "_BRANCH", "_YEAR", "_MONTHNO"],
+            as_index=False,
+            dropna=False,
+        )
+        .agg(**agg_spec)
+        .rename(
+            columns={
+                "_BRANCH_KEY": "BRANCH_KEY",
+                "_BRANCH": "BRANCH",
+                "_YEAR": "YEAR",
+                "_MONTHNO": "MONTHNO",
+            }
+        )
+    )
+
+    summary["YEAR"] = pd.to_numeric(summary["YEAR"], errors="coerce")
+    summary["MONTHNO"] = pd.to_numeric(summary["MONTHNO"], errors="coerce")
+
+    return summary
+
+
+# ============================================================
+# OVERHEAD
+# ============================================================
+
+def _fetch_overhead_data(start_date, end_date):
+    started = time.perf_counter()
+    engine = get_engine()
+
+    with engine.connect() as conn:
+        df = pd.read_sql_query(
+            _OVERHEAD_QUERY,
+            conn,
+            params={
+                "from_date": str(start_date),
+                "to_date": str(end_date),
+            },
+        )
+
+    print(
+        f"[Net Profit Overhead] {start_date} to {end_date} | "
+        f"rows={len(df):,} | "
+        f"seconds={time.perf_counter() - started:.2f}"
+    )
+
+    return df
+
+
+def _prepare_overhead(df):
+    expected = [
+        "BRANCHCODE",
+        "BRANCH",
+        "YEAR",
+        "MONTHNO",
+        "MONTH",
+        "SALARY",
+        "GODOWN RENT",
+        "OVERHEAD EXPENSE",
+        "CLAIM",
+        "BOOKING 6%",
+        "DESTINATION 5%",
+        "TOTAL EXPENSE",
+    ]
+
+    if df is None or df.empty:
+        return pd.DataFrame(columns=expected)
+
+    out = df.copy()
+
+    aliases = {
+        "BRANCHCODE": ["BRANCHCODE", "branch_code"],
+        "BRANCH": ["BRANCH", "branch", "branchname"],
+        "YEAR": ["YEAR"],
+        "MONTHNO": ["MONTHNO", "MONTH NO"],
+        "MONTH": ["MONTH"],
+        "SALARY": ["SALARY"],
+        "GODOWN RENT": ["GODOWN RENT", "GODOWN_RENT"],
+        "OVERHEAD EXPENSE": ["OVERHEAD EXPENSE", "OVERHEAD_EXPENSE"],
+        "CLAIM": ["CLAIM"],
+        "BOOKING 6%": ["BOOKING 6%", "BOOKING_6", "BOOKING6"],
+        "DESTINATION 5%": ["DESTINATION 5%", "DESTINATION_5", "DESTINATION5"],
+        "TOTAL EXPENSE": ["TOTAL EXPENSE", "TOTAL_EXPENSE"],
+    }
+
+    rename_map = {}
+
+    for target, candidates in aliases.items():
+        source = _find_column(out, candidates)
+        if source is not None and source != target:
+            rename_map[source] = target
+
+    out = out.rename(columns=rename_map)
+
+    required = ["BRANCHCODE", "YEAR", "MONTHNO", "TOTAL EXPENSE"]
+    missing = [column for column in required if column not in out.columns]
+
+    if missing:
+        raise ValueError(
+            f"Overhead query is missing columns: {missing}. "
+            f"Available columns: {list(out.columns)}"
+        )
+
+    if "BRANCH" not in out.columns:
+        out["BRANCH"] = out["BRANCHCODE"]
+
+    if "MONTH" not in out.columns:
+        out["MONTH"] = ""
+
+    out["BRANCHCODE"] = _clean_code(out["BRANCHCODE"])
+    out["BRANCH"] = (
+        out["BRANCH"]
+        .fillna(out["BRANCHCODE"])
+        .astype(str)
+        .str.strip()
+    )
+    out["BRANCH_KEY"] = _normalise_branch_key(out["BRANCH"])
+    out["YEAR"] = pd.to_numeric(out["YEAR"], errors="coerce")
+    out["MONTHNO"] = pd.to_numeric(out["MONTHNO"], errors="coerce")
 
     for column in [
-        "ORIGIN_PNL",
-        "DESTINATION_PNL",
-        "ORIGIN_BUSINESS",
-        "DESTINATION_BUSINESS",
-        "ORIGIN_TOTAL_INCOME",
-        "DESTINATION_TOTAL_INCOME",
-        "ORIGIN_DIRECT_EXPENSE",
-        "DESTINATION_DIRECT_EXPENSE",
+        "SALARY",
+        "GODOWN RENT",
+        "OVERHEAD EXPENSE",
+        "CLAIM",
+        "BOOKING 6%",
+        "DESTINATION 5%",
         "TOTAL EXPENSE",
     ]:
         if column not in out.columns:
             out[column] = 0.0
-        out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
 
-    if all_branches:
-        # Consolidated dashboard must not count the same GR-level P&L twice.
-        out["DESTINATION_PNL"] = 0.0
-        out["DESTINATION_BUSINESS"] = 0.0
-        out["DESTINATION_TOTAL_INCOME"] = 0.0
-        out["DESTINATION_DIRECT_EXPENSE"] = 0.0
+        out[column] = pd.to_numeric(
+            out[column],
+            errors="coerce",
+        ).fillna(0.0)
 
-    out["BUSINESS"] = out["ORIGIN_BUSINESS"] + out["DESTINATION_BUSINESS"]
-    out["TOTAL_INCOME"] = out["ORIGIN_TOTAL_INCOME"] + out["DESTINATION_TOTAL_INCOME"]
-    out["DIRECT_EXPENSE"] = out["ORIGIN_DIRECT_EXPENSE"] + out["DESTINATION_DIRECT_EXPENSE"]
-    out["COMBINED_PNL"] = out["ORIGIN_PNL"] + out["DESTINATION_PNL"]
-    out["NET_PROFIT"] = out["COMBINED_PNL"] - out["TOTAL EXPENSE"]
-
-    out["NET_PROFIT_MARGIN"] = 0.0
-    valid_income = out["TOTAL_INCOME"].ne(0)
-    out.loc[valid_income, "NET_PROFIT_MARGIN"] = (
-        out.loc[valid_income, "NET_PROFIT"]
-        / out.loc[valid_income, "TOTAL_INCOME"]
-        * 100
-    )
-
-    return out
-
-
-def calculate_kpis(df):
-    if df is None or df.empty:
-        return {
-            "origin_pnl": 0.0,
-            "destination_pnl": 0.0,
-            "combined_pnl": 0.0,
-            "salary": 0.0,
-            "godown": 0.0,
-            "overhead": 0.0,
-            "claim": 0.0,
-            "booking_6": 0.0,
-            "destination_5": 0.0,
-            "total_expense": 0.0,
-            "net_profit": 0.0,
-            "total_income": 0.0,
-            "business": 0.0,
-            "margin": 0.0,
-        }
-
-    values = {
-        "origin_pnl": float(df["ORIGIN_PNL"].sum()),
-        "destination_pnl": float(df["DESTINATION_PNL"].sum()),
-        "combined_pnl": float(df["COMBINED_PNL"].sum()),
-        "salary": float(df["SALARY"].sum()),
-        "godown": float(df["GODOWN RENT"].sum()),
-        "overhead": float(df["OVERHEAD EXPENSE"].sum()),
-        "claim": float(df["CLAIM"].sum()),
-        "booking_6": float(df["BOOKING 6%"].sum()) if "BOOKING 6%" in df.columns else 0.0,
-        "destination_5": float(df["DESTINATION 5%"].sum()) if "DESTINATION 5%" in df.columns else 0.0,
-        "total_expense": float(df["TOTAL EXPENSE"].sum()),
-        "net_profit": float(df["NET_PROFIT"].sum()),
-        "total_income": float(df["TOTAL_INCOME"].sum()),
-        "business": float(df["BUSINESS"].sum()) if "BUSINESS" in df.columns else 0.0,
-    }
-
-    values["margin"] = (
-        values["net_profit"] / values["total_income"] * 100
-        if values["total_income"]
-        else 0.0
-    )
-
-    return values
-
-
-def _inject_css():
-    st.markdown(
-        """
-        <style>
-        :root {
-            --np-navy:#102a43;
-            --np-blue:#2563eb;
-            --np-muted:#64748b;
-            --np-border:#dbe4ef;
-        }
-
-        .block-container {
-            max-width:100% !important;
-            padding:.45rem .8rem .9rem !important;
-        }
-
-        .np-title {
-            color:var(--np-navy);
-            font-size:20px;
-            font-weight:850;
-            letter-spacing:-.3px;
-        }
-
-        .np-subtitle {
-            color:var(--np-muted);
-            font-size:11px;
-            margin-top:2px;
-        }
-
-        .np-card {
-            min-height:92px;
-            border:1px solid #dbe4ef;
-            border-radius:14px;
-            padding:10px 11px;
-            background:linear-gradient(145deg,#ffffff,#f7faff);
-            box-shadow:0 5px 14px rgba(15,42,67,.07);
-        }
-
-        .np-card-title {
-            font-size:10px;
-            color:#64748b;
-            font-weight:650;
-            white-space:nowrap;
-            overflow:hidden;
-            text-overflow:ellipsis;
-        }
-
-        .np-card-value {
-            margin-top:5px;
-            font-size:17px;
-            color:#102a43;
-            font-weight:850;
-            white-space:nowrap;
-        }
-
-        .np-card-footer {
-            margin-top:6px;
-            font-size:9px;
-            color:#64748b;
-        }
-
-        .np-positive { color:#15803d; }
-        .np-negative { color:#dc2626; }
-
-        .np-section-title {
-            font-size:15px;
-            color:#0f2744;
-            font-weight:700;
-            margin:2px 0 8px 1px;
-        }
-
-        div[data-testid="stVerticalBlockBorderWrapper"] {
-            border:1px solid #dce5ef !important;
-            border-radius:14px !important;
-            background:#ffffff !important;
-            box-shadow:0 6px 16px rgba(15,42,67,.06) !important;
-        }
-
-        [data-testid="stDataFrame"] {
-            border:1px solid #e2e8f0;
-            border-radius:10px;
-            overflow:hidden;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def render_kpi_card(title, current, previous, conversion_type=None, percent=False, reverse_good=False):
-    if percent:
-        current_text = f"{current:,.2f}%"
-        previous_text = f"{previous:,.2f}%"
-        growth = current - previous
-        growth_label = f"{growth:+.2f} pp"
-        good = growth <= 0 if reverse_good else growth >= 0
-    else:
-        current_text = amount_text(current, conversion_type)
-        previous_text = amount_text(previous, conversion_type)
-        growth = pct_change(current, previous)
-        growth_label = f"{growth:+.1f}%"
-        good = growth <= 0 if reverse_good else growth >= 0
-
-    class_name = "np-positive" if good else "np-negative"
-
-    st.markdown(
-        f"""
-        <div class="np-card">
-            <div class="np-card-title">{escape(title)}</div>
-            <div class="np-card-value">{escape(current_text)}</div>
-            <div class="np-card-footer">
-                LY: {escape(previous_text)}
-                &nbsp;·&nbsp;
-                <span class="{class_name}">{escape(growth_label)}</span>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-def _apply_same_filters(df, filters):
-    out = df.copy()
-
-    for column, selected in filters.items():
-        out = apply_multi_filter(out, column, selected)
-
-    return out
+    return out[["BRANCH_KEY"] + expected].copy()
 
 
 # ============================================================
-# DASHBOARD
+# COMBINE ORIGIN + DESTINATION + OVERHEAD
 # ============================================================
 
-def show_net_profit_dashboard():
-    _inject_css()
-
-    st.markdown(
-        """
-        <div class="np-title">Net Profit Dashboard</div>
-        <div class="np-subtitle">
-            Origin P&L + Destination P&L − Branch overhead
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-    # --------------------------------------------------------
-    # PRIMARY FILTERS
-    # --------------------------------------------------------
-
-    filter_cols = st.columns([1.15, 1, 1.35, 1.2, 1.2, 1.1, 1.0], gap="small")
-
-    with filter_cols[0]:
-        fy = st.selectbox(
-            "Financial Year",
-            FY_OPTIONS,
-            key="np_fy",
-        )
-
-    if fy == "Select FY":
-        st.info("Please select financial year.")
-        return
-
-    start_date, end_date = get_date_range(fy)
-    prev_fy = get_previous_fy(fy)
-    prev_start, prev_end = get_date_range(prev_fy)
-
-    # Branch/Agency master is loaded first and becomes the dashboard branch scope.
-    branch_master_df = load_net_profit_branch_mast()
-    valid_branches = safe_options(branch_master_df, "BRANCH")
-
-    if not valid_branches:
-        st.warning("No valid branches found in Branch/Agency Master for selected financial year.")
-        return
-
-    with st.spinner("Loading Origin, Destination and branch overhead..."):
-        raw_df, raw_prev_df = load_net_profit_data_pair(
-            start_date,
-            end_date,
-            prev_start,
-            prev_end,
-        )
-
-        # Main Business / Revenue KPI source: P&L stored procedure REVENUE.
-        # The SP returns one row per GR, therefore this is the authoritative
-        # unfiltered FY revenue and avoids booking-data revenue differences.
-        pnl_sp_revenue = load_pnl_sp_revenue_total(start_date, end_date)
-        pnl_sp_prev_revenue = load_pnl_sp_revenue_total(prev_start, prev_end)
-
-    if raw_df is None or raw_df.empty:
-        st.warning("No Net Profit data found for selected financial year.")
-        return
-
-    # Restrict P&L/overhead to branches returned by Branch/Agency Master.
-    # Also backfill Zone/Circle from Branch Master when the raw P&L data does not carry them.
-    df = _attach_branch_hierarchy(
-        _filter_to_branch_scope(raw_df.copy(), valid_branches),
-        branch_master_df,
-    )
-    prev_df = (
-        _attach_branch_hierarchy(
-            _filter_to_branch_scope(raw_prev_df.copy(), valid_branches),
-            branch_master_df,
-        )
-        if raw_prev_df is not None
-        else pd.DataFrame()
-    )
-
-    with filter_cols[1]:
-        conversion_type = st.selectbox(
-            "₹ Conversion",
-            ["Crore", "Lac"],
-            key="np_conversion",
-        )
-
-    # Use whichever hierarchy columns are actually available.
-    with filter_cols[2]:
-        branches = st.multiselect(
-            "Branch",
-            safe_options(branch_master_df, "BRANCH"),
-            key="np_branch",
-            placeholder="All branches",
-        )
-
-    with filter_cols[3]:
-        zones = st.multiselect(
-            "Zone",
-            safe_options(df, "zone"),
-            key="np_zone",
-            placeholder="All zones",
-            disabled="zone" not in df.columns,
-        )
-
-    with filter_cols[4]:
-        circles = st.multiselect(
-            "Circle",
-            safe_options(df, "circle"),
-            key="np_circle",
-            placeholder="All circles",
-            disabled="circle" not in df.columns,
-        )
-
-    with filter_cols[5]:
-        quarters = st.multiselect(
-            "Quarter",
-            QUARTER_ORDER,
-            key="np_quarter",
-            placeholder="All quarters",
-        )
-
-    with filter_cols[6]:
-        months = st.multiselect(
-            "Month",
-            MONTH_ORDER,
-            key="np_month",
-            placeholder="All months",
-        )
-
-    filters = {
-        "BRANCH": branches,
-        "zone": zones,
-        "circle": circles,
-        "QUARTER": quarters,
-        "MONTH": months,
+def _prefix_metrics(df, prefix):
+    keys = {"BRANCH_KEY", "BRANCH", "YEAR", "MONTHNO"}
+    rename_map = {
+        column: f"{prefix}_{column}"
+        for column in df.columns
+        if column not in keys
     }
+    return df.rename(columns=rename_map)
 
-    df = _apply_same_filters(df, filters)
-    prev_df = _apply_same_filters(prev_df, filters) if not prev_df.empty else prev_df
 
-    if df.empty:
-        st.warning("No data found for selected filters.")
-        return
+def _coalesce_metadata(final, field):
+    left = f"ORIGIN_{field}"
+    right = f"DESTINATION_{field}"
 
-    # No explicit branch selection means consolidated All Branches mode.
-    # In this mode only Origin-view P&L is used.
-    all_branches = len(branches) == 0
-    df = _apply_pnl_business_rule(df, all_branches=all_branches)
-    prev_df = (
-        _apply_pnl_business_rule(prev_df, all_branches=all_branches)
-        if not prev_df.empty
-        else prev_df
+    if left in final.columns and right in final.columns:
+        return (
+            final[left]
+            .replace("", pd.NA)
+            .fillna(final[right])
+            .fillna("Unknown")
+        )
+
+    if left in final.columns:
+        return final[left].fillna("Unknown")
+
+    if right in final.columns:
+        return final[right].fillna("Unknown")
+
+    return pd.Series("Unknown", index=final.index)
+
+
+def _build_net_profit(origin_df, destination_df, overhead_df):
+    origin = _aggregate_view_pnl(origin_df, "ORIGIN")
+    destination = _aggregate_view_pnl(destination_df, "DESTINATION")
+    overhead = _prepare_overhead(overhead_df)
+
+    # Branch Master is the source of truth. Every branch/agency must remain
+    # available even when it has no Origin P&L, no Destination P&L, or no overhead.
+    branch_master = load_net_profit_branch_mast()
+    if branch_master is None or branch_master.empty:
+        return pd.DataFrame()
+
+    master = branch_master.copy()
+    branch_col = _find_column(master, ["BRANCH", "branch", "branchname"])
+    code_col = _find_column(master, ["CODE", "BRANCHCODE", "branch_code"])
+    zone_col = _find_column(master, ["ZONE", "zone", "zonename"])
+    circle_col = _find_column(master, ["CIRCLE", "circle", "circlename", "hubname"])
+    company_col = _find_column(master, ["COMPNAME", "company", "companyname"])
+
+    if branch_col is None:
+        raise ValueError(
+            f"Net Profit Branch Master must contain BRANCH. Available columns: {list(master.columns)}"
+        )
+
+    master["BRANCH"] = master[branch_col].fillna("").astype(str).str.strip()
+    master["BRANCH_KEY"] = _normalise_branch_key(master["BRANCH"])
+    master["BRANCHCODE"] = (
+        _clean_code(master[code_col]) if code_col is not None else ""
+    )
+    master["zone"] = master[zone_col].fillna("Unknown") if zone_col is not None else "Unknown"
+    master["circle"] = master[circle_col].fillna("Unknown") if circle_col is not None else "Unknown"
+    master["COMPNAME"] = master[company_col].fillna("Unknown") if company_col is not None else "Unknown"
+    master = master[
+        master["BRANCH_KEY"].notna()
+        & master["BRANCH_KEY"].ne("")
+        & master["BRANCH_KEY"].ne("nan")
+    ][["BRANCH_KEY", "BRANCHCODE", "BRANCH", "zone", "circle", "COMPNAME"]].drop_duplicates("BRANCH_KEY")
+
+    # Build branch-month skeleton from the selected reporting period present in
+    # Origin, Destination, or Overhead. If a month has only overhead, it still survives.
+    month_parts = []
+    for source in [origin, destination, overhead]:
+        if source is not None and not source.empty and {"YEAR", "MONTHNO"}.issubset(source.columns):
+            month_parts.append(source[["YEAR", "MONTHNO"]])
+
+    if not month_parts:
+        return pd.DataFrame()
+
+    months = (
+        pd.concat(month_parts, ignore_index=True)
+        .dropna(subset=["YEAR", "MONTHNO"])
+        .drop_duplicates()
+    )
+    months["YEAR"] = pd.to_numeric(months["YEAR"], errors="coerce")
+    months["MONTHNO"] = pd.to_numeric(months["MONTHNO"], errors="coerce")
+    months = months.dropna(subset=["YEAR", "MONTHNO"])
+
+    master["_K"] = 1
+    months["_K"] = 1
+    base = master.merge(months, on="_K", how="inner").drop(columns="_K")
+
+    keys = ["BRANCH_KEY", "YEAR", "MONTHNO"]
+
+    origin = origin.rename(columns={"BRANCH": "ORIGIN_BRANCH"})
+    destination = destination.rename(columns={"BRANCH": "DESTINATION_BRANCH"})
+
+    origin = _prefix_metrics(origin, "ORIGIN")
+    destination = _prefix_metrics(destination, "DESTINATION")
+
+    combined = base.merge(
+        origin,
+        on=keys,
+        how="left",
+        validate="one_to_one",
+    ).merge(
+        destination,
+        on=keys,
+        how="left",
+        validate="one_to_one",
     )
 
-    divisor, unit = get_conversion(conversion_type)
-
-    current = calculate_kpis(df)
-    previous = calculate_kpis(prev_df)
-
-    # Business / Revenue KPI: use the P&L SP directly when the dashboard is
-    # at the full-FY / all-branches scope. For branch/zone/circle/month/quarter
-    # filters, BUSINESS remains the filtered GR-level SP revenue already carried
-    # through the P&L merge.
-    has_detail_filter = any([branches, zones, circles, quarters, months])
-    if not has_detail_filter:
-        current["business"] = float(pnl_sp_revenue or 0.0)
-        previous["business"] = float(pnl_sp_prev_revenue or 0.0)
-
-    # --------------------------------------------------------
-    # KPI ROW 1
-    # --------------------------------------------------------
-
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-
-    kpi_cols = st.columns(6, gap="small")
-
-    kpis = [
-        ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False),
-        ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False),
-        ("Combined P&L", current["combined_pnl"], previous["combined_pnl"], False),
-        ("Business / Revenue", current["business"], previous["business"], False),
-        ("Net Profit", current["net_profit"], previous["net_profit"], False),
-        ("Net Profit Margin", current["margin"], previous["margin"], False),
-    ]
-
-    for index, (title, cy, ly, reverse_good) in enumerate(kpis):
-        with kpi_cols[index]:
-            render_kpi_card(
-                title,
-                cy,
-                ly,
-                conversion_type=conversion_type,
-                percent=(title == "Net Profit Margin"),
-                reverse_good=reverse_good,
-            )
-
-    # --------------------------------------------------------
-    # KPI ROW 2: OVERHEAD BREAKUP
-    # --------------------------------------------------------
-
-    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
-
-    overhead_cols = st.columns(6, gap="small")
-
-    overhead_kpis = [
-        ("Salary", current["salary"], previous["salary"]),
-        ("Godown Rent", current["godown"], previous["godown"]),
-        ("Overhead Expense", current["overhead"], previous["overhead"]),
-        ("Claim", current["claim"], previous["claim"]),
-        ("Booking 6%", current["booking_6"], previous["booking_6"]),
-        ("Destination 5%", current["destination_5"], previous["destination_5"]),
-    ]
-
-    for index, (title, cy, ly) in enumerate(overhead_kpis):
-        with overhead_cols[index]:
-            render_kpi_card(
-                title,
-                cy,
-                ly,
-                conversion_type=conversion_type,
-                reverse_good=True,
-            )
-
-    # --------------------------------------------------------
-    # MONTHLY TREND + OVERHEAD BREAKUP
-    # --------------------------------------------------------
-
-    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-
-    left, right = st.columns([1.55, 0.85], gap="medium")
-
-    with left:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="np-section-title">Monthly Net Profit Trend</div>',
-                unsafe_allow_html=True,
-            )
-
-            monthly = (
-                df.groupby(["FIN_MONTH", "MONTH"], as_index=False)
-                .agg(
-                    Origin_PNL=("ORIGIN_PNL", "sum"),
-                    Destination_PNL=("DESTINATION_PNL", "sum"),
-                    Combined_PNL=("COMBINED_PNL", "sum"),
-                    Overhead=("TOTAL EXPENSE", "sum"),
-                    Net_Profit=("NET_PROFIT", "sum"),
-                )
-                .sort_values("FIN_MONTH")
-            )
-
-            prev_monthly = (
-                prev_df.groupby(["FIN_MONTH", "MONTH"], as_index=False)
-                .agg(LY_Net_Profit=("NET_PROFIT", "sum"))
-                if prev_df is not None and not prev_df.empty
-                else pd.DataFrame(columns=["FIN_MONTH", "MONTH", "LY_Net_Profit"])
-            )
-
-            monthly = monthly.merge(
-                prev_monthly[["FIN_MONTH", "LY_Net_Profit"]],
-                on="FIN_MONTH",
-                how="left",
-            )
-
-            monthly["LY_Net_Profit"] = pd.to_numeric(
-                monthly["LY_Net_Profit"],
+    for column in combined.columns:
+        if column in keys:
+            continue
+        if any(
+            column.endswith(suffix)
+            for suffix in [
+                "_BUSINESS",
+                "_TOTAL_INCOME",
+                "_DIRECT_EXPENSE",
+                "_PNL",
+            ]
+        ):
+            combined[column] = pd.to_numeric(
+                combined[column],
                 errors="coerce",
             ).fillna(0.0)
 
-            monthly["Net Profit"] = monthly["Net_Profit"] / divisor
-            monthly["LY Net Profit"] = monthly["LY_Net_Profit"] / divisor
+    for prefix in ["ORIGIN", "DESTINATION"]:
+        for metric in ["BUSINESS", "TOTAL_INCOME", "DIRECT_EXPENSE", "PNL"]:
+            column = f"{prefix}_{metric}"
+            if column not in combined.columns:
+                combined[column] = 0.0
 
-            fig = go.Figure()
-
-            fig.add_trace(
-                go.Bar(
-                    x=monthly["MONTH"],
-                    y=monthly["LY Net Profit"],
-                    name=f"LY ({prev_fy})",
-                    marker_color="#cbd5e1",
-                    hovertemplate=(
-                        f"<b>%{{x}}</b><br>"
-                        f"LY Net Profit: ₹%{{y:.2f}} {unit}<extra></extra>"
-                    ),
-                )
+    # Keep organisation metadata from Branch Master as the primary source.
+    for field in ["COMPNAME", "zone", "circle"]:
+        if field not in combined.columns:
+            combined[field] = _coalesce_metadata(combined, field)
+        else:
+            fallback = _coalesce_metadata(combined, field)
+            combined[field] = (
+                combined[field]
+                .replace("", pd.NA)
+                .fillna(fallback)
+                .fillna("Unknown")
             )
 
-            fig.add_trace(
-                go.Bar(
-                    x=monthly["MONTH"],
-                    y=monthly["Net Profit"],
-                    name=f"Current ({fy})",
-                    marker_color="#2563eb",
-                    hovertemplate=(
-                        f"<b>%{{x}}</b><br>"
-                        f"Net Profit: ₹%{{y:.2f}} {unit}<extra></extra>"
-                    ),
-                )
-            )
+    combined["BUSINESS"] = (
+        combined["ORIGIN_BUSINESS"]
+        + combined["DESTINATION_BUSINESS"]
+    )
 
-            fig.add_hline(y=0, line_width=1, line_color="#64748b")
+    combined["TOTAL_INCOME"] = (
+        combined["ORIGIN_TOTAL_INCOME"]
+        + combined["DESTINATION_TOTAL_INCOME"]
+    )
 
-            fig.update_layout(
-                barmode="group",
-                height=340,
-                margin=dict(l=10, r=10, t=20, b=10),
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="#fbfdff",
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    x=0,
-                ),
-                xaxis_title="",
-                yaxis_title=f"Net Profit ({unit})",
-            )
+    combined["DIRECT_EXPENSE"] = (
+        combined["ORIGIN_DIRECT_EXPENSE"]
+        + combined["DESTINATION_DIRECT_EXPENSE"]
+    )
 
-            fig.update_xaxes(
-                categoryorder="array",
-                categoryarray=MONTH_ORDER,
-                showgrid=False,
-            )
+    combined["COMBINED_PNL"] = (
+        combined["ORIGIN_PNL"]
+        + combined["DESTINATION_PNL"]
+    )
 
-            fig.update_yaxes(showgrid=False)
-
-            st.plotly_chart(
-                fig,
-                width="stretch",
-                config={"displayModeBar": False},
-            )
-
-    with right:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="np-section-title">Overhead Composition</div>',
-                unsafe_allow_html=True,
-            )
-
-            overhead_values = pd.DataFrame(
-                {
-                    "Expense": [
-                        "Salary",
-                        "Godown Rent",
-                        "Overhead Expense",
-                        "Claim",
-                        "Booking 6%",
-                        "Destination 5%",
-                    ],
-                    "Amount": [
-                        current["salary"],
-                        current["godown"],
-                        current["overhead"],
-                        current["claim"],
-                        current["booking_6"],
-                        current["destination_5"],
-                    ],
-                }
-            )
-
-            overhead_values = overhead_values[
-                overhead_values["Amount"].abs() > 0
-            ].copy()
-
-            if overhead_values.empty:
-                st.info("No overhead found for selected filters.")
-            else:
-                fig_overhead = px.pie(
-                    overhead_values,
-                    names="Expense",
-                    values="Amount",
-                    hole=0.62,
-                )
-
-                fig_overhead.update_traces(
-                    textposition="outside",
-                    textinfo="percent+label",
-                    hovertemplate=(
-                        "<b>%{label}</b><br>"
-                        "Amount: ₹%{value:,.2f}<br>"
-                        "Share: %{percent}<extra></extra>"
-                    ),
-                )
-
-                fig_overhead.update_layout(
-                    height=340,
-                    margin=dict(l=5, r=5, t=10, b=5),
-                    showlegend=False,
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    annotations=[
-                        dict(
-                            text=amount_text(
-                                current["total_expense"],
-                                conversion_type,
-                            ),
-                            x=0.5,
-                            y=0.53,
-                            font_size=16,
-                            showarrow=False,
-                        ),
-                        dict(
-                            text="Total Overhead",
-                            x=0.5,
-                            y=0.43,
-                            font_size=10,
-                            showarrow=False,
-                        ),
-                    ],
-                )
-
-                st.plotly_chart(
-                    fig_overhead,
-                    width="stretch",
-                    config={"displayModeBar": False},
-                )
-
-                overhead_change = pct_change(
-                    current["total_expense"],
-                    previous["total_expense"],
-                )
-                st.caption(
-                    f"Total Overhead insight: {amount_text(current['total_expense'], conversion_type)} "
-                    f"vs LY {amount_text(previous['total_expense'], conversion_type)} "
-                    f"({overhead_change:+.1f}%)."
-                )
-
-    # --------------------------------------------------------
-    # BRANCH PROFITABILITY
-    # --------------------------------------------------------
-
-    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-
-    with st.container(border=True):
-        top_left, top_right = st.columns([5, 1], gap="small")
-
-        with top_left:
-            st.markdown(
-                '<div class="np-section-title">Branch-wise Net Profit</div>',
-                unsafe_allow_html=True,
-            )
-
-        with top_right:
-            top_n = st.selectbox(
-                "Top branches",
-                [10, 20, 30, 50],
-                key="np_top_n",
-                label_visibility="collapsed",
-            )
-
-        branch_summary = (
-            df.groupby(
-                ["BRANCHCODE", "BRANCH"],
-                as_index=False,
-                dropna=False,
-            )
-            .agg(
-                Origin_PNL=("ORIGIN_PNL", "sum"),
-                Destination_PNL=("DESTINATION_PNL", "sum"),
-                Combined_PNL=("COMBINED_PNL", "sum"),
-                Salary=("SALARY", "sum"),
-                Godown_Rent=("GODOWN RENT", "sum"),
-                Overhead_Expense=("OVERHEAD EXPENSE", "sum"),
-                Claim=("CLAIM", "sum"),
-                Booking_6=("BOOKING 6%", "sum"),
-                Destination_5=("DESTINATION 5%", "sum"),
-                Total_Overhead=("TOTAL EXPENSE", "sum"),
-                Net_Profit=("NET_PROFIT", "sum"),
-                Total_Income=("TOTAL_INCOME", "sum"),
-            )
-        )
-
-        branch_summary["Net Profit Margin %"] = 0.0
-        valid_income = branch_summary["Total_Income"].ne(0)
-
-        branch_summary.loc[valid_income, "Net Profit Margin %"] = (
-            branch_summary.loc[valid_income, "Net_Profit"]
-            / branch_summary.loc[valid_income, "Total_Income"]
-            * 100
-        )
-
-        branch_summary = branch_summary.sort_values(
-            "Net_Profit",
-            ascending=False,
-        ).reset_index(drop=True)
-
-        chart_df = branch_summary.head(top_n).copy()
-        chart_df["Net Profit Display"] = chart_df["Net_Profit"] / divisor
-
-        fig_branch = px.bar(
-            chart_df,
-            x="Net Profit Display",
-            y="BRANCH",
-            orientation="h",
-            labels={
-                "Net Profit Display": f"Net Profit ({unit})",
-                "BRANCH": "Branch",
-            },
-            hover_data={
-                "BRANCHCODE": True,
-                "Origin_PNL": ":,.2f",
-                "Destination_PNL": ":,.2f",
-                "Combined_PNL": ":,.2f",
-                "Total_Overhead": ":,.2f",
-                "Net Profit Display": ":.2f",
-            },
-        )
-
-        fig_branch.update_layout(
-            height=max(360, min(850, 45 * len(chart_df) + 100)),
-            margin=dict(l=10, r=10, t=10, b=10),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="#fbfdff",
-            yaxis=dict(autorange="reversed"),
-            showlegend=False,
-        )
-
-        fig_branch.update_xaxes(showgrid=False)
-        fig_branch.update_yaxes(showgrid=False)
-
-        st.plotly_chart(
-            fig_branch,
-            width="stretch",
-            config={"displayModeBar": False},
-        )
-
-    # --------------------------------------------------------
-    # DETAIL TABLE
-    # --------------------------------------------------------
-
-    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-
-    with st.container(border=True):
-        st.markdown(
-            '<div class="np-section-title">Branch Net Profit Detail</div>',
-            unsafe_allow_html=True,
-        )
-
-        display = branch_summary.copy()
-
-        money_columns = [
-            "Origin_PNL",
-            "Destination_PNL",
-            "Combined_PNL",
-            "Salary",
-            "Godown_Rent",
-            "Overhead_Expense",
-            "Claim",
-            "Booking_6",
-            "Destination_5",
-            "Total_Overhead",
-            "Net_Profit",
-            "Total_Income",
-        ]
-
-        for column in money_columns:
-            display[column] = (
-                pd.to_numeric(display[column], errors="coerce")
-                .fillna(0.0)
-                / divisor
-            )
-
-        display = display.rename(
-            columns={
-                "BRANCHCODE": "Branch Code",
-                "BRANCH": "Branch",
-                "Origin_PNL": f"Origin P&L ({unit})",
-                "Destination_PNL": f"Destination P&L ({unit})",
-                "Combined_PNL": f"Combined P&L ({unit})",
-                "Salary": f"Salary ({unit})",
-                "Godown_Rent": f"Godown Rent ({unit})",
-                "Overhead_Expense": f"Overhead Expense ({unit})",
-                "Claim": f"Claim ({unit})",
-                "Booking_6": f"Booking 6% ({unit})",
-                "Destination_5": f"Destination 5% ({unit})",
-                "Total_Overhead": f"Total Overhead ({unit})",
-                "Net_Profit": f"Net Profit ({unit})",
-                "Total_Income": f"Total Income ({unit})",
-            }
-        )
-
-        st.dataframe(
-            display,
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "Net Profit Margin %": st.column_config.NumberColumn(
-                    "Net Profit Margin %",
-                    format="%.2f%%",
-                ),
-            },
-        )
-
-        csv_data = display.to_csv(index=False).encode("utf-8-sig")
-
-        st.download_button(
-            "Download Net Profit CSV",
-            data=csv_data,
-            file_name=f"net_profit_dashboard_{fy}.csv",
-            mime="text/csv",
-            key="np_download",
-        )
-
-    # --------------------------------------------------------
-    # MONTH-WISE AUDIT TABLE
-    # --------------------------------------------------------
-
-    with st.expander("Monthly calculation audit"):
-        audit_columns = [
+    overhead_merge = overhead[
+        [
+            "BRANCH_KEY",
             "BRANCHCODE",
             "BRANCH",
             "YEAR",
             "MONTHNO",
-            "MONTH",
-            "ORIGIN_PNL",
-            "DESTINATION_PNL",
-            "COMBINED_PNL",
             "SALARY",
             "GODOWN RENT",
             "OVERHEAD EXPENSE",
@@ -1007,25 +948,258 @@ def show_net_profit_dashboard():
             "BOOKING 6%",
             "DESTINATION 5%",
             "TOTAL EXPENSE",
-            "NET_PROFIT",
-            "NET_PROFIT_MARGIN",
         ]
+    ].copy()
 
-        audit_columns = [
-            column
-            for column in audit_columns
-            if column in df.columns
-        ]
+    final = combined.merge(
+        overhead_merge.drop(columns=["BRANCHCODE", "BRANCH"], errors="ignore"),
+        on=keys,
+        how="left",
+        validate="one_to_one",
+    )
 
-        st.dataframe(
-            df[audit_columns].sort_values(
-                ["BRANCH", "YEAR", "MONTHNO"]
-            ),
-            width="stretch",
-            hide_index=True,
+    # Branch display/code come from Branch Master. Origin/Destination names
+    # are only fallback metadata when needed.
+    origin_branch_col = next(
+        (
+            c for c in [
+                "ORIGIN_ORIGIN_BRANCH",
+                "ORIGIN_BRANCH",
+            ]
+            if c in final.columns
+        ),
+        None,
+    )
+    destination_branch_col = next(
+        (
+            c for c in [
+                "DESTINATION_DESTINATION_BRANCH",
+                "DESTINATION_BRANCH",
+            ]
+            if c in final.columns
+        ),
+        None,
+    )
+
+    if "BRANCH" not in final.columns:
+        final["BRANCH"] = pd.NA
+
+    if origin_branch_col is not None:
+        final["BRANCH"] = final["BRANCH"].fillna(final[origin_branch_col])
+
+    if destination_branch_col is not None:
+        final["BRANCH"] = final["BRANCH"].fillna(final[destination_branch_col])
+
+    final["BRANCH"] = (
+        final["BRANCH"]
+        .fillna(final["BRANCH_KEY"])
+        .astype(str)
+        .str.strip()
+    )
+
+    if "BRANCHCODE" not in final.columns:
+        final["BRANCHCODE"] = ""
+    final["BRANCHCODE"] = final["BRANCHCODE"].fillna("").astype(str).str.strip()
+
+    for column in [
+        "SALARY",
+        "GODOWN RENT",
+        "OVERHEAD EXPENSE",
+        "CLAIM",
+        "BOOKING 6%",
+        "DESTINATION 5%",
+        "TOTAL EXPENSE",
+    ]:
+        final[column] = pd.to_numeric(
+            final[column],
+            errors="coerce",
+        ).fillna(0.0)
+
+    # FINAL ACCOUNTING LOGIC:
+    # Origin P&L + Destination P&L - branch overhead (once).
+    final["NET_PROFIT"] = (
+        final["COMBINED_PNL"]
+        - final["TOTAL EXPENSE"]
+    )
+
+    final["NET_PROFIT_MARGIN"] = 0.0
+    valid_income = final["TOTAL_INCOME"].ne(0)
+
+    final.loc[valid_income, "NET_PROFIT_MARGIN"] = (
+        final.loc[valid_income, "NET_PROFIT"]
+        / final.loc[valid_income, "TOTAL_INCOME"]
+        * 100
+    )
+
+    final["MONTH"] = final["MONTHNO"].map(
+        {
+            1: "Jan",
+            2: "Feb",
+            3: "Mar",
+            4: "Apr",
+            5: "May",
+            6: "Jun",
+            7: "Jul",
+            8: "Aug",
+            9: "Sep",
+            10: "Oct",
+            11: "Nov",
+            12: "Dec",
+        }
+    )
+
+    final["FIN_MONTH"] = final["MONTHNO"].map(
+        {
+            4: 1,
+            5: 2,
+            6: 3,
+            7: 4,
+            8: 5,
+            9: 6,
+            10: 7,
+            11: 8,
+            12: 9,
+            1: 10,
+            2: 11,
+            3: 12,
+        }
+    )
+
+    final["QUARTER"] = final["FIN_MONTH"].map(
+        {
+            1: "Q1",
+            2: "Q1",
+            3: "Q1",
+            4: "Q2",
+            5: "Q2",
+            6: "Q2",
+            7: "Q3",
+            8: "Q3",
+            9: "Q3",
+            10: "Q4",
+            11: "Q4",
+            12: "Q4",
+        }
+    )
+
+    return final.sort_values(
+        ["BRANCH", "YEAR", "MONTHNO"]
+    ).reset_index(drop=True)
+
+
+# ============================================================
+# PUBLIC API
+# ============================================================
+
+def _fetch_complete_net_profit_period(start_date, end_date):
+    """
+    For one period:
+      1. Existing Origin P&L
+      2. Existing Destination P&L
+      3. Branch overhead
+      4. Combine by Branch + Year + Month
+    """
+    started = time.perf_counter()
+
+    # Origin and Destination share the same heavy P&L stored-procedure output.
+    # Fetch both views together so that SP executes only once for this period.
+    with ThreadPoolExecutor(
+        max_workers=2,
+        thread_name_prefix="net-profit",
+    ) as executor:
+
+        pnl_views_future = executor.submit(
+            load_pnl_both_views,
+            start_date,
+            end_date,
         )
 
+        overhead_future = executor.submit(
+            _fetch_overhead_data,
+            start_date,
+            end_date,
+        )
 
-# Optional direct-run support.
-if __name__ == "__main__":
-    show_net_profit_dashboard()
+        origin_df, destination_df = pnl_views_future.result()
+        overhead_df = overhead_future.result()
+
+    final = _build_net_profit(
+        origin_df,
+        destination_df,
+        overhead_df,
+    )
+
+    print(
+        f"[Net Profit Complete] {start_date} to {end_date} | "
+        f"rows={len(final):,} | "
+        f"seconds={time.perf_counter() - started:.2f}"
+    )
+
+    return final
+
+
+@st.cache_data(
+    ttl=_CACHE_TTL_SECONDS,
+    show_spinner=False,
+    max_entries=8,
+)
+def load_net_profit_data(start_date, end_date):
+    return _fetch_complete_net_profit_period(
+        start_date,
+        end_date,
+    )
+
+
+@st.cache_data(
+    ttl=_CACHE_TTL_SECONDS,
+    show_spinner=False,
+    max_entries=4,
+)
+def load_net_profit_data_pair(
+    start_date,
+    end_date,
+    prev_start,
+    prev_end,
+):
+    """
+    Memory-safe Current FY + Previous FY loader.
+
+    IMPORTANT:
+    Current FY and Previous FY are loaded SEQUENTIALLY
+    to reduce peak memory usage on Streamlit Cloud.
+
+    Inside each period, Origin + Destination + Overhead
+    are still fetched in parallel for reasonable speed.
+    """
+
+    print(
+        f"[Net Profit Pair] Loading CURRENT FY first: "
+        f"{start_date} to {end_date}"
+    )
+
+    current_df = load_net_profit_data(
+        start_date,
+        end_date,
+    )
+
+    print(
+        f"[Net Profit Pair] CURRENT FY complete | "
+        f"rows={len(current_df):,}"
+    )
+
+    print(
+        f"[Net Profit Pair] Loading PREVIOUS FY next: "
+        f"{prev_start} to {prev_end}"
+    )
+
+    previous_df = load_net_profit_data(
+        prev_start,
+        prev_end,
+    )
+
+    print(
+        f"[Net Profit Pair] PREVIOUS FY complete | "
+        f"rows={len(previous_df):,}"
+    )
+
+    return current_df, previous_df
