@@ -83,37 +83,36 @@ def _fetch_pnl_sp_data(start_date, end_date):
 
 
 def _prepare_revenue_data(df):
+    """Prepare booking/view data only as GR-level metadata.
+
+    REVENUE is intentionally NOT read from booking data. Revenue is sourced
+    exclusively from the P&L stored procedure.
+    """
     if df is None or df.empty:
         return pd.DataFrame()
 
     out = df.copy()
     gr_col = _find_column(out, ["GRNO", "grno", "gr_no", "grnumber", "gr_number"])
-    revenue_col = _find_column(
-        out,
-        ["REVENUE", "revenue", "freight", "business", "totalfreight", "total_freight"],
-    )
 
-    if gr_col is None or revenue_col is None:
+    if gr_col is None:
         raise ValueError(
-            "Revenue data requires GRNO and REVENUE/FREIGHT columns. "
+            "Booking/view data requires GRNO for joining with the P&L SP. "
             f"Available columns: {list(out.columns)}"
         )
 
-    rename_map = {}
     if gr_col != "grno":
-        rename_map[gr_col] = "grno"
-    if revenue_col != "REVENUE":
-        rename_map[revenue_col] = "REVENUE"
-    out = out.rename(columns=rename_map)
+        out = out.rename(columns={gr_col: "grno"})
 
     out["grno"] = _clean_grno(out["grno"])
-    out["REVENUE"] = pd.to_numeric(out["REVENUE"], errors="coerce").fillna(0.0)
     out = out[
         out["grno"].notna()
         & out["grno"].ne("")
         & out["grno"].str.lower().ne("nan")
     ].copy()
-    return out
+
+    # Keep a single metadata row per GR so the one-row-per-GR P&L SP
+    # revenue cannot be duplicated during the merge.
+    return out.drop_duplicates(subset=["grno"], keep="first")
 
 
 def _prepare_pnl_sp_data(df):
@@ -301,6 +300,20 @@ def _fetch_both_views_period(start_date, end_date):
         f"seconds={time.perf_counter() - started:.2f}"
     )
     return origin_df, destination_df
+
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=12)
+def load_pnl_sp_revenue_total(start_date, end_date):
+    """Return Business / Revenue directly from the P&L stored procedure.
+
+    The SP now returns one row per GR, so REVENUE is summed directly from the
+    SP output and does not depend on Origin/Destination booking-data merges.
+    """
+    pnl_sp_df = _fetch_pnl_sp_data(start_date, end_date)
+    pnl_data = _prepare_pnl_sp_data(pnl_sp_df)
+    if pnl_data is None or pnl_data.empty or "REVENUE" not in pnl_data.columns:
+        return 0.0
+    return float(pd.to_numeric(pnl_data["REVENUE"], errors="coerce").fillna(0.0).sum())
 
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=8)
