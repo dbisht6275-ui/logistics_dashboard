@@ -297,6 +297,7 @@ def _inject_css():
         <style>
         :root {
             --np-navy:#102a43;
+            --np-kpi-font: Arial, Helvetica, sans-serif;
             --np-blue:#2563eb;
             --np-muted:#64748b;
             --np-border:#dbe4ef;
@@ -342,9 +343,10 @@ def _inject_css():
         }
 
         .np-card-title {
-            font-size:10px;
-            color:#64748b;
-            font-weight:650;
+            font-family:var(--np-kpi-font);
+            font-size:11px;
+            color:#334155;
+            font-weight:700;
             white-space:nowrap;
             overflow:hidden;
             text-overflow:ellipsis;
@@ -352,15 +354,19 @@ def _inject_css():
 
         .np-card-value {
             margin-top:5px;
-            font-size:17px;
-            color:#102a43;
-            font-weight:850;
+            font-family:var(--np-kpi-font);
+            font-size:18px;
+            color:#0f2744;
+            font-weight:700;
+            letter-spacing:0;
             white-space:nowrap;
         }
 
         .np-card-footer {
             margin-top:6px;
-            font-size:9px;
+            font-family:var(--np-kpi-font);
+            font-size:10px;
+            font-weight:500;
             color:#64748b;
         }
 
@@ -412,7 +418,8 @@ def _inject_css():
 
         .np-overhead-body { min-width:0; flex:1; }
         .np-overhead-title {
-            font-size:9px;
+            font-family:var(--np-kpi-font);
+            font-size:10px;
             color:#334155;
             font-weight:700;
             white-space:nowrap;
@@ -421,14 +428,17 @@ def _inject_css():
         }
         .np-overhead-value {
             margin-top:2px;
-            font-size:14px;
-            color:#102a43;
-            font-weight:850;
+            font-family:var(--np-kpi-font);
+            font-size:15px;
+            color:#0f2744;
+            font-weight:700;
             white-space:nowrap;
         }
         .np-overhead-footer {
             margin-top:3px;
-            font-size:8px;
+            font-family:var(--np-kpi-font);
+            font-size:9px;
+            font-weight:500;
             color:#64748b;
             white-space:nowrap;
         }
