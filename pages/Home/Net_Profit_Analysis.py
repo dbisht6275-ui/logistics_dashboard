@@ -390,6 +390,7 @@ def _inject_css():
             display:flex;
             align-items:stretch;
             overflow:hidden;
+            margin-bottom:5px;
         }
 
         .np-overhead-item {
@@ -818,8 +819,6 @@ def show_net_profit_dashboard():
     # MONTHLY TREND + OVERHEAD BREAKUP
     # --------------------------------------------------------
 
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-
     left, right = st.columns([1.55, 0.85], gap="medium")
 
     with left:
@@ -1242,6 +1241,7 @@ def show_net_profit_dashboard():
             width="stretch",
             hide_index=True,
         )
+
 
 # Optional direct-run support.
 if __name__ == "__main__":
