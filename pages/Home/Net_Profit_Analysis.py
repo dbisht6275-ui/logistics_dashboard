@@ -1371,64 +1371,6 @@ def show_net_profit_dashboard():
     )
 
     # --------------------------------------------------------
-    # OVERHEAD COMPOSITION
-    # --------------------------------------------------------
-
-    with st.container(border=True):
-        st.markdown(
-            '<div class="np-section-title">Overhead Composition</div>',
-            unsafe_allow_html=True,
-        )
-
-        overhead_values = pd.DataFrame(
-            {
-                "Expense": [
-                    "Salary", "Godown Rent", "Overhead Expense",
-                    "Claim", "Booking 6%", "Destination 5%",
-                ],
-                "Amount": [
-                    current["salary"], current["godown"], current["overhead"],
-                    current["claim"], current["booking_6"], current["destination_5"],
-                ],
-            }
-        )
-        overhead_values = overhead_values[overhead_values["Amount"].abs() > 0].copy()
-
-        if overhead_values.empty:
-            st.info("No overhead found for selected filters.")
-        else:
-            fig_overhead = px.pie(
-                overhead_values, names="Expense", values="Amount", hole=0.62,
-            )
-            fig_overhead.update_traces(
-                textposition="outside", textinfo="percent+label",
-                hovertemplate=(
-                    "<b>%{label}</b><br>Amount: ₹%{value:,.2f}<br>"
-                    "Share: %{percent}<extra></extra>"
-                ),
-            )
-            fig_overhead.update_layout(
-                height=265, margin=dict(l=4, r=4, t=4, b=2),
-                showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
-                annotations=[
-                    dict(
-                        text=amount_text(current["total_expense"], conversion_type),
-                        x=0.5, y=0.53, font_size=16, showarrow=False,
-                    ),
-                    dict(text="Total Overhead", x=0.5, y=0.43, font_size=10, showarrow=False),
-                ],
-            )
-            st.plotly_chart(
-                fig_overhead, width="stretch", config={"displayModeBar": False},
-            )
-            overhead_change = pct_change(current["total_expense"], previous["total_expense"])
-            st.caption(
-                f"Total Overhead insight: {amount_text(current['total_expense'], conversion_type)} "
-                f"vs LY {amount_text(previous['total_expense'], conversion_type)} "
-                f"({overhead_change:+.1f}%)."
-            )
-
-    # --------------------------------------------------------
     # BRANCH SUMMARY (feeds Branch Net Profit Detail; no chart rendered)
     # --------------------------------------------------------
 
