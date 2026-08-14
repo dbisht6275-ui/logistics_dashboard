@@ -85,14 +85,19 @@ def safe_options(df, column):
     )
 
 
+def _normalise_column_name(value):
+    """Normalise a column heading so spaces, underscores, hyphens and case do not matter."""
+    return "".join(ch for ch in str(value).casefold() if ch.isalnum())
+
+
 def _find_column(df, *candidates):
-    """Return the actual dataframe column matching any candidate, ignoring case/spaces."""
+    """Return the actual dataframe column matching any candidate using a tolerant header match."""
     if df is None or df.empty:
         return None
 
-    lookup = {str(col).strip().casefold(): col for col in df.columns}
+    lookup = {_normalise_column_name(col): col for col in df.columns}
     for candidate in candidates:
-        found = lookup.get(str(candidate).strip().casefold())
+        found = lookup.get(_normalise_column_name(candidate))
         if found is not None:
             return found
     return None
@@ -108,8 +113,11 @@ def _attach_branch_hierarchy(df, branch_master_df):
     master_branch_col = _find_column(branch_master_df, "BRANCH")
 
     hierarchy_candidates = {
-        "zone": ("zone", "ZONE", "ZONE NAME", "ZONENAME"),
-        "circle": ("circle", "CIRCLE", "CIRCLE NAME", "CIRCLENAME"),
+        "zone": ("zone", "ZONE", "ZONE NAME", "ZONENAME", "ZONE_NAME", "ZONE DESC", "ZONEDESC"),
+        "circle": (
+            "circle", "CIRCLE", "CIRCLE NAME", "CIRCLENAME", "CIRCLE_NAME",
+            "CIRCLE DESC", "CIRCLEDESC", "CIRCLE DESCRIPTION", "CIRCLEDESCRIPTION"
+        ),
     }
 
     invalid_values = {"", "unknown", "none", "nan", "na", "n/a", "null", "-"}
@@ -606,13 +614,21 @@ def show_net_profit_dashboard():
             disabled="zone" not in df.columns,
         )
 
+    # Circle choices must follow the current Branch/Zone scope.  Building the
+    # option list from the unscoped dataframe can leave the widget empty when
+    # hierarchy values are populated from Branch Master.
+    circle_scope = df.copy()
+    circle_scope = apply_multi_filter(circle_scope, "BRANCH", branches)
+    circle_scope = apply_multi_filter(circle_scope, "zone", zones)
+    circle_options = safe_options(circle_scope, "circle")
+
     with filter_cols[4]:
         circles = st.multiselect(
             "Circle",
-            safe_options(df, "circle"),
+            circle_options,
             key="np_circle",
             placeholder="All circles",
-            disabled="circle" not in df.columns,
+            disabled=("circle" not in df.columns or not circle_options),
         )
 
     with filter_cols[5]:
