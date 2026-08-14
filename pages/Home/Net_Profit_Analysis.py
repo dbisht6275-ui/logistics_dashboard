@@ -1092,7 +1092,7 @@ def _render_phase1_pnl_insights(
             fig_mom = go.Figure()
             fig_mom.add_trace(go.Bar(
                 x=mom["MONTH"], y=mom["P&L Display"], name="P&L",
-                marker=dict(color="#bfdbfe", line=dict(color="#2563eb", width=1.2)),
+                marker=dict(color="#3b82f6", line=dict(color="#1d4ed8", width=1.2)),
                 text=mom["P&L Display"], texttemplate="₹%{text:.2f}", textposition="outside",
                 textfont=dict(size=9, color="#1e3a8a", family="Arial"), cliponaxis=False,
                 hovertemplate=f"<b>%{{x}}</b><br>P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
@@ -1120,7 +1120,11 @@ def _render_phase1_pnl_insights(
 
     with branch_col:
         with st.container(border=True):
-            st.markdown('<div class="np-section-title">Branches by Monthly Avg P&amp;L</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="np-section-title" style="margin:2px 0 12px 1px;line-height:1.3;">'
+                'Branches by Monthly Avg P&amp;L</div>',
+                unsafe_allow_html=True,
+            )
             if "branch" not in insight_df.columns:
                 st.info("Branch is not available in P&L insight data.")
             else:
@@ -1135,16 +1139,21 @@ def _render_phase1_pnl_insights(
                 if selected_slab not in slab_options:
                     selected_slab = "All"
                     st.session_state["np_pnl_insight_branch_slab"] = "All"
-                slab_button_cols = st.columns(len(slab_options), gap="small")
-                for slab_index, slab_label in enumerate(slab_options):
-                    with slab_button_cols[slab_index]:
-                        if st.button(
-                            slab_label, key=f"np_pnl_branch_slab_btn_{slab_index}",
-                            type="primary" if selected_slab == slab_label else "secondary",
-                            use_container_width=True,
-                        ):
-                            st.session_state["np_pnl_insight_branch_slab"] = slab_label
-                            st.rerun()
+                # Keep slab controls readable inside the 60% panel: 4 buttons per row.
+                for row_start in range(0, len(slab_options), 4):
+                    row_options = slab_options[row_start:row_start + 4]
+                    slab_button_cols = st.columns(4, gap="small")
+                    for offset, slab_label in enumerate(row_options):
+                        slab_index = row_start + offset
+                        with slab_button_cols[offset]:
+                            if st.button(
+                                slab_label,
+                                key=f"np_pnl_branch_slab_btn_{slab_index}",
+                                type="primary" if selected_slab == slab_label else "secondary",
+                                use_container_width=True,
+                            ):
+                                st.session_state["np_pnl_insight_branch_slab"] = slab_label
+                                st.rerun()
                 ranges = {
                     "All": (None, None), "Loss": (None, 0),
                     "₹0–5 Lac": (0, 500_000), "₹5–10 Lac": (500_000, 1_000_000),
