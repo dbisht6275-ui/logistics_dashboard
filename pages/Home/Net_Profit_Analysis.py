@@ -10,6 +10,7 @@ from services.net_profit_data_loader import load_net_profit_data_pair
 from services.pnl_data_loader import load_pnl_sp_revenue_total
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
+
 # ============================================================
 # NET PROFIT DASHBOARD
 #
@@ -50,9 +51,11 @@ def get_conversion(conversion_type):
         return 100_000, "Lac"
     return 10_000_000, "Cr"
 
+
 def amount_text(value, conversion_type):
     divisor, unit = get_conversion(conversion_type)
     return f"₹{float(value or 0) / divisor:,.2f} {unit}"
+
 
 def pct_change(current, previous):
     current = float(current or 0)
@@ -62,6 +65,7 @@ def pct_change(current, previous):
         return 0.0
 
     return ((current - previous) / abs(previous)) * 100
+
 
 def safe_options(df, column):
     if df is None or df.empty or column not in df.columns:
