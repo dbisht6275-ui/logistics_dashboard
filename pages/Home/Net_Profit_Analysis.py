@@ -553,9 +553,11 @@ def _inject_css():
         /* P&L insight buttons - copied from the P&L dashboard visual language. */
         div[class*="st-key-np_pnl_trend_btn_"] {margin:0 !important;padding:0 !important;}
         div[class*="st-key-np_pnl_trend_btn_"] div[data-testid="stButton"],
-        div[class*="st-key-np_pnl_branch_slab_btn_"] div[data-testid="stButton"] {width:100% !important;margin:0 !important;}
+        div[class*="st-key-np_pnl_branch_slab_btn_"] div[data-testid="stButton"],
+        div[class*="st-key-np_pnl_view_btn_"] div[data-testid="stButton"] {width:100% !important;margin:0 !important;}
         div[class*="st-key-np_pnl_trend_btn_"] button,
-        div[class*="st-key-np_pnl_branch_slab_btn_"] button {
+        div[class*="st-key-np_pnl_branch_slab_btn_"] button,
+        div[class*="st-key-np_pnl_view_btn_"] button {
             width:100% !important;min-height:34px !important;height:34px !important;padding:4px 8px !important;
             margin:0 !important;border:1px solid #d8e2ee !important;border-radius:8px !important;
             background:linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%) !important;color:#334155 !important;
@@ -563,19 +565,23 @@ def _inject_css():
             transform:none !important;font-size:11px !important;font-weight:650 !important;white-space:nowrap !important;
         }
         div[class*="st-key-np_pnl_trend_btn_"] button:hover,
-        div[class*="st-key-np_pnl_branch_slab_btn_"] button:hover {
+        div[class*="st-key-np_pnl_branch_slab_btn_"] button:hover,
+        div[class*="st-key-np_pnl_view_btn_"] button:hover {
             border-color:#9bb7d8 !important;background:linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important;
             color:#174a7e !important;box-shadow:inset 0 1px 0 #ffffff,0 2px 5px rgba(15,42,67,.08) !important;
         }
         div[class*="st-key-np_pnl_trend_btn_"] button[data-testid="stBaseButton-primary"],
-        div[class*="st-key-np_pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] {
+        div[class*="st-key-np_pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"],
+        div[class*="st-key-np_pnl_view_btn_"] button[data-testid="stBaseButton-primary"] {
             border-color:#123f73 !important;background:linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
             color:#ffffff !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 2px 5px rgba(15,42,67,.18) !important;
         }
         div[class*="st-key-np_pnl_trend_btn_"] button[data-testid="stBaseButton-primary"] p,
         div[class*="st-key-np_pnl_trend_btn_"] button[data-testid="stBaseButton-primary"] span,
         div[class*="st-key-np_pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] p,
-        div[class*="st-key-np_pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] span {color:#ffffff !important;}
+        div[class*="st-key-np_pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] span,
+        div[class*="st-key-np_pnl_view_btn_"] button[data-testid="stBaseButton-primary"] p,
+        div[class*="st-key-np_pnl_view_btn_"] button[data-testid="stBaseButton-primary"] span {color:#ffffff !important;}
         </style>
         """,
         unsafe_allow_html=True,
@@ -877,6 +883,7 @@ def _top_pnl_insight_table(df, prev_df, group_col, entity_name, divisor, unit, w
 
 def _render_phase1_pnl_insights(
     start_date, end_date, prev_start, prev_end,
+    fy, prev_fy,
     zones, circles, branches, quarters, months, valid_branches,
     divisor, unit,
 ):
@@ -894,12 +901,23 @@ def _render_phase1_pnl_insights(
                 unsafe_allow_html=True,
             )
         with view_col:
-            insight_view = st.selectbox(
-                "Insight View",
-                ["Origin", "Destination"],
-                key="np_pnl_insight_view",
-                label_visibility="collapsed",
-            )
+            view_options = ["Origin", "Destination"]
+            insight_view = st.session_state.get("np_pnl_insight_view_value", "Origin")
+            if insight_view not in view_options:
+                insight_view = "Origin"
+                st.session_state["np_pnl_insight_view_value"] = "Origin"
+
+            view_btn_cols = st.columns(2, gap="small")
+            for view_index, view_label in enumerate(view_options):
+                with view_btn_cols[view_index]:
+                    if st.button(
+                        view_label,
+                        key=f"np_pnl_view_btn_{view_index}",
+                        type="primary" if insight_view == view_label else "secondary",
+                        use_container_width=True,
+                    ):
+                        st.session_state["np_pnl_insight_view_value"] = view_label
+                        st.rerun()
 
     try:
         with st.spinner(f"Loading {insight_view} P&L insights..."):
@@ -1483,6 +1501,8 @@ def show_net_profit_dashboard():
         end_date=end_date,
         prev_start=prev_start,
         prev_end=prev_end,
+        fy=fy,
+        prev_fy=prev_fy,
         zones=zones,
         circles=circles,
         branches=branches,
