@@ -305,7 +305,16 @@ def _inject_css():
 
         .block-container {
             max-width:100% !important;
-            padding:.45rem .8rem .9rem !important;
+            padding:.20rem .65rem .50rem !important;
+        }
+
+        /* Compact dashboard: reduce Streamlit's default vertical whitespace. */
+        div[data-testid="stVerticalBlock"] {
+            gap:.45rem !important;
+        }
+
+        div[data-testid="stHorizontalBlock"] {
+            row-gap:.35rem !important;
         }
 
         .np-title {
@@ -322,6 +331,7 @@ def _inject_css():
         }
 
         .np-card {
+            margin:0 3px;
             min-height:92px;
             border:1px solid #dbe4ef;
             border-radius:14px;
@@ -450,7 +460,7 @@ def _inject_css():
             font-size:15px;
             color:#0f2744;
             font-weight:700;
-            margin:2px 0 8px 1px;
+            margin:0 0 4px 1px;
         }
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -575,7 +585,7 @@ def show_net_profit_dashboard():
         unsafe_allow_html=True,
     )
 
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
     # --------------------------------------------------------
     # PRIMARY FILTERS
@@ -748,9 +758,9 @@ def show_net_profit_dashboard():
     # KPI ROW 1
     # --------------------------------------------------------
 
-    st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
-    kpi_cols = st.columns(7, gap="small")
+    kpi_cols = st.columns(7, gap=None)
 
     kpis = [
         ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False, False),
@@ -784,7 +794,7 @@ def show_net_profit_dashboard():
     # KPI ROW 2: OVERHEAD BREAKUP
     # --------------------------------------------------------
 
-    st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
     overhead_kpis = [
         ("Salary", current["salary"], previous["salary"], "●"),
@@ -808,7 +818,7 @@ def show_net_profit_dashboard():
     # MONTHLY TREND + OVERHEAD BREAKUP
     # --------------------------------------------------------
 
-    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
     left, right = st.columns([1.55, 0.85], gap="medium")
 
@@ -1010,7 +1020,7 @@ def show_net_profit_dashboard():
     # BRANCH PROFITABILITY
     # --------------------------------------------------------
 
-    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
     with st.container(border=True):
         top_left, top_right = st.columns([5, 1], gap="small")
@@ -1112,7 +1122,7 @@ def show_net_profit_dashboard():
     # DETAIL TABLE
     # --------------------------------------------------------
 
-    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
 
     with st.container(border=True):
         st.markdown(
