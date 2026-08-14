@@ -1,4 +1,5 @@
 from html import escape
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -7,6 +8,8 @@ import streamlit as st
 from services.data_loader import get_date_range
 from services.net_profit_data_loader import load_net_profit_data_pair
 from services.net_profit_branch_mast import load_net_profit_branch_mast
+
+
 # ============================================================
 # NET PROFIT DASHBOARD
 #
@@ -96,7 +99,7 @@ def _find_column(df, *candidates):
 
 
 def _attach_branch_hierarchy(df, branch_master_df):
-    """Ensure canonical zone/circle columns exist, using Branch Master as fallback."""
+    """Attach clean Zone/Circle values, preferring Branch Master for missing/Unknown values."""
     if df is None or df.empty:
         return df
 
@@ -104,28 +107,47 @@ def _attach_branch_hierarchy(df, branch_master_df):
     branch_col = _find_column(out, "BRANCH")
     master_branch_col = _find_column(branch_master_df, "BRANCH")
 
-    for canonical, candidates in {
-        "zone": ("zone", "ZONE"),
-        "circle": ("circle", "CIRCLE"),
-    }.items():
+    hierarchy_candidates = {
+        "zone": ("zone", "ZONE", "ZONE NAME", "ZONENAME"),
+        "circle": ("circle", "CIRCLE", "CIRCLE NAME", "CIRCLENAME"),
+    }
+
+    invalid_values = {"", "unknown", "none", "nan", "na", "n/a", "null", "-"}
+
+    for canonical, candidates in hierarchy_candidates.items():
         source_col = _find_column(out, *candidates)
-        if source_col is not None:
-            if source_col != canonical:
-                out[canonical] = out[source_col]
-            continue
-
         master_col = _find_column(branch_master_df, *candidates)
-        if branch_col is None or master_branch_col is None or master_col is None:
-            continue
 
-        hierarchy_map = (
-            branch_master_df[[master_branch_col, master_col]]
-            .dropna(subset=[master_branch_col])
-            .assign(_branch_key=lambda x: x[master_branch_col].map(_normalise_branch_name))
-            .drop_duplicates("_branch_key")
-            .set_index("_branch_key")[master_col]
-        )
-        out[canonical] = out[branch_col].map(_normalise_branch_name).map(hierarchy_map)
+        # Start with the hierarchy value already present in the P&L data, if any.
+        if source_col is not None:
+            out[canonical] = out[source_col]
+        else:
+            out[canonical] = pd.NA
+
+        # Branch Master is the authoritative fallback. This also fixes rows where
+        # the source column exists but contains 'Unknown'/blank values.
+        if branch_col is not None and master_branch_col is not None and master_col is not None:
+            master_clean = branch_master_df[[master_branch_col, master_col]].copy()
+            master_clean["_branch_key"] = master_clean[master_branch_col].map(_normalise_branch_name)
+            master_clean["_hierarchy_value"] = master_clean[master_col].astype("string").str.strip()
+            master_clean = master_clean[
+                ~master_clean["_hierarchy_value"].fillna("").str.casefold().isin(invalid_values)
+            ]
+
+            hierarchy_map = (
+                master_clean.drop_duplicates("_branch_key")
+                .set_index("_branch_key")["_hierarchy_value"]
+            )
+            fallback = out[branch_col].map(_normalise_branch_name).map(hierarchy_map)
+
+            current_text = out[canonical].astype("string").str.strip()
+            invalid_mask = current_text.fillna("").str.casefold().isin(invalid_values)
+            out.loc[invalid_mask, canonical] = fallback.loc[invalid_mask]
+
+        # Do not expose Unknown/blank pseudo-values in the filter lists.
+        current_text = out[canonical].astype("string").str.strip()
+        invalid_mask = current_text.fillna("").str.casefold().isin(invalid_values)
+        out.loc[invalid_mask, canonical] = pd.NA
 
     return out
 
