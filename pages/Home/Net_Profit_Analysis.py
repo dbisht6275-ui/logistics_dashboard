@@ -1036,30 +1036,437 @@ def _render_phase1_pnl_insights(
 
     with zone_col:
         with st.container(border=True):
-            st.markdown('<div class="np-section-title">P&amp;L by Zone</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="np-section-title">P&amp;L by Zone</div>',
+                unsafe_allow_html=True,
+            )
+
             if "zone" not in insight_df.columns:
                 st.info("Zone is not available in P&L insight data.")
             else:
-                zone_df = insight_df.groupby("zone", as_index=False)["PNL"].sum().sort_values("PNL", ascending=False)
+                zone_df = (
+                    insight_df.groupby("zone", as_index=False)["PNL"]
+                    .sum()
+                    .sort_values("PNL", ascending=False)
+                    .reset_index(drop=True)
+                )
                 zone_df = zone_df[zone_df["PNL"].abs() > 0].copy()
+
                 if zone_df.empty:
                     st.info("No zone P&L available.")
                 else:
                     zone_df["Display"] = zone_df["PNL"] / divisor
-                    fig_zone = go.Figure(go.Pie(
-                        labels=zone_df["zone"], values=zone_df["PNL"].abs(),
-                        customdata=zone_df["Display"], hole=0.62,
-                        textinfo="percent+label",
-                        hovertemplate=f"<b>%{{label}}</b><br>P&L: ₹%{{customdata:.2f}} {unit}<extra></extra>",
-                    ))
-                    fig_zone.update_layout(
-                        height=285, margin=dict(l=4, r=4, t=4, b=2),
-                        showlegend=False, paper_bgcolor="rgba(0,0,0,0)",
+                    absolute_zone_total = float(zone_df["PNL"].abs().sum())
+                    zone_df["Pct"] = (
+                        zone_df["PNL"].abs() / absolute_zone_total * 100
+                        if absolute_zone_total else 0.0
                     )
-                    st.plotly_chart(fig_zone, width="stretch", config={"displayModeBar": False})
 
-    # Keep MoM compact so the branch-slab insight gets enough room to breathe.
-    branch_col, mom_col = st.columns([1.18, 0.82], gap="medium")
+                    zone_name_map = {
+                        "NORTH ZONE": "North",
+                        "WEST ZONE": "West",
+                        "SOUTH ZONE": "South",
+                        "EAST ZONE": "East",
+                        "NORTH EAST ZONE": "NE",
+                        "NEPAL ZONE": "Nepal",
+                        "North Zone": "North",
+                        "West Zone": "West",
+                        "South Zone": "South",
+                        "East Zone": "East",
+                        "North East Zone": "NE",
+                        "Nepal Zone": "Nepal",
+                    }
+                    zone_df["Display Zone"] = (
+                        zone_df["zone"].map(zone_name_map).fillna(zone_df["zone"])
+                    )
+                    zone_colors = [
+                        "#2563eb", "#0f766e", "#f59e0b",
+                        "#7c3aed", "#ec4899", "#ef5b5b", "#64748b",
+                    ]
+
+                    fig_zone = go.Figure(
+                        go.Pie(
+                            labels=zone_df["Display Zone"],
+                            values=zone_df["PNL"].abs(),
+                            customdata=zone_df[["Display", "Pct"]],
+                            hole=0.64,
+                            sort=False,
+                            rotation=90,
+                            direction="clockwise",
+                            domain=dict(x=[0.00, 0.60], y=[0.03, 0.97]),
+                            marker=dict(
+                                colors=zone_colors[:len(zone_df)],
+                                line=dict(color="#ffffff", width=2),
+                            ),
+                            textinfo="none",
+                            hovertemplate=(
+                                f"<b>%{{label}}</b><br>"
+                                f"P&L: ₹%{{customdata[0]:.2f}} {unit}<br>"
+                                "Contribution: %{customdata[1]:.1f}%<extra></extra>"
+                            ),
+                        )
+                    )
+
+                    legend_step = 0.17 if len(zone_df) <= 6 else 0.125
+                    for idx, row in zone_df.iterrows():
+                        y_pos = 0.91 - idx * legend_step
+                        color = zone_colors[idx % len(zone_colors)]
+
+                        fig_zone.add_annotation(
+                            x=0.65,
+                            y=y_pos,
+                            xref="paper",
+                            yref="paper",
+                            text="●",
+                            showarrow=False,
+                            xanchor="left",
+                            font=dict(size=19, color=color),
+                        )
+                        fig_zone.add_annotation(
+                            x=0.705,
+                            y=y_pos,
+                            xref="paper",
+                            yref="paper",
+                            text=(
+                                f"<b>{escape(str(row['Display Zone']))}</b><br>"
+                                f"₹{row['Display']:.2f} {unit} "
+                                f"<span style='color:{color}'>"
+                                f"({row['Pct']:.1f}%)</span>"
+                            ),
+                            showarrow=False,
+                            xanchor="left",
+                            align="left",
+                            font=dict(size=14, color="#1f2937"),
+                        )
+
+                    net_zone_pnl = float(zone_df["Display"].sum())
+                    fig_zone.add_annotation(
+                        x=0.30,
+                        y=0.53,
+                        xref="paper",
+                        yref="paper",
+                        text=f"<b>₹{net_zone_pnl:.2f} {unit}</b>",
+                        showarrow=False,
+                        xanchor="center",
+                        yanchor="middle",
+                        align="center",
+                        font=dict(size=25, color="#17152f", family="Arial"),
+                    )
+                    fig_zone.add_annotation(
+                        x=0.30,
+                        y=0.43,
+                        xref="paper",
+                        yref="paper",
+                        text="Net P&L",
+                        showarrow=False,
+                        xanchor="center",
+                        yanchor="middle",
+                        align="center",
+                        font=dict(size=14, color="#746d91", family="Arial"),
+                    )
+
+                    fig_zone.update_layout(
+                        height=335,
+                        margin=dict(l=0, r=0, t=0, b=0),
+                        showlegend=False,
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                    )
+                    st.plotly_chart(
+                        fig_zone,
+                        width="stretch",
+                        config={"displayModeBar": False, "responsive": True},
+                    )
+
+
+    # Full-width original-style Branch Monthly Avg P&L insight.
+    with st.container(border=True):
+        st.markdown(
+            '<div class="np-section-title" '
+            'style="font-size:16px;margin:2px 0 10px 1px;line-height:1.25;">'
+            'Branches by Monthly Avg P&amp;L</div>',
+            unsafe_allow_html=True,
+        )
+
+        if "branch" not in insight_df.columns:
+            st.info("Branch is not available in P&L insight data.")
+        else:
+            current_month_count = max(
+                int(insight_df["FIN_MONTH"].dropna().nunique()), 1
+            )
+            previous_month_count = (
+                max(int(insight_prev_df["FIN_MONTH"].dropna().nunique()), 1)
+                if (
+                    insight_prev_df is not None
+                    and not insight_prev_df.empty
+                    and "FIN_MONTH" in insight_prev_df.columns
+                )
+                else current_month_count
+            )
+
+            current_branch_avg = (
+                insight_df.groupby("branch", dropna=False, as_index=False)["PNL"]
+                .sum()
+                .rename(columns={"PNL": "CY_PNL"})
+            )
+            current_branch_avg["branch"] = (
+                current_branch_avg["branch"]
+                .fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
+            )
+
+            if (
+                insight_prev_df is not None
+                and not insight_prev_df.empty
+                and {"branch", "PNL"}.issubset(insight_prev_df.columns)
+            ):
+                previous_branch_avg = (
+                    insight_prev_df.groupby(
+                        "branch", dropna=False, as_index=False
+                    )["PNL"]
+                    .sum()
+                    .rename(columns={"PNL": "LY_PNL"})
+                )
+                previous_branch_avg["branch"] = (
+                    previous_branch_avg["branch"]
+                    .fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
+                )
+            else:
+                previous_branch_avg = pd.DataFrame(
+                    columns=["branch", "LY_PNL"]
+                )
+
+            branch_avg = current_branch_avg.merge(
+                previous_branch_avg, on="branch", how="left"
+            )
+            branch_avg["LY_PNL"] = pd.to_numeric(
+                branch_avg["LY_PNL"], errors="coerce"
+            ).fillna(0.0)
+            branch_avg["Monthly Avg P&L"] = (
+                branch_avg["CY_PNL"] / current_month_count
+            )
+            branch_avg["LY Monthly Avg P&L"] = (
+                branch_avg["LY_PNL"] / previous_month_count
+            )
+
+            slab_options = [
+                "All", "Loss", "₹0–5 Lac", "₹5–10 Lac",
+                "₹10–15 Lac", "₹15–25 Lac",
+                "₹25–50 Lac", "₹50 Lac & Above",
+            ]
+            selected_slab = st.session_state.get(
+                "np_pnl_insight_branch_slab", "All"
+            )
+            if selected_slab not in slab_options:
+                selected_slab = "All"
+                st.session_state["np_pnl_insight_branch_slab"] = "All"
+
+            # Full-width panel: all 8 buttons fit in a single row like P&L dashboard.
+            slab_button_cols = st.columns(len(slab_options), gap="small")
+            for slab_index, slab_label in enumerate(slab_options):
+                with slab_button_cols[slab_index]:
+                    if st.button(
+                        slab_label,
+                        key=f"np_pnl_branch_slab_btn_{slab_index}",
+                        type=(
+                            "primary"
+                            if selected_slab == slab_label
+                            else "secondary"
+                        ),
+                        use_container_width=True,
+                    ):
+                        st.session_state[
+                            "np_pnl_insight_branch_slab"
+                        ] = slab_label
+                        st.rerun()
+
+            slab_ranges = {
+                "All": (None, None),
+                "Loss": (None, 0),
+                "₹0–5 Lac": (0, 500_000),
+                "₹5–10 Lac": (500_000, 1_000_000),
+                "₹10–15 Lac": (1_000_000, 1_500_000),
+                "₹15–25 Lac": (1_500_000, 2_500_000),
+                "₹25–50 Lac": (2_500_000, 5_000_000),
+                "₹50 Lac & Above": (5_000_000, None),
+            }
+
+            scoped = branch_avg.copy()
+            slab_low, slab_high = slab_ranges[selected_slab]
+            if selected_slab == "Loss":
+                scoped = scoped[scoped["Monthly Avg P&L"] < 0]
+            else:
+                if slab_low is not None:
+                    scoped = scoped[
+                        scoped["Monthly Avg P&L"] >= slab_low
+                    ]
+                if slab_high is not None:
+                    scoped = scoped[
+                        scoped["Monthly Avg P&L"] < slab_high
+                    ]
+
+            scoped = scoped.sort_values(
+                "Monthly Avg P&L", ascending=False
+            ).reset_index(drop=True)
+
+            total_abs_branch_pnl = float(
+                branch_avg["Monthly Avg P&L"].abs().sum()
+            )
+            selected_cy_total = float(scoped["Monthly Avg P&L"].sum())
+            selected_ly_total = float(scoped["LY Monthly Avg P&L"].sum())
+            selected_share = (
+                float(scoped["Monthly Avg P&L"].abs().sum())
+                / total_abs_branch_pnl * 100
+                if total_abs_branch_pnl else 0.0
+            )
+            selected_growth = (
+                (selected_cy_total - selected_ly_total)
+                / abs(selected_ly_total) * 100
+                if selected_ly_total != 0
+                else None
+            )
+
+            if selected_growth is None:
+                summary_growth_html = (
+                    '<span style="color:#7c3aed;font-weight:700;">NEW</span>'
+                )
+            else:
+                summary_growth_color = (
+                    "#16a34a" if selected_growth >= 0 else "#dc2626"
+                )
+                summary_growth_arrow = (
+                    "▲" if selected_growth >= 0 else "▼"
+                )
+                summary_growth_html = (
+                    f'<span style="color:{summary_growth_color};'
+                    f'font-weight:700;">{summary_growth_arrow} '
+                    f'{abs(selected_growth):.1f}%</span>'
+                )
+
+            st.markdown(
+                f'<div style="color:#31557d;font-size:12px;font-weight:500;'
+                f'margin:8px 0 8px 1px;">'
+                f'Showing {len(scoped):,} branches in {escape(selected_slab)}. '
+                f'CY Avg P&amp;L: <b>₹{selected_cy_total / divisor:,.2f} '
+                f'{escape(unit)}</b> · '
+                f'LY Avg P&amp;L: <b>₹{selected_ly_total / divisor:,.2f} '
+                f'{escape(unit)}</b> · '
+                f'Share: <b>{selected_share:.2f}%</b> · '
+                f'Growth: {summary_growth_html}. Scroll to view all.'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+            if scoped.empty:
+                st.info(
+                    f"No branch falls in the {selected_slab} "
+                    "monthly-average P&L slab."
+                )
+            else:
+                max_abs_value = max(
+                    float(scoped["Monthly Avg P&L"].abs().max()), 1.0
+                )
+                rows = []
+
+                for idx, row in scoped.iterrows():
+                    cy_value = float(row["Monthly Avg P&L"] or 0)
+                    ly_value = float(row["LY Monthly Avg P&L"] or 0)
+                    width_pct = min(
+                        abs(cy_value) / max_abs_value * 100, 100
+                    )
+                    fill_color = (
+                        "#2563eb" if cy_value >= 0 else "#dc2626"
+                    )
+                    amount_color = (
+                        "#111827" if cy_value >= 0 else "#dc2626"
+                    )
+                    branch_name = escape(str(row["branch"]))
+                    share = (
+                        abs(cy_value) / total_abs_branch_pnl * 100
+                        if total_abs_branch_pnl else 0.0
+                    )
+                    growth = (
+                        (cy_value - ly_value) / abs(ly_value) * 100
+                        if ly_value != 0 else None
+                    )
+
+                    if growth is None:
+                        growth_html = (
+                            '<span style="color:#7c3aed;'
+                            'font-weight:700;">NEW</span>'
+                        )
+                    else:
+                        growth_color = (
+                            "#16a34a" if growth >= 0 else "#dc2626"
+                        )
+                        growth_arrow = "▲" if growth >= 0 else "▼"
+                        growth_html = (
+                            f'<span style="color:{growth_color};'
+                            f'font-weight:700;">{growth_arrow} '
+                            f'{abs(growth):.1f}%</span>'
+                        )
+
+                    rows.append(
+                        '<div style="margin-bottom:7px;padding:8px 10px;'
+                        'border:1px solid #dbe4ef;border-radius:12px;'
+                        'background:#fbfdff;">'
+                        '<div style="display:grid;'
+                        'grid-template-columns:44px minmax(180px,240px) '
+                        'minmax(220px,1fr) 115px 105px 78px 92px;'
+                        'align-items:center;gap:10px;">'
+                        f'<div style="text-align:center;font-size:13px;'
+                        f'color:#334155;">{idx + 1}</div>'
+                        f'<div style="font-size:14px;color:#0f2744;'
+                        f'white-space:nowrap;overflow:hidden;'
+                        f'text-overflow:ellipsis;">{branch_name}</div>'
+                        '<div style="height:7px;background:#e8eef5;'
+                        'border-radius:999px;overflow:hidden;">'
+                        f'<div style="width:{width_pct:.1f}%;height:7px;'
+                        f'background:{fill_color};border-radius:999px;">'
+                        '</div></div>'
+                        f'<div style="text-align:right;color:{amount_color};'
+                        f'font-size:13px;font-weight:700;white-space:nowrap;">'
+                        f'₹{cy_value / divisor:,.2f} {escape(unit)}</div>'
+                        f'<div style="text-align:right;color:#64748b;'
+                        f'font-size:12px;white-space:nowrap;">'
+                        f'₹{ly_value / divisor:,.2f} {escape(unit)}</div>'
+                        f'<div style="text-align:right;color:#31557d;'
+                        f'font-size:12px;font-weight:600;white-space:nowrap;">'
+                        f'{share:.2f}%</div>'
+                        f'<div style="text-align:right;font-size:12px;'
+                        f'white-space:nowrap;">{growth_html}</div>'
+                        '</div></div>'
+                    )
+
+                header = (
+                    '<div style="display:grid;'
+                    'grid-template-columns:44px minmax(180px,240px) '
+                    'minmax(220px,1fr) 115px 105px 78px 92px;'
+                    'align-items:center;gap:10px;padding:0 10px 6px;'
+                    'color:#64748b;font-size:10px;font-weight:700;">'
+                    '<div style="text-align:center;">#</div>'
+                    '<div>Branch</div>'
+                    '<div>P&amp;L Scale</div>'
+                    '<div style="text-align:right;">CY Avg</div>'
+                    '<div style="text-align:right;">LY Avg</div>'
+                    '<div style="text-align:right;">Share</div>'
+                    '<div style="text-align:right;">Growth</div>'
+                    '</div>'
+                )
+                branch_html = (
+                    header
+                    + '<div style="max-height:500px;overflow-y:auto;'
+                    'padding-right:3px;">'
+                    + "".join(rows)
+                    + "</div>"
+                )
+
+                if hasattr(st, "html"):
+                    st.html(branch_html)
+                else:
+                    st.markdown(branch_html, unsafe_allow_html=True)
+
+    # Keep P&L MoM and Net Profit MoM below the full-width branch insight.
+    mom_col, mom_blank = st.columns([0.44, 0.56], gap="medium")
     with mom_col:
         with st.container(border=True):
             st.markdown('<div class="np-section-title">Month on Month P&amp;L &amp; Growth</div>', unsafe_allow_html=True)
@@ -1270,71 +1677,6 @@ def _render_phase1_pnl_insights(
                     config={"displayModeBar": False},
                 )
 
-    with branch_col:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="np-section-title" style="margin:2px 0 12px 1px;line-height:1.3;">'
-                'Branches by Monthly Avg P&amp;L</div>',
-                unsafe_allow_html=True,
-            )
-            if "branch" not in insight_df.columns:
-                st.info("Branch is not available in P&L insight data.")
-            else:
-                month_count = max(int(insight_df["FIN_MONTH"].nunique()), 1)
-                branch_avg = insight_df.groupby("branch", as_index=False)["PNL"].sum()
-                branch_avg["Monthly Avg P&L"] = branch_avg["PNL"] / month_count
-                slab_options = [
-                    "All", "Loss", "₹0–5 Lac", "₹5–10 Lac", "₹10–15 Lac",
-                    "₹15–25 Lac", "₹25–50 Lac", "₹50 Lac & Above",
-                ]
-                selected_slab = st.session_state.get("np_pnl_insight_branch_slab", "All")
-                if selected_slab not in slab_options:
-                    selected_slab = "All"
-                    st.session_state["np_pnl_insight_branch_slab"] = "All"
-                # Keep slab controls readable inside the 60% panel: 4 buttons per row.
-                for row_start in range(0, len(slab_options), 4):
-                    row_options = slab_options[row_start:row_start + 4]
-                    slab_button_cols = st.columns(4, gap="small")
-                    for offset, slab_label in enumerate(row_options):
-                        slab_index = row_start + offset
-                        with slab_button_cols[offset]:
-                            if st.button(
-                                slab_label,
-                                key=f"np_pnl_branch_slab_btn_{slab_index}",
-                                type="primary" if selected_slab == slab_label else "secondary",
-                                use_container_width=True,
-                            ):
-                                st.session_state["np_pnl_insight_branch_slab"] = slab_label
-                                st.rerun()
-                ranges = {
-                    "All": (None, None), "Loss": (None, 0),
-                    "₹0–5 Lac": (0, 500_000), "₹5–10 Lac": (500_000, 1_000_000),
-                    "₹10–15 Lac": (1_000_000, 1_500_000), "₹15–25 Lac": (1_500_000, 2_500_000),
-                    "₹25–50 Lac": (2_500_000, 5_000_000), "₹50 Lac & Above": (5_000_000, None),
-                }
-                low, high = ranges[selected_slab]
-                scoped = branch_avg.copy()
-                if selected_slab == "Loss": scoped = scoped[scoped["Monthly Avg P&L"] < 0]
-                else:
-                    if low is not None: scoped = scoped[scoped["Monthly Avg P&L"] >= low]
-                    if high is not None: scoped = scoped[scoped["Monthly Avg P&L"] < high]
-                scoped = scoped.sort_values("Monthly Avg P&L", ascending=False).reset_index(drop=True)
-                total_abs = float(branch_avg["Monthly Avg P&L"].abs().sum())
-                st.markdown(
-                    f'<div style="color:#31557d;font-size:12px;font-weight:500;margin:7px 0 8px 1px;">'
-                    f'Showing {len(scoped):,} branches in {escape(selected_slab)}. Scroll to view all.</div>', unsafe_allow_html=True)
-                if scoped.empty: st.info(f"No branch falls in the {selected_slab} monthly-average P&L slab.")
-                else:
-                    max_abs=max(float(scoped["Monthly Avg P&L"].abs().max()),1.0); rows=[]
-                    for idx,row in scoped.iterrows():
-                        value=float(row["Monthly Avg P&L"] or 0); width=min(abs(value)/max_abs*100,100)
-                        fill="#2563eb" if value>=0 else "#dc2626"; amount="#111827" if value>=0 else "#dc2626"
-                        name=escape(str(row["branch"])); share=abs(value)/total_abs*100 if total_abs else 0.0
-                        rows.append(f'<div style="margin-bottom:7px;padding:8px 10px;border:1px solid #dbe4ef;border-radius:12px;background:#fbfdff;"><div style="display:grid;grid-template-columns:34px minmax(150px,220px) minmax(80px,1fr) 105px 70px;align-items:center;gap:10px;"><div style="text-align:center;font-size:13px;color:#334155;">{idx+1}</div><div style="font-size:14px;color:#0f2744;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{name}</div><div style="height:7px;background:#e8eef5;border-radius:999px;overflow:hidden;"><div style="width:{width:.1f}%;height:7px;background:{fill};border-radius:999px;"></div></div><div style="text-align:right;color:{amount};font-size:13px;font-weight:700;white-space:nowrap;">₹{value/divisor:,.2f} {escape(unit)}</div><div style="text-align:right;color:#31557d;font-size:12px;font-weight:600;white-space:nowrap;">{share:.2f}%</div></div></div>')
-                    header='<div style="display:grid;grid-template-columns:34px minmax(150px,220px) minmax(80px,1fr) 105px 70px;align-items:center;gap:10px;padding:0 10px 5px;color:#64748b;font-size:10px;font-weight:700;"><div style="text-align:center;">#</div><div>Branch</div><div>P&L Scale</div><div style="text-align:right;">CY Avg</div><div style="text-align:right;">Share</div></div>'
-                    html=header+'<div style="max-height:360px;overflow-y:auto;padding-right:3px;">'+''.join(rows)+'</div>'
-                    if hasattr(st,"html"): st.html(html)
-                    else: st.markdown(html,unsafe_allow_html=True)
 
     customer_col, route_col = st.columns(2, gap="medium")
     customer_field = "Consignee" if insight_view == "Destination" else "Consignor"
