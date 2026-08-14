@@ -711,15 +711,11 @@ def show_net_profit_dashboard():
     previous = calculate_kpis(prev_df)
 
     # Business KPI display rule:
-    # - All Branches: put total Business (Booking + Delivery) on the Booking KPI and
-    #   disable the Destination KPI to avoid presenting the same consolidated revenue twice.
+    # - All Branches: Booking KPI shows ONLY Origin/Booking revenue.
+    #   Destination KPI is disabled so destination revenue is not added again.
     # - Explicit branch selection: show Booking and Destination revenue separately.
-    if all_branches:
-        booking_business_current = current["business"]
-        booking_business_previous = previous["business"]
-    else:
-        booking_business_current = current["origin_business"]
-        booking_business_previous = previous["origin_business"]
+    booking_business_current = current["origin_business"]
+    booking_business_previous = previous["origin_business"]
 
     # --------------------------------------------------------
     # KPI ROW 1
