@@ -297,190 +297,252 @@ def _inject_css():
         <style>
         :root {
             --np-navy:#102a43;
-            --np-kpi-font: Arial, Helvetica, sans-serif;
             --np-blue:#2563eb;
+            --np-text:#0f172a;
             --np-muted:#64748b;
-            --np-border:#dbe4ef;
+            --np-border:#e2e8f0;
+            --np-soft:#f8fafc;
+            --np-green:#15803d;
+            --np-red:#dc2626;
+            --np-kpi-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         }
 
         .block-container {
             max-width:100% !important;
-            padding:.20rem .65rem .50rem !important;
+            padding:.35rem .75rem .65rem !important;
         }
 
-        /* Compact dashboard: reduce Streamlit's default vertical whitespace. */
-        div[data-testid="stVerticalBlock"] {
-            gap:.45rem !important;
-        }
+        div[data-testid="stVerticalBlock"] { gap:.34rem !important; }
+        div[data-testid="stHorizontalBlock"] { row-gap:.28rem !important; }
 
-        div[data-testid="stHorizontalBlock"] {
-            row-gap:.35rem !important;
+        /* Executive header */
+        .np-header {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:16px;
+            padding:7px 12px 8px;
+            margin:0 0 2px;
+            border:1px solid var(--np-border);
+            border-radius:11px;
+            background:linear-gradient(90deg,#ffffff 0%,#f8fbff 100%);
         }
-
         .np-title {
-            color:var(--np-navy);
-            font-size:20px;
-            font-weight:850;
-            letter-spacing:-.3px;
+            color:var(--np-text);
+            font-family:var(--np-kpi-font);
+            font-size:18px;
+            font-weight:800;
+            line-height:1.1;
+            letter-spacing:-.35px;
         }
-
         .np-subtitle {
             color:var(--np-muted);
-            font-size:11px;
+            font-family:var(--np-kpi-font);
+            font-size:10px;
             margin-top:2px;
         }
+        .np-header-badge {
+            color:#1d4ed8;
+            background:#eff6ff;
+            border:1px solid #dbeafe;
+            border-radius:999px;
+            padding:4px 8px;
+            font-family:var(--np-kpi-font);
+            font-size:9px;
+            font-weight:700;
+            white-space:nowrap;
+        }
 
+        /* Filters */
+        div[data-testid="stSelectbox"] label,
+        div[data-testid="stMultiSelect"] label {
+            font-family:var(--np-kpi-font) !important;
+            font-size:10px !important;
+            font-weight:650 !important;
+            color:#475569 !important;
+            margin-bottom:1px !important;
+        }
+        div[data-baseweb="select"] > div {
+            min-height:34px !important;
+            border-color:#dce5ef !important;
+            border-radius:8px !important;
+            background:#fff !important;
+            font-size:11px !important;
+            box-shadow:none !important;
+        }
+        div[data-baseweb="select"] span { font-size:11px !important; }
+        div[data-baseweb="tag"] {
+            height:21px !important;
+            border-radius:6px !important;
+            font-size:9px !important;
+        }
+
+        /* Primary KPI cards */
         .np-card {
-            margin:0 3px;
-            min-height:92px;
-            border:1px solid #dbe4ef;
-            border-radius:14px;
-            padding:10px 11px;
-            background:linear-gradient(145deg,#ffffff,#f7faff);
-            box-shadow:0 5px 14px rgba(15,42,67,.07);
+            min-height:78px;
+            margin:0 2px;
+            border:1px solid var(--np-border);
+            border-radius:10px;
+            padding:8px 9px;
+            background:#ffffff;
+            box-shadow:0 2px 8px rgba(15,23,42,.045);
+            position:relative;
+            overflow:hidden;
         }
-
-        .np-card-disabled {
-            opacity:.52;
-            background:#f1f5f9;
-            box-shadow:none;
+        .np-card::before {
+            content:"";
+            position:absolute;
+            left:0;
+            top:0;
+            bottom:0;
+            width:3px;
+            background:#dbeafe;
         }
-
-        .np-card-disabled .np-card-value,
-        .np-card-disabled .np-card-title,
-        .np-card-disabled .np-card-footer {
-            color:#94a3b8 !important;
-        }
-
         .np-card-title {
             font-family:var(--np-kpi-font);
-            font-size:11px;
-            color:#334155;
+            font-size:9.5px;
+            color:#64748b;
             font-weight:700;
+            text-transform:uppercase;
+            letter-spacing:.25px;
             white-space:nowrap;
             overflow:hidden;
             text-overflow:ellipsis;
         }
-
         .np-card-value {
-            margin-top:5px;
+            margin-top:4px;
             font-family:var(--np-kpi-font);
-            font-size:18px;
-            color:#0f2744;
-            font-weight:700;
-            letter-spacing:0;
+            font-size:16px;
+            line-height:1.15;
+            color:#0f172a;
+            font-weight:780;
             white-space:nowrap;
         }
-
         .np-card-footer {
-            margin-top:6px;
+            margin-top:5px;
             font-family:var(--np-kpi-font);
-            font-size:10px;
+            font-size:9px;
             font-weight:500;
-            color:#64748b;
+            color:#94a3b8;
+            white-space:nowrap;
         }
+        .np-positive { color:var(--np-green); font-weight:700; }
+        .np-negative { color:var(--np-red); font-weight:700; }
 
+        /* Secondary expense strip */
         .np-overhead-strip {
             width:100%;
-            min-height:72px;
-            border:1px solid #e6edf5;
-            border-radius:12px;
-            background:#ffffff;
-            box-shadow:0 4px 12px rgba(15,42,67,.06);
+            min-height:58px;
+            border:1px solid var(--np-border);
+            border-radius:10px;
+            background:#fbfdff;
             display:flex;
             align-items:stretch;
             overflow:hidden;
-            margin-bottom:5px;
+            margin:0 0 2px;
         }
-
         .np-overhead-item {
             flex:1 1 0;
             min-width:0;
-            padding:8px 12px;
+            padding:6px 9px;
             display:flex;
             align-items:center;
-            gap:9px;
+            gap:7px;
             position:relative;
         }
-
         .np-overhead-item:not(:last-child)::after {
             content:"";
             position:absolute;
             right:0;
-            top:12px;
-            bottom:12px;
+            top:9px;
+            bottom:9px;
             width:1px;
-            background:#dfe7f0;
+            background:#e5edf5;
         }
-
         .np-overhead-icon {
-            width:34px;
-            height:34px;
-            min-width:34px;
-            border-radius:50%;
-            background:#eaf4ff;
+            width:25px;
+            height:25px;
+            min-width:25px;
+            border-radius:7px;
+            background:#eef6ff;
             display:flex;
             align-items:center;
             justify-content:center;
-            color:#1677e8;
-            font-size:17px;
-            line-height:1;
+            color:#2563eb;
+            font-size:12px;
         }
-
         .np-overhead-body { min-width:0; flex:1; }
         .np-overhead-title {
             font-family:var(--np-kpi-font);
-            font-size:10px;
-            color:#334155;
+            font-size:8.5px;
+            color:#64748b;
             font-weight:700;
             white-space:nowrap;
             overflow:hidden;
             text-overflow:ellipsis;
         }
         .np-overhead-value {
-            margin-top:2px;
+            margin-top:1px;
             font-family:var(--np-kpi-font);
-            font-size:15px;
-            color:#0f2744;
-            font-weight:700;
+            font-size:12.5px;
+            color:#0f172a;
+            font-weight:750;
             white-space:nowrap;
         }
         .np-overhead-footer {
-            margin-top:3px;
+            margin-top:1px;
             font-family:var(--np-kpi-font);
-            font-size:9px;
-            font-weight:500;
-            color:#64748b;
+            font-size:8px;
+            color:#94a3b8;
             white-space:nowrap;
         }
 
-        .np-positive { color:#15803d; }
-        .np-negative { color:#dc2626; }
-
         .np-section-title {
-            font-size:15px;
-            color:#0f2744;
-            font-weight:700;
-            margin:0 0 4px 1px;
+            font-family:var(--np-kpi-font);
+            font-size:12px;
+            color:#0f172a;
+            font-weight:750;
+            margin:0 0 2px 0;
         }
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            border:1px solid #dce5ef !important;
-            border-radius:14px !important;
+            border:1px solid var(--np-border) !important;
+            border-radius:10px !important;
             background:#ffffff !important;
-            box-shadow:0 6px 16px rgba(15,42,67,.06) !important;
+            box-shadow:none !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding-top:.45rem !important;
+            padding-bottom:.45rem !important;
         }
 
         [data-testid="stDataFrame"] {
-            border:1px solid #e2e8f0;
-            border-radius:10px;
+            border:1px solid var(--np-border);
+            border-radius:8px;
             overflow:hidden;
+        }
+
+        div[data-testid="stDownloadButton"] button {
+            min-height:32px !important;
+            border-radius:8px !important;
+            border:1px solid #dbe4ef !important;
+            font-size:10px !important;
+            font-weight:650 !important;
+            padding:.3rem .7rem !important;
+        }
+
+        details[data-testid="stExpander"] {
+            border:1px solid var(--np-border) !important;
+            border-radius:9px !important;
+        }
+        details[data-testid="stExpander"] summary p {
+            font-size:10px !important;
+            font-weight:650 !important;
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
-
 
 def render_kpi_card(
     title,
@@ -578,15 +640,16 @@ def show_net_profit_dashboard():
 
     st.markdown(
         """
-        <div class="np-title">Net Profit Dashboard</div>
-        <div class="np-subtitle">
-            Origin P&L + Destination P&L − Branch overhead
+        <div class="np-header">
+            <div>
+                <div class="np-title">Net Profit Analysis</div>
+                <div class="np-subtitle">Business, P&L and indirect expense performance by branch</div>
+            </div>
+            <div class="np-header-badge">EXECUTIVE VIEW</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
     # --------------------------------------------------------
     # PRIMARY FILTERS
@@ -811,7 +874,7 @@ def show_net_profit_dashboard():
     # KPI ROW 2: OVERHEAD BREAKUP
     # --------------------------------------------------------
 
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
     overhead_kpis = [
         ("Salary", current["salary"], previous["salary"], "●"),
@@ -909,8 +972,8 @@ def show_net_profit_dashboard():
 
             fig.update_layout(
                 barmode="group",
-                height=340,
-                margin=dict(l=10, r=10, t=20, b=10),
+                height=285,
+                margin=dict(l=6, r=6, t=14, b=4),
                 paper_bgcolor="rgba(0,0,0,0)",
                 plot_bgcolor="#fbfdff",
                 legend=dict(
@@ -990,8 +1053,8 @@ def show_net_profit_dashboard():
                 )
 
                 fig_overhead.update_layout(
-                    height=340,
-                    margin=dict(l=5, r=5, t=10, b=5),
+                    height=285,
+                    margin=dict(l=4, r=4, t=4, b=2),
                     showlegend=False,
                     paper_bgcolor="rgba(0,0,0,0)",
                     annotations=[
@@ -1035,7 +1098,7 @@ def show_net_profit_dashboard():
     # BRANCH PROFITABILITY
     # --------------------------------------------------------
 
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
     with st.container(border=True):
         top_left, top_right = st.columns([5, 1], gap="small")
@@ -1124,8 +1187,8 @@ def show_net_profit_dashboard():
         )
 
         fig_branch.update_layout(
-            height=max(360, min(850, 45 * len(chart_df) + 100)),
-            margin=dict(l=10, r=10, t=10, b=10),
+            height=max(300, min(620, 31 * len(chart_df) + 75)),
+            margin=dict(l=6, r=6, t=4, b=4),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="#fbfdff",
             yaxis=dict(autorange="reversed"),
@@ -1145,7 +1208,7 @@ def show_net_profit_dashboard():
     # DETAIL TABLE
     # --------------------------------------------------------
 
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
     with st.container(border=True):
         st.markdown(
@@ -1212,6 +1275,16 @@ def show_net_profit_dashboard():
             f"Destination P&L ({unit})",
             f"Combined P&L ({unit})",
             "P&L %",
+            f"Salary ({unit})",
+            f"Godown Rent ({unit})",
+            f"Overhead Expense ({unit})",
+            f"Claim ({unit})",
+            f"Booking 6% ({unit})",
+            f"Destination 5% ({unit})",
+            f"Total Overhead ({unit})",
+            f"Net Profit ({unit})",
+            f"Total Income ({unit})",
+            "Net Profit Margin %",
         ]
         display = display[[column for column in detail_columns if column in display.columns]]
 
@@ -1222,6 +1295,10 @@ def show_net_profit_dashboard():
             column_config={
                 "P&L %": st.column_config.NumberColumn(
                     "P&L %",
+                    format="%.2f%%",
+                ),
+                "Net Profit Margin %": st.column_config.NumberColumn(
+                    "Net Profit Margin %",
                     format="%.2f%%",
                 ),
             },
