@@ -10,6 +10,7 @@ from services.net_profit_data_loader import load_net_profit_data_pair
 from services.pnl_data_loader import load_pnl_sp_revenue_total, load_pnl_data_pair
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
+
 # ============================================================
 # NET PROFIT DASHBOARD
 #
@@ -35,6 +36,7 @@ MONTH_ORDER = [
 
 QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
 
+
 # ============================================================
 # HELPERS
 # ============================================================
@@ -49,9 +51,11 @@ def get_conversion(conversion_type):
         return 100_000, "Lac"
     return 10_000_000, "Cr"
 
+
 def amount_text(value, conversion_type):
     divisor, unit = get_conversion(conversion_type)
     return f"₹{float(value or 0) / divisor:,.2f} {unit}"
+
 
 def pct_change(current, previous):
     current = float(current or 0)
@@ -61,6 +65,7 @@ def pct_change(current, previous):
         return 0.0
 
     return ((current - previous) / abs(previous)) * 100
+
 
 def safe_options(df, column):
     if df is None or df.empty or column not in df.columns:
@@ -80,9 +85,11 @@ def safe_options(df, column):
         key=str.casefold,
     )
 
+
 def _normalise_column_name(value):
     """Normalise a column heading so spaces, underscores, hyphens and case do not matter."""
     return "".join(ch for ch in str(value).casefold() if ch.isalnum())
+
 
 def _find_column(df, *candidates):
     """Return the actual dataframe column matching any candidate using a tolerant header match."""
@@ -95,6 +102,7 @@ def _find_column(df, *candidates):
         if found is not None:
             return found
     return None
+
 
 def _attach_branch_hierarchy(df, branch_master_df):
     """Attach clean Zone/Circle values, preferring Branch Master for missing/Unknown values."""
@@ -152,6 +160,7 @@ def _attach_branch_hierarchy(df, branch_master_df):
 
     return out
 
+
 def apply_multi_filter(df, column, selected):
     if (
         df is None
@@ -163,8 +172,10 @@ def apply_multi_filter(df, column, selected):
 
     return df[df[column].isin(selected)].copy()
 
+
 def _normalise_branch_name(value):
     return " ".join(str(value).strip().casefold().split())
+
 
 def _filter_to_branch_scope(df, branch_names):
     if df is None or df.empty or "BRANCH" not in df.columns or not branch_names:
@@ -231,6 +242,7 @@ def _apply_pnl_business_rule(df, all_branches):
 
     return out
 
+
 def calculate_kpis(df):
     if df is None or df.empty:
         return {
@@ -277,6 +289,7 @@ def calculate_kpis(df):
     )
 
     return values
+
 
 def _inject_css():
     st.markdown(
@@ -1184,7 +1197,538 @@ def _render_phase1_pnl_insights(
                 st.plotly_chart(fig_np_trend, width="stretch", config={"displayModeBar": False})
 
 
-    # Full-width original-style Branch Monthly Avg P&L insight.
+    # P&L and Net Profit period-growth charts above the Branch Monthly Avg insight.
+    pnl_period_col, np_period_col = st.columns([1, 1], gap="medium")
+
+    def _period_growth(values):
+        result = pd.Series(index=values.index, dtype="float64")
+        if len(values):
+            result.iloc[0] = float("nan")
+        for idx in range(1, len(values)):
+            previous_value = float(values.iloc[idx - 1] or 0)
+            current_value = float(values.iloc[idx] or 0)
+            result.iloc[idx] = (
+                ((current_value - previous_value) / abs(previous_value)) * 100
+                if previous_value != 0 else float("nan")
+            )
+        return result
+
+    def _growth_axis_range(values):
+        clean = pd.to_numeric(values, errors="coerce").dropna()
+        if clean.empty:
+            return [-100, 100]
+        low = float(clean.min())
+        high = float(clean.max())
+        pad = max((high - low) * 0.30, 18.0)
+        return [min(low - pad, -10), max(high + pad, 10)]
+
+    with pnl_period_col:
+        # --------------------------------------------------------
+        # P&L W / M / Q
+        # --------------------------------------------------------
+        with st.container(border=True):
+            pnl_period_options = ["W", "M", "Q"]
+            pnl_period = st.session_state.get("np_pnl_period_value", "M")
+            if pnl_period not in pnl_period_options:
+                pnl_period = "M"
+                st.session_state["np_pnl_period_value"] = "M"
+
+            pnl_title_col, pnl_btn_col = st.columns(
+                [2.4, 1.0], gap="small", vertical_alignment="center"
+            )
+            pnl_period_name = {
+                "W": "Weekly",
+                "M": "Monthly",
+                "Q": "Quarterly",
+            }[pnl_period]
+
+            with pnl_title_col:
+                st.markdown(
+                    f'<div class="np-section-title">{pnl_period_name} '
+                    f'P&amp;L &amp; Growth</div>',
+                    unsafe_allow_html=True,
+                )
+
+            with pnl_btn_col:
+                pnl_btn_cols = st.columns(3, gap="small")
+                for period_index, period_label in enumerate(pnl_period_options):
+                    with pnl_btn_cols[period_index]:
+                        if st.button(
+                            period_label,
+                            key=f"np_pnl_trend_btn_pnl_period_{period_index}",
+                            type="primary" if pnl_period == period_label else "secondary",
+                            use_container_width=True,
+                        ):
+                            st.session_state["np_pnl_period_value"] = period_label
+                            st.rerun()
+
+            pnl_period_df = pd.DataFrame()
+            pnl_period_error = None
+
+            if pnl_period == "W":
+                if "grdt" not in insight_df.columns:
+                    pnl_period_error = "Weekly P&L is unavailable because GR date is missing."
+                else:
+                    pnl_week = insight_df[["grdt", "PNL"]].copy()
+                    pnl_week["grdt"] = pd.to_datetime(
+                        pnl_week["grdt"], errors="coerce"
+                    )
+                    pnl_week = pnl_week[pnl_week["grdt"].notna()]
+                    if pnl_week.empty:
+                        pnl_period_error = "Weekly P&L is unavailable for the selected filters."
+                    else:
+                        pnl_week["Week No"] = (
+                            (
+                                pnl_week["grdt"].dt.normalize()
+                                - pd.Timestamp(start_date)
+                            ).dt.days // 7
+                        ).astype(int) + 1
+                        pnl_period_df = (
+                            pnl_week.groupby("Week No", as_index=False)["PNL"]
+                            .sum()
+                            .sort_values("Week No")
+                            .reset_index(drop=True)
+                        )
+                        pnl_period_df["Period"] = (
+                            "W" + pnl_period_df["Week No"].astype(str)
+                        )
+
+            elif pnl_period == "Q":
+                if "QUARTER" not in insight_df.columns:
+                    pnl_period_error = "Quarterly P&L is unavailable."
+                else:
+                    pnl_period_df = (
+                        insight_df.groupby("QUARTER", as_index=False)["PNL"]
+                        .sum()
+                    )
+                    pnl_period_df["QUARTER"] = pd.Categorical(
+                        pnl_period_df["QUARTER"],
+                        categories=QUARTER_ORDER,
+                        ordered=True,
+                    )
+                    pnl_period_df = (
+                        pnl_period_df.sort_values("QUARTER")
+                        .reset_index(drop=True)
+                    )
+                    pnl_period_df["Period"] = pnl_period_df["QUARTER"].astype(str)
+
+            else:
+                pnl_period_df = (
+                    insight_df.groupby("MONTH", as_index=False)["PNL"]
+                    .sum()
+                )
+                pnl_period_df["MONTH"] = pd.Categorical(
+                    pnl_period_df["MONTH"],
+                    categories=MONTH_ORDER,
+                    ordered=True,
+                )
+                pnl_period_df = (
+                    pnl_period_df.sort_values("MONTH")
+                    .reset_index(drop=True)
+                )
+                pnl_period_df["Period"] = pnl_period_df["MONTH"].astype(str)
+
+            if pnl_period_error:
+                st.info(pnl_period_error)
+            elif pnl_period_df.empty:
+                st.info(f"No {pnl_period_name.lower()} P&L data is available.")
+            else:
+                pnl_period_df["Display"] = (
+                    pd.to_numeric(
+                        pnl_period_df["PNL"], errors="coerce"
+                    ).fillna(0.0) / divisor
+                )
+                pnl_period_df["Growth"] = _period_growth(
+                    pnl_period_df["PNL"]
+                )
+                pnl_period_df["Growth Label"] = pnl_period_df["Growth"].apply(
+                    lambda value: (
+                        f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
+                        if pd.notna(value) else ""
+                    )
+                )
+                pnl_growth_colors = [
+                    "#16a34a"
+                    if pd.notna(value) and value >= 0
+                    else "#dc2626"
+                    for value in pnl_period_df["Growth"]
+                ]
+
+                fig_period_pnl = go.Figure()
+                fig_period_pnl.add_trace(
+                    go.Bar(
+                        x=pnl_period_df["Period"],
+                        y=pnl_period_df["Display"],
+                        name="P&L",
+                        marker=dict(
+                            color="#99f6e4",
+                            line=dict(color="#0f766e", width=1.4),
+                        ),
+                        text=pnl_period_df["Display"],
+                        texttemplate="₹%{text:.2f}",
+                        textposition="outside",
+                        textfont=dict(
+                            size=9, color="#0f766e", family="Arial"
+                        ),
+                        cliponaxis=False,
+                        hovertemplate=(
+                            f"<b>%{{x}}</b><br>"
+                            f"P&L: ₹%{{y:.2f}} {unit}<extra></extra>"
+                        ),
+                    )
+                )
+                fig_period_pnl.add_trace(
+                    go.Scatter(
+                        x=pnl_period_df["Period"],
+                        y=pnl_period_df["Growth"],
+                        name=f"{pnl_period_name} Growth",
+                        mode="lines+markers+text",
+                        yaxis="y2",
+                        line=dict(color="#7c3aed", width=2.6),
+                        marker=dict(
+                            size=7,
+                            color=pnl_growth_colors,
+                            line=dict(color="#ffffff", width=1.5),
+                        ),
+                        text=pnl_period_df["Growth Label"],
+                        textposition="top center",
+                        textfont=dict(size=10, color="#6d28d9"),
+                        connectgaps=False,
+                        hovertemplate=(
+                            f"<b>%{{x}}</b><br>{pnl_period_name} "
+                            "Growth: %{y:.1f}%<extra></extra>"
+                        ),
+                    )
+                )
+
+                fig_period_pnl.add_hline(
+                    y=0, line_color="#94a3b8", line_width=1
+                )
+                fig_period_pnl.update_layout(
+                    height=235,
+                    margin=dict(l=4, r=10, t=34, b=2),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="#fbfdff",
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.03,
+                        x=0,
+                        font=dict(size=9),
+                    ),
+                    bargap=0.30,
+                    xaxis=dict(showgrid=False, tickfont=dict(size=9)),
+                    yaxis=dict(
+                        title=f"P&L ({unit})",
+                        showgrid=False,
+                        tickfont=dict(size=9),
+                        title_font=dict(size=10),
+                    ),
+                    yaxis2=dict(
+                        title="Growth %",
+                        overlaying="y",
+                        side="right",
+                        showgrid=False,
+                        ticksuffix="%",
+                        tickfont=dict(size=9),
+                        title_font=dict(size=10),
+                        range=_growth_axis_range(
+                            pnl_period_df["Growth"]
+                        ),
+                    ),
+                )
+                st.plotly_chart(
+                    fig_period_pnl,
+                    width="stretch",
+                    config={"displayModeBar": False},
+                )
+
+    with np_period_col:
+        # --------------------------------------------------------
+        # NET PROFIT W / M / Q
+        # --------------------------------------------------------
+        with st.container(border=True):
+            np_period_options = ["W", "M", "Q"]
+            np_period = st.session_state.get("np_net_profit_period_value", "M")
+            if np_period not in np_period_options:
+                np_period = "M"
+                st.session_state["np_net_profit_period_value"] = "M"
+
+            np_title_col, np_btn_col = st.columns(
+                [2.4, 1.0], gap="small", vertical_alignment="center"
+            )
+            np_period_name = {
+                "W": "Weekly",
+                "M": "Monthly",
+                "Q": "Quarterly",
+            }[np_period]
+
+            with np_title_col:
+                st.markdown(
+                    f'<div class="np-section-title">{np_period_name} '
+                    f'Net Profit &amp; Growth</div>',
+                    unsafe_allow_html=True,
+                )
+
+            with np_btn_col:
+                np_btn_cols = st.columns(3, gap="small")
+                for period_index, period_label in enumerate(np_period_options):
+                    with np_btn_cols[period_index]:
+                        if st.button(
+                            period_label,
+                            key=f"np_pnl_trend_btn_netprofit_period_{period_index}",
+                            type="primary" if np_period == period_label else "secondary",
+                            use_container_width=True,
+                        ):
+                            st.session_state[
+                                "np_net_profit_period_value"
+                            ] = period_label
+                            st.rerun()
+
+            if (
+                net_profit_df is None
+                or net_profit_df.empty
+                or "NET_PROFIT" not in net_profit_df.columns
+            ):
+                st.info("Net Profit trend is not available for the selected filters.")
+            else:
+                net_period_df = pd.DataFrame()
+                net_period_error = None
+
+                if np_period == "W":
+                    net_date_col = _find_column(
+                        net_profit_df,
+                        "grdt",
+                        "grdate",
+                        "bookingdate",
+                        "date",
+                    )
+                    if net_date_col is None:
+                        net_period_error = (
+                            "Weekly Net Profit cannot be calculated from the "
+                            "current Net Profit dataset because it has no "
+                            "transaction/date column."
+                        )
+                    else:
+                        net_week = net_profit_df[
+                            [net_date_col, "NET_PROFIT"]
+                        ].copy()
+                        net_week[net_date_col] = pd.to_datetime(
+                            net_week[net_date_col], errors="coerce"
+                        )
+                        net_week = net_week[
+                            net_week[net_date_col].notna()
+                        ]
+                        if net_week.empty:
+                            net_period_error = (
+                                "Weekly Net Profit is unavailable for the "
+                                "selected filters."
+                            )
+                        else:
+                            net_week["Week No"] = (
+                                (
+                                    net_week[net_date_col].dt.normalize()
+                                    - pd.Timestamp(start_date)
+                                ).dt.days // 7
+                            ).astype(int) + 1
+                            net_period_df = (
+                                net_week.groupby(
+                                    "Week No", as_index=False
+                                )["NET_PROFIT"]
+                                .sum()
+                                .sort_values("Week No")
+                                .reset_index(drop=True)
+                            )
+                            net_period_df["Period"] = (
+                                "W" + net_period_df["Week No"].astype(str)
+                            )
+
+                elif np_period == "Q":
+                    if "QUARTER" not in net_profit_df.columns:
+                        net_period_error = (
+                            "Quarterly Net Profit is unavailable."
+                        )
+                    else:
+                        net_period_df = (
+                            net_profit_df.groupby(
+                                "QUARTER", as_index=False
+                            )["NET_PROFIT"]
+                            .sum()
+                        )
+                        net_period_df["QUARTER"] = pd.Categorical(
+                            net_period_df["QUARTER"],
+                            categories=QUARTER_ORDER,
+                            ordered=True,
+                        )
+                        net_period_df = (
+                            net_period_df.sort_values("QUARTER")
+                            .reset_index(drop=True)
+                        )
+                        net_period_df["Period"] = (
+                            net_period_df["QUARTER"].astype(str)
+                        )
+
+                else:
+                    if "MONTH" not in net_profit_df.columns:
+                        net_period_error = (
+                            "Monthly Net Profit is unavailable."
+                        )
+                    else:
+                        net_period_df = (
+                            net_profit_df.groupby(
+                                "MONTH", as_index=False
+                            )["NET_PROFIT"]
+                            .sum()
+                        )
+                        net_period_df["MONTH"] = pd.Categorical(
+                            net_period_df["MONTH"],
+                            categories=MONTH_ORDER,
+                            ordered=True,
+                        )
+                        net_period_df = (
+                            net_period_df.sort_values("MONTH")
+                            .reset_index(drop=True)
+                        )
+                        net_period_df["Period"] = (
+                            net_period_df["MONTH"].astype(str)
+                        )
+
+                if net_period_error:
+                    st.info(net_period_error)
+                elif net_period_df.empty:
+                    st.info(
+                        f"No {np_period_name.lower()} Net Profit data is available."
+                    )
+                else:
+                    net_period_df["Display"] = (
+                        pd.to_numeric(
+                            net_period_df["NET_PROFIT"],
+                            errors="coerce",
+                        ).fillna(0.0) / divisor
+                    )
+                    net_period_df["Growth"] = _period_growth(
+                        net_period_df["NET_PROFIT"]
+                    )
+                    net_period_df["Growth Label"] = (
+                        net_period_df["Growth"].apply(
+                            lambda value: (
+                                f"{'▲' if value >= 0 else '▼'} "
+                                f"{abs(value):.1f}%"
+                                if pd.notna(value) else ""
+                            )
+                        )
+                    )
+                    net_growth_colors = [
+                        "#16a34a"
+                        if pd.notna(value) and value >= 0
+                        else "#dc2626"
+                        for value in net_period_df["Growth"]
+                    ]
+
+                    fig_period_np = go.Figure()
+                    fig_period_np.add_trace(
+                        go.Bar(
+                            x=net_period_df["Period"],
+                            y=net_period_df["Display"],
+                            name="Net Profit",
+                            marker=dict(
+                                color="#ddd6fe",
+                                line=dict(
+                                    color="#7c3aed", width=1.4
+                                ),
+                            ),
+                            text=net_period_df["Display"],
+                            texttemplate="₹%{text:.2f}",
+                            textposition="outside",
+                            textfont=dict(
+                                size=9,
+                                color="#6d28d9",
+                                family="Arial",
+                            ),
+                            cliponaxis=False,
+                            hovertemplate=(
+                                f"<b>%{{x}}</b><br>"
+                                f"Net Profit: ₹%{{y:.2f}} "
+                                f"{unit}<extra></extra>"
+                            ),
+                        )
+                    )
+                    fig_period_np.add_trace(
+                        go.Scatter(
+                            x=net_period_df["Period"],
+                            y=net_period_df["Growth"],
+                            name=f"{np_period_name} Growth",
+                            mode="lines+markers+text",
+                            yaxis="y2",
+                            line=dict(
+                                color="#f59e0b", width=2.6
+                            ),
+                            marker=dict(
+                                size=7,
+                                color=net_growth_colors,
+                                line=dict(
+                                    color="#ffffff", width=1.5
+                                ),
+                            ),
+                            text=net_period_df["Growth Label"],
+                            textposition="top center",
+                            textfont=dict(
+                                size=10, color="#b45309"
+                            ),
+                            connectgaps=False,
+                            hovertemplate=(
+                                f"<b>%{{x}}</b><br>"
+                                f"{np_period_name} Growth: "
+                                "%{y:.1f}%<extra></extra>"
+                            ),
+                        )
+                    )
+
+                    fig_period_np.add_hline(
+                        y=0, line_color="#94a3b8", line_width=1
+                    )
+                    fig_period_np.update_layout(
+                        height=235,
+                        margin=dict(l=4, r=10, t=34, b=2),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="#fbfdff",
+                        legend=dict(
+                            orientation="h",
+                            yanchor="bottom",
+                            y=1.03,
+                            x=0,
+                            font=dict(size=9),
+                        ),
+                        bargap=0.30,
+                        xaxis=dict(
+                            showgrid=False, tickfont=dict(size=9)
+                        ),
+                        yaxis=dict(
+                            title=f"Net Profit ({unit})",
+                            showgrid=False,
+                            tickfont=dict(size=9),
+                            title_font=dict(size=10),
+                        ),
+                        yaxis2=dict(
+                            title="Growth %",
+                            overlaying="y",
+                            side="right",
+                            showgrid=False,
+                            ticksuffix="%",
+                            tickfont=dict(size=9),
+                            title_font=dict(size=10),
+                            range=_growth_axis_range(
+                                net_period_df["Growth"]
+                            ),
+                        ),
+                    )
+                    st.plotly_chart(
+                        fig_period_np,
+                        width="stretch",
+                        config={"displayModeBar": False},
+                    )
+
+# Full-width original-style Branch Monthly Avg P&L insight.
     with st.container(border=True):
         st.markdown(
             '<div class="np-section-title" '
@@ -1470,535 +2014,6 @@ def _render_phase1_pnl_insights(
                 else:
                     st.markdown(branch_html, unsafe_allow_html=True)
 
-    # P&L and Net Profit period-growth charts below the full-width branch insight.
-    period_col, period_blank = st.columns([0.44, 0.56], gap="medium")
-
-    def _period_growth(values):
-        result = pd.Series(index=values.index, dtype="float64")
-        if len(values):
-            result.iloc[0] = float("nan")
-        for idx in range(1, len(values)):
-            previous_value = float(values.iloc[idx - 1] or 0)
-            current_value = float(values.iloc[idx] or 0)
-            result.iloc[idx] = (
-                ((current_value - previous_value) / abs(previous_value)) * 100
-                if previous_value != 0 else float("nan")
-            )
-        return result
-
-    def _growth_axis_range(values):
-        clean = pd.to_numeric(values, errors="coerce").dropna()
-        if clean.empty:
-            return [-100, 100]
-        low = float(clean.min())
-        high = float(clean.max())
-        pad = max((high - low) * 0.30, 18.0)
-        return [min(low - pad, -10), max(high + pad, 10)]
-
-    with period_col:
-        # --------------------------------------------------------
-        # P&L W / M / Q
-        # --------------------------------------------------------
-        with st.container(border=True):
-            pnl_period_options = ["W", "M", "Q"]
-            pnl_period = st.session_state.get("np_pnl_period_value", "M")
-            if pnl_period not in pnl_period_options:
-                pnl_period = "M"
-                st.session_state["np_pnl_period_value"] = "M"
-
-            pnl_title_col, pnl_btn_col = st.columns(
-                [2.4, 1.0], gap="small", vertical_alignment="center"
-            )
-            pnl_period_name = {
-                "W": "Weekly",
-                "M": "Monthly",
-                "Q": "Quarterly",
-            }[pnl_period]
-
-            with pnl_title_col:
-                st.markdown(
-                    f'<div class="np-section-title">{pnl_period_name} '
-                    f'P&amp;L &amp; Growth</div>',
-                    unsafe_allow_html=True,
-                )
-
-            with pnl_btn_col:
-                pnl_btn_cols = st.columns(3, gap="small")
-                for period_index, period_label in enumerate(pnl_period_options):
-                    with pnl_btn_cols[period_index]:
-                        if st.button(
-                            period_label,
-                            key=f"np_pnl_trend_btn_pnl_period_{period_index}",
-                            type="primary" if pnl_period == period_label else "secondary",
-                            use_container_width=True,
-                        ):
-                            st.session_state["np_pnl_period_value"] = period_label
-                            st.rerun()
-
-            pnl_period_df = pd.DataFrame()
-            pnl_period_error = None
-
-            if pnl_period == "W":
-                if "grdt" not in insight_df.columns:
-                    pnl_period_error = "Weekly P&L is unavailable because GR date is missing."
-                else:
-                    pnl_week = insight_df[["grdt", "PNL"]].copy()
-                    pnl_week["grdt"] = pd.to_datetime(
-                        pnl_week["grdt"], errors="coerce"
-                    )
-                    pnl_week = pnl_week[pnl_week["grdt"].notna()]
-                    if pnl_week.empty:
-                        pnl_period_error = "Weekly P&L is unavailable for the selected filters."
-                    else:
-                        pnl_week["Week No"] = (
-                            (
-                                pnl_week["grdt"].dt.normalize()
-                                - pd.Timestamp(start_date)
-                            ).dt.days // 7
-                        ).astype(int) + 1
-                        pnl_period_df = (
-                            pnl_week.groupby("Week No", as_index=False)["PNL"]
-                            .sum()
-                            .sort_values("Week No")
-                            .reset_index(drop=True)
-                        )
-                        pnl_period_df["Period"] = (
-                            "W" + pnl_period_df["Week No"].astype(str)
-                        )
-
-            elif pnl_period == "Q":
-                if "QUARTER" not in insight_df.columns:
-                    pnl_period_error = "Quarterly P&L is unavailable."
-                else:
-                    pnl_period_df = (
-                        insight_df.groupby("QUARTER", as_index=False)["PNL"]
-                        .sum()
-                    )
-                    pnl_period_df["QUARTER"] = pd.Categorical(
-                        pnl_period_df["QUARTER"],
-                        categories=QUARTER_ORDER,
-                        ordered=True,
-                    )
-                    pnl_period_df = (
-                        pnl_period_df.sort_values("QUARTER")
-                        .reset_index(drop=True)
-                    )
-                    pnl_period_df["Period"] = pnl_period_df["QUARTER"].astype(str)
-
-            else:
-                pnl_period_df = (
-                    insight_df.groupby("MONTH", as_index=False)["PNL"]
-                    .sum()
-                )
-                pnl_period_df["MONTH"] = pd.Categorical(
-                    pnl_period_df["MONTH"],
-                    categories=MONTH_ORDER,
-                    ordered=True,
-                )
-                pnl_period_df = (
-                    pnl_period_df.sort_values("MONTH")
-                    .reset_index(drop=True)
-                )
-                pnl_period_df["Period"] = pnl_period_df["MONTH"].astype(str)
-
-            if pnl_period_error:
-                st.info(pnl_period_error)
-            elif pnl_period_df.empty:
-                st.info(f"No {pnl_period_name.lower()} P&L data is available.")
-            else:
-                pnl_period_df["Display"] = (
-                    pd.to_numeric(
-                        pnl_period_df["PNL"], errors="coerce"
-                    ).fillna(0.0) / divisor
-                )
-                pnl_period_df["Growth"] = _period_growth(
-                    pnl_period_df["PNL"]
-                )
-                pnl_period_df["Growth Label"] = pnl_period_df["Growth"].apply(
-                    lambda value: (
-                        f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
-                        if pd.notna(value) else ""
-                    )
-                )
-                pnl_growth_colors = [
-                    "#16a34a"
-                    if pd.notna(value) and value >= 0
-                    else "#dc2626"
-                    for value in pnl_period_df["Growth"]
-                ]
-
-                fig_period_pnl = go.Figure()
-                fig_period_pnl.add_trace(
-                    go.Bar(
-                        x=pnl_period_df["Period"],
-                        y=pnl_period_df["Display"],
-                        name="P&L",
-                        marker=dict(
-                            color="#99f6e4",
-                            line=dict(color="#0f766e", width=1.4),
-                        ),
-                        text=pnl_period_df["Display"],
-                        texttemplate="₹%{text:.2f}",
-                        textposition="outside",
-                        textfont=dict(
-                            size=9, color="#0f766e", family="Arial"
-                        ),
-                        cliponaxis=False,
-                        hovertemplate=(
-                            f"<b>%{{x}}</b><br>"
-                            f"P&L: ₹%{{y:.2f}} {unit}<extra></extra>"
-                        ),
-                    )
-                )
-                fig_period_pnl.add_trace(
-                    go.Scatter(
-                        x=pnl_period_df["Period"],
-                        y=pnl_period_df["Growth"],
-                        name=f"{pnl_period_name} Growth",
-                        mode="lines+markers+text",
-                        yaxis="y2",
-                        line=dict(color="#7c3aed", width=2.6),
-                        marker=dict(
-                            size=7,
-                            color=pnl_growth_colors,
-                            line=dict(color="#ffffff", width=1.5),
-                        ),
-                        text=pnl_period_df["Growth Label"],
-                        textposition="top center",
-                        textfont=dict(size=10, color="#6d28d9"),
-                        connectgaps=False,
-                        hovertemplate=(
-                            f"<b>%{{x}}</b><br>{pnl_period_name} "
-                            "Growth: %{y:.1f}%<extra></extra>"
-                        ),
-                    )
-                )
-
-                fig_period_pnl.add_hline(
-                    y=0, line_color="#94a3b8", line_width=1
-                )
-                fig_period_pnl.update_layout(
-                    height=235,
-                    margin=dict(l=4, r=10, t=34, b=2),
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="#fbfdff",
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.03,
-                        x=0,
-                        font=dict(size=9),
-                    ),
-                    bargap=0.30,
-                    xaxis=dict(showgrid=False, tickfont=dict(size=9)),
-                    yaxis=dict(
-                        title=f"P&L ({unit})",
-                        showgrid=False,
-                        tickfont=dict(size=9),
-                        title_font=dict(size=10),
-                    ),
-                    yaxis2=dict(
-                        title="Growth %",
-                        overlaying="y",
-                        side="right",
-                        showgrid=False,
-                        ticksuffix="%",
-                        tickfont=dict(size=9),
-                        title_font=dict(size=10),
-                        range=_growth_axis_range(
-                            pnl_period_df["Growth"]
-                        ),
-                    ),
-                )
-                st.plotly_chart(
-                    fig_period_pnl,
-                    width="stretch",
-                    config={"displayModeBar": False},
-                )
-
-        # --------------------------------------------------------
-        # NET PROFIT W / M / Q
-        # --------------------------------------------------------
-        with st.container(border=True):
-            np_period_options = ["W", "M", "Q"]
-            np_period = st.session_state.get("np_net_profit_period_value", "M")
-            if np_period not in np_period_options:
-                np_period = "M"
-                st.session_state["np_net_profit_period_value"] = "M"
-
-            np_title_col, np_btn_col = st.columns(
-                [2.4, 1.0], gap="small", vertical_alignment="center"
-            )
-            np_period_name = {
-                "W": "Weekly",
-                "M": "Monthly",
-                "Q": "Quarterly",
-            }[np_period]
-
-            with np_title_col:
-                st.markdown(
-                    f'<div class="np-section-title">{np_period_name} '
-                    f'Net Profit &amp; Growth</div>',
-                    unsafe_allow_html=True,
-                )
-
-            with np_btn_col:
-                np_btn_cols = st.columns(3, gap="small")
-                for period_index, period_label in enumerate(np_period_options):
-                    with np_btn_cols[period_index]:
-                        if st.button(
-                            period_label,
-                            key=f"np_pnl_trend_btn_netprofit_period_{period_index}",
-                            type="primary" if np_period == period_label else "secondary",
-                            use_container_width=True,
-                        ):
-                            st.session_state[
-                                "np_net_profit_period_value"
-                            ] = period_label
-                            st.rerun()
-
-            if (
-                net_profit_df is None
-                or net_profit_df.empty
-                or "NET_PROFIT" not in net_profit_df.columns
-            ):
-                st.info("Net Profit trend is not available for the selected filters.")
-            else:
-                net_period_df = pd.DataFrame()
-                net_period_error = None
-
-                if np_period == "W":
-                    net_date_col = _find_column(
-                        net_profit_df,
-                        "grdt",
-                        "grdate",
-                        "bookingdate",
-                        "date",
-                    )
-                    if net_date_col is None:
-                        net_period_error = (
-                            "Weekly Net Profit cannot be calculated from the "
-                            "current Net Profit dataset because it has no "
-                            "transaction/date column."
-                        )
-                    else:
-                        net_week = net_profit_df[
-                            [net_date_col, "NET_PROFIT"]
-                        ].copy()
-                        net_week[net_date_col] = pd.to_datetime(
-                            net_week[net_date_col], errors="coerce"
-                        )
-                        net_week = net_week[
-                            net_week[net_date_col].notna()
-                        ]
-                        if net_week.empty:
-                            net_period_error = (
-                                "Weekly Net Profit is unavailable for the "
-                                "selected filters."
-                            )
-                        else:
-                            net_week["Week No"] = (
-                                (
-                                    net_week[net_date_col].dt.normalize()
-                                    - pd.Timestamp(start_date)
-                                ).dt.days // 7
-                            ).astype(int) + 1
-                            net_period_df = (
-                                net_week.groupby(
-                                    "Week No", as_index=False
-                                )["NET_PROFIT"]
-                                .sum()
-                                .sort_values("Week No")
-                                .reset_index(drop=True)
-                            )
-                            net_period_df["Period"] = (
-                                "W" + net_period_df["Week No"].astype(str)
-                            )
-
-                elif np_period == "Q":
-                    if "QUARTER" not in net_profit_df.columns:
-                        net_period_error = (
-                            "Quarterly Net Profit is unavailable."
-                        )
-                    else:
-                        net_period_df = (
-                            net_profit_df.groupby(
-                                "QUARTER", as_index=False
-                            )["NET_PROFIT"]
-                            .sum()
-                        )
-                        net_period_df["QUARTER"] = pd.Categorical(
-                            net_period_df["QUARTER"],
-                            categories=QUARTER_ORDER,
-                            ordered=True,
-                        )
-                        net_period_df = (
-                            net_period_df.sort_values("QUARTER")
-                            .reset_index(drop=True)
-                        )
-                        net_period_df["Period"] = (
-                            net_period_df["QUARTER"].astype(str)
-                        )
-
-                else:
-                    if "MONTH" not in net_profit_df.columns:
-                        net_period_error = (
-                            "Monthly Net Profit is unavailable."
-                        )
-                    else:
-                        net_period_df = (
-                            net_profit_df.groupby(
-                                "MONTH", as_index=False
-                            )["NET_PROFIT"]
-                            .sum()
-                        )
-                        net_period_df["MONTH"] = pd.Categorical(
-                            net_period_df["MONTH"],
-                            categories=MONTH_ORDER,
-                            ordered=True,
-                        )
-                        net_period_df = (
-                            net_period_df.sort_values("MONTH")
-                            .reset_index(drop=True)
-                        )
-                        net_period_df["Period"] = (
-                            net_period_df["MONTH"].astype(str)
-                        )
-
-                if net_period_error:
-                    st.info(net_period_error)
-                elif net_period_df.empty:
-                    st.info(
-                        f"No {np_period_name.lower()} Net Profit data is available."
-                    )
-                else:
-                    net_period_df["Display"] = (
-                        pd.to_numeric(
-                            net_period_df["NET_PROFIT"],
-                            errors="coerce",
-                        ).fillna(0.0) / divisor
-                    )
-                    net_period_df["Growth"] = _period_growth(
-                        net_period_df["NET_PROFIT"]
-                    )
-                    net_period_df["Growth Label"] = (
-                        net_period_df["Growth"].apply(
-                            lambda value: (
-                                f"{'▲' if value >= 0 else '▼'} "
-                                f"{abs(value):.1f}%"
-                                if pd.notna(value) else ""
-                            )
-                        )
-                    )
-                    net_growth_colors = [
-                        "#16a34a"
-                        if pd.notna(value) and value >= 0
-                        else "#dc2626"
-                        for value in net_period_df["Growth"]
-                    ]
-
-                    fig_period_np = go.Figure()
-                    fig_period_np.add_trace(
-                        go.Bar(
-                            x=net_period_df["Period"],
-                            y=net_period_df["Display"],
-                            name="Net Profit",
-                            marker=dict(
-                                color="#ddd6fe",
-                                line=dict(
-                                    color="#7c3aed", width=1.4
-                                ),
-                            ),
-                            text=net_period_df["Display"],
-                            texttemplate="₹%{text:.2f}",
-                            textposition="outside",
-                            textfont=dict(
-                                size=9,
-                                color="#6d28d9",
-                                family="Arial",
-                            ),
-                            cliponaxis=False,
-                            hovertemplate=(
-                                f"<b>%{{x}}</b><br>"
-                                f"Net Profit: ₹%{{y:.2f}} "
-                                f"{unit}<extra></extra>"
-                            ),
-                        )
-                    )
-                    fig_period_np.add_trace(
-                        go.Scatter(
-                            x=net_period_df["Period"],
-                            y=net_period_df["Growth"],
-                            name=f"{np_period_name} Growth",
-                            mode="lines+markers+text",
-                            yaxis="y2",
-                            line=dict(
-                                color="#f59e0b", width=2.6
-                            ),
-                            marker=dict(
-                                size=7,
-                                color=net_growth_colors,
-                                line=dict(
-                                    color="#ffffff", width=1.5
-                                ),
-                            ),
-                            text=net_period_df["Growth Label"],
-                            textposition="top center",
-                            textfont=dict(
-                                size=10, color="#b45309"
-                            ),
-                            connectgaps=False,
-                            hovertemplate=(
-                                f"<b>%{{x}}</b><br>"
-                                f"{np_period_name} Growth: "
-                                "%{y:.1f}%<extra></extra>"
-                            ),
-                        )
-                    )
-
-                    fig_period_np.add_hline(
-                        y=0, line_color="#94a3b8", line_width=1
-                    )
-                    fig_period_np.update_layout(
-                        height=235,
-                        margin=dict(l=4, r=10, t=34, b=2),
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="#fbfdff",
-                        legend=dict(
-                            orientation="h",
-                            yanchor="bottom",
-                            y=1.03,
-                            x=0,
-                            font=dict(size=9),
-                        ),
-                        bargap=0.30,
-                        xaxis=dict(
-                            showgrid=False, tickfont=dict(size=9)
-                        ),
-                        yaxis=dict(
-                            title=f"Net Profit ({unit})",
-                            showgrid=False,
-                            tickfont=dict(size=9),
-                            title_font=dict(size=10),
-                        ),
-                        yaxis2=dict(
-                            title="Growth %",
-                            overlaying="y",
-                            side="right",
-                            showgrid=False,
-                            ticksuffix="%",
-                            tickfont=dict(size=9),
-                            title_font=dict(size=10),
-                            range=_growth_axis_range(
-                                net_period_df["Growth"]
-                            ),
-                        ),
-                    )
-                    st.plotly_chart(
-                        fig_period_np,
-                        width="stretch",
-                        config={"displayModeBar": False},
-                    )
 
 
     customer_col, route_col = st.columns(2, gap="medium")
@@ -2350,14 +2365,57 @@ def show_net_profit_dashboard():
 
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
-    detail_tab, audit_tab, gr_tab, monthly_tab = st.tabs(
-        [
-            "Branch Net Profit Detail",
-            "Monthly Calculation Audit",
-            "Detailed GR Records",
-            "Monthly Summary",
-        ]
+    st.markdown(
+        """
+        <style>
+        /* Bottom render tabs: dark-blue button style */
+        div[class*="st-key-np_bottom_render_tabs"] div[data-baseweb="tab-list"] {
+            gap: 8px !important;
+            background: transparent !important;
+            border-bottom: none !important;
+        }
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"] {
+            background: #ffffff !important;
+            color: #1e3a5f !important;
+            border: 1px solid #cbd5e1 !important;
+            border-radius: 8px !important;
+            min-height: 36px !important;
+            padding: 7px 16px !important;
+            font-size: 12px !important;
+            font-weight: 700 !important;
+            box-shadow: none !important;
+        }
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:hover {
+            background: #eff6ff !important;
+            border-color: #1d4ed8 !important;
+            color: #1d4ed8 !important;
+        }
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"][aria-selected="true"] {
+            background: #1e3a5f !important;
+            border-color: #1e3a5f !important;
+            color: #ffffff !important;
+        }
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"][aria-selected="true"] p,
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"][aria-selected="true"] span {
+            color: #ffffff !important;
+        }
+        div[class*="st-key-np_bottom_render_tabs"] div[data-baseweb="tab-highlight"] {
+            display: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
+
+    with st.container(key="np_bottom_render_tabs"):
+        detail_tab, audit_tab, gr_tab, monthly_tab = st.tabs(
+            [
+                "Branch Net Profit Detail",
+                "Monthly Calculation Audit",
+                "Detailed GR Records",
+                "Monthly Summary",
+            ]
+        )
 
     # --------------------------------------------------------
     # TAB 1: BRANCH NET PROFIT DETAIL
