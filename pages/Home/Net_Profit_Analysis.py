@@ -7,7 +7,6 @@ import streamlit as st
 
 from services.data_loader import get_date_range
 from services.net_profit_data_loader import load_net_profit_data_pair
-from services.pnl_data_loader import load_pnl_sp_revenue_total
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
 
@@ -161,9 +160,15 @@ def _filter_to_branch_scope(df, branch_names):
 
 def _apply_pnl_business_rule(df, all_branches):
     """
-    All branches  -> Origin view P&L only.
-    Explicit branch selection -> Origin P&L + Destination P&L.
-    Overhead is deducted once in both cases.
+    P&L rule:
+    - All branches -> Origin-view P&L only, to avoid double-counting GR-level P&L.
+    - Explicit branch selection -> Origin P&L + Destination P&L.
+
+    Business / Revenue rule:
+    - Always Booking + Delivery (Origin Business + Destination Business),
+      including All Branches / Select All cases.
+
+    Overhead is deducted once in both P&L cases.
     """
     if df is None or df.empty:
         return df
@@ -186,9 +191,10 @@ def _apply_pnl_business_rule(df, all_branches):
         out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
 
     if all_branches:
-        # Consolidated dashboard must not count the same GR-level P&L twice.
+        # Consolidated P&L must not count the same GR-level P&L twice.
+        # IMPORTANT: Destination Business is intentionally retained because
+        # Business / Revenue must always show Booking + Delivery.
         out["DESTINATION_PNL"] = 0.0
-        out["DESTINATION_BUSINESS"] = 0.0
         out["DESTINATION_TOTAL_INCOME"] = 0.0
         out["DESTINATION_DIRECT_EXPENSE"] = 0.0
 
@@ -224,6 +230,8 @@ def calculate_kpis(df):
             "total_expense": 0.0,
             "net_profit": 0.0,
             "total_income": 0.0,
+            "origin_business": 0.0,
+            "destination_business": 0.0,
             "business": 0.0,
             "margin": 0.0,
         }
@@ -241,6 +249,8 @@ def calculate_kpis(df):
         "total_expense": float(df["TOTAL EXPENSE"].sum()),
         "net_profit": float(df["NET_PROFIT"].sum()),
         "total_income": float(df["TOTAL_INCOME"].sum()),
+        "origin_business": float(df["ORIGIN_BUSINESS"].sum()) if "ORIGIN_BUSINESS" in df.columns else 0.0,
+        "destination_business": float(df["DESTINATION_BUSINESS"].sum()) if "DESTINATION_BUSINESS" in df.columns else 0.0,
         "business": float(df["BUSINESS"].sum()) if "BUSINESS" in df.columns else 0.0,
     }
 
@@ -439,10 +449,6 @@ def show_net_profit_dashboard():
             prev_end,
         )
 
-        # Consolidated Business / Revenue KPI must match the P&L SP directly.
-        sp_revenue_total = load_pnl_sp_revenue_total(start_date, end_date)
-        sp_prev_revenue_total = load_pnl_sp_revenue_total(prev_start, prev_end)
-
     if raw_df is None or raw_df.empty:
         st.warning("No Net Profit data found for selected financial year.")
         return
@@ -542,16 +548,10 @@ def show_net_profit_dashboard():
     current = calculate_kpis(df)
     previous = calculate_kpis(prev_df)
 
-    # MAIN Business / Revenue KPI:
-    # When no branch/hierarchy/month/quarter filters are applied, show the
-    # exact REVENUE total returned by the P&L stored procedure. This prevents
-    # revenue from being understated by booking/branch joins.
-    no_business_scope_filters = not (
-        branches or zones or circles or quarters or months
-    )
-    if all_branches and no_business_scope_filters:
-        current["business"] = float(sp_revenue_total or 0.0)
-        previous["business"] = float(sp_prev_revenue_total or 0.0)
+    # Business KPIs are shown separately for audit clarity:
+    # Origin Business = Booking revenue.
+    # Destination Business = Delivery revenue.
+    # The combined BUSINESS column is still retained for downstream tables/calculations.
 
     # --------------------------------------------------------
     # KPI ROW 1
@@ -559,13 +559,14 @@ def show_net_profit_dashboard():
 
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
 
-    kpi_cols = st.columns(6, gap="small")
+    kpi_cols = st.columns(7, gap="small")
 
     kpis = [
         ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False),
         ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False),
         ("Combined P&L", current["combined_pnl"], previous["combined_pnl"], False),
-        ("Business / Revenue", current["business"], previous["business"], False),
+        ("Origin Business / Booking", current["origin_business"], previous["origin_business"], False),
+        ("Destination Business / Delivery", current["destination_business"], previous["destination_business"], False),
         ("Net Profit", current["net_profit"], previous["net_profit"], False),
         ("Net Profit Margin", current["margin"], previous["margin"], False),
     ]
