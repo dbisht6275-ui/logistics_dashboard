@@ -119,6 +119,7 @@ def _prepare_revenue_data(df):
 def _prepare_pnl_sp_data(df):
     aliases = {
         "GRNO": ["GRNO", "grno", "gr_no", "grnumber", "gr_number"],
+        "REVENUE": ["REVENUE", "revenue", "freight", "business", "totalfreight", "total_freight"],
         "DELIVERYINCOME": ["DELIVERYINCOME", "delivery_income"],
         "OTHERCHARGES": ["OTHERCHARGES", "other_charges"],
         "ADDITIONALFREIGHT": ["ADDITIONALFREIGHT", "additional_freight"],
@@ -127,6 +128,7 @@ def _prepare_pnl_sp_data(df):
     }
     output_columns = [
         "grno",
+        "REVENUE",
         "DELIVERYINCOME",
         "OTHERCHARGES",
         "ADDITIONALFREIGHT",
@@ -153,6 +155,7 @@ def _prepare_pnl_sp_data(df):
     out["grno"] = _clean_grno(out["grno"])
 
     numeric_columns = [
+        "REVENUE",
         "DELIVERYINCOME",
         "OTHERCHARGES",
         "ADDITIONALFREIGHT",
@@ -181,6 +184,7 @@ def _merge_revenue_and_pnl(revenue_df, pnl_sp_df):
         columns=[
             column
             for column in [
+                "REVENUE",
                 "EXPENSE",
                 "PNL",
                 "RAW_EXPENSE",
@@ -197,6 +201,7 @@ def _merge_revenue_and_pnl(revenue_df, pnl_sp_df):
     result = revenue.merge(pnl_data, on="grno", how="left", validate="many_to_one")
 
     numeric_columns = [
+        "REVENUE",
         "DELIVERYINCOME",
         "OTHERCHARGES",
         "ADDITIONALFREIGHT",
