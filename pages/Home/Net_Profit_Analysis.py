@@ -956,25 +956,60 @@ def _render_phase1_pnl_insights(
             trend_df = _build_pnl_insight_trend(
                 insight_df, insight_prev_df, trend_type, start_date, prev_start
             )
-            trend_df["CY"] = trend_df["PNL"] / divisor
-            trend_df["LY"] = trend_df["PY_PNL"] / divisor
+            trend_df["CY"] = pd.to_numeric(trend_df["PNL"], errors="coerce").fillna(0.0) / divisor
+            trend_df["LY"] = pd.to_numeric(trend_df["PY_PNL"], errors="coerce").fillna(0.0) / divisor
+            trend_df["Growth %"] = trend_df.apply(
+                lambda row: pct_change(row["CY"], row["LY"]), axis=1
+            )
+            trend_df["Growth Label"] = trend_df["Growth %"].apply(
+                lambda value: f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
+            )
+
             fig_trend = go.Figure()
             fig_trend.add_trace(go.Bar(
-                x=trend_df["Period"], y=trend_df["LY"], name="LY",
-                marker_color="#cbd5e1",
+                x=trend_df["Period"], y=trend_df["LY"], name=f"LY ({prev_fy})",
+                marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.2)),
+                text=trend_df["LY"], texttemplate="%{text:.2f}", textposition="outside",
+                textfont=dict(size=10, color="#475569", family="Arial"), cliponaxis=False,
                 hovertemplate=f"<b>%{{x}}</b><br>LY P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
             ))
             fig_trend.add_trace(go.Bar(
-                x=trend_df["Period"], y=trend_df["CY"], name="CY",
-                marker_color="#2563eb",
+                x=trend_df["Period"], y=trend_df["CY"], name=f"Current ({fy})",
+                marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
+                text=trend_df["CY"], texttemplate="%{text:.2f}", textposition="outside",
+                textfont=dict(size=10, color="#2563eb", family="Arial"), cliponaxis=False,
                 hovertemplate=f"<b>%{{x}}</b><br>CY P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
             ))
+
+            trend_abs_max = max(
+                float(pd.concat([trend_df["CY"].abs(), trend_df["LY"].abs()]).max() or 0),
+                1.0,
+            )
+            if len(trend_df) <= 40:
+                for _, trend_row in trend_df.iterrows():
+                    growth_value = float(trend_row["Growth %"] or 0)
+                    current_value = float(trend_row["CY"] or 0)
+                    previous_value = float(trend_row["LY"] or 0)
+                    positive_top = max(current_value, previous_value, 0)
+                    negative_bottom = min(current_value, previous_value, 0)
+                    annotation_gap = trend_abs_max * (0.20 if trend_type == "Monthly" else 0.14)
+                    annotation_y = positive_top + annotation_gap if positive_top > 0 else negative_bottom - annotation_gap
+                    fig_trend.add_annotation(
+                        x=trend_row["Period"], y=annotation_y,
+                        text=trend_row["Growth Label"], showarrow=False,
+                        font=dict(
+                            size=10,
+                            color="#166534" if growth_value >= 0 else "#dc2626",
+                            family="Arial",
+                        ),
+                    )
+
             fig_trend.add_hline(y=0, line_width=1, line_color="#64748b")
             fig_trend.update_layout(
-                barmode="group", height=285, margin=dict(l=6, r=6, t=14, b=4),
+                barmode="group", height=300, margin=dict(l=6, r=6, t=34, b=4),
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#fbfdff",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
-                xaxis_title="", yaxis_title=f"P&L ({unit})",
+                legend=dict(orientation="h", yanchor="bottom", y=1.04, x=0, font=dict(size=10)),
+                xaxis_title="", yaxis_title=f"P&L ({unit})", bargap=0.22, bargroupgap=0.08,
             )
             fig_trend.update_xaxes(showgrid=False)
             fig_trend.update_yaxes(showgrid=False)
@@ -1004,33 +1039,64 @@ def _render_phase1_pnl_insights(
                     )
                     st.plotly_chart(fig_zone, width="stretch", config={"displayModeBar": False})
 
-    mom_col, branch_col = st.columns([1.55, 0.85], gap="medium")
+    # Keep MoM compact so the branch-slab insight gets enough room to breathe.
+    mom_col, branch_col = st.columns([0.82, 1.18], gap="medium")
     with mom_col:
         with st.container(border=True):
             st.markdown('<div class="np-section-title">Month on Month P&amp;L &amp; Growth</div>', unsafe_allow_html=True)
             mom = insight_df.groupby("MONTH", as_index=False)["PNL"].sum()
             mom["MONTH"] = pd.Categorical(mom["MONTH"], MONTH_ORDER, ordered=True)
             mom = mom.sort_values("MONTH").reset_index(drop=True)
-            mom["P&L Display"] = mom["PNL"] / divisor
-            mom["MoM Growth"] = mom["PNL"].pct_change().replace([float("inf"), float("-inf")], pd.NA) * 100
+            mom["P&L Display"] = pd.to_numeric(mom["PNL"], errors="coerce").fillna(0.0) / divisor
+
+            def _safe_mom_growth(values):
+                result = pd.Series(index=values.index, dtype="float64")
+                if len(values):
+                    result.iloc[0] = float("nan")
+                for idx in range(1, len(values)):
+                    previous_value = float(values.iloc[idx - 1] or 0)
+                    current_value = float(values.iloc[idx] or 0)
+                    result.iloc[idx] = (
+                        ((current_value - previous_value) / abs(previous_value)) * 100
+                        if previous_value != 0 else float("nan")
+                    )
+                return result
+
+            mom["MoM Growth"] = _safe_mom_growth(mom["PNL"])
+            mom["Growth Label"] = mom["MoM Growth"].apply(
+                lambda value: f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%" if pd.notna(value) else ""
+            )
+            growth_colors = [
+                "#16a34a" if pd.notna(value) and value >= 0 else "#dc2626"
+                for value in mom["MoM Growth"]
+            ]
+
             fig_mom = go.Figure()
             fig_mom.add_trace(go.Bar(
                 x=mom["MONTH"], y=mom["P&L Display"], name="P&L",
-                marker_color="#bfdbfe", marker_line_color="#2563eb", marker_line_width=1,
+                marker=dict(color="#bfdbfe", line=dict(color="#2563eb", width=1.2)),
+                text=mom["P&L Display"], texttemplate="₹%{text:.2f}", textposition="outside",
+                textfont=dict(size=9, color="#1e3a8a", family="Arial"), cliponaxis=False,
                 hovertemplate=f"<b>%{{x}}</b><br>P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
             ))
             fig_mom.add_trace(go.Scatter(
                 x=mom["MONTH"], y=mom["MoM Growth"], name="MoM Growth",
-                mode="lines+markers", yaxis="y2", line=dict(color="#f59e0b", width=2),
+                mode="lines+markers+text", yaxis="y2",
+                line=dict(color="#f59e0b", width=2.4),
+                marker=dict(size=7, color=growth_colors, line=dict(color="#ffffff", width=1.5)),
+                text=mom["Growth Label"], textposition="top center",
+                textfont=dict(size=9, color="#334155"), connectgaps=False,
                 hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.1f}%<extra></extra>",
             ))
             fig_mom.update_layout(
-                height=285, margin=dict(l=6, r=10, t=14, b=4),
+                height=235, margin=dict(l=4, r=8, t=26, b=2),
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#fbfdff",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
-                xaxis=dict(showgrid=False),
-                yaxis=dict(title=f"P&L ({unit})", showgrid=False),
-                yaxis2=dict(title="Growth %", overlaying="y", side="right", showgrid=False),
+                legend=dict(orientation="h", yanchor="bottom", y=1.03, x=0, font=dict(size=9)),
+                bargap=0.30,
+                xaxis=dict(showgrid=False, tickfont=dict(size=9)),
+                yaxis=dict(title=f"P&L ({unit})", showgrid=False, tickfont=dict(size=9), title_font=dict(size=10)),
+                yaxis2=dict(title="Growth %", overlaying="y", side="right", showgrid=False,
+                            ticksuffix="%", tickfont=dict(size=9), title_font=dict(size=10)),
             )
             st.plotly_chart(fig_mom, width="stretch", config={"displayModeBar": False})
 
@@ -1522,15 +1588,8 @@ def show_net_profit_dashboard():
             },
         )
 
+        # Prepare CSV here, but render the download control at the very end of the dashboard.
         csv_data = display.to_csv(index=False).encode("utf-8-sig")
-
-        st.download_button(
-            "Download Net Profit CSV",
-            data=csv_data,
-            file_name=f"net_profit_dashboard_{fy}.csv",
-            mime="text/csv",
-            key="np_download",
-        )
 
     # --------------------------------------------------------
     # MONTH-WISE AUDIT TABLE
@@ -1573,6 +1632,16 @@ def show_net_profit_dashboard():
             width="stretch",
             hide_index=True,
         )
+
+    # Keep CSV download as the final dashboard action.
+    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+    st.download_button(
+        "Download Net Profit CSV",
+        data=csv_data,
+        file_name=f"net_profit_dashboard_{fy}.csv",
+        mime="text/csv",
+        key="np_download",
+    )
 
 
 # Optional direct-run support.
