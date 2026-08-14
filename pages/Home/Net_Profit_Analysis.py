@@ -45,14 +45,17 @@ def get_previous_fy(fy):
     start_year, end_year = map(int, fy.split("-"))
     return f"{start_year - 1}-{end_year - 1}"
 
+
 def get_conversion(conversion_type):
     if conversion_type == "Lac":
         return 100_000, "Lac"
     return 10_000_000, "Cr"
 
+
 def amount_text(value, conversion_type):
     divisor, unit = get_conversion(conversion_type)
     return f"₹{float(value or 0) / divisor:,.2f} {unit}"
+
 
 def pct_change(current, previous):
     current = float(current or 0)
@@ -546,6 +549,33 @@ def _inject_css():
             font-size:10px !important;
             font-weight:650 !important;
         }
+
+        /* P&L insight buttons - copied from the P&L dashboard visual language. */
+        div[class*="st-key-np_pnl_trend_btn_"] {margin:0 !important;padding:0 !important;}
+        div[class*="st-key-np_pnl_trend_btn_"] div[data-testid="stButton"],
+        div[class*="st-key-np_pnl_branch_slab_btn_"] div[data-testid="stButton"] {width:100% !important;margin:0 !important;}
+        div[class*="st-key-np_pnl_trend_btn_"] button,
+        div[class*="st-key-np_pnl_branch_slab_btn_"] button {
+            width:100% !important;min-height:34px !important;height:34px !important;padding:4px 8px !important;
+            margin:0 !important;border:1px solid #d8e2ee !important;border-radius:8px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%) !important;color:#334155 !important;
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 1px 2px rgba(15,23,42,.05) !important;
+            transform:none !important;font-size:11px !important;font-weight:650 !important;white-space:nowrap !important;
+        }
+        div[class*="st-key-np_pnl_trend_btn_"] button:hover,
+        div[class*="st-key-np_pnl_branch_slab_btn_"] button:hover {
+            border-color:#9bb7d8 !important;background:linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important;
+            color:#174a7e !important;box-shadow:inset 0 1px 0 #ffffff,0 2px 5px rgba(15,42,67,.08) !important;
+        }
+        div[class*="st-key-np_pnl_trend_btn_"] button[data-testid="stBaseButton-primary"],
+        div[class*="st-key-np_pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] {
+            border-color:#123f73 !important;background:linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
+            color:#ffffff !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 2px 5px rgba(15,42,67,.18) !important;
+        }
+        div[class*="st-key-np_pnl_trend_btn_"] button[data-testid="stBaseButton-primary"] p,
+        div[class*="st-key-np_pnl_trend_btn_"] button[data-testid="stBaseButton-primary"] span,
+        div[class*="st-key-np_pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] p,
+        div[class*="st-key-np_pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] span {color:#ffffff !important;}
         </style>
         """,
         unsafe_allow_html=True,
@@ -768,50 +798,82 @@ def _build_pnl_insight_trend(current_df, previous_df, trend_type, start_date, pr
     return result
 
 
-def _top_pnl_insight_table(df, prev_df, group_col, label, divisor, unit, top_n=10):
-    if df is None or df.empty or group_col not in df.columns:
-        st.info(f"{label} insight is not available in the P&L dataset.")
+def _top_pnl_insight_table(df, prev_df, group_col, entity_name, divisor, unit, widget_key, subtitle=""):
+    """Original P&L-dashboard style Top-N insight table."""
+    if group_col not in df.columns:
+        st.info(f"{entity_name.rstrip('s')} column is not available in P&L insight data.")
         return
 
-    cur = (
-        df[[group_col, "PNL"]]
-        .dropna(subset=[group_col])
-        .groupby(group_col, dropna=False, as_index=False)["PNL"].sum()
-        .rename(columns={"PNL": "Current P&L"})
-    )
-    if prev_df is not None and not prev_df.empty and group_col in prev_df.columns:
-        prev = (
-            prev_df[[group_col, "PNL"]]
-            .dropna(subset=[group_col])
-            .groupby(group_col, dropna=False, as_index=False)["PNL"].sum()
-            .rename(columns={"PNL": "LY P&L"})
+    title_col, selector_col = st.columns([4.2, 1.0], gap="small", vertical_alignment="center")
+    with selector_col:
+        top_n = st.selectbox(
+            f"{entity_name} to display", [10, 20, 30, 40], index=0,
+            format_func=lambda value: f"Top {value}", key=f"{widget_key}_top_n",
+            label_visibility="collapsed",
         )
+    with title_col:
+        st.markdown(
+            f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>"
+            f"Top {top_n} {entity_name} by P&amp;L</div>"
+            f"<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>{escape(subtitle)}</div>",
+            unsafe_allow_html=True,
+        )
+
+    current_data = df[[group_col, "PNL"]].copy()
+    current_data[group_col] = current_data[group_col].fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
+    current_rank = current_data[current_data[group_col].ne("Unknown")].groupby(group_col, dropna=False)["PNL"].sum().reset_index(name="Current PNL")
+    if prev_df is not None and not prev_df.empty and group_col in prev_df.columns and "PNL" in prev_df.columns:
+        previous_data = prev_df[[group_col, "PNL"]].copy()
+        previous_data[group_col] = previous_data[group_col].fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
+        previous_rank = previous_data[previous_data[group_col].ne("Unknown")].groupby(group_col, dropna=False)["PNL"].sum().reset_index(name="Previous PNL")
     else:
-        prev = pd.DataFrame(columns=[group_col, "LY P&L"])
+        previous_rank = pd.DataFrame(columns=[group_col, "Previous PNL"])
 
-    result = cur.merge(prev, on=group_col, how="left")
-    result["LY P&L"] = pd.to_numeric(result["LY P&L"], errors="coerce").fillna(0.0)
-    total_abs = float(result["Current P&L"].abs().sum())
-    result["Share %"] = result["Current P&L"].abs() / total_abs * 100 if total_abs else 0.0
-    result["vs LY %"] = result.apply(
-        lambda row: pct_change(row["Current P&L"], row["LY P&L"]) if row["LY P&L"] else 0.0,
-        axis=1,
-    )
-    result = result.sort_values("Current P&L", ascending=False).head(top_n).copy()
-    result[f"P&L ({unit})"] = result["Current P&L"] / divisor
-    result[f"LY P&L ({unit})"] = result["LY P&L"] / divisor
-    result = result.rename(columns={group_col: label})
-    display_cols = [label, f"P&L ({unit})", "Share %", f"LY P&L ({unit})", "vs LY %"]
-    st.dataframe(
-        result[display_cols],
-        width="stretch",
-        hide_index=True,
-        column_config={
-            "Share %": st.column_config.NumberColumn("Share %", format="%.2f%%"),
-            "vs LY %": st.column_config.NumberColumn("vs LY %", format="%.1f%%"),
-        },
-    )
+    ranking = current_rank.merge(previous_rank, on=group_col, how="left")
+    ranking["Previous PNL"] = pd.to_numeric(ranking["Previous PNL"], errors="coerce").fillna(0.0)
+    ranking["P&L Display"] = (pd.to_numeric(ranking["Current PNL"], errors="coerce").fillna(0.0) / divisor).round(2)
+    total_abs_pnl = float(ranking["Current PNL"].abs().sum())
+    ranking["Share %"] = ranking["Current PNL"].abs() / total_abs_pnl * 100 if total_abs_pnl else 0.0
+    ranking["Growth %"] = ranking.apply(lambda row: pct_change(row["Current PNL"], row["Previous PNL"]) if row["Previous PNL"] != 0 else None, axis=1)
+    ranking = ranking.sort_values("Current PNL", ascending=False).head(top_n).reset_index(drop=True)
+    if ranking.empty:
+        st.info(f"No {entity_name.lower()} P&L is available for the selected filters.")
+        return
 
+    max_abs_value = max(float(ranking["P&L Display"].abs().max()), 1.0)
+    prefix = "cust" if entity_name == "Customers" else "route"
+    bar_gradient = "linear-gradient(90deg,#60a5fa,#2563eb)" if prefix == "cust" else "linear-gradient(90deg,#2dd4bf,#0f766e)"
+    singular_name = "Customer" if entity_name == "Customers" else "Route"
+    rows=[]
+    for idx,row in ranking.iterrows():
+        pnl_display=float(row["P&L Display"] or 0); share_pct=float(row["Share %"] or 0)
+        bar_width=min((abs(pnl_display)/max_abs_value)*100,100); growth=row["Growth %"]
+        if pd.isna(growth): growth_html=f"<span class='{prefix}-growth new'>NEW</span>"
+        else:
+            positive=growth>=0; growth_class="up" if positive else "down"; growth_arrow="▲" if positive else "▼"
+            growth_html=f"<span class='{prefix}-growth {growth_class}'>{growth_arrow} {abs(growth):.1f}%</span>"
+        full_name=escape(str(row[group_col])); value_color="#0f172a" if pnl_display>=0 else "#dc2626"
+        rows.append("<tr>"+f"<td class='{prefix}-rank'>{idx+1}</td>"+f"<td class='{prefix}-name' title='{full_name}'>{full_name}</td>"+f"<td class='{prefix}-revenue'><div class='{prefix}-value' style='color:{value_color};'>₹{pnl_display:.2f} {escape(str(unit))}</div><div class='{prefix}-bar-track'><div class='{prefix}-bar-fill' style='width:{bar_width:.1f}%'></div></div></td>"+f"<td class='{prefix}-share'>{share_pct:.1f}%</td>"+f"<td class='{prefix}-yoy'>{growth_html}</td></tr>")
+
+    table_html=f"""
+    <style>
+      .{prefix}-insight-wrap{{width:100%;overflow-x:auto;margin-top:5px;border:1px solid #e2e8f0;border-radius:10px;background:#ffffff;}}
+      .{prefix}-insight-table{{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;color:#334155;}}
+      .{prefix}-insight-table th{{padding:7px 6px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:400;text-align:left;border-bottom:1px solid #e2e8f0;white-space:nowrap;}}
+      .{prefix}-insight-table td{{padding:8px 6px;border-bottom:1px solid #edf2f7;vertical-align:middle;}}
+      .{prefix}-insight-table tr:last-child td{{border-bottom:0;}} .{prefix}-insight-table tbody tr:hover{{background:#f8fbff;}}
+      .{prefix}-rank{{width:4%;padding-left:2px!important;padding-right:2px!important;text-align:center;font-weight:400;color:#64748b;}}
+      .{prefix}-name{{width:38%;padding-left:3px!important;font-weight:400;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
+      .{prefix}-revenue{{width:32%;}} .{prefix}-value{{font-weight:400;margin-bottom:3px;}}
+      .{prefix}-bar-track{{width:100%;height:5px;border-radius:999px;background:#e8eef8;overflow:hidden;}}
+      .{prefix}-bar-fill{{height:5px;border-radius:999px;background:{bar_gradient};}}
+      .{prefix}-share{{width:12%;text-align:right;font-weight:400;color:#475569;}} .{prefix}-yoy{{width:14%;text-align:right;}}
+      .{prefix}-growth{{display:inline-block;min-width:50px;text-align:right;font-size:11px;font-weight:400;}}
+      .{prefix}-growth.up{{color:#16a34a;}} .{prefix}-growth.down{{color:#dc2626;}} .{prefix}-growth.new{{color:#7c3aed;}}
+    </style>
+    <div class="{prefix}-insight-wrap"><table class="{prefix}-insight-table"><colgroup><col style="width:4%"><col style="width:38%"><col style="width:32%"><col style="width:12%"><col style="width:14%"></colgroup><thead><tr><th style="text-align:center;">#</th><th>{singular_name}</th><th>P&amp;L ({escape(str(unit))})</th><th style="text-align:right;">% Share</th><th style="text-align:right;">vs LY</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>"""
+    if hasattr(st,"html"): st.html(table_html)
+    else: st.markdown(table_html,unsafe_allow_html=True)
 
 def _render_phase1_pnl_insights(
     start_date, end_date, prev_start, prev_end,
@@ -876,13 +938,21 @@ def _render_phase1_pnl_insights(
             with title_left:
                 st.markdown('<div class="np-section-title">P&amp;L Performance Trend</div>', unsafe_allow_html=True)
             with grain_col:
-                trend_type = st.selectbox(
-                    "Trend Grain",
-                    ["Daily", "Weekly", "Monthly", "Quarterly"],
-                    index=2,
-                    key="np_pnl_insight_trend_type",
-                    label_visibility="collapsed",
-                )
+                trend_options = ["Daily", "Weekly", "Monthly", "Quarterly"]
+                trend_type = st.session_state.get("np_pnl_insight_trend_type", "Monthly")
+                if trend_type not in trend_options:
+                    trend_type = "Monthly"
+                    st.session_state["np_pnl_insight_trend_type"] = "Monthly"
+                trend_btn_cols = st.columns(len(trend_options), gap="small")
+                for trend_index, trend_label in enumerate(trend_options):
+                    with trend_btn_cols[trend_index]:
+                        if st.button(
+                            trend_label, key=f"np_pnl_trend_btn_{trend_index}",
+                            type="primary" if trend_type == trend_label else "secondary",
+                            use_container_width=True,
+                        ):
+                            st.session_state["np_pnl_insight_trend_type"] = trend_label
+                            st.rerun()
             trend_df = _build_pnl_insight_trend(
                 insight_df, insight_prev_df, trend_type, start_date, prev_start
             )
@@ -977,42 +1047,63 @@ def _render_phase1_pnl_insights(
                     "All", "Loss", "₹0–5 Lac", "₹5–10 Lac", "₹10–15 Lac",
                     "₹15–25 Lac", "₹25–50 Lac", "₹50 Lac & Above",
                 ]
-                slab = st.selectbox("P&L slab", slab_options, key="np_pnl_insight_branch_slab")
+                selected_slab = st.session_state.get("np_pnl_insight_branch_slab", "All")
+                if selected_slab not in slab_options:
+                    selected_slab = "All"
+                    st.session_state["np_pnl_insight_branch_slab"] = "All"
+                slab_button_cols = st.columns(len(slab_options), gap="small")
+                for slab_index, slab_label in enumerate(slab_options):
+                    with slab_button_cols[slab_index]:
+                        if st.button(
+                            slab_label, key=f"np_pnl_branch_slab_btn_{slab_index}",
+                            type="primary" if selected_slab == slab_label else "secondary",
+                            use_container_width=True,
+                        ):
+                            st.session_state["np_pnl_insight_branch_slab"] = slab_label
+                            st.rerun()
                 ranges = {
                     "All": (None, None), "Loss": (None, 0),
                     "₹0–5 Lac": (0, 500_000), "₹5–10 Lac": (500_000, 1_000_000),
                     "₹10–15 Lac": (1_000_000, 1_500_000), "₹15–25 Lac": (1_500_000, 2_500_000),
                     "₹25–50 Lac": (2_500_000, 5_000_000), "₹50 Lac & Above": (5_000_000, None),
                 }
-                low, high = ranges[slab]
+                low, high = ranges[selected_slab]
                 scoped = branch_avg.copy()
-                if slab == "Loss":
-                    scoped = scoped[scoped["Monthly Avg P&L"] < 0]
+                if selected_slab == "Loss": scoped = scoped[scoped["Monthly Avg P&L"] < 0]
                 else:
-                    if low is not None:
-                        scoped = scoped[scoped["Monthly Avg P&L"] >= low]
-                    if high is not None:
-                        scoped = scoped[scoped["Monthly Avg P&L"] < high]
-                scoped = scoped.sort_values("Monthly Avg P&L", ascending=False).head(20).copy()
-                scoped[f"Monthly Avg P&L ({unit})"] = scoped["Monthly Avg P&L"] / divisor
-                st.dataframe(
-                    scoped[["branch", f"Monthly Avg P&L ({unit})"]].rename(columns={"branch": "Branch"}),
-                    width="stretch", hide_index=True,
-                )
+                    if low is not None: scoped = scoped[scoped["Monthly Avg P&L"] >= low]
+                    if high is not None: scoped = scoped[scoped["Monthly Avg P&L"] < high]
+                scoped = scoped.sort_values("Monthly Avg P&L", ascending=False).reset_index(drop=True)
+                total_abs = float(branch_avg["Monthly Avg P&L"].abs().sum())
+                st.markdown(
+                    f'<div style="color:#31557d;font-size:12px;font-weight:500;margin:7px 0 8px 1px;">'
+                    f'Showing {len(scoped):,} branches in {escape(selected_slab)}. Scroll to view all.</div>', unsafe_allow_html=True)
+                if scoped.empty: st.info(f"No branch falls in the {selected_slab} monthly-average P&L slab.")
+                else:
+                    max_abs=max(float(scoped["Monthly Avg P&L"].abs().max()),1.0); rows=[]
+                    for idx,row in scoped.iterrows():
+                        value=float(row["Monthly Avg P&L"] or 0); width=min(abs(value)/max_abs*100,100)
+                        fill="#2563eb" if value>=0 else "#dc2626"; amount="#111827" if value>=0 else "#dc2626"
+                        name=escape(str(row["branch"])); share=abs(value)/total_abs*100 if total_abs else 0.0
+                        rows.append(f'<div style="margin-bottom:7px;padding:8px 10px;border:1px solid #dbe4ef;border-radius:12px;background:#fbfdff;"><div style="display:grid;grid-template-columns:34px minmax(150px,220px) minmax(80px,1fr) 105px 70px;align-items:center;gap:10px;"><div style="text-align:center;font-size:13px;color:#334155;">{idx+1}</div><div style="font-size:14px;color:#0f2744;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{name}</div><div style="height:7px;background:#e8eef5;border-radius:999px;overflow:hidden;"><div style="width:{width:.1f}%;height:7px;background:{fill};border-radius:999px;"></div></div><div style="text-align:right;color:{amount};font-size:13px;font-weight:700;white-space:nowrap;">₹{value/divisor:,.2f} {escape(unit)}</div><div style="text-align:right;color:#31557d;font-size:12px;font-weight:600;white-space:nowrap;">{share:.2f}%</div></div></div>')
+                    header='<div style="display:grid;grid-template-columns:34px minmax(150px,220px) minmax(80px,1fr) 105px 70px;align-items:center;gap:10px;padding:0 10px 5px;color:#64748b;font-size:10px;font-weight:700;"><div style="text-align:center;">#</div><div>Branch</div><div>P&L Scale</div><div style="text-align:right;">CY Avg</div><div style="text-align:right;">Share</div></div>'
+                    html=header+'<div style="max-height:360px;overflow-y:auto;padding-right:3px;">'+''.join(rows)+'</div>'
+                    if hasattr(st,"html"): st.html(html)
+                    else: st.markdown(html,unsafe_allow_html=True)
 
     customer_col, route_col = st.columns(2, gap="medium")
     customer_field = "Consignee" if insight_view == "Destination" else "Consignor"
     with customer_col:
         with st.container(border=True):
-            st.markdown('<div class="np-section-title">Top Customers by P&amp;L</div>', unsafe_allow_html=True)
             _top_pnl_insight_table(
-                insight_df, insight_prev_df, customer_field, "Customer", divisor, unit, top_n=10
+                insight_df, insight_prev_df, customer_field, "Customers", divisor, unit, "np_pnl_customer",
+                subtitle=("Customer basis: Consignee | Current FY P&L, share and YoY movement." if insight_view == "Destination" else "Customer basis: Consignor | Current FY P&L, share and YoY movement."),
             )
     with route_col:
         with st.container(border=True):
-            st.markdown('<div class="np-section-title">Top Routes by P&amp;L</div>', unsafe_allow_html=True)
             _top_pnl_insight_table(
-                insight_df, insight_prev_df, "Route", "Route", divisor, unit, top_n=10
+                insight_df, insight_prev_df, "Route", "Routes", divisor, unit, "np_pnl_route",
+                subtitle=("Destination → Origin | Current FY P&L, share and YoY movement." if insight_view == "Destination" else "Origin → Destination | Current FY P&L, share and YoY movement."),
             )
 
 
