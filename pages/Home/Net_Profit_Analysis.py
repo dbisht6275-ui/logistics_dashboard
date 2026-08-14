@@ -45,17 +45,14 @@ def get_previous_fy(fy):
     start_year, end_year = map(int, fy.split("-"))
     return f"{start_year - 1}-{end_year - 1}"
 
-
 def get_conversion(conversion_type):
     if conversion_type == "Lac":
         return 100_000, "Lac"
     return 10_000_000, "Cr"
 
-
 def amount_text(value, conversion_type):
     divisor, unit = get_conversion(conversion_type)
     return f"₹{float(value or 0) / divisor:,.2f} {unit}"
-
 
 def pct_change(current, previous):
     current = float(current or 0)
