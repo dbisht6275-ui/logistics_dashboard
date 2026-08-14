@@ -483,20 +483,19 @@ def overhead_kpi_item_html(title, current, previous, conversion_type, icon):
     class_name = "np-positive" if growth <= 0 else "np-negative"
     arrow = "▼" if growth < 0 else "▲" if growth > 0 else "–"
 
-    return f"""
-        <div class="np-overhead-item">
-            <div class="np-overhead-icon">{escape(icon)}</div>
-            <div class="np-overhead-body">
-                <div class="np-overhead-title">{escape(title)}</div>
-                <div class="np-overhead-value">{escape(current_text)}</div>
-                <div class="np-overhead-footer">
-                    LY: {escape(previous_text)}
-                    &nbsp;|&nbsp;
-                    <span class="{class_name}">{escape(arrow)} {escape(growth_label)}</span>
-                </div>
-            </div>
-        </div>
-    """
+    # Keep the HTML left-aligned. Leading 4+ spaces are interpreted by Markdown
+    # as a code block, which causes the raw <div> markup to appear on screen.
+    return (
+        f'<div class="np-overhead-item">'
+        f'<div class="np-overhead-icon">{escape(icon)}</div>'
+        f'<div class="np-overhead-body">'
+        f'<div class="np-overhead-title">{escape(title)}</div>'
+        f'<div class="np-overhead-value">{escape(current_text)}</div>'
+        f'<div class="np-overhead-footer">'
+        f'LY: {escape(previous_text)}&nbsp;|&nbsp;'
+        f'<span class="{class_name}">{escape(arrow)} {escape(growth_label)}</span>'
+        f'</div></div></div>'
+    )
 
 def _apply_same_filters(df, filters):
     out = df.copy()
