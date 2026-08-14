@@ -950,7 +950,7 @@ def _render_phase1_pnl_insights(
         st.info("No P&L insight data found for the selected Net Profit filters.")
         return
 
-    trend_col, zone_col = st.columns([1.55, 0.85], gap="medium")
+    trend_col, zone_col = st.columns([1, 1], gap="medium")
     with trend_col:
         with st.container(border=True):
             title_left, grain_col = st.columns([2.3, 1.7], gap="small", vertical_alignment="center")
