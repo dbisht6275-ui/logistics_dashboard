@@ -671,105 +671,6 @@ def overhead_kpi_item_html(title, current, previous, conversion_type, icon):
     )
 
 
-def render_zone_donut(df, value_column, title, divisor, unit, colors, key):
-    """Render a zone contribution donut with signed details on the right."""
-    if (
-        df is None
-        or df.empty
-        or "zone" not in df.columns
-        or value_column not in df.columns
-    ):
-        st.info(f"{title} is not available for the selected filters.")
-        return
-
-    zone_summary = df[["zone", value_column]].copy()
-    zone_summary["Zone"] = (
-        zone_summary["zone"]
-        .fillna("Unknown")
-        .astype(str)
-        .str.strip()
-        .replace("", "Unknown")
-    )
-    zone_summary[value_column] = pd.to_numeric(
-        zone_summary[value_column], errors="coerce"
-    ).fillna(0.0)
-    zone_summary = (
-        zone_summary.groupby("Zone", as_index=False)[value_column]
-        .sum()
-        .sort_values(value_column, key=lambda values: values.abs(), ascending=False)
-        .reset_index(drop=True)
-    )
-    zone_summary["Magnitude"] = zone_summary[value_column].abs()
-    magnitude_total = float(zone_summary["Magnitude"].sum())
-
-    if not magnitude_total:
-        st.info(f"No non-zero {title.lower()} data is available by zone.")
-        return
-
-    zone_summary["Display"] = zone_summary[value_column] / divisor
-    zone_summary["Share %"] = zone_summary["Magnitude"] / magnitude_total * 100
-    zone_summary["Legend"] = zone_summary.apply(
-        lambda row: (
-            f"{row['Zone']}<br>"
-            f"₹{row['Display']:+,.2f} {unit} · {row['Share %']:.1f}%"
-        ),
-        axis=1,
-    )
-
-    total_display = float(zone_summary[value_column].sum()) / divisor
-    figure = go.Figure(
-        go.Pie(
-            labels=zone_summary["Legend"],
-            values=zone_summary["Magnitude"],
-            customdata=zone_summary[["Zone", "Display", "Share %"]].to_numpy(),
-            hole=0.64,
-            sort=False,
-            direction="clockwise",
-            domain=dict(x=[0.0, 0.50], y=[0.06, 0.94]),
-            textinfo="none",
-            marker=dict(colors=colors, line=dict(color="#ffffff", width=2)),
-            hovertemplate=(
-                "<b>%{customdata[0]}</b><br>"
-                f"{title}: ₹%{{customdata[1]:+,.2f}} {unit}<br>"
-                "Absolute share: %{customdata[2]:.1f}%<extra></extra>"
-            ),
-        )
-    )
-    figure.add_annotation(
-        x=0.25,
-        y=0.50,
-        showarrow=False,
-        align="center",
-        text=(
-            f"<span style='font-size:10px;color:#64748b;'>Total</span><br>"
-            f"<b>₹{total_display:+,.2f} {unit}</b>"
-        ),
-        font=dict(size=14, color="#0f172a"),
-    )
-    figure.update_layout(
-        title=dict(text=title, x=0.02, y=0.97, font=dict(size=14, color="#0f172a")),
-        height=310,
-        margin=dict(l=4, r=4, t=36, b=4),
-        paper_bgcolor="rgba(0,0,0,0)",
-        showlegend=True,
-        legend=dict(
-            x=0.56,
-            xanchor="left",
-            y=0.92,
-            yanchor="top",
-            orientation="v",
-            font=dict(size=10, color="#334155"),
-            itemwidth=32,
-            tracegroupgap=5,
-        ),
-    )
-    st.plotly_chart(
-        figure,
-        width="stretch",
-        key=key,
-        config={"displayModeBar": False},
-    )
-
 def _apply_same_filters(df, filters):
     out = df.copy()
 
@@ -777,6 +678,7 @@ def _apply_same_filters(df, filters):
         out = apply_multi_filter(out, column, selected)
 
     return out
+
 
 # ============================================================
 # P&L INSIGHT HELPERS (ISOLATED FROM NET PROFIT CALCULATIONS)
@@ -2441,44 +2343,6 @@ def show_net_profit_dashboard():
     )
 
     # --------------------------------------------------------
-    # ZONE-WISE GROSS P&L AND NET PROFIT DONUTS
-    # Slice size uses absolute contribution so loss zones remain visible;
-    # signed values and absolute contribution share are listed on the right.
-    # --------------------------------------------------------
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-    zone_pnl_col, zone_np_col = st.columns([1, 1], gap="medium")
-
-    with zone_pnl_col:
-        with st.container(border=True):
-            render_zone_donut(
-                df=df,
-                value_column="COMBINED_PNL",
-                title="Zone-wise Gross P&L",
-                divisor=divisor,
-                unit=unit,
-                colors=[
-                    "#2563eb", "#60a5fa", "#06b6d4", "#14b8a6",
-                    "#8b5cf6", "#a78bfa", "#f59e0b", "#f97316",
-                ],
-                key="np_zone_gross_pnl_donut",
-            )
-
-    with zone_np_col:
-        with st.container(border=True):
-            render_zone_donut(
-                df=df,
-                value_column="NET_PROFIT",
-                title="Zone-wise Net Profit",
-                divisor=divisor,
-                unit=unit,
-                colors=[
-                    "#0f766e", "#14b8a6", "#22c55e", "#84cc16",
-                    "#f59e0b", "#f97316", "#ef4444", "#ec4899",
-                ],
-                key="np_zone_net_profit_donut",
-            )
-
-    # --------------------------------------------------------
     # BRANCH SUMMARY (feeds Branch Net Profit Detail; no chart rendered)
     # --------------------------------------------------------
 
@@ -2758,6 +2622,13 @@ def show_net_profit_dashboard():
         )
 
         csv_data = display.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "Download Branch Net Profit Detail CSV",
+            data=csv_data,
+            file_name=f"branch_net_profit_detail_{fy}.csv",
+            mime="text/csv",
+            key="np_download_branch_detail",
+        )
 
     # --------------------------------------------------------
     # TAB 2: MONTHLY CALCULATION AUDIT
@@ -2803,6 +2674,13 @@ def show_net_profit_dashboard():
             audit_display,
             width="stretch",
             hide_index=True,
+        )
+        st.download_button(
+            "Download Monthly Calculation Audit CSV",
+            data=audit_display.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"monthly_calculation_audit_{fy}.csv",
+            mime="text/csv",
+            key="np_download_monthly_audit",
         )
 
     # --------------------------------------------------------
@@ -2880,6 +2758,13 @@ def show_net_profit_dashboard():
                 width="stretch",
                 hide_index=True,
                 height=520,
+            )
+            st.download_button(
+                "Download P&L GR Details CSV",
+                data=gr_display.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"pnl_gr_details_{fy}.csv",
+                mime="text/csv",
+                key="np_download_gr_details",
             )
     # Keep CSV download as the final dashboard action.
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
