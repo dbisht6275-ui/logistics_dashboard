@@ -596,8 +596,8 @@ def render_kpi_card(
     disabled=False,
 ):
     card_styles = {
-        "Origin Business / Booking": ("np-theme-business", "₹"),
-        "Destination Business / Delivery": ("np-theme-origin", "▤"),
+        "Origin Business": ("np-theme-business", "₹"),
+        "Destination Business": ("np-theme-origin", "▤"),
         "Origin P&L": ("np-theme-origin", "↗"),
         "Destination P&L": ("np-theme-destination", "↘"),
         "Gross P&L": ("np-theme-combined", "⇄"),
@@ -2279,14 +2279,14 @@ def show_net_profit_dashboard():
     st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
     kpis = [
-        ("Origin Business / Booking", booking_business_current, booking_business_previous, False, False),
+        ("Origin Business", booking_business_current, booking_business_previous, False, False),
     ]
 
     # In All Branches mode Delivery Business must not be shown at all.
     if not all_branches:
         kpis.append(
             (
-                "Destination Business / Delivery",
+                "Destination Business",
                 current["destination_business"],
                 previous["destination_business"],
                 False,
@@ -2688,7 +2688,7 @@ def show_net_profit_dashboard():
         )
 
     # --------------------------------------------------------
-    # TAB 3: DETAILED GR RECORDS
+    # TAB 3: GR P&L DETAILED 
     # Same filtered P&L insight source; no LOADTYPE filter is applied.
     # --------------------------------------------------------
     with gr_tab:
