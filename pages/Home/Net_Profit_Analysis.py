@@ -778,7 +778,6 @@ def _apply_same_filters(df, filters):
 
     return out
 
-
 # ============================================================
 # P&L INSIGHT HELPERS (ISOLATED FROM NET PROFIT CALCULATIONS)
 # ============================================================
