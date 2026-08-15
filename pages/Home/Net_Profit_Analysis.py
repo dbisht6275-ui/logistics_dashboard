@@ -249,6 +249,7 @@ def calculate_kpis(df):
             "origin_business": 0.0,
             "destination_business": 0.0,
             "business": 0.0,
+            "gp_margin": 0.0,
             "margin": 0.0,
         }
 
@@ -273,6 +274,11 @@ def calculate_kpis(df):
     values["margin"] = (
         values["net_profit"] / values["total_income"] * 100
         if values["total_income"]
+        else 0.0
+    )
+    values["gp_margin"] = (
+        values["combined_pnl"] / values["business"] * 100
+        if values["business"]
         else 0.0
     )
 
@@ -592,6 +598,7 @@ def render_kpi_card(
         "Origin P&L": ("np-theme-origin", "↗"),
         "Destination P&L": ("np-theme-destination", "↘"),
         "Gross P&L": ("np-theme-combined", "⇄"),
+        "GP %": ("np-theme-margin", "%"),
         "Indirect Exp": ("np-theme-expense", "▰"),
         "Net Profit": ("np-theme-profit", "₹"),
         "Net Profit %": ("np-theme-margin", "%"),
@@ -2298,6 +2305,7 @@ def show_net_profit_dashboard():
     kpis.extend(
         [
             ("Gross P&L", current["combined_pnl"], previous["combined_pnl"], False, False),
+            ("GP %", current["gp_margin"], previous["gp_margin"], False, False),
             ("Indirect Exp", current["total_expense"], previous["total_expense"], True, False),
             ("Net Profit", current["net_profit"], previous["net_profit"], False, False),
             ("Net Profit %", current["margin"], previous["margin"], False, False),
@@ -2313,7 +2321,7 @@ def show_net_profit_dashboard():
                 cy,
                 ly,
                 conversion_type=conversion_type,
-                percent=(title == "Net Profit %"),
+                percent=(title in {"GP %", "Net Profit %"}),
                 reverse_good=reverse_good,
                 disabled=disabled,
             )
