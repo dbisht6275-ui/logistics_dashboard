@@ -2291,15 +2291,14 @@ def show_net_profit_dashboard():
             )
         )
 
-    kpis.append(
-        ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False, False)
-    )
-
-    # Match the business-card behavior: Destination P&L is relevant only when
-    # the user explicitly selects one or more branches.
+    # Individual Origin and Destination P&L cards are relevant only when the
+    # user explicitly selects one or more branches.
     if not all_branches:
-        kpis.append(
-            ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False, False)
+        kpis.extend(
+            [
+                ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False, False),
+                ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False, False),
+            ]
         )
 
     kpis.extend(
