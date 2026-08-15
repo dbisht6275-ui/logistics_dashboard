@@ -2753,7 +2753,6 @@ def show_net_profit_dashboard():
                 hide_index=True,
                 height=520,
             )
-
     # Keep CSV download as the final dashboard action.
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
     st.download_button(
