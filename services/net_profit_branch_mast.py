@@ -12,6 +12,7 @@ def load_net_profit_branch_mast():
     query = text("""
         SELECT 
             ZONE.ZONENAME AS ZONE,
+            c.hubname as circle,
             IIF(S.OWNED='Y','BRANCH',IIF(S.ISAGENCY='Y','AGENCY','')) AS TYPE,
             S.STNNAME AS BRANCH,
             S.STNCODE AS CODE,
@@ -29,10 +30,9 @@ def load_net_profit_branch_mast():
             S.LONGPOSITION
                     
         FROM STATIONMAST S
-
         LEFT JOIN ZONEMAST ZONE 
             ON ZONE.ZONECODE = S.ZONECODE
-
+        left join viewstationmast c on c.stncode=s.stncode
         WHERE 
             (S.OWNED = 'Y' OR S.ISAGENCY = 'Y')
             AND LEN(S.STNCODE) = 3
