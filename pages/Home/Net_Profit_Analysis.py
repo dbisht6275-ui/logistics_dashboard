@@ -2754,7 +2754,6 @@ def show_net_profit_dashboard():
         key="np_download",
     )
 
-
 # Optional direct-run support.
 if __name__ == "__main__":
     show_net_profit_dashboard()
