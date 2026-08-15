@@ -2531,7 +2531,7 @@ def show_net_profit_dashboard():
             [
                 "Branch Net Profit Detail",
                 "Monthly Calculation Audit",
-                "Detailed GR Records",
+                "P&L GR Details",
             ]
         )
 
