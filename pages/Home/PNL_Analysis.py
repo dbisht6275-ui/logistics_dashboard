@@ -187,6 +187,78 @@ def _inject_pnl_css() -> None:
             div[data-testid="stSelectbox"] div[data-baseweb="select"] > div { min-height:38px !important; height:38px !important; }
         }
 
+        /* Phone layout: allow Streamlit's desktop rows to become readable cards. */
+        @media (max-width:768px) {
+            .block-container {
+                max-width:100% !important;
+                padding:.25rem .45rem .7rem !important;
+                overflow-x:hidden !important;
+            }
+
+            div[data-testid="stHorizontalBlock"] {
+                flex-direction:column !important;
+                flex-wrap:nowrap !important;
+                gap:.55rem !important;
+                width:100% !important;
+            }
+            div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+                flex:1 1 100% !important;
+                width:100% !important;
+                min-width:100% !important;
+            }
+
+            .executive-title { font-size:18px !important; }
+            .filter-summary {
+                width:100% !important;
+                flex-wrap:wrap !important;
+                gap:4px !important;
+            }
+            .filter-chip {
+                max-width:100% !important;
+                white-space:normal !important;
+                overflow-wrap:anywhere !important;
+            }
+
+            div[data-testid="stSelectbox"],
+            div[data-testid="stPopover"],
+            div[data-testid="stButton"],
+            div[data-testid="stDownloadButton"] { width:100% !important; }
+
+            div[data-testid="stButton"] > button,
+            div[data-testid="stDownloadButton"] > button,
+            div[data-testid="stPopover"] > div,
+            div[data-testid="stPopover"] > div > button {
+                width:100% !important;
+                max-width:none !important;
+            }
+
+            .kpi-3d-card { min-height:82px !important; }
+
+            /* Keep dense analytical tables usable without widening the page. */
+            .compact-zone-matrix-wrap,
+            [class$="-insight-wrap"] {
+                width:100% !important;
+                max-width:100% !important;
+                overflow-x:auto !important;
+                -webkit-overflow-scrolling:touch;
+            }
+            .compact-zone-matrix { min-width:760px !important; }
+
+            /* Inline desktop grids used by company and branch ranking panels. */
+            div[style*="grid-template-columns:minmax(150px,195px)"],
+            div[style*="grid-template-columns:34px minmax(175px,280px)"] {
+                min-width:720px !important;
+            }
+            div:has(> div[style*="grid-template-columns:34px minmax(175px,280px)"]) {
+                max-width:100% !important;
+                overflow-x:auto !important;
+                -webkit-overflow-scrolling:touch;
+            }
+
+            [data-testid="stPlotlyChart"] { width:100% !important; }
+            [data-testid="stPlotlyChart"] > div { width:100% !important; }
+        }
+
 
         /* Overview-style checkbox slicers */
         .checkbox-slicer-label {
