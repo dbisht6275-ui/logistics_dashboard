@@ -586,6 +586,115 @@ def apply_dashboard_style() -> None:
             border-radius: 2px;
         }
 
+        /* ---------- Phone layout ---------- */
+        @media (max-width: 768px) {
+            .block-container {
+                max-width: 100% !important;
+                padding: .25rem .45rem .75rem !important;
+                overflow-x: hidden !important;
+            }
+
+            div[data-testid="stHorizontalBlock"] {
+                flex-direction: column !important;
+                flex-wrap: nowrap !important;
+                align-items: stretch !important;
+                gap: .55rem !important;
+                width: 100% !important;
+            }
+            div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+                flex: 1 1 100% !important;
+                width: 100% !important;
+                min-width: 100% !important;
+                padding-left: 0 !important;
+                padding-right: 0 !important;
+            }
+
+            .dashboard-title { font-size: 18px !important; }
+            .dashboard-subtitle { font-size: 10.5px !important; }
+            .header-filter-summary {
+                width: 100% !important;
+                max-width: 100% !important;
+                flex-wrap: wrap !important;
+                gap: 4px !important;
+            }
+            .header-filter-chip {
+                max-width: 100% !important;
+                white-space: normal !important;
+                overflow-wrap: anywhere !important;
+            }
+
+            div[data-testid="stSelectbox"],
+            div[data-testid="stPopover"],
+            div[data-testid="stButton"],
+            div[data-testid="stDownloadButton"] {
+                width: 100% !important;
+                max-width: none !important;
+            }
+            div[data-testid="stButton"] > button,
+            div[data-testid="stDownloadButton"] > button,
+            div[data-testid="stPopover"] > div,
+            div[data-testid="stPopover"] > div > button {
+                width: 100% !important;
+                max-width: none !important;
+            }
+
+            .kpi-card {
+                width: 100% !important;
+                min-height: 78px !important;
+                box-sizing: border-box !important;
+            }
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                width: 100% !important;
+                max-width: 100% !important;
+                overflow: hidden !important;
+                box-sizing: border-box !important;
+            }
+            [data-testid="stPlotlyChart"],
+            [data-testid="stPlotlyChart"] > div {
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+
+            /* Tabs stay compact and can be swiped horizontally. */
+            div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+                overflow-x: auto !important;
+                flex-wrap: nowrap !important;
+                -webkit-overflow-scrolling: touch;
+            }
+            div[data-testid="stTabs"] button[data-baseweb="tab"] {
+                flex: 0 0 auto !important;
+                white-space: nowrap !important;
+                padding-left: .65rem !important;
+                padding-right: .65rem !important;
+            }
+
+            /* Native and custom analytical tables scroll inside their cards. */
+            [data-testid="stDataFrame"],
+            .customer-rank-table,
+            .top-customer-table,
+            .lost-customer-table,
+            .regular-customer-wrap,
+            .zone-rank-table,
+            .branch-rank-table {
+                display: block !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch;
+            }
+            .customer-rank-head,
+            .customer-rank-row { min-width: 680px !important; }
+            .top-customer-head,
+            .top-customer-row { min-width: 620px !important; }
+            .lost-customer-head,
+            .lost-customer-row { min-width: 520px !important; }
+            .regular-customer-table { min-width: 1180px !important; }
+            .zone-rank-head,
+            .zone-rank-row { min-width: 980px !important; }
+            .branch-rank-head,
+            .branch-rank-row { min-width: 900px !important; }
+        }
+
         </style>
         """,
         unsafe_allow_html=True,
