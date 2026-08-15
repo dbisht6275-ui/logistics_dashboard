@@ -911,11 +911,6 @@ def show_pnl_dashboard() -> None:
         st.info("Please select financial year")
         return
 
-    # Temporary testing restriction: the P&L SP is currently loaded only for FY 2026-27.
-    if fy != "2026-2027":
-        st.warning("P&L testing is currently available only for FY 2026-2027.")
-        return
-
     start_date, end_date = get_date_range(fy)
     prev_fy = get_previous_fy(fy)
     prev_start, prev_end = get_date_range(prev_fy)
