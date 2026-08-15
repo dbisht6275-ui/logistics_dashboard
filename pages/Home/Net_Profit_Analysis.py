@@ -596,8 +596,8 @@ def render_kpi_card(
     disabled=False,
 ):
     card_styles = {
-        "Origin Business": ("np-theme-business", "₹"),
-        "Destination Business": ("np-theme-origin", "▤"),
+        "Origin Business / Booking": ("np-theme-business", "₹"),
+        "Destination Business / Delivery": ("np-theme-origin", "▤"),
         "Origin P&L": ("np-theme-origin", "↗"),
         "Destination P&L": ("np-theme-destination", "↘"),
         "Gross P&L": ("np-theme-combined", "⇄"),
@@ -2476,12 +2476,66 @@ def show_net_profit_dashboard():
         div[class*="st-key-np_bottom_render_tabs"] div[data-baseweb="tab-highlight"] {
             display: none !important;
         }
+
+        /* Streamlit-version-safe selectors. Some releases render tabs with
+           role attributes instead of BaseWeb data attributes. */
+        .st-key-np_bottom_render_tabs [role="tablist"],
+        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tablist"] {
+            gap:10px !important;
+            align-items:flex-end !important;
+            background:#ffffff !important;
+            border-bottom:1px solid #d8e1ea !important;
+            padding:0 12px !important;
+        }
+        .st-key-np_bottom_render_tabs [role="tab"],
+        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"] {
+            color:#ffffff !important;
+            border:0 !important;
+            border-radius:0 !important;
+            min-height:46px !important;
+            padding:10px 20px !important;
+            font-size:13px !important;
+            font-weight:700 !important;
+            opacity:.92 !important;
+            box-shadow:none !important;
+        }
+        .st-key-np_bottom_render_tabs [role="tab"]:nth-of-type(1),
+        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"]:nth-of-type(1) {
+            background:#8eafbd !important;
+        }
+        .st-key-np_bottom_render_tabs [role="tab"]:nth-of-type(2),
+        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"]:nth-of-type(2) {
+            background:#9dbba9 !important;
+        }
+        .st-key-np_bottom_render_tabs [role="tab"]:nth-of-type(3),
+        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"]:nth-of-type(3) {
+            background:#ff454d !important;
+            color:#111827 !important;
+        }
+        .st-key-np_bottom_render_tabs [role="tab"]:nth-of-type(4),
+        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"]:nth-of-type(4) {
+            background:#c7b29f !important;
+        }
+        .st-key-np_bottom_render_tabs [role="tab"][aria-selected="true"],
+        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"][aria-selected="true"] {
+            opacity:1 !important;
+            filter:saturate(1.18) brightness(.92) !important;
+            box-shadow:inset 0 -4px 0 rgba(15,23,42,.24) !important;
+        }
+        .st-key-np_bottom_render_tabs [data-baseweb="tab-highlight"],
+        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [data-baseweb="tab-highlight"] {
+            display:none !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
     with st.container(key="np_bottom_render_tabs"):
+        st.markdown(
+            '<span class="np-bottom-tabs-marker"></span>',
+            unsafe_allow_html=True,
+        )
         detail_tab, audit_tab, gr_tab, monthly_tab = st.tabs(
             [
                 "Branch Net Profit Detail",
