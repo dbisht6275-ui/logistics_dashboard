@@ -2886,10 +2886,113 @@ def _button_selector(options, state_key, key_prefix, default):
                 st.rerun()
     return selected
 
+
+def _inject_overview_mobile_css():
+    """Final phone-width overrides for the desktop-oriented overview layout."""
+    st.markdown(
+        """
+        <style>
+        @media (max-width: 768px) {
+            .block-container {
+                max-width: 100% !important;
+                padding: .25rem .45rem .75rem !important;
+                overflow-x: hidden !important;
+            }
+
+            /* Streamlit rows in this dashboard contain up to ten columns. */
+            div[data-testid="stHorizontalBlock"] {
+                flex-direction: column !important;
+                flex-wrap: nowrap !important;
+                align-items: stretch !important;
+                gap: .55rem !important;
+                width: 100% !important;
+                margin-bottom: .35rem !important;
+            }
+            div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+                flex: 1 1 100% !important;
+                width: 100% !important;
+                min-width: 100% !important;
+                padding-left: 0 !important;
+                padding-right: 0 !important;
+            }
+
+            div[data-testid="stSelectbox"],
+            div[data-testid="stPopover"],
+            div[data-testid="stButton"],
+            div[data-testid="stDownloadButton"] {
+                width: 100% !important;
+                max-width: none !important;
+            }
+            div[data-testid="stButton"] > button,
+            div[data-testid="stDownloadButton"] > button,
+            div[data-testid="stPopover"] > div,
+            div[data-testid="stPopover"] > div > button {
+                width: 100% !important;
+                max-width: none !important;
+            }
+
+            .executive-title { font-size: 18px !important; }
+            .filter-summary {
+                width: 100% !important;
+                max-width: 100% !important;
+                flex-wrap: wrap !important;
+                gap: 4px !important;
+            }
+            .filter-chip {
+                max-width: 100% !important;
+                white-space: normal !important;
+                overflow-wrap: anywhere !important;
+            }
+
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                width: 100% !important;
+                max-width: 100% !important;
+                overflow: hidden !important;
+                box-sizing: border-box !important;
+            }
+            [data-testid="stPlotlyChart"],
+            [data-testid="stPlotlyChart"] > div {
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+
+            /* Dense tables remain readable through contained touch scrolling. */
+            [data-testid="stDataFrame"],
+            .compact-zone-matrix-wrap,
+            [class$="-insight-wrap"] {
+                width: 100% !important;
+                max-width: 100% !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch;
+            }
+            .compact-zone-matrix { min-width: 760px !important; }
+
+            /* Custom HTML rankings use fixed desktop grids. Keep them inside
+               their existing scroll areas rather than widening the page. */
+            div[style*="grid-template-columns:25px minmax(185px,230px)"],
+            div[style*="grid-template-columns:30px minmax(88px,1fr)"],
+            div[style*="grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr"],
+            div[style*="grid-template-columns:minmax(150px,195px)"],
+            div[style*="grid-template-columns:42px minmax(155px,1.15fr)"] {
+                min-width: 680px !important;
+            }
+            div:has(> div[style*="grid-template-columns:minmax(150px,195px)"]),
+            div:has(> div[style*="grid-template-columns:1.45fr .8fr .8fr .9fr 1.1fr"]) {
+                max-width: 100% !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def show_overview():
     """Compact overview dashboard page."""
 
     _inject_overview_css()
+    _inject_overview_mobile_css()
 
                                                                     
     with st.container(border=True):
