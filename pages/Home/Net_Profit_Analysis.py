@@ -317,10 +317,16 @@ def _inject_css():
             gap:16px;
             padding:7px 12px 8px;
             margin:0 0 2px;
-            border:1px solid var(--np-border);
-            border-radius:11px;
-            background:linear-gradient(90deg,#ffffff 0%,#f8fbff 100%);
+            border:0;
+            border-radius:0;
+            background:transparent;
         }
+        .st-key-np_executive_header > div[data-testid="stVerticalBlockBorderWrapper"] {
+            border:1px solid #dbe4ef !important; border-radius:14px !important;
+            background:#ffffff !important; box-shadow:0 4px 14px rgba(15,42,67,.07) !important;
+        }
+        .st-key-np_executive_header > div[data-testid="stVerticalBlockBorderWrapper"] > div {padding:.65rem .8rem .75rem !important;}
+        .np-header-badge {padding:5px 10px;border-radius:999px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font:700 10px var(--np-kpi-font);white-space:nowrap;}
         .np-title {
             color:var(--np-text);
             font-family:var(--np-kpi-font);
@@ -334,6 +340,13 @@ def _inject_css():
             font-family:var(--np-kpi-font);
             font-size:10px;
             margin-top:2px;
+        }
+        @media (max-width:768px) {
+            .np-header {align-items:flex-start;gap:8px;padding:5px 2px 7px;}
+            .np-title {font-size:17px;}
+            .np-header-badge {display:none;}
+            .st-key-np_executive_header div[data-testid="stHorizontalBlock"] {flex-direction:column!important;}
+            .st-key-np_executive_header div[data-testid="stColumn"] {width:100%!important;min-width:100%!important;flex:1 1 100%!important;}
         }
         /* Filters */
         div[data-testid="stSelectbox"] label,
@@ -2054,13 +2067,15 @@ def _render_phase1_pnl_insights(
 def show_net_profit_dashboard():
     _inject_css()
 
-    st.markdown(
+    executive_header = st.container(key="np_executive_header", border=True)
+    executive_header.markdown(
         """
         <div class="np-header">
             <div>
                 <div class="np-title">Net Profit Analysis</div>
                 <div class="np-subtitle">Business, P&L and indirect expense performance by branch</div>
             </div>
+            <div class="np-header-badge">MANAGEMENT VIEW</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -2070,7 +2085,7 @@ def show_net_profit_dashboard():
     # PRIMARY FILTERS
     # --------------------------------------------------------
 
-    filter_cols = st.columns([1.15, 1, 1.35, 1.2, 1.2, 1.1, 1.0], gap="small")
+    filter_cols = executive_header.columns([1.15, 1, 1.35, 1.2, 1.2, 1.1, 1.0], gap="small")
 
     with filter_cols[0]:
         fy = st.selectbox(
