@@ -364,51 +364,65 @@ def _inject_css():
 
         /* Primary KPI cards */
         .np-card {
-            min-height:78px;
+            min-height:86px;
             margin:0 2px;
-            border:1px solid var(--np-border);
-            border-radius:10px;
-            padding:8px 9px;
-            background:#ffffff;
-            box-shadow:0 2px 8px rgba(15,23,42,.045);
+            border:1px solid rgba(148,163,184,.24);
+            border-radius:11px;
+            padding:11px 54px 9px 12px;
+            background:linear-gradient(110deg,var(--np-card-from),var(--np-card-to));
+            box-shadow:0 2px 7px rgba(15,23,42,.10);
             position:relative;
             overflow:hidden;
         }
-        .np-card::before {
-            content:"";
+        .np-theme-business {--np-card-from:#fffafb;--np-card-to:#f8ccd7;--np-icon-bg:#22c96b;--np-accent:#07883f;}
+        .np-theme-origin {--np-card-from:#f9fdff;--np-card-to:#c6eef9;--np-icon-bg:#ff4148;--np-accent:#05739a;}
+        .np-theme-destination {--np-card-from:#fffdfd;--np-card-to:#f7d4d0;--np-icon-bg:#4285ed;--np-accent:#d33124;}
+        .np-theme-combined {--np-card-from:#fbfbff;--np-card-to:#d6d4e8;--np-icon-bg:#8b55ef;--np-accent:#4338a8;}
+        .np-theme-expense {--np-card-from:#fffdfa;--np-card-to:#ecded3;--np-icon-bg:#ff7110;--np-accent:#b34a00;}
+        .np-theme-profit {--np-card-from:#fffdfd;--np-card-to:#decfd2;--np-icon-bg:#a84df2;--np-accent:#7e22ce;}
+        .np-theme-margin {--np-card-from:#f9feff;--np-card-to:#c9eaf0;--np-icon-bg:#10abc1;--np-accent:#087f91;}
+        .np-card-icon {
             position:absolute;
-            left:0;
-            top:0;
-            bottom:0;
-            width:3px;
-            background:#dbeafe;
+            right:12px;
+            top:11px;
+            width:38px;
+            height:38px;
+            border-radius:50%;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            color:#ffffff;
+            background:var(--np-icon-bg);
+            font-family:var(--np-kpi-font);
+            font-size:19px;
+            line-height:1;
+            font-weight:800;
+            box-shadow:0 2px 5px rgba(15,23,42,.10);
         }
         .np-card-title {
             font-family:var(--np-kpi-font);
-            font-size:9.5px;
-            color:#64748b;
-            font-weight:700;
-            text-transform:uppercase;
-            letter-spacing:.25px;
+            font-size:11px;
+            color:#172033;
+            font-weight:650;
             white-space:nowrap;
             overflow:hidden;
             text-overflow:ellipsis;
         }
         .np-card-value {
-            margin-top:4px;
+            margin-top:3px;
             font-family:var(--np-kpi-font);
-            font-size:16px;
+            font-size:17px;
             line-height:1.15;
-            color:#0f172a;
-            font-weight:780;
+            color:#050b18;
+            font-weight:800;
             white-space:nowrap;
         }
         .np-card-footer {
-            margin-top:5px;
+            margin-top:7px;
             font-family:var(--np-kpi-font);
-            font-size:9px;
-            font-weight:500;
-            color:#94a3b8;
+            font-size:9.5px;
+            font-weight:550;
+            color:#64748b;
             white-space:nowrap;
         }
         .np-positive { color:var(--np-green); font-weight:700; }
@@ -581,10 +595,25 @@ def render_kpi_card(
     reverse_good=False,
     disabled=False,
 ):
+    card_styles = {
+        "Origin Business / Booking": ("np-theme-business", "₹"),
+        "Destination Business / Delivery": ("np-theme-origin", "▤"),
+        "Origin P&L": ("np-theme-origin", "↗"),
+        "Destination P&L": ("np-theme-destination", "↘"),
+        "Combined P&L": ("np-theme-combined", "⇄"),
+        "Indirect Exp": ("np-theme-expense", "▰"),
+        "Net Profit": ("np-theme-profit", "₹"),
+        "Net Profit %": ("np-theme-margin", "%"),
+    }
+    card_theme, card_icon = card_styles.get(
+        title, ("np-theme-origin", "●")
+    )
+
     if disabled:
         st.markdown(
             f"""
-            <div class="np-card np-card-disabled">
+            <div class="np-card np-card-disabled {card_theme}">
+                <div class="np-card-icon">{escape(card_icon)}</div>
                 <div class="np-card-title">{escape(title)}</div>
                 <div class="np-card-value">--</div>
                 <div class="np-card-footer">Select a branch to view</div>
@@ -611,7 +640,8 @@ def render_kpi_card(
 
     st.markdown(
         f"""
-        <div class="np-card">
+        <div class="np-card {card_theme}">
+            <div class="np-card-icon">{escape(card_icon)}</div>
             <div class="np-card-title">{escape(title)}</div>
             <div class="np-card-value">{escape(current_text)}</div>
             <div class="np-card-footer">
