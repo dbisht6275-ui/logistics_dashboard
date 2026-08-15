@@ -2413,36 +2413,56 @@ def show_net_profit_dashboard():
     st.markdown(
         """
         <style>
-        /* Bottom render tabs: dark-blue button style */
+        /* Bottom render tabs: four-color matrix style */
         div[class*="st-key-np_bottom_render_tabs"] div[data-baseweb="tab-list"] {
-            gap: 8px !important;
-            background: transparent !important;
-            border-bottom: none !important;
+            gap: 10px !important;
+            align-items:flex-end !important;
+            background:#ffffff !important;
+            border-bottom:1px solid #d8e1ea !important;
+            padding:0 12px !important;
         }
         div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"] {
-            background: #ffffff !important;
-            color: #1e3a5f !important;
-            border: 1px solid #cbd5e1 !important;
-            border-radius: 8px !important;
-            min-height: 36px !important;
-            padding: 7px 16px !important;
-            font-size: 12px !important;
+            color:#ffffff !important;
+            border:0 !important;
+            border-radius:7px 7px 0 0 !important;
+            min-height:46px !important;
+            padding:10px 20px !important;
+            font-size:13px !important;
             font-weight: 700 !important;
-            box-shadow: none !important;
+            opacity:.88 !important;
+            box-shadow:inset 0 -3px 0 rgba(15,23,42,.10) !important;
+            transition:transform .15s ease,opacity .15s ease,filter .15s ease !important;
+        }
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"] p,
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"] span {
+            color:inherit !important;
+            font-size:13px !important;
+            font-weight:700 !important;
+            white-space:nowrap !important;
+        }
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:nth-of-type(1) {
+            background:#8eafbd !important;
+        }
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:nth-of-type(2) {
+            background:#9dbba9 !important;
+        }
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:nth-of-type(3) {
+            background:#ff454d !important;
+            color:#111827 !important;
+        }
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:nth-of-type(4) {
+            background:#c7b29f !important;
         }
         div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:hover {
-            background: #eff6ff !important;
-            border-color: #1d4ed8 !important;
-            color: #1d4ed8 !important;
+            opacity:1 !important;
+            filter:saturate(1.08) brightness(.98) !important;
+            transform:translateY(-1px) !important;
         }
         div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"][aria-selected="true"] {
-            background: #1e3a5f !important;
-            border-color: #1e3a5f !important;
-            color: #ffffff !important;
-        }
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"][aria-selected="true"] p,
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"][aria-selected="true"] span {
-            color: #ffffff !important;
+            opacity:1 !important;
+            transform:translateY(-2px) !important;
+            filter:saturate(1.18) brightness(.94) !important;
+            box-shadow:inset 0 -4px 0 rgba(15,23,42,.20),0 4px 9px rgba(15,23,42,.13) !important;
         }
         div[class*="st-key-np_bottom_render_tabs"] div[data-baseweb="tab-highlight"] {
             display: none !important;
