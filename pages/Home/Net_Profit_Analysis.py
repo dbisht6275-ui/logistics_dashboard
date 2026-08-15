@@ -338,18 +338,6 @@ def _inject_css():
             font-size:10px;
             margin-top:2px;
         }
-        .np-header-badge {
-            color:#1d4ed8;
-            background:#eff6ff;
-            border:1px solid #dbeafe;
-            border-radius:999px;
-            padding:4px 8px;
-            font-family:var(--np-kpi-font);
-            font-size:9px;
-            font-weight:700;
-            white-space:nowrap;
-        }
-
         /* Filters */
         div[data-testid="stSelectbox"] label,
         div[data-testid="stMultiSelect"] label {
@@ -2046,7 +2034,6 @@ def show_net_profit_dashboard():
                 <div class="np-title">Net Profit Analysis</div>
                 <div class="np-subtitle">Business, P&L and indirect expense performance by branch</div>
             </div>
-            <div class="np-header-badge">EXECUTIVE VIEW</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -2155,20 +2142,51 @@ def show_net_profit_dashboard():
             placeholder="All branches",
         )
 
+    # Quarter choices come only from rows available in the selected FY and
+    # current Zone -> Circle -> Branch scope.
+    quarter_scope = branch_scope.copy()
+    quarter_scope = apply_multi_filter(quarter_scope, "BRANCH", branches)
+    available_quarters = set(safe_options(quarter_scope, "QUARTER"))
+    quarter_options = [
+        quarter for quarter in QUARTER_ORDER
+        if quarter in available_quarters
+    ]
+    if "np_quarter" in st.session_state:
+        st.session_state["np_quarter"] = [
+            quarter for quarter in st.session_state["np_quarter"]
+            if quarter in quarter_options
+        ]
+
     with filter_cols[4]:
         quarters = st.multiselect(
             "Quarter",
-            QUARTER_ORDER,
+            quarter_options,
             key="np_quarter",
             placeholder="All quarters",
+            disabled=not quarter_options,
         )
+
+    # Month choices cascade from the selected FY, hierarchy and Quarter.
+    month_scope = quarter_scope.copy()
+    month_scope = apply_multi_filter(month_scope, "QUARTER", quarters)
+    available_months = set(safe_options(month_scope, "MONTH"))
+    month_options = [
+        month for month in MONTH_ORDER
+        if month in available_months
+    ]
+    if "np_month" in st.session_state:
+        st.session_state["np_month"] = [
+            month for month in st.session_state["np_month"]
+            if month in month_options
+        ]
 
     with filter_cols[5]:
         months = st.multiselect(
             "Month",
-            MONTH_ORDER,
+            month_options,
             key="np_month",
             placeholder="All months",
+            disabled=not month_options,
         )
 
     with filter_cols[6]:
