@@ -927,13 +927,13 @@ def _render_phase1_pnl_insights(
             )
     except Exception as exc:
         st.warning(f"P&L insights could not be loaded: {exc}")
-        return
+        return pd.DataFrame(), pd.DataFrame()
 
     insight_df = _normalise_insight_pnl(raw_insight_df)
     insight_prev_df = _normalise_insight_pnl(raw_insight_prev_df)
     if insight_df.empty or not {"PNL", "FIN_MONTH"}.issubset(insight_df.columns):
         st.info("P&L insight data is not available for the selected financial year.")
-        return
+        return pd.DataFrame(), pd.DataFrame()
 
     insight_df = _apply_insight_values(insight_df, "branch", valid_branches)
     if not insight_prev_df.empty:
@@ -948,7 +948,7 @@ def _render_phase1_pnl_insights(
 
     if insight_df.empty:
         st.info("No P&L insight data found for the selected Net Profit filters.")
-        return
+        return pd.DataFrame(), pd.DataFrame()
 
     trend_col, zone_col = st.columns([1, 1], gap="medium")
     with trend_col:
