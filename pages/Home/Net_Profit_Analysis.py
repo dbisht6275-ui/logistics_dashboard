@@ -596,11 +596,11 @@ def render_kpi_card(
     disabled=False,
 ):
     card_styles = {
-        "Origin Business / Booking": ("np-theme-business", "₹"),
-        "Destination Business / Delivery": ("np-theme-origin", "▤"),
+        "Origin Business": ("np-theme-business", "₹"),
+        "Destination Business": ("np-theme-origin", "▤"),
         "Origin P&L": ("np-theme-origin", "↗"),
         "Destination P&L": ("np-theme-destination", "↘"),
-        "Combined P&L": ("np-theme-combined", "⇄"),
+        "Gross P&L": ("np-theme-combined", "⇄"),
         "Indirect Exp": ("np-theme-expense", "▰"),
         "Net Profit": ("np-theme-profit", "₹"),
         "Net Profit %": ("np-theme-margin", "%"),
@@ -2294,11 +2294,20 @@ def show_net_profit_dashboard():
             )
         )
 
+    kpis.append(
+        ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False, False)
+    )
+
+    # Match the business-card behavior: Destination P&L is relevant only when
+    # the user explicitly selects one or more branches.
+    if not all_branches:
+        kpis.append(
+            ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False, False)
+        )
+
     kpis.extend(
         [
-            ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False, False),
-            ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False, False),
-            ("Combined P&L", current["combined_pnl"], previous["combined_pnl"], False, False),
+            ("Gross P&L", current["combined_pnl"], previous["combined_pnl"], False, False),
             ("Indirect Exp", current["total_expense"], previous["total_expense"], True, False),
             ("Net Profit", current["net_profit"], previous["net_profit"], False, False),
             ("Net Profit %", current["margin"], previous["margin"], False, False),
@@ -2522,7 +2531,7 @@ def show_net_profit_dashboard():
                 "Delivery_Business": f"Delivery Business ({unit})",
                 "Origin_PNL": f"Origin P&L ({unit})",
                 "Destination_PNL": f"Destination P&L ({unit})",
-                "Combined_PNL": f"Combined P&L ({unit})",
+                "Combined_PNL": f"Gross P&L ({unit})",
                 "Salary": f"Salary ({unit})",
                 "Godown_Rent": f"Godown Rent ({unit})",
                 "Overhead_Expense": f"Overhead Expense ({unit})",
@@ -2543,7 +2552,7 @@ def show_net_profit_dashboard():
             f"Total Business ({unit})",
             f"Origin P&L ({unit})",
             f"Destination P&L ({unit})",
-            f"Combined P&L ({unit})",
+            f"Gross P&L ({unit})",
             "P&L %",
             f"Salary ({unit})",
             f"Godown Rent ({unit})",
@@ -2765,7 +2774,7 @@ def show_net_profit_dashboard():
                 "Total_Business": f"Total Business ({unit})",
                 "Origin_PNL": f"Origin P&L ({unit})",
                 "Destination_PNL": f"Destination P&L ({unit})",
-                "Combined_PNL": f"Combined P&L ({unit})",
+                "Combined_PNL": f"Gross P&L ({unit})",
                 "Indirect_Expense": f"Indirect Exp ({unit})",
                 "Net_Profit": f"Net Profit ({unit})",
                 "Total_Income": f"Total Income ({unit})",
@@ -2779,7 +2788,7 @@ def show_net_profit_dashboard():
             f"Total Business ({unit})",
             f"Origin P&L ({unit})",
             f"Destination P&L ({unit})",
-            f"Combined P&L ({unit})",
+            f"Gross P&L ({unit})",
             "P&L %",
             f"Indirect Exp ({unit})",
             f"Net Profit ({unit})",
