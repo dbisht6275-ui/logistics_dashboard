@@ -655,7 +655,6 @@ def render_kpi_card(
     )
 
 
-
 def overhead_kpi_item_html(title, current, previous, conversion_type, icon):
     current_text = amount_text(current, conversion_type)
     previous_text = amount_text(previous, conversion_type)
@@ -2030,7 +2029,6 @@ def _render_phase1_pnl_insights(
                     st.markdown(branch_html, unsafe_allow_html=True)
 
 
-
     customer_col, route_col = st.columns(2, gap="medium")
     customer_field = "Consignee" if insight_view == "Destination" else "Consignor"
     with customer_col:
@@ -2459,9 +2457,6 @@ def show_net_profit_dashboard():
             background:#ff454d !important;
             color:#111827 !important;
         }
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:nth-of-type(4) {
-            background:#c7b29f !important;
-        }
         div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:hover {
             opacity:1 !important;
             filter:saturate(1.08) brightness(.98) !important;
@@ -2512,10 +2507,6 @@ def show_net_profit_dashboard():
             background:#ff454d !important;
             color:#111827 !important;
         }
-        .st-key-np_bottom_render_tabs [role="tab"]:nth-of-type(4),
-        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"]:nth-of-type(4) {
-            background:#c7b29f !important;
-        }
         .st-key-np_bottom_render_tabs [role="tab"][aria-selected="true"],
         div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"][aria-selected="true"] {
             opacity:1 !important;
@@ -2536,12 +2527,11 @@ def show_net_profit_dashboard():
             '<span class="np-bottom-tabs-marker"></span>',
             unsafe_allow_html=True,
         )
-        detail_tab, audit_tab, gr_tab, monthly_tab = st.tabs(
+        detail_tab, audit_tab, gr_tab = st.tabs(
             [
                 "Branch Net Profit Detail",
                 "Monthly Calculation Audit",
                 "Detailed GR Records",
-                "Monthly Summary",
             ]
         )
 
@@ -2688,7 +2678,7 @@ def show_net_profit_dashboard():
         )
 
     # --------------------------------------------------------
-    # TAB 3: GR P&L DETAILED 
+    # TAB 3: GR P&L DETAILED
     # Same filtered P&L insight source; no LOADTYPE filter is applied.
     # --------------------------------------------------------
     with gr_tab:
@@ -2763,114 +2753,6 @@ def show_net_profit_dashboard():
                 hide_index=True,
                 height=520,
             )
-
-    # --------------------------------------------------------
-    # TAB 4: MONTHLY SUMMARY
-    # Net Profit summary using the existing filtered Net Profit dataframe.
-    # --------------------------------------------------------
-    with monthly_tab:
-        monthly_summary = (
-            df.groupby(["FIN_MONTH", "MONTH"], as_index=False)
-            .agg(
-                Booking_Business=("ORIGIN_BUSINESS", "sum"),
-                Delivery_Business=("DESTINATION_BUSINESS", "sum"),
-                Total_Business=("BUSINESS", "sum"),
-                Origin_PNL=("ORIGIN_PNL", "sum"),
-                Destination_PNL=("DESTINATION_PNL", "sum"),
-                Combined_PNL=("COMBINED_PNL", "sum"),
-                Indirect_Expense=("TOTAL EXPENSE", "sum"),
-                Net_Profit=("NET_PROFIT", "sum"),
-                Total_Income=("TOTAL_INCOME", "sum"),
-            )
-            .sort_values("FIN_MONTH")
-            .reset_index(drop=True)
-        )
-
-        monthly_summary["P&L %"] = 0.0
-        valid_business = monthly_summary["Total_Business"].ne(0)
-        monthly_summary.loc[valid_business, "P&L %"] = (
-            monthly_summary.loc[valid_business, "Combined_PNL"]
-            / monthly_summary.loc[valid_business, "Total_Business"]
-            * 100
-        )
-
-        monthly_summary["Net Profit %"] = 0.0
-        valid_income = monthly_summary["Total_Income"].ne(0)
-        monthly_summary.loc[valid_income, "Net Profit %"] = (
-            monthly_summary.loc[valid_income, "Net_Profit"]
-            / monthly_summary.loc[valid_income, "Total_Income"]
-            * 100
-        )
-
-        monthly_money_columns = [
-            "Booking_Business",
-            "Delivery_Business",
-            "Total_Business",
-            "Origin_PNL",
-            "Destination_PNL",
-            "Combined_PNL",
-            "Indirect_Expense",
-            "Net_Profit",
-            "Total_Income",
-        ]
-        for column in monthly_money_columns:
-            monthly_summary[column] = (
-                pd.to_numeric(
-                    monthly_summary[column], errors="coerce"
-                ).fillna(0.0) / divisor
-            )
-
-        monthly_summary = monthly_summary.rename(
-            columns={
-                "MONTH": "Month",
-                "Booking_Business": f"Booking Business ({unit})",
-                "Delivery_Business": f"Delivery Business ({unit})",
-                "Total_Business": f"Total Business ({unit})",
-                "Origin_PNL": f"Origin P&L ({unit})",
-                "Destination_PNL": f"Destination P&L ({unit})",
-                "Combined_PNL": f"Gross P&L ({unit})",
-                "Indirect_Expense": f"Indirect Exp ({unit})",
-                "Net_Profit": f"Net Profit ({unit})",
-                "Total_Income": f"Total Income ({unit})",
-            }
-        )
-
-        monthly_display_columns = [
-            "Month",
-            f"Booking Business ({unit})",
-            f"Delivery Business ({unit})",
-            f"Total Business ({unit})",
-            f"Origin P&L ({unit})",
-            f"Destination P&L ({unit})",
-            f"Gross P&L ({unit})",
-            "P&L %",
-            f"Indirect Exp ({unit})",
-            f"Net Profit ({unit})",
-            "Net Profit %",
-        ]
-        monthly_summary = monthly_summary[
-            [
-                column
-                for column in monthly_display_columns
-                if column in monthly_summary.columns
-            ]
-        ]
-
-        st.dataframe(
-            monthly_summary,
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "P&L %": st.column_config.NumberColumn(
-                    "P&L %",
-                    format="%.2f%%",
-                ),
-                "Net Profit %": st.column_config.NumberColumn(
-                    "Net Profit %",
-                    format="%.2f%%",
-                ),
-            },
-        )
 
     # Keep CSV download as the final dashboard action.
     st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
