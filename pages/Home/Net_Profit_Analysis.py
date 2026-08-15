@@ -1051,7 +1051,7 @@ def _render_phase1_pnl_insights(
         with st.container(border=True):
             title_col, filter_col = st.columns([2, 2], gap="small", vertical_alignment="center")
 
-            np_trend_options = ["Daily", "Weekly", "Monthly", "Quarterly"]
+            np_trend_options = ["Monthly", "Quarterly"]
             np_trend_type = st.session_state.get("np_net_profit_performance_trend_value", "Monthly")
             if np_trend_type not in np_trend_options:
                 np_trend_type = "Monthly"
@@ -1461,7 +1461,7 @@ def _render_phase1_pnl_insights(
         # NET PROFIT W / M / Q
         # --------------------------------------------------------
         with st.container(border=True):
-            np_period_options = ["W", "M", "Q"]
+            np_period_options = ["M", "Q"]
             np_period = st.session_state.get("np_net_profit_period_value", "M")
             if np_period not in np_period_options:
                 np_period = "M"
