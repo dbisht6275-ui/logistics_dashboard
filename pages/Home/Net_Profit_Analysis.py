@@ -2135,7 +2135,6 @@ def _render_phase1_pnl_insights(
                 subtitle=("Destination → Origin | Current FY P&L, share and YoY movement." if insight_view == "Destination" else "Origin → Destination | Current FY P&L, share and YoY movement."),
             )
 
-
 # ============================================================
 # DASHBOARD
 # ============================================================
