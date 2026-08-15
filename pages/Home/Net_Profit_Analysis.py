@@ -2336,8 +2336,8 @@ def show_net_profit_dashboard():
         ("Salary", current["salary"], previous["salary"], "●"),
         ("Overhead Expense", current["overhead"], previous["overhead"], "▦"),
         ("Claim", current["claim"], previous["claim"], "◆"),
-        ("Booking (Freight)", current["booking_6"], previous["booking_6"], "▣"),
-        ("Destination (Freight)", current["destination_5"], previous["destination_5"], "●"),
+        ("6% of Booking )", current["booking_6"], previous["booking_6"], "▣"),
+        ("5% of Delivery)", current["destination_5"], previous["destination_5"], "●"),
         ("Godown Rent", current["godown"], previous["godown"], "▥"),
     ]
 
@@ -2531,7 +2531,7 @@ def show_net_profit_dashboard():
             [
                 "Branch Net Profit Detail",
                 "Monthly Calculation Audit",
-                "Detailed GR Records",
+                "P&L GR Details,
             ]
         )
 
