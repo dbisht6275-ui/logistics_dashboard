@@ -10,10 +10,8 @@ from services.net_profit_data_loader import load_net_profit_data_pair
 from services.pnl_data_loader import load_pnl_sp_revenue_total, load_pnl_data_pair
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
-
 # ============================================================
 # NET PROFIT DASHBOARD
-#
 # Separate dashboard.
 # Existing PNL_Analysis.py is not changed.
 # ============================================================
@@ -33,7 +31,6 @@ MONTH_ORDER = [
 
 QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
 
-
 # ============================================================
 # HELPERS
 # ============================================================
@@ -42,17 +39,14 @@ def get_previous_fy(fy):
     start_year, end_year = map(int, fy.split("-"))
     return f"{start_year - 1}-{end_year - 1}"
 
-
 def get_conversion(conversion_type):
     if conversion_type == "Lac":
         return 100_000, "Lac"
     return 10_000_000, "Cr"
 
-
 def amount_text(value, conversion_type):
     divisor, unit = get_conversion(conversion_type)
     return f"₹{float(value or 0) / divisor:,.2f} {unit}"
-
 
 def pct_change(current, previous):
     current = float(current or 0)
@@ -62,7 +56,6 @@ def pct_change(current, previous):
         return 0.0
 
     return ((current - previous) / abs(previous)) * 100
-
 
 def safe_options(df, column):
     if df is None or df.empty or column not in df.columns:
@@ -82,11 +75,9 @@ def safe_options(df, column):
         key=str.casefold,
     )
 
-
 def _normalise_column_name(value):
     """Normalise a column heading so spaces, underscores, hyphens and case do not matter."""
     return "".join(ch for ch in str(value).casefold() if ch.isalnum())
-
 
 def _find_column(df, *candidates):
     """Return the actual dataframe column matching any candidate using a tolerant header match."""
@@ -99,7 +90,6 @@ def _find_column(df, *candidates):
         if found is not None:
             return found
     return None
-
 
 def _attach_branch_hierarchy(df, branch_master_df):
     """Attach clean Zone/Circle values, preferring Branch Master for missing/Unknown values."""
@@ -136,6 +126,7 @@ def _attach_branch_hierarchy(df, branch_master_df):
             master_clean = branch_master_df[[master_branch_col, master_col]].copy()
             master_clean["_branch_key"] = master_clean[master_branch_col].map(_normalise_branch_name)
             master_clean["_hierarchy_value"] = master_clean[master_col].astype("string").str.strip()
+
             master_clean = master_clean[
                 ~master_clean["_hierarchy_value"].fillna("").str.casefold().isin(invalid_values)
             ]
