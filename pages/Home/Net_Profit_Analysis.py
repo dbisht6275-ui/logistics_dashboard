@@ -54,7 +54,7 @@ def get_conversion(conversion_type):
 
 def amount_text(value, conversion_type):
     divisor, unit = get_conversion(conversion_type)
-    return f"₹{float(value or 0) / divisor:,.2f} {unit}"
+    return f"â‚¹{float(value or 0) / divisor:,.2f} {unit}"
 
 
 def pct_change(current, previous):
@@ -631,7 +631,7 @@ def render_kpi_card(
             <div class="np-card-value">{escape(current_text)}</div>
             <div class="np-card-footer">
                 LY: {escape(previous_text)}
-                &nbsp;·&nbsp;
+                &nbsp;Â·&nbsp;
                 <span class="{class_name}">{escape(growth_label)}</span>
             </div>
         </div>
@@ -649,7 +649,7 @@ def overhead_kpi_item_html(title, current, previous, conversion_type, icon):
 
     # Lower overhead is favourable; higher overhead is adverse.
     class_name = "np-positive" if growth <= 0 else "np-negative"
-    arrow = "▼" if growth < 0 else "▲" if growth > 0 else "–"
+    arrow = "â–¼" if growth < 0 else "â–²" if growth > 0 else "â€“"
 
     # Keep the HTML left-aligned. Leading 4+ spaces are interpreted by Markdown
     # as a code block, which causes the raw <div> markup to appear on screen.
@@ -856,10 +856,10 @@ def _top_pnl_insight_table(df, prev_df, group_col, entity_name, divisor, unit, w
         bar_width=min((abs(pnl_display)/max_abs_value)*100,100); growth=row["Growth %"]
         if pd.isna(growth): growth_html=f"<span class='{prefix}-growth new'>NEW</span>"
         else:
-            positive=growth>=0; growth_class="up" if positive else "down"; growth_arrow="▲" if positive else "▼"
+            positive=growth>=0; growth_class="up" if positive else "down"; growth_arrow="â–²" if positive else "â–¼"
             growth_html=f"<span class='{prefix}-growth {growth_class}'>{growth_arrow} {abs(growth):.1f}%</span>"
         full_name=escape(str(row[group_col])); value_color="#0f172a" if pnl_display>=0 else "#dc2626"
-        rows.append("<tr>"+f"<td class='{prefix}-rank'>{idx+1}</td>"+f"<td class='{prefix}-name' title='{full_name}'>{full_name}</td>"+f"<td class='{prefix}-revenue'><div class='{prefix}-value' style='color:{value_color};'>₹{pnl_display:.2f} {escape(str(unit))}</div><div class='{prefix}-bar-track'><div class='{prefix}-bar-fill' style='width:{bar_width:.1f}%'></div></div></td>"+f"<td class='{prefix}-share'>{share_pct:.1f}%</td>"+f"<td class='{prefix}-yoy'>{growth_html}</td></tr>")
+        rows.append("<tr>"+f"<td class='{prefix}-rank'>{idx+1}</td>"+f"<td class='{prefix}-name' title='{full_name}'>{full_name}</td>"+f"<td class='{prefix}-revenue'><div class='{prefix}-value' style='color:{value_color};'>â‚¹{pnl_display:.2f} {escape(str(unit))}</div><div class='{prefix}-bar-track'><div class='{prefix}-bar-fill' style='width:{bar_width:.1f}%'></div></div></td>"+f"<td class='{prefix}-share'>{share_pct:.1f}%</td>"+f"<td class='{prefix}-yoy'>{growth_html}</td></tr>")
 
     table_html=f"""
     <style>
@@ -927,13 +927,13 @@ def _render_phase1_pnl_insights(
             )
     except Exception as exc:
         st.warning(f"P&L insights could not be loaded: {exc}")
-        return
+        return pd.DataFrame(), pd.DataFrame()
 
     insight_df = _normalise_insight_pnl(raw_insight_df)
     insight_prev_df = _normalise_insight_pnl(raw_insight_prev_df)
     if insight_df.empty or not {"PNL", "FIN_MONTH"}.issubset(insight_df.columns):
         st.info("P&L insight data is not available for the selected financial year.")
-        return
+        return pd.DataFrame(), pd.DataFrame()
 
     insight_df = _apply_insight_values(insight_df, "branch", valid_branches)
     if not insight_prev_df.empty:
@@ -948,7 +948,7 @@ def _render_phase1_pnl_insights(
 
     if insight_df.empty:
         st.info("No P&L insight data found for the selected Net Profit filters.")
-        return
+        return pd.DataFrame(), pd.DataFrame()
 
     trend_col, zone_col = st.columns([1, 1], gap="medium")
     with trend_col:
@@ -981,7 +981,7 @@ def _render_phase1_pnl_insights(
                 lambda row: pct_change(row["CY"], row["LY"]), axis=1
             )
             trend_df["Growth Label"] = trend_df["Growth %"].apply(
-                lambda value: f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
+                lambda value: f"{'â–²' if value >= 0 else 'â–¼'} {abs(value):.1f}%"
             )
 
             fig_trend = go.Figure()
@@ -990,14 +990,14 @@ def _render_phase1_pnl_insights(
                 marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.2)),
                 text=trend_df["LY"], texttemplate="%{text:.2f}", textposition="outside",
                 textfont=dict(size=10, color="#475569", family="Arial"), cliponaxis=False,
-                hovertemplate=f"<b>%{{x}}</b><br>LY P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
+                hovertemplate=f"<b>%{{x}}</b><br>LY P&L: â‚¹%{{y:.2f}} {unit}<extra></extra>",
             ))
             fig_trend.add_trace(go.Bar(
                 x=trend_df["Period"], y=trend_df["CY"], name=f"Current ({fy})",
                 marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
                 text=trend_df["CY"], texttemplate="%{text:.2f}", textposition="outside",
                 textfont=dict(size=10, color="#2563eb", family="Arial"), cliponaxis=False,
-                hovertemplate=f"<b>%{{x}}</b><br>CY P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
+                hovertemplate=f"<b>%{{x}}</b><br>CY P&L: â‚¹%{{y:.2f}} {unit}<extra></extra>",
             ))
 
             trend_abs_max = max(
@@ -1147,7 +1147,7 @@ def _render_phase1_pnl_insights(
                 np_trend_df["LY Display"] = pd.to_numeric(np_trend_df["LY"], errors="coerce").fillna(0.0) / divisor
                 np_trend_df["Growth %"] = np_trend_df.apply(lambda row: pct_change(row["CY"], row["LY"]), axis=1)
                 np_trend_df["Growth Label"] = np_trend_df["Growth %"].apply(
-                    lambda value: f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
+                    lambda value: f"{'â–²' if value >= 0 else 'â–¼'} {abs(value):.1f}%"
                 )
 
                 fig_np_trend = go.Figure()
@@ -1157,7 +1157,7 @@ def _render_phase1_pnl_insights(
                     marker=dict(color="#d8dee9", line=dict(color="#94a3b8", width=1.2)),
                     text=np_trend_df["LY Display"], texttemplate="%{text:.2f}", textposition="outside",
                     textfont=dict(size=10, color="#475569", family="Arial"), cliponaxis=False,
-                    hovertemplate=f"<b>%{{x}}</b><br>LY Net Profit: ₹%{{y:.2f}} {unit}<extra></extra>",
+                    hovertemplate=f"<b>%{{x}}</b><br>LY Net Profit: â‚¹%{{y:.2f}} {unit}<extra></extra>",
                 ))
                 fig_np_trend.add_trace(go.Bar(
                     x=np_trend_df["Period"], y=np_trend_df["CY Display"],
@@ -1165,7 +1165,7 @@ def _render_phase1_pnl_insights(
                     marker=dict(color="#14b8a6", line=dict(color="#0f766e", width=1.3)),
                     text=np_trend_df["CY Display"], texttemplate="%{text:.2f}", textposition="outside",
                     textfont=dict(size=10, color="#0f766e", family="Arial"), cliponaxis=False,
-                    hovertemplate=f"<b>%{{x}}</b><br>Net Profit: ₹%{{y:.2f}} {unit}<extra></extra>",
+                    hovertemplate=f"<b>%{{x}}</b><br>Net Profit: â‚¹%{{y:.2f}} {unit}<extra></extra>",
                 ))
 
                 trend_abs_max = max(float(pd.concat([np_trend_df["CY Display"].abs(), np_trend_df["LY Display"].abs()]).max() or 0), 1.0)
@@ -1343,7 +1343,7 @@ def _render_phase1_pnl_insights(
                 )
                 pnl_period_df["Growth Label"] = pnl_period_df["Growth"].apply(
                     lambda value: (
-                        f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
+                        f"{'â–²' if value >= 0 else 'â–¼'} {abs(value):.1f}%"
                         if pd.notna(value) else ""
                     )
                 )
@@ -1365,7 +1365,7 @@ def _render_phase1_pnl_insights(
                             line=dict(color="#0f766e", width=1.4),
                         ),
                         text=pnl_period_df["Display"],
-                        texttemplate="₹%{text:.2f}",
+                        texttemplate="â‚¹%{text:.2f}",
                         textposition="outside",
                         textfont=dict(
                             size=9, color="#0f766e", family="Arial"
@@ -1373,7 +1373,7 @@ def _render_phase1_pnl_insights(
                         cliponaxis=False,
                         hovertemplate=(
                             f"<b>%{{x}}</b><br>"
-                            f"P&L: ₹%{{y:.2f}} {unit}<extra></extra>"
+                            f"P&L: â‚¹%{{y:.2f}} {unit}<extra></extra>"
                         ),
                     )
                 )
@@ -1612,7 +1612,7 @@ def _render_phase1_pnl_insights(
                     net_period_df["Growth Label"] = (
                         net_period_df["Growth"].apply(
                             lambda value: (
-                                f"{'▲' if value >= 0 else '▼'} "
+                                f"{'â–²' if value >= 0 else 'â–¼'} "
                                 f"{abs(value):.1f}%"
                                 if pd.notna(value) else ""
                             )
@@ -1638,7 +1638,7 @@ def _render_phase1_pnl_insights(
                                 ),
                             ),
                             text=net_period_df["Display"],
-                            texttemplate="₹%{text:.2f}",
+                            texttemplate="â‚¹%{text:.2f}",
                             textposition="outside",
                             textfont=dict(
                                 size=9,
@@ -1648,7 +1648,7 @@ def _render_phase1_pnl_insights(
                             cliponaxis=False,
                             hovertemplate=(
                                 f"<b>%{{x}}</b><br>"
-                                f"Net Profit: ₹%{{y:.2f}} "
+                                f"Net Profit: â‚¹%{{y:.2f}} "
                                 f"{unit}<extra></extra>"
                             ),
                         )
@@ -1798,9 +1798,9 @@ def _render_phase1_pnl_insights(
             )
 
             slab_options = [
-                "All", "Loss", "₹0–5 Lac", "₹5–10 Lac",
-                "₹10–15 Lac", "₹15–25 Lac",
-                "₹25–50 Lac", "₹50 Lac & Above",
+                "All", "Loss", "â‚¹0â€“5 Lac", "â‚¹5â€“10 Lac",
+                "â‚¹10â€“15 Lac", "â‚¹15â€“25 Lac",
+                "â‚¹25â€“50 Lac", "â‚¹50 Lac & Above",
             ]
             selected_slab = st.session_state.get(
                 "np_pnl_insight_branch_slab", "All"
@@ -1831,12 +1831,12 @@ def _render_phase1_pnl_insights(
             slab_ranges = {
                 "All": (None, None),
                 "Loss": (None, 0),
-                "₹0–5 Lac": (0, 500_000),
-                "₹5–10 Lac": (500_000, 1_000_000),
-                "₹10–15 Lac": (1_000_000, 1_500_000),
-                "₹15–25 Lac": (1_500_000, 2_500_000),
-                "₹25–50 Lac": (2_500_000, 5_000_000),
-                "₹50 Lac & Above": (5_000_000, None),
+                "â‚¹0â€“5 Lac": (0, 500_000),
+                "â‚¹5â€“10 Lac": (500_000, 1_000_000),
+                "â‚¹10â€“15 Lac": (1_000_000, 1_500_000),
+                "â‚¹15â€“25 Lac": (1_500_000, 2_500_000),
+                "â‚¹25â€“50 Lac": (2_500_000, 5_000_000),
+                "â‚¹50 Lac & Above": (5_000_000, None),
             }
 
             scoped = branch_avg.copy()
@@ -1883,7 +1883,7 @@ def _render_phase1_pnl_insights(
                     "#16a34a" if selected_growth >= 0 else "#dc2626"
                 )
                 summary_growth_arrow = (
-                    "▲" if selected_growth >= 0 else "▼"
+                    "â–²" if selected_growth >= 0 else "â–¼"
                 )
                 summary_growth_html = (
                     f'<span style="color:{summary_growth_color};'
@@ -1895,11 +1895,11 @@ def _render_phase1_pnl_insights(
                 f'<div style="color:#31557d;font-size:12px;font-weight:500;'
                 f'margin:8px 0 8px 1px;">'
                 f'Showing {len(scoped):,} branches in {escape(selected_slab)}. '
-                f'CY Avg P&amp;L: <b>₹{selected_cy_total / divisor:,.2f} '
-                f'{escape(unit)}</b> · '
-                f'LY Avg P&amp;L: <b>₹{selected_ly_total / divisor:,.2f} '
-                f'{escape(unit)}</b> · '
-                f'Share: <b>{selected_share:.2f}%</b> · '
+                f'CY Avg P&amp;L: <b>â‚¹{selected_cy_total / divisor:,.2f} '
+                f'{escape(unit)}</b> Â· '
+                f'LY Avg P&amp;L: <b>â‚¹{selected_ly_total / divisor:,.2f} '
+                f'{escape(unit)}</b> Â· '
+                f'Share: <b>{selected_share:.2f}%</b> Â· '
                 f'Growth: {summary_growth_html}. Scroll to view all.'
                 f'</div>',
                 unsafe_allow_html=True,
@@ -1947,7 +1947,7 @@ def _render_phase1_pnl_insights(
                         growth_color = (
                             "#16a34a" if growth >= 0 else "#dc2626"
                         )
-                        growth_arrow = "▲" if growth >= 0 else "▼"
+                        growth_arrow = "â–²" if growth >= 0 else "â–¼"
                         growth_html = (
                             f'<span style="color:{growth_color};'
                             f'font-weight:700;">{growth_arrow} '
@@ -1974,10 +1974,10 @@ def _render_phase1_pnl_insights(
                         '</div></div>'
                         f'<div style="text-align:right;color:{amount_color};'
                         f'font-size:13px;font-weight:700;white-space:nowrap;">'
-                        f'₹{cy_value / divisor:,.2f} {escape(unit)}</div>'
+                        f'â‚¹{cy_value / divisor:,.2f} {escape(unit)}</div>'
                         f'<div style="text-align:right;color:#64748b;'
                         f'font-size:12px;white-space:nowrap;">'
-                        f'₹{ly_value / divisor:,.2f} {escape(unit)}</div>'
+                        f'â‚¹{ly_value / divisor:,.2f} {escape(unit)}</div>'
                         f'<div style="text-align:right;color:#31557d;'
                         f'font-size:12px;font-weight:600;white-space:nowrap;">'
                         f'{share:.2f}%</div>'
@@ -2028,7 +2028,7 @@ def _render_phase1_pnl_insights(
         with st.container(border=True):
             _top_pnl_insight_table(
                 insight_df, insight_prev_df, "Route", "Routes", divisor, unit, "np_pnl_route",
-                subtitle=("Destination → Origin | Current FY P&L, share and YoY movement." if insight_view == "Destination" else "Origin → Destination | Current FY P&L, share and YoY movement."),
+                subtitle=("Destination â†’ Origin | Current FY P&L, share and YoY movement." if insight_view == "Destination" else "Origin â†’ Destination | Current FY P&L, share and YoY movement."),
             )
 
 
@@ -2176,7 +2176,7 @@ def show_net_profit_dashboard():
 
     with filter_cols[6]:
         conversion_type = st.selectbox(
-            "₹ Conversion",
+            "â‚¹ Conversion",
             ["Crore", "Lac"],
             key="np_conversion",
         )
@@ -2281,12 +2281,12 @@ def show_net_profit_dashboard():
     st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
     overhead_kpis = [
-        ("Salary", current["salary"], previous["salary"], "●"),
-        ("Overhead Expense", current["overhead"], previous["overhead"], "▦"),
-        ("Claim", current["claim"], previous["claim"], "◆"),
-        ("Booking (Freight)", current["booking_6"], previous["booking_6"], "▣"),
-        ("Destination (Freight)", current["destination_5"], previous["destination_5"], "●"),
-        ("Godown Rent", current["godown"], previous["godown"], "▥"),
+        ("Salary", current["salary"], previous["salary"], "â—"),
+        ("Overhead Expense", current["overhead"], previous["overhead"], "â–¦"),
+        ("Claim", current["claim"], previous["claim"], "â—†"),
+        ("Booking (Freight)", current["booking_6"], previous["booking_6"], "â–£"),
+        ("Destination (Freight)", current["destination_5"], previous["destination_5"], "â—"),
+        ("Godown Rent", current["godown"], previous["godown"], "â–¥"),
     ]
 
     overhead_items_html = "".join(
