@@ -2571,7 +2571,6 @@ def show_pnl_dashboard() -> None:
                 "grdt": st.column_config.DateColumn("GR Date", format="DD-MMM-YYYY"),
             },
         )
-
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
             detail_df.to_excel(writer, index=False, sheet_name="GR Detail")
