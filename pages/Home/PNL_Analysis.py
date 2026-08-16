@@ -412,6 +412,17 @@ def _inject_pnl_css() -> None:
             min-height:34px !important;
             height:34px !important;
         }
+        .st-key-pnl_view_type div[data-baseweb="select"] *,
+        .st-key-pnl_fy div[data-baseweb="select"] * {
+            pointer-events:auto !important;
+            cursor:pointer !important;
+        }
+        .st-key-pnl_view_type div[data-baseweb="select"] > div:hover,
+        .st-key-pnl_fy div[data-baseweb="select"] > div:hover {
+            border-color:#2563eb !important;
+            background:#ffffff !important;
+            box-shadow:0 0 0 2px rgba(37,99,235,.14), 0 3px 7px rgba(15,42,67,.12) !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
