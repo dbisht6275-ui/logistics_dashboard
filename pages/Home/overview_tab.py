@@ -2994,120 +2994,95 @@ def show_overview():
     _inject_overview_css()
     _inject_overview_mobile_css()
 
-    # Header report controls: compact, borderless and consistently aligned.
+    # Direct header controls avoid the large card created by st.form.
     st.markdown(
         """
         <style>
-        .st-key-overview_report_controls [data-testid="stForm"] {
-            border: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            max-width: 680px !important;
-        }
-        .st-key-overview_report_controls div[data-testid="stSelectbox"] {
+        .st-key-overview_view_type div[data-testid="stSelectbox"],
+        .st-key-overview_fy div[data-testid="stSelectbox"] {
             margin: 0 !important;
         }
-        .st-key-overview_report_controls div[data-testid="stSelectbox"] > label,
-        .st-key-overview_report_controls div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
-            display: flex !important;
-            min-height: 22px !important;
-            margin: 0 0 5px 2px !important;
-            color: #334155 !important;
+        .st-key-overview_view_type div[data-testid="stSelectbox"] > label,
+        .st-key-overview_fy div[data-testid="stSelectbox"] > label {
+            min-height: 16px !important;
+            margin: 0 0 3px 2px !important;
+            font-size: 9px !important;
+        }
+        .st-key-overview_view_type div[data-baseweb="select"] > div,
+        .st-key-overview_fy div[data-baseweb="select"] > div,
+        .st-key-overview_run_report button {
+            min-height: 34px !important;
+            height: 34px !important;
+            border-radius: 8px !important;
+        }
+        .st-key-overview_view_type div[data-baseweb="select"] span,
+        .st-key-overview_fy div[data-baseweb="select"] span {
             font-size: 11px !important;
-            font-weight: 600 !important;
         }
-        .st-key-overview_report_controls div[data-baseweb="select"] > div,
-        .st-key-overview_report_controls button[kind="primaryFormSubmit"],
-        .st-key-overview_report_controls div[data-testid="stFormSubmitButton"] button,
-        .st-key-overview_report_controls button[data-testid="stBaseButton-primaryFormSubmit"] {
-            min-height: 40px !important;
-            height: 40px !important;
-            margin: 0 !important;
-            border-radius: 10px !important;
-        }
-        .st-key-overview_report_controls button[kind="primaryFormSubmit"],
-        .st-key-overview_report_controls div[data-testid="stFormSubmitButton"] button,
-        .st-key-overview_report_controls button[data-testid="stBaseButton-primaryFormSubmit"] {
+        .st-key-overview_run_report button {
             white-space: nowrap !important;
-            padding: 0 14px !important;
+            padding: 0 8px !important;
             border: 1px solid #0b57c7 !important;
             background: linear-gradient(180deg, #1674e8 0%, #0f5fd3 100%) !important;
             color: #ffffff !important;
-            box-shadow: 0 4px 10px rgba(15,95,211,.22) !important;
-            font-size: 13px !important;
+            font-size: 10px !important;
             font-weight: 700 !important;
         }
-        .st-key-overview_report_controls button[kind="primaryFormSubmit"]:hover,
-        .st-key-overview_report_controls div[data-testid="stFormSubmitButton"] button:hover,
-        .st-key-overview_report_controls button[data-testid="stBaseButton-primaryFormSubmit"]:hover {
-            border-color: #084caf !important;
+        .st-key-overview_run_report button:hover {
             background: linear-gradient(180deg, #126bdc 0%, #0b55c3 100%) !important;
             color: #ffffff !important;
-            box-shadow: 0 5px 13px rgba(15,95,211,.28) !important;
         }
-        .st-key-overview_report_controls button[kind="primaryFormSubmit"] p,
-        .st-key-overview_report_controls button[kind="primaryFormSubmit"] span,
-        .st-key-overview_report_controls div[data-testid="stFormSubmitButton"] button p,
-        .st-key-overview_report_controls div[data-testid="stFormSubmitButton"] button span {
+        .st-key-overview_run_report button p,
+        .st-key-overview_run_report button span {
             color: #ffffff !important;
         }
-        .overview-run-label-spacer { height: 27px; }
+        .overview-run-label-spacer { height: 19px; }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-                                                                    
+    
     with st.container(border=True):
-        header_left, header_controls, header_right = st.columns(
-            [1.55, 3.9, 1],
+        header_title, view_col, fy_col, run_col, header_space, header_right = st.columns(
+            [1.6, 0.55, 0.65, 0.55, 4.4, 0.9],
             gap="small",
             vertical_alignment="center",
         )
 
-        with header_left:
+        with header_title:
             st.markdown(
                 '<div class="executive-title" style="padding:2px 0 3px 4px;white-space:nowrap;">Business Overview</div>',
                 unsafe_allow_html=True,
             )
 
-        with header_controls:
-            # Form prevents FY/View changes from running the database query.
-            with st.form("overview_report_controls", clear_on_submit=False):
-                report_control_cols = st.columns(
-                    [1, 1.15, 0.8],
-                    gap="small",
-                    vertical_alignment="center",
-                )
+        with view_col:
+            pending_view_type = st.selectbox(
+                "View Type",
+                ["Origin", "Destination"],
+                key="overview_view_type",
+                help="Choose Origin or Destination view.",
+            )
 
-                with report_control_cols[0]:
-                    pending_view_type = st.selectbox(
-                        "View Type",
-                        ["Origin", "Destination"],
-                        key="overview_view_type",
-                        help="Choose Origin or Destination view.",
-                    )
+        with fy_col:
+            pending_fy = st.selectbox(
+                "Financial Year",
+                ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"],
+                key="overview_fy",
+                help="Choose the financial year to run.",
+            )
 
-                with report_control_cols[1]:
-                    pending_fy = st.selectbox(
-                        "Financial Year",
-                        ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"],
-                        key="overview_fy",
-                        help="Choose the financial year to run.",
-                    )
-
-                with report_control_cols[2]:
-                    st.markdown(
-                        '<div class="overview-run-label-spacer"></div>',
-                        unsafe_allow_html=True,
-                    )
-                    run_report = st.form_submit_button(
-                        "▶ Run Report",
-                        type="primary",
-                        width="stretch",
-                    )
+        with run_col:
+            st.markdown(
+                '<div class="overview-run-label-spacer"></div>',
+                unsafe_allow_html=True,
+            )
+            run_report = st.button(
+                "▶ Run Report",
+                key="overview_run_report",
+                type="primary",
+                width="stretch",
+            )
 
         with header_right:
             export_placeholder = st.empty()
@@ -3115,19 +3090,28 @@ def show_overview():
                                                                         
     compact_spacer(4)
 
+    active_fy = st.session_state.get("overview_active_fy")
+    active_view_type = st.session_state.get("overview_active_view_type")
+
     if run_report:
         if pending_fy == "Select FY":
             st.warning("Please select a financial year before running the report.")
             return
         st.session_state["overview_active_fy"] = pending_fy
         st.session_state["overview_active_view_type"] = pending_view_type
+        active_fy = pending_fy
+        active_view_type = pending_view_type
 
-    fy = st.session_state.get("overview_active_fy")
-    view_type = st.session_state.get("overview_active_view_type")
-
-    if not fy or not view_type:
+    if not active_fy or not active_view_type:
         st.info("Select a financial year, then click ▶ Run Report.")
         return
+
+    if pending_fy != active_fy or pending_view_type != active_view_type:
+        st.info("Selections changed. Click ▶ Run Report to refresh the dashboard.")
+        return
+
+    fy = active_fy
+    view_type = active_view_type
 
     start_date, end_date = get_date_range(fy)
     prev_fy = get_previous_fy(fy)
