@@ -3045,13 +3045,22 @@ def show_overview():
         .st-key-overview_fy div[data-testid="stSelectbox"] {
             margin: 0 !important;
         }
+        /* Override the shared filter-label rule: these two labels are rendered
+           separately beside the controls, so the native labels must not take
+           any vertical space. */
+        .st-key-overview_view_type div[data-testid="stSelectbox"] > label,
+        .st-key-overview_view_type div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+        .st-key-overview_fy div[data-testid="stSelectbox"] > label,
+        .st-key-overview_fy div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
+            display: none !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
         .st-key-overview_view_type div[data-testid="stSelectbox"] > label,
         .st-key-overview_fy div[data-testid="stSelectbox"] > label {
-            min-height: 16px !important;
-            margin: 0 0 3px 2px !important;
-            color: #334155 !important;
-            font-size: 10px !important;
-            font-weight: 700 !important;
+            display: none !important;
         }
         .st-key-overview_view_type div[data-baseweb="select"] > div,
         .st-key-overview_fy div[data-baseweb="select"] > div,
@@ -3074,6 +3083,7 @@ def show_overview():
         }
         .st-key-overview_run_report button {
             white-space: nowrap !important;
+            margin: 0 !important;
             padding: 0 12px !important;
             border: 1px solid #174ea6 !important;
             background: linear-gradient(180deg, #2468c9 0%, #174ea6 100%) !important;
