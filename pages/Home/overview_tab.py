@@ -2994,6 +2994,15 @@ def show_overview():
     _inject_overview_css()
     _inject_overview_mobile_css()
 
+    if "overview_report_ready" not in st.session_state:
+        st.session_state["overview_report_ready"] = False
+
+    def _invalidate_overview_report():
+        st.session_state["overview_report_ready"] = False
+        st.session_state.pop("overview_report_df", None)
+        st.session_state.pop("overview_report_prev_df", None)
+        st.session_state.pop("overview_report_station_df", None)
+
     # Direct header controls avoid the large card created by st.form.
     st.markdown(
         """
@@ -3004,39 +3013,43 @@ def show_overview():
         }
         .st-key-overview_view_type div[data-testid="stSelectbox"] > label,
         .st-key-overview_fy div[data-testid="stSelectbox"] > label {
-            min-height: 16px !important;
-            margin: 0 0 3px 2px !important;
-            font-size: 9px !important;
+            min-height: 13px !important;
+            margin: 0 0 2px 1px !important;
+            font-size: 8px !important;
         }
         .st-key-overview_view_type div[data-baseweb="select"] > div,
         .st-key-overview_fy div[data-baseweb="select"] > div,
         .st-key-overview_run_report button {
-            min-height: 34px !important;
-            height: 34px !important;
-            border-radius: 8px !important;
+            min-height: 28px !important;
+            height: 28px !important;
+            border-radius: 7px !important;
+        }
+        .st-key-overview_view_type div[data-baseweb="select"] > div,
+        .st-key-overview_fy div[data-baseweb="select"] > div {
+            padding: 0 4px !important;
         }
         .st-key-overview_view_type div[data-baseweb="select"] span,
         .st-key-overview_fy div[data-baseweb="select"] span {
-            font-size: 11px !important;
+            font-size: 9px !important;
         }
         .st-key-overview_run_report button {
             white-space: nowrap !important;
-            padding: 0 8px !important;
-            border: 1px solid #0b57c7 !important;
-            background: linear-gradient(180deg, #1674e8 0%, #0f5fd3 100%) !important;
+            padding: 0 6px !important;
+            border: 1px solid #e33b3f !important;
+            background: linear-gradient(180deg, #ff5b5f 0%, #f04449 100%) !important;
             color: #ffffff !important;
-            font-size: 10px !important;
+            font-size: 9px !important;
             font-weight: 700 !important;
         }
         .st-key-overview_run_report button:hover {
-            background: linear-gradient(180deg, #126bdc 0%, #0b55c3 100%) !important;
+            background: linear-gradient(180deg, #f44d52 0%, #dc343a 100%) !important;
             color: #ffffff !important;
         }
         .st-key-overview_run_report button p,
         .st-key-overview_run_report button span {
             color: #ffffff !important;
         }
-        .overview-run-label-spacer { height: 19px; }
+        .overview-run-label-spacer { height: 15px; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -3045,7 +3058,7 @@ def show_overview():
     
     with st.container(border=True):
         header_title, view_col, fy_col, run_col, header_space, header_right = st.columns(
-            [1.6, 0.55, 0.65, 0.55, 4.4, 0.9],
+            [1.6, 0.40, 0.48, 0.48, 4.76, 0.9],
             gap="small",
             vertical_alignment="center",
         )
@@ -3062,6 +3075,7 @@ def show_overview():
                 ["Origin", "Destination"],
                 key="overview_view_type",
                 help="Choose Origin or Destination view.",
+                on_change=_invalidate_overview_report,
             )
 
         with fy_col:
@@ -3070,6 +3084,7 @@ def show_overview():
                 ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"],
                 key="overview_fy",
                 help="Choose the financial year to run.",
+                on_change=_invalidate_overview_report,
             )
 
         with run_col:
@@ -3097,10 +3112,38 @@ def show_overview():
         if pending_fy == "Select FY":
             st.warning("Please select a financial year before running the report.")
             return
+
+        st.session_state["overview_report_ready"] = False
+        run_start_date, run_end_date = get_date_range(pending_fy)
+        run_prev_fy = get_previous_fy(pending_fy)
+        run_prev_start, run_prev_end = get_date_range(run_prev_fy)
+
+        # These are the only database loader calls on this page.
+        with st.spinner("Loading data..."):
+            loaded_df, loaded_prev_df = load_booking_data_pair(
+                run_start_date,
+                run_end_date,
+                run_prev_start,
+                run_prev_end,
+                pending_view_type.lower(),
+            )
+            loaded_station_df = load_stationmast_data(
+                run_start_date,
+                run_end_date,
+            )
+
+        st.session_state["overview_report_df"] = loaded_df
+        st.session_state["overview_report_prev_df"] = loaded_prev_df
+        st.session_state["overview_report_station_df"] = loaded_station_df
         st.session_state["overview_active_fy"] = pending_fy
         st.session_state["overview_active_view_type"] = pending_view_type
+        st.session_state["overview_report_ready"] = True
         active_fy = pending_fy
         active_view_type = pending_view_type
+
+    if not st.session_state.get("overview_report_ready", False):
+        st.info("Select a financial year, then click ▶ Run Report.")
+        return
 
     if not active_fy or not active_view_type:
         st.info("Select a financial year, then click ▶ Run Report.")
@@ -3117,8 +3160,22 @@ def show_overview():
     prev_fy = get_previous_fy(fy)
     prev_start, prev_end = get_date_range(prev_fy)
 
-    with st.spinner("Loading data..."):
-        df, prev_df = load_booking_data_pair(start_date, end_date, prev_start, prev_end, view_type.lower())
+    stored_df = st.session_state.get("overview_report_df")
+    stored_prev_df = st.session_state.get("overview_report_prev_df")
+    stored_station_df = st.session_state.get("overview_report_station_df")
+
+    if stored_df is None or stored_station_df is None:
+        st.session_state["overview_report_ready"] = False
+        st.info("Click ▶ Run Report to load the dashboard.")
+        return
+
+    df = stored_df.copy()
+    prev_df = (
+        stored_prev_df.copy()
+        if stored_prev_df is not None
+        else pd.DataFrame()
+    )
+    station_df = stored_station_df.copy()
 
     for _date_col in ["grdt", "deliverydt", "expecteddeliverydt", "lastdespdt"]:
         if _date_col in df.columns and not pd.api.types.is_datetime64_any_dtype(df[_date_col]):
@@ -3127,7 +3184,6 @@ def show_overview():
                 and not pd.api.types.is_datetime64_any_dtype(prev_df[_date_col]):
             prev_df[_date_col] = pd.to_datetime(prev_df[_date_col], errors="coerce")
 
-    station_df = load_stationmast_data(start_date, end_date)
     if "FIN_MONTH" not in station_df.columns:
         def get_fin_month(date_str):
             try:
