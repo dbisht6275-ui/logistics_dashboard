@@ -5575,7 +5575,6 @@ def show_overview():
                 for key, group in booking_work.groupby("_branch_key", sort=False)
                 if key
             }
-
                                                                                   
             fy_start_date = pd.to_datetime(start_date).normalize()
             fy_end_date = pd.to_datetime(end_date).normalize()
