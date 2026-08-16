@@ -3007,49 +3007,99 @@ def show_overview():
     st.markdown(
         """
         <style>
+        /* Compact, high-visibility overview command bar. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.overview-header-marker) {
+            padding: 8px 12px !important;
+            border-color: #cbd5e1 !important;
+            border-radius: 10px !important;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%) !important;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, .06) !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.overview-header-marker)
+        div[data-testid="stVerticalBlock"] {
+            gap: 0 !important;
+        }
+        .overview-header-marker {
+            display: flex;
+            align-items: center;
+            min-height: 47px;
+            padding: 0 0 0 2px;
+            color: #0f2742;
+            font-size: clamp(18px, 1.25vw, 23px);
+            font-weight: 800;
+            line-height: 1.1;
+            white-space: nowrap;
+        }
         .st-key-overview_view_type div[data-testid="stSelectbox"],
         .st-key-overview_fy div[data-testid="stSelectbox"] {
             margin: 0 !important;
         }
         .st-key-overview_view_type div[data-testid="stSelectbox"] > label,
         .st-key-overview_fy div[data-testid="stSelectbox"] > label {
-            min-height: 13px !important;
-            margin: 0 0 2px 1px !important;
-            font-size: 8px !important;
+            min-height: 16px !important;
+            margin: 0 0 3px 2px !important;
+            color: #334155 !important;
+            font-size: 10px !important;
+            font-weight: 700 !important;
         }
         .st-key-overview_view_type div[data-baseweb="select"] > div,
         .st-key-overview_fy div[data-baseweb="select"] > div,
         .st-key-overview_run_report button {
-            min-height: 28px !important;
-            height: 28px !important;
-            border-radius: 7px !important;
+            min-height: 34px !important;
+            height: 34px !important;
+            border-radius: 8px !important;
         }
         .st-key-overview_view_type div[data-baseweb="select"] > div,
         .st-key-overview_fy div[data-baseweb="select"] > div {
-            padding: 0 4px !important;
+            padding: 0 8px !important;
+            border: 1px solid #7fa6cf !important;
+            background: #ffffff !important;
+            box-shadow: 0 1px 3px rgba(30,64,105,.12) !important;
         }
         .st-key-overview_view_type div[data-baseweb="select"] span,
         .st-key-overview_fy div[data-baseweb="select"] span {
-            font-size: 9px !important;
+            font-size: 11px !important;
+            font-weight: 700 !important;
         }
         .st-key-overview_run_report button {
             white-space: nowrap !important;
-            padding: 0 6px !important;
-            border: 1px solid #e33b3f !important;
-            background: linear-gradient(180deg, #ff5b5f 0%, #f04449 100%) !important;
+            padding: 0 12px !important;
+            border: 1px solid #174ea6 !important;
+            background: linear-gradient(180deg, #2468c9 0%, #174ea6 100%) !important;
             color: #ffffff !important;
-            font-size: 9px !important;
-            font-weight: 700 !important;
+            font-size: 11px !important;
+            font-weight: 800 !important;
+            box-shadow: 0 3px 7px rgba(23,78,166,.24) !important;
         }
         .st-key-overview_run_report button:hover {
-            background: linear-gradient(180deg, #f44d52 0%, #dc343a 100%) !important;
+            background: linear-gradient(180deg, #1d5ebd 0%, #123f8d 100%) !important;
             color: #ffffff !important;
         }
         .st-key-overview_run_report button p,
         .st-key-overview_run_report button span {
             color: #ffffff !important;
         }
-        .overview-run-label-spacer { height: 15px; }
+        .overview-run-label-spacer { height: 19px; }
+        div[class*="st-key-prepare_overview_export_ready"] button,
+        div[class*="st-key-download_overview_export_ready"] button {
+            min-height: 34px !important;
+            height: 34px !important;
+            margin-top: 19px !important;
+            padding: 0 13px !important;
+            border: 1px solid #0f766e !important;
+            border-radius: 8px !important;
+            background: linear-gradient(180deg, #14a394 0%, #0f766e 100%) !important;
+            color: #ffffff !important;
+            font-size: 11px !important;
+            font-weight: 800 !important;
+            white-space: nowrap !important;
+            box-shadow: 0 3px 7px rgba(15,118,110,.22) !important;
+        }
+        div[class*="st-key-prepare_overview_export_ready"] button p,
+        div[class*="st-key-download_overview_export_ready"] button p {
+            color: #ffffff !important;
+            font-weight: 800 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -3058,14 +3108,14 @@ def show_overview():
     
     with st.container(border=True):
         header_title, view_col, fy_col, run_col, header_space, header_right = st.columns(
-            [1.6, 0.40, 0.48, 0.48, 4.76, 0.9],
+            [1.55, 0.68, 0.82, 0.78, 3.55, 1.05],
             gap="small",
             vertical_alignment="center",
         )
 
         with header_title:
             st.markdown(
-                '<div class="executive-title" style="padding:2px 0 3px 4px;white-space:nowrap;">Business Overview</div>',
+                '<div class="overview-header-marker">Business Overview</div>',
                 unsafe_allow_html=True,
             )
 
