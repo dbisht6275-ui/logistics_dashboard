@@ -5452,9 +5452,7 @@ def show_overview():
         """,
         unsafe_allow_html=True,
     )
-
-                                                      
-                                                           
+                                      
     network_toggle_key = "show_branch_agency_network_changes"
     if network_toggle_key not in st.session_state:
         st.session_state[network_toggle_key] = False
@@ -5472,8 +5470,7 @@ def show_overview():
     ):
         st.session_state[network_toggle_key] = not st.session_state[network_toggle_key]
         st.rerun()
-
-                                                                                      
+                                                               
     if st.session_state[network_toggle_key]:
         filtered_station_df = station_df.copy()
 
@@ -5639,7 +5636,6 @@ def show_overview():
             .isin(["Strong", "Progressing"])
             .sum()
         )
-
         with st.container(border=True):
             st.markdown(
                 f"<div style='font-size:16px;font-weight:950;color:#0f2744;'>"
