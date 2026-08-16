@@ -75,6 +75,21 @@ def _inject_pnl_css() -> None:
         .pnl-title, .executive-title {
             color:var(--dash-navy); font-size:19px; font-weight:850; letter-spacing:-.3px; margin:0;
         }
+        .pnl-header-marker { display:flex; align-items:center; min-height:36px; color:var(--dash-navy); font-size:19px; font-weight:850; white-space:nowrap; }
+        .pnl-inline-label { display:flex; align-items:center; justify-content:flex-end; min-height:34px; color:#334155; font-size:10px; font-weight:700; line-height:1; white-space:nowrap; }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) { padding:8px 12px !important; margin-top:0 !important; margin-bottom:4px !important; border-radius:10px !important; }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) > div { padding:0 !important; }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) div[data-testid="stVerticalBlock"] { gap:0 !important; }
+        .st-key-pnl_view_type div[data-testid="stSelectbox"] > label,
+        .st-key-pnl_view_type div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+        .st-key-pnl_fy div[data-testid="stSelectbox"] > label,
+        .st-key-pnl_fy div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] { display:none !important; height:0 !important; min-height:0 !important; margin:0 !important; padding:0 !important; }
+        .st-key-pnl_view_type div[data-testid="stSelectbox"], .st-key-pnl_fy div[data-testid="stSelectbox"] { gap:0 !important; margin:0 !important; }
+        .st-key-pnl_view_type div[data-baseweb="select"] > div,
+        .st-key-pnl_fy div[data-baseweb="select"] > div,
+        .st-key-pnl_run_report button { min-height:34px !important; height:34px !important; border-radius:8px !important; }
+        .st-key-pnl_run_report button { margin:0 !important; padding:0 12px !important; border:1px solid #174ea6 !important; background:linear-gradient(180deg,#2468c9 0%,#174ea6 100%) !important; color:#fff !important; font-size:11px !important; font-weight:800 !important; white-space:nowrap !important; box-shadow:0 3px 7px rgba(23,78,166,.24) !important; }
+        .st-key-pnl_run_report button p, .st-key-pnl_run_report button span { color:#fff !important; font-weight:800 !important; }
         .pnl-subtitle, .executive-subtitle { color:var(--dash-muted); font-size:11px; margin-top:2px; }
         .section-title { font-size:14px; font-weight:600; color:#0f2744; margin:1px 0 7px 1px; }
 
@@ -624,14 +639,28 @@ def render_kpi_card(
         st.markdown(html, unsafe_allow_html=True)
 
 
-def render_header():
+def render_header(on_filter_change=None):
     with st.container(border=True):
-        left, right = st.columns([7, 1], gap="small", vertical_alignment="center")
-        with left:
+        title_col, view_label_col, view_col, fy_label_col, fy_col, run_col, content_col, right = st.columns(
+            [1.55, .45, .72, .22, .82, .82, 3.10, 1.05], gap="small", vertical_alignment="center"
+        )
+        with title_col:
+            st.markdown('<div class="pnl-header-marker">P&amp;L Dashboard</div>', unsafe_allow_html=True)
+        with view_label_col:
+            st.markdown('<div class="pnl-inline-label">View Type</div>', unsafe_allow_html=True)
+        with view_col:
+            view_type = st.selectbox("View Type", ["Origin", "Destination"], key="pnl_view_type", label_visibility="collapsed", on_change=on_filter_change)
+        with fy_label_col:
+            st.markdown('<div class="pnl-inline-label">F.Y.</div>', unsafe_allow_html=True)
+        with fy_col:
+            fy = st.selectbox("Financial Year", FY_OPTIONS, key="pnl_fy", label_visibility="collapsed", on_change=on_filter_change)
+        with run_col:
+            run_report = st.button("▶ Run Report", key="pnl_run_report", type="primary", width="stretch")
+        with content_col:
             header_content_placeholder = st.empty()
         with right:
             export_placeholder = st.empty()
-    return header_content_placeholder, export_placeholder
+    return view_type, fy, run_report, header_content_placeholder, export_placeholder
 
 
 def build_monthly_comparison(df: pd.DataFrame, prev_df: pd.DataFrame, divisor: float) -> pd.DataFrame:
@@ -971,30 +1000,62 @@ def render_top_n_pnl_table(
 # =====================================================
 def show_pnl_dashboard() -> None:
     _inject_pnl_css()
-    header_content_placeholder, export_placeholder = render_header()
+    if "pnl_report_ready" not in st.session_state:
+        st.session_state["pnl_report_ready"] = False
 
-    filter_cols = st.columns(10, gap="small")
-    with filter_cols[0]:
-        view_type = st.selectbox("⇄ View Type", ["Origin", "Destination"], key="pnl_view_type")
-    with filter_cols[1]:
-        fy = st.selectbox("◷ Financial Year", FY_OPTIONS, key="pnl_fy")
+    def _invalidate_pnl_report():
+        st.session_state["pnl_report_ready"] = False
+        st.session_state.pop("pnl_report_df", None)
+        st.session_state.pop("pnl_report_prev_df", None)
 
-    if fy == "Select FY":
-        st.info("Please select financial year")
+    pending_view_type, pending_fy, run_report, header_content_placeholder, export_placeholder = render_header(_invalidate_pnl_report)
+
+    if pending_fy == "Select FY":
+        if run_report:
+            st.warning("Please select a financial year before running the report.")
+        else:
+            st.info("Select a financial year, then click ▶ Run Report.")
         return
 
-    start_date, end_date = get_date_range(fy)
-    prev_fy = get_previous_fy(fy)
-    prev_start, prev_end = get_date_range(prev_fy)
+    if run_report:
+        st.session_state["pnl_report_ready"] = False
+        start_date, end_date = get_date_range(pending_fy)
+        prev_fy = get_previous_fy(pending_fy)
+        prev_start, prev_end = get_date_range(prev_fy)
+        with st.spinner("Loading P&L data..."):
+            raw_df, raw_prev_df = load_pnl_data_pair(
+                start_date, end_date, prev_start, prev_end, pending_view_type
+            )
+        st.session_state["pnl_report_df"] = raw_df
+        st.session_state["pnl_report_prev_df"] = raw_prev_df
+        st.session_state["pnl_active_fy"] = pending_fy
+        st.session_state["pnl_active_view_type"] = pending_view_type
+        st.session_state["pnl_report_ready"] = True
 
-    with st.spinner("Loading P&L data..."):
-        raw_df, raw_prev_df = load_pnl_data_pair(
-            start_date,
-            end_date,
-            prev_start,
-            prev_end,
-            view_type,
-        )
+    if not st.session_state.get("pnl_report_ready", False):
+        st.info("Select a financial year, then click ▶ Run Report.")
+        return
+    active_fy = st.session_state.get("pnl_active_fy")
+    active_view_type = st.session_state.get("pnl_active_view_type")
+    if not active_fy or not active_view_type:
+        st.session_state["pnl_report_ready"] = False
+        st.info("Select a financial year, then click ▶ Run Report.")
+        return
+    if pending_fy != active_fy or pending_view_type != active_view_type:
+        st.info("Selections changed. Click ▶ Run Report to refresh the dashboard.")
+        return
+
+    stored_df = st.session_state.get("pnl_report_df")
+    stored_prev_df = st.session_state.get("pnl_report_prev_df")
+    if stored_df is None:
+        st.session_state["pnl_report_ready"] = False
+        st.info("Click ▶ Run Report to load the dashboard.")
+        return
+
+    fy = active_fy
+    view_type = active_view_type
+    raw_df = stored_df.copy()
+    raw_prev_df = stored_prev_df.copy() if stored_prev_df is not None else pd.DataFrame()
 
     df = normalize_pnl_columns(raw_df)
     prev_df = normalize_pnl_columns(raw_prev_df)
@@ -1008,6 +1069,8 @@ def show_pnl_dashboard() -> None:
         st.error(f"Missing columns returned by stored procedure: {missing}")
         st.write("Available columns:", list(df.columns))
         return
+
+    filter_cols = st.columns(8, gap="small")
 
     data_scope = st.session_state.get("data_scope", {}) or {}
     locked_zone = data_scope.get("zone")
@@ -1029,7 +1092,7 @@ def show_pnl_dashboard() -> None:
     # Overview-equivalent filter behavior.
     # Company and Load Type remain single-select. Zone/Circle/Branch/Quarter/Month
     # use checkbox slicers; Circle and Branch have instant search. Empty selection = All.
-    with filter_cols[2]:
+    with filter_cols[0]:
         company = st.selectbox("▥ Company", ["All"] + _safe_options(df, "COMPNAME"), key="pnl_company")
     df = _apply_filter(df, "COMPNAME", company)
 
@@ -1037,7 +1100,7 @@ def show_pnl_dashboard() -> None:
 
     # Cascading hierarchy filters:
     # Zone -> Circle -> Branch -> Quarter -> Month
-    with filter_cols[3]:
+    with filter_cols[1]:
         zone_options = _safe_options(filter_source_df, "zone")
         selected_zones = _checkbox_slicer(
             "◉ Zone", zone_options, key="pnl_zone_slicer",
@@ -1050,7 +1113,7 @@ def show_pnl_dashboard() -> None:
             circle_source_df["zone"].isin(selected_zones)
         ]
 
-    with filter_cols[4]:
+    with filter_cols[2]:
         circle_options = _safe_options(circle_source_df, "circle")
         selected_circles = _checkbox_slicer(
             "◎ Circle", circle_options, key="pnl_circle_slicer",
@@ -1064,7 +1127,7 @@ def show_pnl_dashboard() -> None:
             branch_source_df["circle"].isin(selected_circles)
         ]
 
-    with filter_cols[5]:
+    with filter_cols[3]:
         branch_options = _safe_options(branch_source_df, "branch")
         selected_branches = _checkbox_slicer(
             "⌂ Branch", branch_options, key="pnl_branch_slicer",
@@ -1078,7 +1141,7 @@ def show_pnl_dashboard() -> None:
             quarter_source_df["branch"].isin(selected_branches)
         ]
 
-    with filter_cols[6]:
+    with filter_cols[4]:
         available_quarters = [
             q for q in QUARTER_ORDER
             if q in quarter_source_df["Quarter"].dropna().unique().tolist()
@@ -1093,7 +1156,7 @@ def show_pnl_dashboard() -> None:
             month_source_df["Quarter"].isin(selected_quarters)
         ]
 
-    with filter_cols[7]:
+    with filter_cols[5]:
         available_months = [
             m for m in MONTH_ORDER
             if m in month_source_df["Month"].dropna().unique().tolist()
@@ -1113,13 +1176,13 @@ def show_pnl_dashboard() -> None:
     if selected_months:
         df = df[df["Month"].isin(selected_months)]
 
-    with filter_cols[8]:
+    with filter_cols[6]:
         load_type = st.selectbox(
             "▤ Load Type", ["All"] + _safe_options(df, "LOADTYPE"), key="pnl_loadtype"
         )
     df = _apply_filter(df, "LOADTYPE", load_type)
 
-    with filter_cols[9]:
+    with filter_cols[7]:
         conversion_type = st.selectbox("₹ Conversion", ["Crore", "Lac"], key="pnl_conversion")
 
     divisor, unit = get_conversion(conversion_type)
@@ -1167,9 +1230,7 @@ def show_pnl_dashboard() -> None:
     )
     with header_content_placeholder:
         st.markdown(
-            f'<div style="padding:2px 0 3px 4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">'
-            f'<div class="executive-title" style="white-space:nowrap;">P&amp;L Dashboard</div>'
-            f'{header_filter_html}</div>',
+            f'<div style="display:flex;align-items:center;min-height:34px;overflow:hidden;">{header_filter_html}</div>',
             unsafe_allow_html=True,
         )
     st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
