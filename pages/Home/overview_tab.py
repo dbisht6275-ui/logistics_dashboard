@@ -3007,24 +3007,47 @@ def show_overview():
 
                                                                         
     compact_spacer(4)
-    filter_cols = st.columns(10, gap="small")
 
-    with filter_cols[0]:
-        view_type = st.selectbox(
-            "⇄ View Type",
-            ["Origin", "Destination"],
-            key="overview_view_type",
-        )
+    # Keep report-driving controls inside a form. Selecting a financial year
+    # or view type no longer starts database work; the chosen values are
+    # committed only after the user clicks Run Report.
+    with st.form("overview_report_controls", clear_on_submit=False):
+        report_control_cols = st.columns([1.25, 1.45, 0.8, 6.5], gap="small")
 
-    with filter_cols[1]:
-        fy = st.selectbox(
-            "◷ Financial Year",
-            ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"],
-            key="overview_fy",
-        )
+        with report_control_cols[0]:
+            pending_view_type = st.selectbox(
+                "⇄ View Type",
+                ["Origin", "Destination"],
+                key="overview_view_type",
+            )
 
-    if fy == "Select FY":
-        st.info("Please select financial year")
+        with report_control_cols[1]:
+            pending_fy = st.selectbox(
+                "◷ Financial Year",
+                ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"],
+                key="overview_fy",
+            )
+
+        with report_control_cols[2]:
+            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+            run_report = st.form_submit_button(
+                "▶ Run Report",
+                type="primary",
+                width="stretch",
+            )
+
+    if run_report:
+        if pending_fy == "Select FY":
+            st.warning("Please select a financial year before running the report.")
+            return
+        st.session_state["overview_active_fy"] = pending_fy
+        st.session_state["overview_active_view_type"] = pending_view_type
+
+    fy = st.session_state.get("overview_active_fy")
+    view_type = st.session_state.get("overview_active_view_type")
+
+    if not fy or not view_type:
+        st.info("Select a financial year, then click ▶ Run Report.")
         return
 
     start_date, end_date = get_date_range(fy)
@@ -3059,6 +3082,10 @@ def show_overview():
     if df.empty:
         st.warning("No data found")
         return
+
+    # Secondary filters operate on the last successfully run report and remain
+    # interactive without requiring another Run Report click.
+    filter_cols = st.columns(8, gap="small")
 
     company_col = next(
         (col for col in df.columns if str(col).strip().casefold() == "compname"),
@@ -3106,7 +3133,7 @@ def show_overview():
         if not circle_row.empty:
             locked_zone = circle_row["zone"].iloc[0]
 
-    with filter_cols[2]:
+    with filter_cols[0]:
         company_options = sorted(df["compname"].dropna().unique().tolist())
         company = st.selectbox(
             "▥ Company",
@@ -3130,7 +3157,7 @@ def show_overview():
     filter_source_df = df.copy()
 
     # ZONE
-    with filter_cols[3]:
+    with filter_cols[1]:
         zone_options = sorted(
             filter_source_df["zone"].dropna().astype(str).str.strip().unique().tolist()
         )
@@ -3148,7 +3175,7 @@ def show_overview():
             circle_source_df["zone"].isin(selected_zones)
         ]
 
-    with filter_cols[4]:
+    with filter_cols[2]:
         circle_options = sorted(
             circle_source_df["circle"].dropna().astype(str).str.strip().unique().tolist()
         )
@@ -3167,7 +3194,7 @@ def show_overview():
             branch_source_df["circle"].isin(selected_circles)
         ]
 
-    with filter_cols[5]:
+    with filter_cols[3]:
         branch_options = sorted(
             branch_source_df["branch"].dropna().astype(str).str.strip().unique().tolist()
         )
@@ -3186,7 +3213,7 @@ def show_overview():
             period_source_df["branch"].isin(selected_branches)
         ]
 
-    with filter_cols[6]:
+    with filter_cols[4]:
         available_quarters = [
             q for q in QUARTER_ORDER
             if q in period_source_df["Quarter"].dropna().unique().tolist()
@@ -3197,7 +3224,7 @@ def show_overview():
             key="overview_quarter_slicer",
         )
 
-    with filter_cols[7]:
+    with filter_cols[5]:
         month_source_df = period_source_df.copy()
         if selected_quarters:
             month_source_df = month_source_df[
@@ -3227,7 +3254,7 @@ def show_overview():
     if selected_months:
         df = df[df["Month"].isin(selected_months)]
 
-    with filter_cols[8]:
+    with filter_cols[6]:
         loadtype = st.selectbox(
             "▤ Load Type",
             ["All"] + sorted(df["LOADTYPE"].dropna().unique().tolist()),
@@ -3236,7 +3263,7 @@ def show_overview():
     if loadtype != "All":
         df = df[df["LOADTYPE"] == loadtype]
 
-    with filter_cols[9]:
+    with filter_cols[7]:
         conversion_type = st.selectbox(
             "₹ Conversion",
             ["Crore", "Lac"],
