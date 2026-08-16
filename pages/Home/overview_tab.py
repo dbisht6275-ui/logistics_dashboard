@@ -2994,47 +2994,126 @@ def show_overview():
     _inject_overview_css()
     _inject_overview_mobile_css()
 
+    # Header report controls: compact, borderless and consistently aligned.
+    st.markdown(
+        """
+        <style>
+        .st-key-overview_report_controls [data-testid="stForm"] {
+            border: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            max-width: 680px !important;
+        }
+        .st-key-overview_report_controls div[data-testid="stSelectbox"] {
+            margin: 0 !important;
+        }
+        .st-key-overview_report_controls div[data-testid="stSelectbox"] > label,
+        .st-key-overview_report_controls div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
+            display: flex !important;
+            min-height: 22px !important;
+            margin: 0 0 5px 2px !important;
+            color: #334155 !important;
+            font-size: 11px !important;
+            font-weight: 600 !important;
+        }
+        .st-key-overview_report_controls div[data-baseweb="select"] > div,
+        .st-key-overview_report_controls button[kind="primaryFormSubmit"],
+        .st-key-overview_report_controls div[data-testid="stFormSubmitButton"] button,
+        .st-key-overview_report_controls button[data-testid="stBaseButton-primaryFormSubmit"] {
+            min-height: 40px !important;
+            height: 40px !important;
+            margin: 0 !important;
+            border-radius: 10px !important;
+        }
+        .st-key-overview_report_controls button[kind="primaryFormSubmit"],
+        .st-key-overview_report_controls div[data-testid="stFormSubmitButton"] button,
+        .st-key-overview_report_controls button[data-testid="stBaseButton-primaryFormSubmit"] {
+            white-space: nowrap !important;
+            padding: 0 14px !important;
+            border: 1px solid #0b57c7 !important;
+            background: linear-gradient(180deg, #1674e8 0%, #0f5fd3 100%) !important;
+            color: #ffffff !important;
+            box-shadow: 0 4px 10px rgba(15,95,211,.22) !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
+        }
+        .st-key-overview_report_controls button[kind="primaryFormSubmit"]:hover,
+        .st-key-overview_report_controls div[data-testid="stFormSubmitButton"] button:hover,
+        .st-key-overview_report_controls button[data-testid="stBaseButton-primaryFormSubmit"]:hover {
+            border-color: #084caf !important;
+            background: linear-gradient(180deg, #126bdc 0%, #0b55c3 100%) !important;
+            color: #ffffff !important;
+            box-shadow: 0 5px 13px rgba(15,95,211,.28) !important;
+        }
+        .st-key-overview_report_controls button[kind="primaryFormSubmit"] p,
+        .st-key-overview_report_controls button[kind="primaryFormSubmit"] span,
+        .st-key-overview_report_controls div[data-testid="stFormSubmitButton"] button p,
+        .st-key-overview_report_controls div[data-testid="stFormSubmitButton"] button span {
+            color: #ffffff !important;
+        }
+        .overview-run-label-spacer { height: 27px; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
                                                                     
     with st.container(border=True):
-        header_left, header_right = st.columns([7, 1], gap="small", vertical_alignment="center")
+        header_left, header_controls, header_right = st.columns(
+            [1.55, 3.9, 1],
+            gap="small",
+            vertical_alignment="center",
+        )
 
         with header_left:
+            st.markdown(
+                '<div class="executive-title" style="padding:2px 0 3px 4px;white-space:nowrap;">Business Overview</div>',
+                unsafe_allow_html=True,
+            )
 
-            header_content_placeholder = st.empty()
+        with header_controls:
+            # Form prevents FY/View changes from running the database query.
+            with st.form("overview_report_controls", clear_on_submit=False):
+                report_control_cols = st.columns(
+                    [1, 1.15, 0.8],
+                    gap="small",
+                    vertical_alignment="center",
+                )
+
+                with report_control_cols[0]:
+                    pending_view_type = st.selectbox(
+                        "View Type",
+                        ["Origin", "Destination"],
+                        key="overview_view_type",
+                        help="Choose Origin or Destination view.",
+                    )
+
+                with report_control_cols[1]:
+                    pending_fy = st.selectbox(
+                        "Financial Year",
+                        ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"],
+                        key="overview_fy",
+                        help="Choose the financial year to run.",
+                    )
+
+                with report_control_cols[2]:
+                    st.markdown(
+                        '<div class="overview-run-label-spacer"></div>',
+                        unsafe_allow_html=True,
+                    )
+                    run_report = st.form_submit_button(
+                        "▶ Run Report",
+                        type="primary",
+                        width="stretch",
+                    )
 
         with header_right:
             export_placeholder = st.empty()
 
                                                                         
     compact_spacer(4)
-
-    # Keep report-driving controls inside a form. Selecting a financial year
-    # or view type no longer starts database work; the chosen values are
-    # committed only after the user clicks Run Report.
-    with st.form("overview_report_controls", clear_on_submit=False):
-        report_control_cols = st.columns([1.25, 1.45, 0.8, 6.5], gap="small")
-
-        with report_control_cols[0]:
-            pending_view_type = st.selectbox(
-                "⇄ View Type",
-                ["Origin", "Destination"],
-                key="overview_view_type",
-            )
-
-        with report_control_cols[1]:
-            pending_fy = st.selectbox(
-                "◷ Financial Year",
-                ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"],
-                key="overview_fy",
-            )
-
-        with report_control_cols[2]:
-            st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-            run_report = st.form_submit_button(
-                "▶ Run Report",
-                type="primary",
-                width="stretch",
-            )
 
     if run_report:
         if pending_fy == "Select FY":
@@ -3278,40 +3357,6 @@ def show_overview():
     month = selected_months[0] if len(selected_months) == 1 else "All"
 
     compact_spacer(0)
-
-    active_filter_items = [
-        ("FY", fy),
-        ("View", view_type),
-        ("Company", company),
-        ("Zone", ", ".join(map(str, selected_zones)) if selected_zones else "All"),
-        ("Circle", ", ".join(map(str, selected_circles)) if selected_circles else "All"),
-        ("Branch", ", ".join(map(str, selected_branches)) if selected_branches else "All"),
-        ("Quarter", ", ".join(map(str, selected_quarters)) if selected_quarters else "All"),
-        ("Month", ", ".join(map(str, selected_months)) if selected_months else "All"),
-        ("Load", loadtype),
-        ("Unit", conversion_type),
-    ]
-    active_filter_html = "".join(
-        f'<span class="filter-chip">{label}: {value}</span>'
-        for label, value in active_filter_items
-        if value not in (None, "", "All")
-    )
-
-    header_filter_html = (
-        f'<div class="filter-summary" style="width:auto;min-height:0;flex-wrap:nowrap;gap:6px;">'
-        f'{active_filter_html}</div>'
-        if active_filter_html else ''
-    )
-    with header_content_placeholder:
-        st.markdown(
-            f"""
-            <div style="padding:2px 0 3px 4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-                <div class="executive-title" style="white-space:nowrap;">Business Overview</div>
-                {header_filter_html}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
 
     if df.empty:
         st.warning("No data found for selected filters")
