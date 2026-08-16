@@ -5639,7 +5639,6 @@ def show_overview():
             .isin(["Strong", "Progressing"])
             .sum()
         )
-
         with st.container(border=True):
             st.markdown(
                 f"<div style='font-size:16px;font-weight:950;color:#0f2744;'>"
