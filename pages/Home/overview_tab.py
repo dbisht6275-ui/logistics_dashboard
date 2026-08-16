@@ -5708,7 +5708,6 @@ def show_overview():
                     "Performance bands: Strong ≥ ₹5 lakh/month; "
                     "Progressing ≥ ₹1 lakh/month; below this Needs Attention."
                 )
-
             with st.expander(f"🔒 View Closed Branch Details ({closed_branches})"):
                 closed_columns = [
                     c for c in ["ZONE", "TYPE", "BRANCH", "CODE", "CITY", "STATE", "closedate"]
