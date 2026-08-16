@@ -713,10 +713,12 @@ def render_header(on_filter_change=None):
         with run_col:
             run_report = st.button("▶ Run Report", key="pnl_run_report", type="primary", width="stretch")
         with content_col:
-            header_content_placeholder = st.empty()
+            # Keep this column as genuine empty space. Rendering filter chips
+            # here can create an overflowing layer over the controls.
+            st.markdown('<div aria-hidden="true" style="height:1px"></div>', unsafe_allow_html=True)
         with right:
             export_placeholder = st.empty()
-    return view_type, fy, run_report, header_content_placeholder, export_placeholder
+    return view_type, fy, run_report, export_placeholder
 
 
 def build_monthly_comparison(df: pd.DataFrame, prev_df: pd.DataFrame, divisor: float) -> pd.DataFrame:
@@ -1064,7 +1066,7 @@ def show_pnl_dashboard() -> None:
         st.session_state.pop("pnl_report_df", None)
         st.session_state.pop("pnl_report_prev_df", None)
 
-    pending_view_type, pending_fy, run_report, header_content_placeholder, export_placeholder = render_header(_invalidate_pnl_report)
+    pending_view_type, pending_fy, run_report, export_placeholder = render_header(_invalidate_pnl_report)
 
     if pending_fy == "Select FY":
         if run_report:
@@ -1272,28 +1274,6 @@ def show_pnl_dashboard() -> None:
         if load_type != "All":
             prev_df = prev_df[prev_df["LOADTYPE"].eq(load_type)]
 
-    chips = [
-        ("FY", fy), ("View", view_type), ("Company", company),
-        ("Zone", ", ".join(map(str, selected_zones)) if selected_zones else "All"),
-        ("Circle", ", ".join(map(str, selected_circles)) if selected_circles else "All"),
-        ("Branch", ", ".join(map(str, selected_branches)) if selected_branches else "All"),
-        ("Quarter", ", ".join(map(str, selected_quarters)) if selected_quarters else "All"),
-        ("Month", ", ".join(map(str, selected_months)) if selected_months else "All"),
-        ("Load", load_type), ("Unit", conversion_type),
-    ]
-    chip_html = "".join(
-        f'<span class="filter-chip">{escape(label)}: {escape(str(value))}</span>'
-        for label, value in chips if value not in (None, "", "All")
-    )
-    header_filter_html = (
-        f'<div class="filter-summary" style="width:auto;min-height:0;flex-wrap:nowrap;gap:6px;">{chip_html}</div>'
-        if chip_html else ""
-    )
-    with header_content_placeholder:
-        st.markdown(
-            f'<div style="display:flex;align-items:center;min-height:34px;overflow:hidden;">{header_filter_html}</div>',
-            unsafe_allow_html=True,
-        )
     st.markdown("<div aria-hidden='true' style='height:4px'></div>", unsafe_allow_html=True)
 
     if df.empty:
