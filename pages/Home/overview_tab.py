@@ -5582,7 +5582,6 @@ def show_overview():
 
             selected_period_start = fy_start_date
             selected_period_end = fy_end_date
-
             if month != "All":
                 selected_fin_month = next(
                     (fin_month for fin_month, month_name in month_map.items() if month_name == month),
