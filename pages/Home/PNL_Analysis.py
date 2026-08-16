@@ -77,9 +77,9 @@ def _inject_pnl_css() -> None:
         }
         .pnl-header-marker { display:flex; align-items:center; min-height:36px; color:var(--dash-navy); font-size:19px; font-weight:850; white-space:nowrap; }
         .pnl-inline-label { display:flex; align-items:center; justify-content:flex-end; min-height:34px; color:#334155; font-size:10px; font-weight:700; line-height:1; white-space:nowrap; }
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) { padding:8px 12px !important; margin-top:0 !important; margin-bottom:4px !important; border-radius:10px !important; }
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) > div { padding:0 !important; }
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) div[data-testid="stVerticalBlock"] { gap:0 !important; }
+        .st-key-pnl_header_bar div[data-testid="stVerticalBlockBorderWrapper"] { padding:8px 12px !important; margin-top:0 !important; margin-bottom:4px !important; border-radius:10px !important; transform:none !important; overflow:visible !important; }
+        .st-key-pnl_header_bar div[data-testid="stVerticalBlockBorderWrapper"] > div { padding:0 !important; }
+        .st-key-pnl_header_bar div[data-testid="stVerticalBlock"] { gap:0 !important; }
         .st-key-pnl_view_type div[data-testid="stSelectbox"] > label,
         .st-key-pnl_view_type div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
         .st-key-pnl_fy div[data-testid="stSelectbox"] > label,
@@ -367,29 +367,11 @@ def _inject_pnl_css() -> None:
             margin:0 !important;padding:0 !important;font-size:11px !important;font-weight:650 !important;
             color:inherit !important;white-space:nowrap !important;
         }
-        /* Final header overrides must come after the shared selectbox rules.
-           This keeps the native controls on top and fully clickable. */
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) {
-            position:relative !important;
-            overflow:visible !important;
-            transform:none !important;
-        }
-        .pnl-header-marker, .pnl-inline-label,
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) .filter-summary,
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) .filter-chip {
-            pointer-events:none !important;
-        }
-        .st-key-pnl_view_type, .st-key-pnl_fy {
-            position:relative !important;
-            z-index:20 !important;
-            pointer-events:auto !important;
-            overflow:visible !important;
-        }
+        /* Header controls: native Streamlit interaction with only visual sizing. */
         .st-key-pnl_view_type div[data-testid="stSelectbox"],
         .st-key-pnl_fy div[data-testid="stSelectbox"] {
             gap:0 !important;
             margin:0 !important;
-            pointer-events:auto !important;
         }
         .st-key-pnl_view_type div[data-testid="stSelectbox"] > label,
         .st-key-pnl_view_type div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
@@ -405,16 +387,12 @@ def _inject_pnl_css() -> None:
         .st-key-pnl_fy div[data-baseweb="select"],
         .st-key-pnl_view_type div[data-baseweb="select"] > div,
         .st-key-pnl_fy div[data-baseweb="select"] > div {
-            position:relative !important;
-            z-index:21 !important;
-            pointer-events:auto !important;
             cursor:pointer !important;
             min-height:34px !important;
             height:34px !important;
         }
         .st-key-pnl_view_type div[data-baseweb="select"] *,
         .st-key-pnl_fy div[data-baseweb="select"] * {
-            pointer-events:auto !important;
             cursor:pointer !important;
         }
         .st-key-pnl_view_type div[data-baseweb="select"] > div:hover,
@@ -696,7 +674,7 @@ def render_kpi_card(
 
 
 def render_header(on_filter_change=None):
-    with st.container(border=True):
+    with st.container(border=True, key="pnl_header_bar"):
         title_col, view_label_col, view_col, fy_label_col, fy_col, run_col, content_col, right = st.columns(
             [1.55, .45, .72, .22, .82, .82, 3.10, 1.05], gap="small", vertical_alignment="center"
         )
@@ -2571,6 +2549,7 @@ def show_pnl_dashboard() -> None:
                 "grdt": st.column_config.DateColumn("GR Date", format="DD-MMM-YYYY"),
             },
         )
+
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
             detail_df.to_excel(writer, index=False, sheet_name="GR Detail")
