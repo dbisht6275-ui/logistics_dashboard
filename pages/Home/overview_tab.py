@@ -3022,12 +3022,23 @@ def show_overview():
         .overview-header-marker {
             display: flex;
             align-items: center;
-            min-height: 47px;
+            min-height: 36px;
             padding: 0 0 0 2px;
             color: #0f2742;
             font-size: clamp(18px, 1.25vw, 23px);
             font-weight: 800;
             line-height: 1.1;
+            white-space: nowrap;
+        }
+        .overview-inline-label {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            min-height: 34px;
+            color: #334155;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1;
             white-space: nowrap;
         }
         .st-key-overview_view_type div[data-testid="stSelectbox"],
@@ -3079,12 +3090,11 @@ def show_overview():
         .st-key-overview_run_report button span {
             color: #ffffff !important;
         }
-        .overview-run-label-spacer { height: 19px; }
         div[class*="st-key-prepare_overview_export_ready"] button,
         div[class*="st-key-download_overview_export_ready"] button {
             min-height: 34px !important;
             height: 34px !important;
-            margin-top: 19px !important;
+            margin-top: 0 !important;
             padding: 0 13px !important;
             border: 1px solid #0f766e !important;
             border-radius: 8px !important;
@@ -3107,8 +3117,8 @@ def show_overview():
 
     
     with st.container(border=True):
-        header_title, view_col, fy_col, run_col, header_space, header_right = st.columns(
-            [1.55, 0.68, 0.82, 0.78, 3.55, 1.05],
+        header_title, view_label_col, view_col, fy_label_col, fy_col, run_col, header_space, header_right = st.columns(
+            [1.55, 0.45, 0.72, 0.22, 0.82, 0.82, 3.10, 1.05],
             gap="small",
             vertical_alignment="center",
         )
@@ -3119,6 +3129,9 @@ def show_overview():
                 unsafe_allow_html=True,
             )
 
+        with view_label_col:
+            st.markdown('<div class="overview-inline-label">View Type</div>', unsafe_allow_html=True)
+
         with view_col:
             pending_view_type = st.selectbox(
                 "View Type",
@@ -3126,7 +3139,11 @@ def show_overview():
                 key="overview_view_type",
                 help="Choose Origin or Destination view.",
                 on_change=_invalidate_overview_report,
+                label_visibility="collapsed",
             )
+
+        with fy_label_col:
+            st.markdown('<div class="overview-inline-label">F.Y.</div>', unsafe_allow_html=True)
 
         with fy_col:
             pending_fy = st.selectbox(
@@ -3135,13 +3152,10 @@ def show_overview():
                 key="overview_fy",
                 help="Choose the financial year to run.",
                 on_change=_invalidate_overview_report,
+                label_visibility="collapsed",
             )
 
         with run_col:
-            st.markdown(
-                '<div class="overview-run-label-spacer"></div>',
-                unsafe_allow_html=True,
-            )
             run_report = st.button(
                 "▶ Run Report",
                 key="overview_run_report",
