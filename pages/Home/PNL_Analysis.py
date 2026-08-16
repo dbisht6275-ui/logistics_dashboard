@@ -367,6 +367,51 @@ def _inject_pnl_css() -> None:
             margin:0 !important;padding:0 !important;font-size:11px !important;font-weight:650 !important;
             color:inherit !important;white-space:nowrap !important;
         }
+        /* Final header overrides must come after the shared selectbox rules.
+           This keeps the native controls on top and fully clickable. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) {
+            position:relative !important;
+            overflow:visible !important;
+            transform:none !important;
+        }
+        .pnl-header-marker, .pnl-inline-label,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) .filter-summary,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.pnl-header-marker) .filter-chip {
+            pointer-events:none !important;
+        }
+        .st-key-pnl_view_type, .st-key-pnl_fy {
+            position:relative !important;
+            z-index:20 !important;
+            pointer-events:auto !important;
+            overflow:visible !important;
+        }
+        .st-key-pnl_view_type div[data-testid="stSelectbox"],
+        .st-key-pnl_fy div[data-testid="stSelectbox"] {
+            gap:0 !important;
+            margin:0 !important;
+            pointer-events:auto !important;
+        }
+        .st-key-pnl_view_type div[data-testid="stSelectbox"] > label,
+        .st-key-pnl_view_type div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
+        .st-key-pnl_fy div[data-testid="stSelectbox"] > label,
+        .st-key-pnl_fy div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
+            display:none !important;
+            height:0 !important;
+            min-height:0 !important;
+            margin:0 !important;
+            padding:0 !important;
+        }
+        .st-key-pnl_view_type div[data-baseweb="select"],
+        .st-key-pnl_fy div[data-baseweb="select"],
+        .st-key-pnl_view_type div[data-baseweb="select"] > div,
+        .st-key-pnl_fy div[data-baseweb="select"] > div {
+            position:relative !important;
+            z-index:21 !important;
+            pointer-events:auto !important;
+            cursor:pointer !important;
+            min-height:34px !important;
+            height:34px !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -1054,6 +1099,11 @@ def show_pnl_dashboard() -> None:
 
     fy = active_fy
     view_type = active_view_type
+    # Date context is also required by downstream trend charts on every
+    # Streamlit rerun, including reruns caused only by secondary filters.
+    start_date, end_date = get_date_range(fy)
+    prev_fy = get_previous_fy(fy)
+    prev_start, prev_end = get_date_range(prev_fy)
     raw_df = stored_df.copy()
     raw_prev_df = stored_prev_df.copy() if stored_prev_df is not None else pd.DataFrame()
 
