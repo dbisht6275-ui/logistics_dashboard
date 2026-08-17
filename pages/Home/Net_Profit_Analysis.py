@@ -2301,6 +2301,14 @@ def show_net_profit_dashboard():
             else 0.0
         )
 
+    # Calculate percentage-based expenses from the same Business totals used
+    # by the dashboard cards. This avoids mismatches caused by summing
+    # pre-calculated values from branch-joined rows.
+    current["booking_6"] = booking_business_current * 0.06
+    previous["booking_6"] = booking_business_previous * 0.06
+    current["destination_5"] = current["destination_business"] * 0.05
+    previous["destination_5"] = previous["destination_business"] * 0.05
+
     # --------------------------------------------------------
     # KPI ROW 1
     # --------------------------------------------------------
@@ -2365,7 +2373,7 @@ def show_net_profit_dashboard():
 
     overhead_kpis = [
         ("Salary", current["salary"], previous["salary"], "●"),
-        ("Overhead Expense", current["overhead"], previous["overhead"], "▦"),
+        ("Other Expense", current["overhead"], previous["overhead"], "▦"),
         ("Claim", current["claim"], previous["claim"], "◆"),
         ("6% of Booking )", current["booking_6"], previous["booking_6"], "▣"),
         ("5% of Delivery)", current["destination_5"], previous["destination_5"], "●"),
@@ -2609,7 +2617,7 @@ def show_net_profit_dashboard():
                 "Combined_PNL": f"Gross P&L ({unit})",
                 "Salary": f"Salary ({unit})",
                 "Godown_Rent": f"Godown Rent ({unit})",
-                "Overhead_Expense": f"Overhead Expense ({unit})",
+                "Overhead_Expense": f"Other Expense ({unit})",
                 "Claim": f"Claim ({unit})",
                 "Booking_6": f"Booking 6% ({unit})",
                 "Destination_5": f"Destination 5% ({unit})",
@@ -2631,7 +2639,7 @@ def show_net_profit_dashboard():
             "P&L %",
             f"Salary ({unit})",
             f"Godown Rent ({unit})",
-            f"Overhead Expense ({unit})",
+            f"Other Expense ({unit})",
             f"Claim ({unit})",
             f"Booking 6% ({unit})",
             f"Destination 5% ({unit})",
