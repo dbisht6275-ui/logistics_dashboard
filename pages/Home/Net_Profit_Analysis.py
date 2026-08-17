@@ -2301,14 +2301,6 @@ def show_net_profit_dashboard():
             else 0.0
         )
 
-    # Calculate percentage-based expenses from the same Business totals used
-    # by the dashboard cards. This avoids mismatches caused by summing
-    # pre-calculated values from branch-joined rows.
-    current["booking_6"] = booking_business_current * 0.06
-    previous["booking_6"] = booking_business_previous * 0.06
-    current["destination_5"] = current["destination_business"] * 0.05
-    previous["destination_5"] = previous["destination_business"] * 0.05
-
     # --------------------------------------------------------
     # KPI ROW 1
     # --------------------------------------------------------
