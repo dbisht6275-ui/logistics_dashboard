@@ -2284,6 +2284,23 @@ def show_net_profit_dashboard():
         booking_business_current = current["origin_business"]
         booking_business_previous = previous["origin_business"]
 
+    # GP % denominator must match the Business KPI shown on the dashboard.
+    # In consolidated All-Branches mode the card displays Booking/Origin
+    # Business only, while calculate_kpis() uses Origin + Destination Business.
+    # Recalculate only the consolidated margin here; explicit branch selection
+    # continues to use the existing combined-business calculation.
+    if all_branches:
+        current["gp_margin"] = (
+            current["combined_pnl"] / booking_business_current * 100
+            if booking_business_current
+            else 0.0
+        )
+        previous["gp_margin"] = (
+            previous["combined_pnl"] / booking_business_previous * 100
+            if booking_business_previous
+            else 0.0
+        )
+
     # --------------------------------------------------------
     # KPI ROW 1
     # --------------------------------------------------------
