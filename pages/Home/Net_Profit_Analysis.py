@@ -700,26 +700,32 @@ def _apply_same_filters(df, filters):
     return out
 
 
-def _reconcile_booking_charge_to_authoritative_business(df, authoritative_origin_business):
-    """Reconcile consolidated Booking 6% to the exact Origin Business KPI base.
+def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_business):
+    """Reconcile consolidated 6% Booking and 5% Delivery charges.
 
-    Branch-level P&L rows can understate the consolidated origin revenue because
-    of branch mapping/join coverage. For the fully consolidated dashboard the
-    Origin Business KPI therefore uses the direct P&L SP total. This helper
-    allocates the resulting 6% reconciliation difference back across the current
-    rows so Total Expense, Net Profit, detail tables and the KPI strip all stay
+    In a fully consolidated All-Branches view, booking and delivery represent
+    opposite ends of the same shipment population, so their gross business base
+    must reconcile to the same authoritative P&L SP revenue total. Branch-level
+    origin/destination mappings can understate either side. This helper adjusts
+    only the two percentage charges, allocating any difference back across rows,
+    then rebuilds Total Expense and Net Profit so every downstream view remains
     internally consistent.
     """
-    if df is None or df.empty or authoritative_origin_business is None:
+    if df is None or df.empty or authoritative_business is None:
         return df
 
     out = df.copy()
-    target_booking_6 = float(authoritative_origin_business or 0.0) * 0.06
-    current_booking_6 = float(pd.to_numeric(out.get("BOOKING 6%", 0.0), errors="coerce").fillna(0.0).sum())
-    difference = target_booking_6 - current_booking_6
+    business_base = float(authoritative_business or 0.0)
 
-    if abs(difference) > 0.005:
-        weights = pd.to_numeric(out.get("ORIGIN_BUSINESS", 0.0), errors="coerce").fillna(0.0).abs()
+    def _reconcile(column, rate, weight_column):
+        target = business_base * rate
+        current_series = pd.to_numeric(out.get(column, 0.0), errors="coerce").fillna(0.0)
+        difference = target - float(current_series.sum())
+        if abs(difference) <= 0.005:
+            out[column] = current_series
+            return
+
+        weights = pd.to_numeric(out.get(weight_column, 0.0), errors="coerce").fillna(0.0).abs()
         weight_total = float(weights.sum())
         if weight_total > 0:
             allocation = weights / weight_total * difference
@@ -727,7 +733,10 @@ def _reconcile_booking_charge_to_authoritative_business(df, authoritative_origin
             allocation = pd.Series(0.0, index=out.index, dtype="float64")
             if len(allocation):
                 allocation.iloc[0] = difference
-        out["BOOKING 6%"] = pd.to_numeric(out.get("BOOKING 6%", 0.0), errors="coerce").fillna(0.0) + allocation
+        out[column] = current_series + allocation
+
+    _reconcile("BOOKING 6%", 0.06, "ORIGIN_BUSINESS")
+    _reconcile("DESTINATION 5%", 0.05, "DESTINATION_BUSINESS")
 
     for column in ["SALARY", "GODOWN RENT", "OVERHEAD EXPENSE", "CLAIM", "BOOKING 6%", "DESTINATION 5%"]:
         if column not in out.columns:
@@ -2328,13 +2337,14 @@ def show_net_profit_dashboard():
         booking_business_current = float(sp_revenue_total or 0.0)
         booking_business_previous = float(sp_prev_revenue_total or 0.0)
 
-        # Keep Booking 6% on the exact same consolidated business base shown
-        # in the Origin Business KPI, then rebuild Total Expense / Net Profit.
-        df = _reconcile_booking_charge_to_authoritative_business(
+        # In the consolidated view, Booking and Delivery are two sides of the
+        # same shipment population. Reconcile BOTH percentage expenses to the
+        # exact authoritative business base, then rebuild expense / profit.
+        df = _reconcile_percentage_charges_to_authoritative_business(
             df, booking_business_current
         )
         if not prev_df.empty:
-            prev_df = _reconcile_booking_charge_to_authoritative_business(
+            prev_df = _reconcile_percentage_charges_to_authoritative_business(
                 prev_df, booking_business_previous
             )
     else:
