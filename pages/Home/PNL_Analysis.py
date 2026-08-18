@@ -1737,19 +1737,25 @@ def show_pnl_dashboard() -> None:
         with st.container(border=True):
             mom_title_col, mom_filter_col = st.columns([2.6, 1.0], gap="small", vertical_alignment="center")
 
+            mom_period_options = ["M", "Q"]
+            mom_period = st.session_state.get("pnl_mom_period_value", "M")
+            if mom_period not in mom_period_options:
+                mom_period = "M"
+                st.session_state["pnl_mom_period_value"] = "M"
+
             with mom_title_col:
+                mom_heading = (
+                    "Quarter on Quarter P&L & Growth"
+                    if mom_period == "Q"
+                    else "Month on Month P&L & Growth"
+                )
                 st.markdown(
                     "<div style='font-size:16px;font-weight:600;color:#0f2744;margin:2px 0 8px 2px;'>"
-                    "Month on Month P&L & Growth</div>",
+                    f"{mom_heading}</div>",
                     unsafe_allow_html=True,
                 )
 
             with mom_filter_col:
-                mom_period_options = ["M", "Q"]
-                mom_period = st.session_state.get("pnl_mom_period_value", "M")
-                if mom_period not in mom_period_options:
-                    mom_period = "M"
-                    st.session_state["pnl_mom_period_value"] = "M"
 
                 mom_btn_cols = st.columns(len(mom_period_options), gap="small")
                 for mom_index, mom_label in enumerate(mom_period_options):
