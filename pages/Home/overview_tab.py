@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.7.1
+# OVERVIEW VERSION: 8.7.2
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -1704,6 +1704,42 @@ def _inject_overview_css():
                 border-width: 2px !important;
                 border-style: solid !important;
                 border-color: #a9bfd8 !important;
+            }
+
+            /* =========================================================
+               MOM D / M / Q SELECTOR - VERSION 8.7.2
+               Same compact active-button treatment used by trend controls.
+               ========================================================= */
+            div[class*="st-key-mom_period_btn_"] {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            div[class*="st-key-mom_period_btn_"] div[data-testid="stButton"] {
+                width: 100% !important;
+                margin: 0 !important;
+            }
+
+            div[class*="st-key-mom_period_btn_"] button {
+                width: 100% !important;
+                min-height: 30px !important;
+                height: 30px !important;
+                padding: 2px 7px !important;
+                border-radius: 7px !important;
+                font-size: 9.5px !important;
+                font-weight: 650 !important;
+            }
+
+            div[class*="st-key-mom_period_btn_"] button[data-testid="stBaseButton-primary"] {
+                border-color: #123f73 !important;
+                background: linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
+                color: #ffffff !important;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 2px 5px rgba(15,42,67,.18) !important;
+            }
+
+            div[class*="st-key-mom_period_btn_"] button[data-testid="stBaseButton-primary"] p,
+            div[class*="st-key-mom_period_btn_"] button[data-testid="stBaseButton-primary"] span {
+                color: #ffffff !important;
             }
 
             /* =========================================================
@@ -4587,21 +4623,68 @@ def show_overview():
 
     compact_spacer()
 
-    monthly_chart = monthly.copy()
-    monthly_chart["Growth %"] = monthly_chart["Business Cr"].pct_change().mul(100).round(2)
-    monthly_chart = monthly_chart.dropna(subset=["Month"]).copy()
-    monthly_chart["Month"] = monthly_chart["Month"].astype(str)
-
+    # MoM panel period controls are intentionally local to this insight only.
+    # D / M / Q changes only this chart and does not affect any other dashboard logic.
     mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
         [1.20, 1.20, 0.60], gap="medium", vertical_alignment="top"
     )
 
     with mom_chart_col:
         with st.container(border=True):
-            st.markdown("<div style='font-size:13px;font-weight:400;color:#0f172a;margin-bottom:2px;'>Month on Month Business & Growth</div>", unsafe_allow_html=True)
+            mom_title_col, mom_filter_col = st.columns(
+                [1.65, 0.75], gap="small", vertical_alignment="center"
+            )
+            with mom_title_col:
+                st.markdown(
+                    "<div style='font-size:13px;font-weight:400;color:#0f172a;margin-bottom:2px;'>"
+                    "Month on Month Business & Growth</div>",
+                    unsafe_allow_html=True,
+                )
+            with mom_filter_col:
+                mom_period = _button_selector(
+                    ["D", "M", "Q"],
+                    "mom_period_type",
+                    "mom_period_btn",
+                    "M",
+                )
+
+            mom_source = df[["grdt", "REVENUE", "FIN_MONTH"]].copy()
+            if not pd.api.types.is_datetime64_any_dtype(mom_source["grdt"]):
+                mom_source["grdt"] = pd.to_datetime(mom_source["grdt"], errors="coerce")
+
+            if mom_period == "D":
+                monthly_chart = (
+                    mom_source.dropna(subset=["grdt"])
+                    .groupby(mom_source["grdt"].dt.date)["REVENUE"]
+                    .sum()
+                    .reset_index()
+                )
+                monthly_chart.columns = ["Period", "REVENUE"]
+                monthly_chart["Period"] = pd.to_datetime(monthly_chart["Period"]).dt.strftime("%d %b")
+                growth_name = "DoD Growth"
+            elif mom_period == "Q":
+                mom_source["Quarter"] = mom_source["FIN_MONTH"].map(QUARTER_MAP)
+                monthly_chart = mom_source.groupby("Quarter")["REVENUE"].sum().reset_index()
+                monthly_chart["Quarter"] = pd.Categorical(
+                    monthly_chart["Quarter"], categories=QUARTER_ORDER, ordered=True
+                )
+                monthly_chart = monthly_chart.sort_values("Quarter")
+                monthly_chart.columns = ["Period", "REVENUE"]
+                monthly_chart["Period"] = monthly_chart["Period"].astype(str)
+                growth_name = "QoQ Growth"
+            else:
+                monthly_chart = monthly[["Month", "REVENUE"]].copy()
+                monthly_chart = monthly_chart.dropna(subset=["Month"])
+                monthly_chart.columns = ["Period", "REVENUE"]
+                monthly_chart["Period"] = monthly_chart["Period"].astype(str)
+                growth_name = "MoM Growth"
+
+            monthly_chart["Business Cr"] = (monthly_chart["REVENUE"] / revenue_divisor).round(2)
+            monthly_chart["Growth %"] = monthly_chart["Business Cr"].pct_change().mul(100).round(2)
+
             fig_mom = go.Figure()
             fig_mom.add_trace(go.Bar(
-                x=monthly_chart["Month"], y=monthly_chart["Business Cr"], name="Business",
+                x=monthly_chart["Period"], y=monthly_chart["Business Cr"], name="Business",
                                                                                        
                 marker=dict(
                     color="#bfdbfe",
@@ -4616,14 +4699,14 @@ def show_overview():
             ))
             growth_colors = ["#16a34a" if pd.notna(v) and v >= 0 else "#dc2626" for v in monthly_chart["Growth %"]]
             fig_mom.add_trace(go.Scatter(
-                x=monthly_chart["Month"], y=monthly_chart["Growth %"], name="MoM Growth",
+                x=monthly_chart["Period"], y=monthly_chart["Growth %"], name=growth_name,
                 mode="lines+markers+text", yaxis="y2", line=dict(color="#f59e0b", width=3),
                 marker=dict(size=8, color=growth_colors, line=dict(color="white", width=1.5)),
                 text=["" if pd.isna(v) else f"{'▲' if v >= 0 else '▼'} {abs(v):.1f}%" for v in monthly_chart["Growth %"]],
                 textposition="top center",
                 textfont=dict(size=11, color=growth_colors, family="Arial"),
                 cliponaxis=False,
-                hovertemplate="<b>%{x}</b><br>MoM Growth: %{y:.2f}%<extra></extra>",
+                hovertemplate=f"<b>%{{x}}</b><br>{growth_name}: %{{y:.2f}}%<extra></extra>",
             ))
             revenue_max = pd.to_numeric(monthly_chart["Business Cr"], errors="coerce").max()
             revenue_max = revenue_max if pd.notna(revenue_max) and revenue_max > 0 else 1
