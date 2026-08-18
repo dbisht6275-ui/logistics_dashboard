@@ -183,7 +183,13 @@ SELECT
     MONTH(CN.GRDT) AS [MONTHNO],
 
     ROUND(
-        ISNULL(SUM(CN.tamount-cn.servicetax), 0) * 6 / 100,
+        ISNULL(
+            SUM(
+                ISNULL(CN.TAMOUNT, 0)
+                - ISNULL(CN.SERVICETAX, 0)
+            ),
+            0
+        ) * 6 / 100,
         2
     ) AS NETAMT
 
@@ -220,7 +226,13 @@ SELECT
     MONTH(CN.GRDT) AS [MONTHNO],
 
     ROUND(
-        ISNULL(SUM(CN.tamount-cn.servicetax), 0) * 5 / 100,
+        ISNULL(
+            SUM(
+                ISNULL(CN.TAMOUNT, 0)
+                - ISNULL(CN.SERVICETAX, 0)
+            ),
+            0
+        ) * 5 / 100,
         2
     ) AS NETAMT
 
@@ -1014,6 +1026,27 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
             final[column],
             errors="coerce",
         ).fillna(0.0)
+
+    # Canonical percentage-expense logic.
+    #
+    # The dashboard Business values come from the P&L datasets. Computing the
+    # 6% / 5% charges independently from CNMT and then joining them back by
+    # branch/month can create reconciliation gaps because the branch identity
+    # and merge-station logic is not guaranteed to be identical to the P&L SP.
+    # Use the already-aligned Origin/Destination Business values as the source
+    # of truth so the percentage charges reconcile with the dashboard business.
+    final["BOOKING 6%"] = final["ORIGIN_BUSINESS"] * 0.06
+    final["DESTINATION 5%"] = final["DESTINATION_BUSINESS"] * 0.05
+
+    # Rebuild total overhead after replacing the two percentage components.
+    final["TOTAL EXPENSE"] = (
+        final["SALARY"]
+        + final["GODOWN RENT"]
+        + final["OVERHEAD EXPENSE"]
+        + final["CLAIM"]
+        + final["BOOKING 6%"]
+        + final["DESTINATION 5%"]
+    )
 
     # FINAL ACCOUNTING LOGIC:
     # Origin P&L + Destination P&L - branch overhead (once).
