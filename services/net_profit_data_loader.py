@@ -183,7 +183,7 @@ SELECT
     MONTH(CN.GRDT) AS [MONTHNO],
 
     ROUND(
-        ISNULL(SUM(CN.FREIGHT), 0) * 6 / 100,
+        ISNULL(SUM(CN.tamount-cn.servicetax), 0) * 6 / 100,
         2
     ) AS NETAMT
 
@@ -220,7 +220,7 @@ SELECT
     MONTH(CN.GRDT) AS [MONTHNO],
 
     ROUND(
-        ISNULL(SUM(CN.FREIGHT), 0) * 5 / 100,
+        ISNULL(SUM(CN.tamount-cn.servicetax), 0) * 5 / 100,
         2
     ) AS NETAMT
 
