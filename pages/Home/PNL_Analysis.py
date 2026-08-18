@@ -1,3 +1,4 @@
+# P&L DASHBOARD VERSION: 1.0.1 - MoM M/Q selector
 import io
 from html import escape
 
@@ -364,6 +365,34 @@ def _inject_pnl_css() -> None:
         div[class*="st-key-pnl_trend_btn_"] button[data-testid="stBaseButton-primary"] span {color:#ffffff !important;}
         div[class*="st-key-pnl_trend_btn_"] button p,
         div[class*="st-key-pnl_trend_btn_"] button span {
+            margin:0 !important;padding:0 !important;font-size:11px !important;font-weight:650 !important;
+            color:inherit !important;white-space:nowrap !important;
+        }
+
+        /* D / M / Q buttons for the P&L MoM panel - same dark active style as P&L Trend */
+        div[class*="st-key-pnl_mom_btn_"] {margin:0 !important;padding:0 !important;}
+        div[class*="st-key-pnl_mom_btn_"] div[data-testid="stButton"] {width:100% !important;margin:0 !important;}
+        div[class*="st-key-pnl_mom_btn_"] button {
+            width:100% !important;min-height:34px !important;height:34px !important;padding:4px 8px !important;
+            margin:0 !important;border:1px solid #d8e2ee !important;border-radius:8px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%) !important;color:#334155 !important;
+            box-shadow:inset 0 1px 0 #ffffff,0 1px 2px rgba(15,23,42,.05) !important;
+            transform:none !important;font-size:11px !important;font-weight:650 !important;white-space:nowrap !important;
+            transition:border-color .14s ease,background .14s ease,color .14s ease,box-shadow .14s ease !important;
+        }
+        div[class*="st-key-pnl_mom_btn_"] button:hover {
+            border-color:#9bb7d8 !important;background:linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important;
+            color:#174a7e !important;box-shadow:inset 0 1px 0 #ffffff,0 2px 5px rgba(15,42,67,.08) !important;
+            transform:none !important;
+        }
+        div[class*="st-key-pnl_mom_btn_"] button[data-testid="stBaseButton-primary"] {
+            border-color:#123f73 !important;background:linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
+            color:#ffffff !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 2px 5px rgba(15,42,67,.18) !important;
+        }
+        div[class*="st-key-pnl_mom_btn_"] button[data-testid="stBaseButton-primary"] p,
+        div[class*="st-key-pnl_mom_btn_"] button[data-testid="stBaseButton-primary"] span {color:#ffffff !important;}
+        div[class*="st-key-pnl_mom_btn_"] button p,
+        div[class*="st-key-pnl_mom_btn_"] button span {
             margin:0 !important;padding:0 !important;font-size:11px !important;font-weight:650 !important;
             color:inherit !important;white-space:nowrap !important;
         }
@@ -1706,21 +1735,66 @@ def show_pnl_dashboard() -> None:
 
     with mom_col:
         with st.container(border=True):
-            st.markdown(
-                "<div style='font-size:16px;font-weight:600;color:#0f2744;margin:2px 0 8px 2px;'>"
-                "Month on Month P&L & Growth</div>",
-                unsafe_allow_html=True,
-            )
+            mom_title_col, mom_filter_col = st.columns([2.6, 1.0], gap="small", vertical_alignment="center")
 
-            mom_df = df.groupby("Month", observed=False, as_index=False)["PNL"].sum()
-            mom_df["Month"] = pd.Categorical(
-                mom_df["Month"], categories=MONTH_ORDER, ordered=True
-            )
-            mom_df = mom_df.sort_values("Month").reset_index(drop=True)
+            with mom_title_col:
+                st.markdown(
+                    "<div style='font-size:16px;font-weight:600;color:#0f2744;margin:2px 0 8px 2px;'>"
+                    "Month on Month P&L & Growth</div>",
+                    unsafe_allow_html=True,
+                )
+
+            with mom_filter_col:
+                mom_period_options = ["M", "Q"]
+                mom_period = st.session_state.get("pnl_mom_period_value", "M")
+                if mom_period not in mom_period_options:
+                    mom_period = "M"
+                    st.session_state["pnl_mom_period_value"] = "M"
+
+                mom_btn_cols = st.columns(len(mom_period_options), gap="small")
+                for mom_index, mom_label in enumerate(mom_period_options):
+                    with mom_btn_cols[mom_index]:
+                        if st.button(
+                            mom_label,
+                            key=f"pnl_mom_btn_{mom_index}",
+                            type="primary" if mom_period == mom_label else "secondary",
+                            use_container_width=True,
+                        ):
+                            st.session_state["pnl_mom_period_value"] = mom_label
+                            st.rerun()
+
+            # This selector affects only this chart. All dashboard filters and other insights stay unchanged.
+            if mom_period == "Q":
+                mom_df = df.groupby("Quarter", observed=False, as_index=False)["PNL"].sum()
+                mom_df["Quarter"] = pd.Categorical(
+                    mom_df["Quarter"], categories=QUARTER_ORDER, ordered=True
+                )
+                mom_df = (
+                    mom_df.sort_values("Quarter")
+                    .rename(columns={"Quarter": "Period"})
+                    .reset_index(drop=True)
+                )
+                growth_name = "QoQ Growth"
+                empty_label = "quarterly"
+            else:
+                mom_df = df.groupby("Month", observed=False, as_index=False)["PNL"].sum()
+                mom_df["Month"] = pd.Categorical(
+                    mom_df["Month"], categories=MONTH_ORDER, ordered=True
+                )
+                mom_df = (
+                    mom_df.sort_values("Month")
+                    .rename(columns={"Month": "Period"})
+                    .reset_index(drop=True)
+                )
+                growth_name = "MoM Growth"
+                empty_label = "monthly"
+
             mom_df["P&L Display"] = mom_df["PNL"] / divisor
 
             def _safe_mom_growth(values: pd.Series) -> pd.Series:
                 result = pd.Series(index=values.index, dtype="float64")
+                if values.empty:
+                    return result
                 result.iloc[0] = float("nan")
                 for idx in range(1, len(values)):
                     previous_value = float(values.iloc[idx - 1])
@@ -1733,8 +1807,8 @@ def show_pnl_dashboard() -> None:
                         ) * 100
                 return result
 
-            mom_df["MoM Growth"] = _safe_mom_growth(mom_df["PNL"])
-            mom_df["Growth Label"] = mom_df["MoM Growth"].apply(
+            mom_df["Period Growth"] = _safe_mom_growth(mom_df["PNL"])
+            mom_df["Growth Label"] = mom_df["Period Growth"].apply(
                 lambda value: (
                     f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
                     if pd.notna(value) else ""
@@ -1742,18 +1816,18 @@ def show_pnl_dashboard() -> None:
             )
 
             if mom_df.empty:
-                st.info("No monthly P&L data is available for the selected filters.")
+                st.info(f"No {empty_label} P&L data is available for the selected filters.")
             else:
                 bar_colors = ["#bfdbfe"] * len(mom_df)
                 growth_colors = [
                     "#16a34a" if pd.notna(value) and value >= 0 else "#dc2626"
-                    for value in mom_df["MoM Growth"]
+                    for value in mom_df["Period Growth"]
                 ]
 
                 fig_mom = go.Figure()
                 fig_mom.add_trace(
                     go.Bar(
-                        x=mom_df["Month"],
+                        x=mom_df["Period"],
                         y=mom_df["P&L Display"],
                         name="P&L",
                         marker=dict(
@@ -1773,9 +1847,9 @@ def show_pnl_dashboard() -> None:
                 )
                 fig_mom.add_trace(
                     go.Scatter(
-                        x=mom_df["Month"],
-                        y=mom_df["MoM Growth"],
-                        name="MoM Growth",
+                        x=mom_df["Period"],
+                        y=mom_df["Period Growth"],
+                        name=growth_name,
                         mode="lines+markers+text",
                         yaxis="y2",
                         line=dict(color="#f59e0b", width=3),
@@ -1789,7 +1863,7 @@ def show_pnl_dashboard() -> None:
                         textfont=dict(size=10, color="#334155"),
                         connectgaps=False,
                         hovertemplate=(
-                            "<b>%{x}</b><br>MoM Growth: %{y:.1f}%<extra></extra>"
+                            f"<b>%{{x}}</b><br>{growth_name}: %{{y:.1f}}%<extra></extra>"
                         ),
                     )
                 )
@@ -1799,7 +1873,7 @@ def show_pnl_dashboard() -> None:
                 pnl_max = float(pnl_values.max()) if not pnl_values.empty else 0.0
                 pnl_span = max(abs(pnl_min), abs(pnl_max), 1.0)
 
-                growth_values = mom_df["MoM Growth"].dropna()
+                growth_values = mom_df["Period Growth"].dropna()
                 if growth_values.empty:
                     growth_range = [-100, 100]
                 else:
