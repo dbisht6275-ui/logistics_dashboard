@@ -700,6 +700,56 @@ def _apply_same_filters(df, filters):
     return out
 
 
+def _reconcile_booking_charge_to_authoritative_business(df, authoritative_origin_business):
+    """Reconcile consolidated Booking 6% to the exact Origin Business KPI base.
+
+    Branch-level P&L rows can understate the consolidated origin revenue because
+    of branch mapping/join coverage. For the fully consolidated dashboard the
+    Origin Business KPI therefore uses the direct P&L SP total. This helper
+    allocates the resulting 6% reconciliation difference back across the current
+    rows so Total Expense, Net Profit, detail tables and the KPI strip all stay
+    internally consistent.
+    """
+    if df is None or df.empty or authoritative_origin_business is None:
+        return df
+
+    out = df.copy()
+    target_booking_6 = float(authoritative_origin_business or 0.0) * 0.06
+    current_booking_6 = float(pd.to_numeric(out.get("BOOKING 6%", 0.0), errors="coerce").fillna(0.0).sum())
+    difference = target_booking_6 - current_booking_6
+
+    if abs(difference) > 0.005:
+        weights = pd.to_numeric(out.get("ORIGIN_BUSINESS", 0.0), errors="coerce").fillna(0.0).abs()
+        weight_total = float(weights.sum())
+        if weight_total > 0:
+            allocation = weights / weight_total * difference
+        else:
+            allocation = pd.Series(0.0, index=out.index, dtype="float64")
+            if len(allocation):
+                allocation.iloc[0] = difference
+        out["BOOKING 6%"] = pd.to_numeric(out.get("BOOKING 6%", 0.0), errors="coerce").fillna(0.0) + allocation
+
+    for column in ["SALARY", "GODOWN RENT", "OVERHEAD EXPENSE", "CLAIM", "BOOKING 6%", "DESTINATION 5%"]:
+        if column not in out.columns:
+            out[column] = 0.0
+        out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
+
+    out["TOTAL EXPENSE"] = (
+        out["SALARY"]
+        + out["GODOWN RENT"]
+        + out["OVERHEAD EXPENSE"]
+        + out["CLAIM"]
+        + out["BOOKING 6%"]
+        + out["DESTINATION 5%"]
+    )
+    out["NET_PROFIT"] = pd.to_numeric(out.get("COMBINED_PNL", 0.0), errors="coerce").fillna(0.0) - out["TOTAL EXPENSE"]
+    out["NET_PROFIT_MARGIN"] = 0.0
+    income = pd.to_numeric(out.get("TOTAL_INCOME", 0.0), errors="coerce").fillna(0.0)
+    valid = income.ne(0)
+    out.loc[valid, "NET_PROFIT_MARGIN"] = out.loc[valid, "NET_PROFIT"] / income.loc[valid] * 100
+    return out
+
+
 # ============================================================
 # P&L INSIGHT HELPERS (ISOLATED FROM NET PROFIT CALCULATIONS)
 # ============================================================
@@ -2265,9 +2315,6 @@ def show_net_profit_dashboard():
 
     divisor, unit = get_conversion(conversion_type)
 
-    current = calculate_kpis(df)
-    previous = calculate_kpis(prev_df)
-
     # Business KPI display rule:
     # - Fully consolidated All Branches (no Branch/Zone/Circle/Quarter/Month filter):
     #   show the exact P&L SP revenue total in the Booking/Origin KPI. This is the
@@ -2280,9 +2327,26 @@ def show_net_profit_dashboard():
     if all_branches and no_business_scope_filters:
         booking_business_current = float(sp_revenue_total or 0.0)
         booking_business_previous = float(sp_prev_revenue_total or 0.0)
+
+        # Keep Booking 6% on the exact same consolidated business base shown
+        # in the Origin Business KPI, then rebuild Total Expense / Net Profit.
+        df = _reconcile_booking_charge_to_authoritative_business(
+            df, booking_business_current
+        )
+        if not prev_df.empty:
+            prev_df = _reconcile_booking_charge_to_authoritative_business(
+                prev_df, booking_business_previous
+            )
     else:
-        booking_business_current = current["origin_business"]
-        booking_business_previous = previous["origin_business"]
+        # Filtered/branch views use the already-aligned P&L business values from
+        # the Net Profit loader. There is no separate consolidated SP override.
+        booking_business_current = float(df["ORIGIN_BUSINESS"].sum()) if "ORIGIN_BUSINESS" in df.columns else 0.0
+        booking_business_previous = float(prev_df["ORIGIN_BUSINESS"].sum()) if (prev_df is not None and not prev_df.empty and "ORIGIN_BUSINESS" in prev_df.columns) else 0.0
+
+    # Recalculate KPIs only after percentage-expense reconciliation so every
+    # downstream card/table uses the same accounting values.
+    current = calculate_kpis(df)
+    previous = calculate_kpis(prev_df)
 
     # GP % denominator must match the Business KPI shown on the dashboard.
     # In consolidated All-Branches mode the card displays Booking/Origin
