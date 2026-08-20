@@ -119,9 +119,13 @@ def show_UserManagement():
                 new_roles[emp_id] = role
 
             if not has_error:
-                save_roles(new_roles)
-                st.success("Employee roles saved.")
-                st.rerun()
+                try:
+                    save_roles(new_roles)
+                except Exception as exc:
+                    st.error(f"Employee roles were not saved: {exc}")
+                else:
+                    st.success("Employee roles saved.")
+                    st.rerun()
 
     # =====================================================
     # Tab 2: Role -> Menu + Reports  (config/role_permissions.json)
@@ -172,9 +176,13 @@ def show_UserManagement():
                         "menu": menu_selection,
                         "reports": report_selection,
                     }
-                    save_permissions(permissions)
-                    st.success(f"Role '{target_role}' saved.")
-                    st.rerun()
+                    try:
+                        save_permissions(permissions)
+                    except Exception as exc:
+                        st.error(f"Role was not saved: {exc}")
+                    else:
+                        st.success(f"Role '{target_role}' saved.")
+                        st.rerun()
 
         with col_delete:
             if selected != "➕ Create new role":
@@ -183,9 +191,13 @@ def show_UserManagement():
                         st.error("The 'admin' role cannot be deleted — you'd lock yourself out.")
                     else:
                         permissions.pop(selected, None)
-                        save_permissions(permissions)
-                        st.warning(f"Role '{selected}' deleted.")
-                        st.rerun()
+                        try:
+                            save_permissions(permissions)
+                        except Exception as exc:
+                            st.error(f"Role was not deleted: {exc}")
+                        else:
+                            st.warning(f"Role '{selected}' deleted.")
+                            st.rerun()
 
         st.divider()
         st.markdown("##### Preview")
@@ -254,6 +266,10 @@ def show_UserManagement():
                     new_scope[emp_id] = {scope_type.lower(): value}
 
             if not has_error:
-                save_data_scope(new_scope)
-                st.success("Data scope saved. Affected employees will see the restriction on next login.")
-                st.rerun()
+                try:
+                    save_data_scope(new_scope)
+                except Exception as exc:
+                    st.error(f"Data scope was not saved: {exc}")
+                else:
+                    st.success("Data scope saved. Affected employees will see the restriction on next login.")
+                    st.rerun()
