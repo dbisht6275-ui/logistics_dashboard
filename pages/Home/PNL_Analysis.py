@@ -1157,92 +1157,148 @@ def show_pnl_dashboard() -> None:
             locked_circle = circle_rows["circle"].iloc[0]
             locked_zone = circle_rows["zone"].iloc[0]
 
-    # Overview-equivalent filter behavior.
-    # Company and Load Type remain single-select. Zone/Circle/Branch/Quarter/Month
-    # use checkbox slicers; Circle and Branch have instant search. Empty selection = All.
+    # Match the Overview tab's filter behavior exactly:
+    # Company and Load Type are single-select; Zone/Circle/Branch/Quarter/Month
+    # are cascading multiselects where an empty selection means "All".
     with filter_cols[0]:
         company = st.selectbox("▥ Company", ["All"] + _safe_options(df, "COMPNAME"), key="pnl_company")
     df = _apply_filter(df, "COMPNAME", company)
 
     filter_source_df = df.copy()
 
-    # Cascading hierarchy filters:
-    # Zone -> Circle -> Branch -> Quarter -> Month
+    def _pnl_apply_multi_filter(source_df, column, selected):
+        if (
+            source_df is None
+            or source_df.empty
+            or column not in source_df.columns
+            or not selected
+        ):
+            return source_df
+        return source_df[source_df[column].isin(selected)].copy()
+
+    def _prune_pnl_multiselect_state(key, allowed_options):
+        if key in st.session_state:
+            current = st.session_state.get(key, [])
+            if isinstance(current, (list, tuple, set)):
+                st.session_state[key] = [
+                    value for value in current if value in allowed_options
+                ]
+
+    # ZONE
+    zone_options = _safe_options(filter_source_df, "zone")
     with filter_cols[1]:
-        zone_options = _safe_options(filter_source_df, "zone")
-        selected_zones = _checkbox_slicer(
-            "◉ Zone", zone_options, key="pnl_zone_slicer",
-            locked_values=[locked_zone] if locked_zone else None,
-        )
+        if locked_zone:
+            st.multiselect(
+                "◉ Zone",
+                [locked_zone],
+                default=[locked_zone],
+                key="pnl_zone_locked",
+                disabled=True,
+            )
+            selected_zones = [locked_zone]
+        else:
+            _prune_pnl_multiselect_state("pnl_zone", zone_options)
+            selected_zones = st.multiselect(
+                "◉ Zone",
+                zone_options,
+                key="pnl_zone",
+                placeholder="All zones",
+                disabled=not zone_options,
+            )
 
-    circle_source_df = filter_source_df.copy()
-    if selected_zones:
-        circle_source_df = circle_source_df[
-            circle_source_df["zone"].isin(selected_zones)
-        ]
-
+    # CIRCLE choices follow Zone.
+    circle_scope = filter_source_df.copy()
+    circle_scope = _pnl_apply_multi_filter(circle_scope, "zone", selected_zones)
+    circle_options = _safe_options(circle_scope, "circle")
     with filter_cols[2]:
-        circle_options = _safe_options(circle_source_df, "circle")
-        selected_circles = _checkbox_slicer(
-            "◎ Circle", circle_options, key="pnl_circle_slicer",
-            locked_values=[locked_circle] if locked_circle else None,
-            searchable=True,
-        )
+        if locked_circle:
+            st.multiselect(
+                "◎ Circle",
+                [locked_circle],
+                default=[locked_circle],
+                key="pnl_circle_locked",
+                disabled=True,
+            )
+            selected_circles = [locked_circle]
+        else:
+            _prune_pnl_multiselect_state("pnl_circle", circle_options)
+            selected_circles = st.multiselect(
+                "◎ Circle",
+                circle_options,
+                key="pnl_circle",
+                placeholder="All circles",
+                disabled=not circle_options,
+            )
 
-    branch_source_df = circle_source_df.copy()
-    if selected_circles:
-        branch_source_df = branch_source_df[
-            branch_source_df["circle"].isin(selected_circles)
-        ]
-
+    # BRANCH choices follow Zone + Circle.
+    branch_scope = circle_scope.copy()
+    branch_scope = _pnl_apply_multi_filter(branch_scope, "circle", selected_circles)
+    branch_options = _safe_options(branch_scope, "branch")
     with filter_cols[3]:
-        branch_options = _safe_options(branch_source_df, "branch")
-        selected_branches = _checkbox_slicer(
-            "⌂ Branch", branch_options, key="pnl_branch_slicer",
-            locked_values=[locked_branch] if locked_branch else None,
-            searchable=True,
-        )
+        if locked_branch:
+            st.multiselect(
+                "⌂ Branch",
+                [locked_branch],
+                default=[locked_branch],
+                key="pnl_branch_locked",
+                disabled=True,
+            )
+            selected_branches = [locked_branch]
+        else:
+            _prune_pnl_multiselect_state("pnl_branch", branch_options)
+            selected_branches = st.multiselect(
+                "⌂ Branch",
+                branch_options,
+                key="pnl_branch",
+                placeholder="All branches",
+                disabled=not branch_options,
+            )
 
-    quarter_source_df = branch_source_df.copy()
-    if selected_branches:
-        quarter_source_df = quarter_source_df[
-            quarter_source_df["branch"].isin(selected_branches)
-        ]
-
+    # QUARTER choices follow Zone + Circle + Branch.
+    quarter_scope = branch_scope.copy()
+    quarter_scope = _pnl_apply_multi_filter(quarter_scope, "branch", selected_branches)
+    available_quarters_set = set(_safe_options(quarter_scope, "Quarter"))
+    quarter_options = [
+        quarter for quarter in QUARTER_ORDER
+        if quarter in available_quarters_set
+    ]
+    _prune_pnl_multiselect_state("pnl_quarter", quarter_options)
     with filter_cols[4]:
-        available_quarters = [
-            q for q in QUARTER_ORDER
-            if q in quarter_source_df["Quarter"].dropna().unique().tolist()
-        ]
-        selected_quarters = _checkbox_slicer(
-            "▦ Quarter", available_quarters, key="pnl_quarter_slicer"
+        selected_quarters = st.multiselect(
+            "▦ Quarter",
+            quarter_options,
+            key="pnl_quarter",
+            placeholder="All quarters",
+            disabled=not quarter_options,
         )
 
-    month_source_df = quarter_source_df.copy()
-    if selected_quarters:
-        month_source_df = month_source_df[
-            month_source_df["Quarter"].isin(selected_quarters)
-        ]
-
+    # MONTH choices follow the selected hierarchy + Quarter.
+    month_scope = quarter_scope.copy()
+    month_scope = _pnl_apply_multi_filter(month_scope, "Quarter", selected_quarters)
+    available_months_set = set(_safe_options(month_scope, "Month"))
+    month_options = [
+        month for month in MONTH_ORDER
+        if month in available_months_set
+    ]
+    _prune_pnl_multiselect_state("pnl_month", month_options)
     with filter_cols[5]:
-        available_months = [
-            m for m in MONTH_ORDER
-            if m in month_source_df["Month"].dropna().unique().tolist()
-        ]
-        selected_months = _checkbox_slicer(
-            "▣ Month", available_months, key="pnl_month_slicer"
+        selected_months = st.multiselect(
+            "▣ Month",
+            month_options,
+            key="pnl_month",
+            placeholder="All months",
+            disabled=not month_options,
         )
 
-    if selected_zones:
-        df = df[df["zone"].isin(selected_zones)]
-    if selected_circles:
-        df = df[df["circle"].isin(selected_circles)]
-    if selected_branches:
-        df = df[df["branch"].isin(selected_branches)]
-    if selected_quarters:
-        df = df[df["Quarter"].isin(selected_quarters)]
-    if selected_months:
-        df = df[df["Month"].isin(selected_months)]
+    pnl_filters = {
+        "zone": selected_zones,
+        "circle": selected_circles,
+        "branch": selected_branches,
+        "Quarter": selected_quarters,
+        "Month": selected_months,
+    }
+    for _column, _selected in pnl_filters.items():
+        df = _pnl_apply_multi_filter(df, _column, _selected)
 
     with filter_cols[6]:
         load_type = st.selectbox(
