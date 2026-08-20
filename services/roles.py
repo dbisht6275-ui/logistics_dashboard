@@ -1,42 +1,73 @@
 import json
 import os
+import shutil
+import tempfile
 import streamlit as st
 
 # Project root (one level up from services/)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-ROLES_FILE = os.path.join(BASE_DIR, "config", "roles.json")
-PERMISSIONS_FILE = os.path.join(BASE_DIR, "config", "role_permissions.json")
-DATA_SCOPE_FILE = os.path.join(BASE_DIR, "config", "data_scope.json")
+# In production set USER_MANAGEMENT_DATA_DIR to a persistent/mounted directory.
+# The config directory remains the zero-configuration local-development fallback.
+DATA_DIR = os.path.abspath(
+    os.environ.get("USER_MANAGEMENT_DATA_DIR", os.path.join(BASE_DIR, "config"))
+)
+ROLES_FILE = os.path.join(DATA_DIR, "roles.json")
+PERMISSIONS_FILE = os.path.join(DATA_DIR, "role_permissions.json")
+DATA_SCOPE_FILE = os.path.join(DATA_DIR, "data_scope.json")
 
 # Safest fallback role if an employee_id is missing from roles.json
 DEFAULT_ROLE = "viewer"
 
 
-@st.cache_data(show_spinner=False)
-def load_roles():
-    """Returns { "employee_id": "role_name", ... } from config/roles.json"""
+def _load_json(path, default):
     try:
-        with open(ROLES_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        return {}
+        return default.copy()
     except json.JSONDecodeError:
-        st.error("roles.json is not valid JSON. Please check the file.")
-        return {}
+        backup = f"{path}.bak"
+        try:
+            with open(backup, "r", encoding="utf-8") as f:
+                recovered = json.load(f)
+            st.warning(f"Recovered {os.path.basename(path)} from its last valid backup.")
+            return recovered
+        except (FileNotFoundError, json.JSONDecodeError):
+            st.error(f"{os.path.basename(path)} is not valid JSON and no valid backup exists.")
+            return default.copy()
+
+
+def _atomic_save_json(path, data):
+    """Atomically write, verify and back up a JSON configuration file."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(prefix=".user_mgmt_", suffix=".json", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, indent=2, ensure_ascii=False, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        with open(temp_path, "r", encoding="utf-8") as handle:
+            verified = json.load(handle)
+        if verified != data:
+            raise IOError("Saved data verification failed")
+        if os.path.exists(path):
+            shutil.copy2(path, f"{path}.bak")
+        os.replace(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
+@st.cache_data(show_spinner=False)
+def load_roles():
+    """Returns {employee_id: role_name}."""
+    return _load_json(ROLES_FILE, {})
 
 
 @st.cache_data(show_spinner=False)
 def load_permissions():
-    """Returns { "role_name": {"menu": [...], "reports": [...]}, ... } from config/role_permissions.json"""
-    try:
-        with open(PERMISSIONS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-    except json.JSONDecodeError:
-        st.error("role_permissions.json is not valid JSON. Please check the file.")
-        return {}
+    return _load_json(PERMISSIONS_FILE, {})
 
 
 def get_role_for_employee(employee_id):
@@ -65,14 +96,22 @@ def load_data_scope():
     """Returns { "employee_id": {"zone": "..."} | {"circle": "..."} | {"branch": "..."} | {}, ... }
     from config/data_scope.json. An empty dict {} (or the employee_id being absent entirely)
     means no restriction — that employee sees all data."""
-    try:
-        with open(DATA_SCOPE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-    except json.JSONDecodeError:
-        st.error("data_scope.json is not valid JSON. Please check the file.")
-        return {}
+    return _load_json(DATA_SCOPE_FILE, {})
+
+
+def save_roles(data):
+    _atomic_save_json(ROLES_FILE, data)
+    clear_role_cache()
+
+
+def save_permissions(data):
+    _atomic_save_json(PERMISSIONS_FILE, data)
+    clear_role_cache()
+
+
+def save_data_scope(data):
+    _atomic_save_json(DATA_SCOPE_FILE, data)
+    clear_role_cache()
 
 
 def get_data_scope_for_employee(employee_id):
