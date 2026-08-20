@@ -1280,102 +1280,155 @@ def render_data_filters(
     f1, f2, f3, f4, f5, f6, f7, f8 = filter_columns[2:]
     filter_source_df = df.copy()
 
+    def _customer_safe_options(source_df, column):
+        if source_df is None or source_df.empty or column not in source_df.columns:
+            return []
+        values = source_df[column].dropna().astype(str).str.strip()
+        values = values[values.ne("")]
+        return sorted(values.unique().tolist(), key=str.casefold)
+
+    def _customer_apply_multi_filter(source_df, column, selected):
+        if (
+            source_df is None
+            or source_df.empty
+            or column not in source_df.columns
+            or not selected
+        ):
+            return source_df
+        return source_df[source_df[column].isin(selected)].copy()
+
+    def _prune_customer_multiselect_state(key, allowed_options):
+        if key in st.session_state:
+            current = st.session_state.get(key, [])
+            if isinstance(current, (list, tuple, set)):
+                st.session_state[key] = [
+                    value for value in current if value in allowed_options
+                ]
+
     # ------------------------------------------------------------------
     # ZONE
     # ------------------------------------------------------------------
+    zone_options = _customer_safe_options(filter_source_df, "Zone")
     with f1:
-        zone_options = (
-            sorted(filter_source_df["Zone"].dropna().astype(str).str.strip().unique().tolist(), key=str.casefold)
-            if "Zone" in filter_source_df.columns else []
-        )
-        selected_zones = _checkbox_slicer(
-            "◉ Zone",
-            zone_options,
-            key="customer_zone_slicer",
-            locked_values=[locked_zone] if locked_zone else None,
-        )
+        if locked_zone:
+            st.multiselect(
+                "◉ Zone",
+                [locked_zone],
+                default=[locked_zone],
+                key="customer_zone_locked",
+                disabled=True,
+            )
+            selected_zones = [locked_zone]
+        else:
+            _prune_customer_multiselect_state("customer_zone", zone_options)
+            selected_zones = st.multiselect(
+                "◉ Zone",
+                zone_options,
+                key="customer_zone",
+                placeholder="All zones",
+                disabled=not zone_options,
+            )
 
     zone_source_df = filter_source_df.copy()
-    if selected_zones and "Zone" in zone_source_df.columns:
-        zone_source_df = zone_source_df[zone_source_df["Zone"].isin(selected_zones)]
+    zone_source_df = _customer_apply_multi_filter(zone_source_df, "Zone", selected_zones)
 
     # ------------------------------------------------------------------
     # CIRCLE - options only from selected/locked Zone
     # ------------------------------------------------------------------
+    circle_options = _customer_safe_options(zone_source_df, "Circle")
     with f2:
-        circle_options = (
-            sorted(zone_source_df["Circle"].dropna().astype(str).str.strip().unique().tolist(), key=str.casefold)
-            if "Circle" in zone_source_df.columns else []
-        )
-        selected_circles = _checkbox_slicer(
-            "◎ Circle",
-            circle_options,
-            key="customer_circle_slicer",
-            locked_values=[locked_circle] if locked_circle else None,
-            searchable=True,
-        )
+        if locked_circle:
+            st.multiselect(
+                "◎ Circle",
+                [locked_circle],
+                default=[locked_circle],
+                key="customer_circle_locked",
+                disabled=True,
+            )
+            selected_circles = [locked_circle]
+        else:
+            _prune_customer_multiselect_state("customer_circle", circle_options)
+            selected_circles = st.multiselect(
+                "◎ Circle",
+                circle_options,
+                key="customer_circle",
+                placeholder="All circles",
+                disabled=not circle_options,
+            )
 
     circle_source_df = zone_source_df.copy()
-    if selected_circles and "Circle" in circle_source_df.columns:
-        circle_source_df = circle_source_df[circle_source_df["Circle"].isin(selected_circles)]
+    circle_source_df = _customer_apply_multi_filter(circle_source_df, "Circle", selected_circles)
 
     # ------------------------------------------------------------------
     # BRANCH - options only from selected/locked Zone + Circle
     # ------------------------------------------------------------------
+    branch_options = _customer_safe_options(circle_source_df, "Branch")
     with f3:
-        branch_options = (
-            sorted(circle_source_df["Branch"].dropna().astype(str).str.strip().unique().tolist(), key=str.casefold)
-            if "Branch" in circle_source_df.columns else []
-        )
-        selected_branches = _checkbox_slicer(
-            "⌂ Branch",
-            branch_options,
-            key="customer_branch_slicer",
-            locked_values=[locked_branch] if locked_branch else None,
-            searchable=True,
-        )
+        if locked_branch:
+            st.multiselect(
+                "⌂ Branch",
+                [locked_branch],
+                default=[locked_branch],
+                key="customer_branch_locked",
+                disabled=True,
+            )
+            selected_branches = [locked_branch]
+        else:
+            _prune_customer_multiselect_state("customer_branch", branch_options)
+            selected_branches = st.multiselect(
+                "⌂ Branch",
+                branch_options,
+                key="customer_branch",
+                placeholder="All branches",
+                disabled=not branch_options,
+            )
 
     branch_source_df = circle_source_df.copy()
-    if selected_branches and "Branch" in branch_source_df.columns:
-        branch_source_df = branch_source_df[branch_source_df["Branch"].isin(selected_branches)]
+    branch_source_df = _customer_apply_multi_filter(branch_source_df, "Branch", selected_branches)
 
     # ------------------------------------------------------------------
     # QUARTER - options only from selected hierarchy
     # ------------------------------------------------------------------
+    available_quarters_set = set(_customer_safe_options(branch_source_df, "Quarter"))
+    available_quarters = [
+        quarter for quarter in QUARTER_ORDER
+        if quarter in available_quarters_set
+    ]
+    _prune_customer_multiselect_state("customer_quarter", available_quarters)
     with f4:
-        available_quarters = [
-            q for q in QUARTER_ORDER
-            if "Quarter" in branch_source_df.columns
-            and q in branch_source_df["Quarter"].dropna().unique().tolist()
-        ]
-        selected_quarters = _checkbox_slicer(
+        selected_quarters = st.multiselect(
             "▦ Quarter",
             available_quarters,
-            key="customer_quarter_slicer",
+            key="customer_quarter",
+            placeholder="All quarters",
+            disabled=not available_quarters,
         )
 
     quarter_source_df = branch_source_df.copy()
-    if selected_quarters and "Quarter" in quarter_source_df.columns:
-        quarter_source_df = quarter_source_df[quarter_source_df["Quarter"].isin(selected_quarters)]
+    quarter_source_df = _customer_apply_multi_filter(
+        quarter_source_df, "Quarter", selected_quarters
+    )
 
     # ------------------------------------------------------------------
     # MONTH - options only from selected hierarchy + Quarter
     # ------------------------------------------------------------------
+    available_months_set = set(_customer_safe_options(quarter_source_df, "Month"))
+    available_months = [
+        month for month in MONTH_ORDER
+        if month in available_months_set
+    ]
+    _prune_customer_multiselect_state("customer_month", available_months)
     with f5:
-        available_months = [
-            m for m in MONTH_ORDER
-            if "Month" in quarter_source_df.columns
-            and m in quarter_source_df["Month"].dropna().unique().tolist()
-        ]
-        selected_months = _checkbox_slicer(
+        selected_months = st.multiselect(
             "▣ Month",
             available_months,
-            key="customer_month_slicer",
+            key="customer_month",
+            placeholder="All months",
+            disabled=not available_months,
         )
 
     selection_df = quarter_source_df.copy()
-    if selected_months and "Month" in selection_df.columns:
-        selection_df = selection_df[selection_df["Month"].isin(selected_months)]
+    selection_df = _customer_apply_multi_filter(selection_df, "Month", selected_months)
 
     # ------------------------------------------------------------------
     # LOAD TYPE / CUSTOMER / CONVERSION
