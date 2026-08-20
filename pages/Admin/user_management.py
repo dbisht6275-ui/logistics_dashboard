@@ -1,15 +1,14 @@
-import json
 import pandas as pd
 import streamlit as st
 
 from services.roles import (
-    ROLES_FILE,
-    PERMISSIONS_FILE,
-    DATA_SCOPE_FILE,
     load_roles,
     load_permissions,
     load_data_scope,
-    clear_role_cache,
+    save_roles,
+    save_permissions,
+    save_data_scope,
+    DATA_DIR,
 )
 
 # Fallback lists used only if app.py hasn't populated session_state yet
@@ -31,9 +30,21 @@ FALLBACK_REPORTS = [
 ]
 
 
-def _save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+def _inject_user_management_css():
+    st.markdown("""
+    <style>
+    .um-hero{padding:20px 24px;border:1px solid #dbe7f3;border-radius:14px;
+      background:linear-gradient(135deg,#f8fbff 0%,#eef6ff 100%);margin-bottom:16px}
+    .um-title{font-size:28px;font-weight:750;color:#102a43;margin:0}
+    .um-subtitle{color:#627d98;margin-top:5px;font-size:14px}
+    .um-card-title{font-size:18px;font-weight:700;color:#163a5f;margin-bottom:2px}
+    .um-card-note{font-size:13px;color:#718096;margin-bottom:14px}
+    div[data-testid="stDataEditor"]{border:1px solid #dbe7f3;border-radius:12px;overflow:hidden}
+    div[data-testid="stTabs"] button[role="tab"]{font-weight:650;padding:12px 18px}
+    div[data-testid="stTabs"] button[aria-selected="true"]{color:#1261a0;border-bottom-color:#1261a0}
+    div[data-testid="stMetric"]{background:#fff;border:1px solid #dbe7f3;border-radius:12px;padding:12px 16px}
+    </style>
+    """, unsafe_allow_html=True)
 
 
 def show_UserManagement():
@@ -43,11 +54,23 @@ def show_UserManagement():
         st.error("Only admins can access User Management.")
         st.stop()
 
-    st.markdown("### 🛠️ User Management")
-    st.caption("Manage which employees have which role, and what each role is allowed to see.")
+    _inject_user_management_css()
+    st.markdown("""
+    <div class="um-hero"><div class="um-title">🛡️ User Access Management</div>
+    <div class="um-subtitle">Control employee roles, module permissions and operational data access from one secure workspace.</div></div>
+    """, unsafe_allow_html=True)
 
     all_menu_items = st.session_state.get("_all_menu_items", FALLBACK_MENU_ITEMS)
     all_reports = st.session_state.get("_all_reports", FALLBACK_REPORTS)
+
+    summary_roles = load_roles()
+    summary_permissions = load_permissions()
+    summary_scopes = load_data_scope()
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Employees", len(summary_roles))
+    m2.metric("Access Roles", len(summary_permissions))
+    m3.metric("Restricted Users", sum(bool(v) for v in summary_scopes.values()))
+    m4.metric("Storage", "Persistent" if "USER_MANAGEMENT_DATA_DIR" in __import__("os").environ else "Local")
 
     tab1, tab2, tab3 = st.tabs(["👤 Employee Roles", "🔐 Role Permissions", "📍 Data Scope"])
 
@@ -59,8 +82,8 @@ def show_UserManagement():
         permissions = load_permissions()
         role_options = list(permissions.keys()) or ["viewer"]
 
-        st.markdown("#### Employees")
-        st.caption("Add, edit, or remove rows below, then click Save.")
+        st.markdown('<div class="um-card-title">Employee Role Directory</div>', unsafe_allow_html=True)
+        st.markdown('<div class="um-card-note">Add, edit or remove employee access assignments, then save the verified directory.</div>', unsafe_allow_html=True)
 
         rows = [{"Employee ID": emp_id, "Role": role} for emp_id, role in roles.items()]
         roles_df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=["Employee ID", "Role"])
@@ -95,8 +118,7 @@ def show_UserManagement():
                 new_roles[emp_id] = role
 
             if not has_error:
-                _save_json(ROLES_FILE, new_roles)
-                clear_role_cache()
+                save_roles(new_roles)
                 st.success("Employee roles saved.")
                 st.rerun()
 
@@ -107,7 +129,8 @@ def show_UserManagement():
         permissions = load_permissions()
         role_names = list(permissions.keys())
 
-        st.markdown("#### Select a role to edit, or create a new one")
+        st.markdown('<div class="um-card-title">Role Permission Matrix</div>', unsafe_allow_html=True)
+        st.markdown('<div class="um-card-note">Choose a role and assign only the modules and reports required for that job.</div>', unsafe_allow_html=True)
 
         selected = st.selectbox("Role", role_names + ["➕ Create new role"])
 
@@ -126,13 +149,15 @@ def show_UserManagement():
         menu_selection = st.multiselect(
             "Allowed sidebar menu items",
             all_menu_items,
-            default=[m for m in current_menu if m in all_menu_items]
+            default=[m for m in current_menu if m in all_menu_items],
+            key=f"permission_menu_{target_role or 'new'}",
         )
 
         report_selection = st.multiselect(
             "Allowed reports",
             all_reports,
-            default=[r for r in current_reports if r in all_reports]
+            default=[r for r in current_reports if r in all_reports],
+            key=f"permission_reports_{target_role or 'new'}",
         )
 
         col_save, col_delete = st.columns(2)
@@ -146,8 +171,7 @@ def show_UserManagement():
                         "menu": menu_selection,
                         "reports": report_selection,
                     }
-                    _save_json(PERMISSIONS_FILE, permissions)
-                    clear_role_cache()
+                    save_permissions(permissions)
                     st.success(f"Role '{target_role}' saved.")
                     st.rerun()
 
@@ -158,8 +182,7 @@ def show_UserManagement():
                         st.error("The 'admin' role cannot be deleted — you'd lock yourself out.")
                     else:
                         permissions.pop(selected, None)
-                        _save_json(PERMISSIONS_FILE, permissions)
-                        clear_role_cache()
+                        save_permissions(permissions)
                         st.warning(f"Role '{selected}' deleted.")
                         st.rerun()
 
@@ -171,7 +194,7 @@ def show_UserManagement():
     # Tab 3: Employee -> Data Scope (zone/circle/branch)  (config/data_scope.json)
     # =====================================================
     with tab3:
-        st.markdown("#### Restrict employees to a specific Zone / Circle / Branch")
+        st.markdown('<div class="um-card-title">Employee Data Scope</div>', unsafe_allow_html=True)
         st.caption(
             "Leave 'Scope Type' as None to give an employee full data access (no restriction). "
             "Value must match the exact spelling used in the data (e.g. 'Nepal Zone', 'NCR Circle', 'Noida')."
@@ -230,7 +253,6 @@ def show_UserManagement():
                     new_scope[emp_id] = {scope_type.lower(): value}
 
             if not has_error:
-                _save_json(DATA_SCOPE_FILE, new_scope)
-                clear_role_cache()
+                save_data_scope(new_scope)
                 st.success("Data scope saved. Affected employees will see the restriction on next login.")
                 st.rerun()
