@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.7.2
+# OVERVIEW VERSION: 8.7.3
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -5507,9 +5507,16 @@ def show_overview():
                                                                             
         top_branch_pool = top_branch_pool[top_branch_pool["Monthly_Avg_Business"] < slab_max]
 
+    branch_sort_ascending = st.session_state.get(
+        "branch_monthly_avg_sort_ascending", False
+    )
+
     branch_rank_df = (
         top_branch_pool
-        .sort_values("Monthly_Avg_Business", ascending=False)
+        .sort_values(
+            "Monthly_Avg_Business",
+            ascending=branch_sort_ascending,
+        )
         .copy()
     )
     branch_rank_df["Business Cr"] = (
@@ -5550,9 +5557,16 @@ def show_overview():
             if slab_max is not None:
                 top_branch_pool = top_branch_pool[top_branch_pool["Monthly_Avg_Business"] < slab_max]
 
+            branch_sort_ascending = st.session_state.get(
+                "branch_monthly_avg_sort_ascending", False
+            )
+
             branch_rank_df = (
                 top_branch_pool
-                .sort_values("Monthly_Avg_Business", ascending=False)
+                .sort_values(
+                    "Monthly_Avg_Business",
+                    ascending=branch_sort_ascending,
+                )
                 .copy()
             )
             branch_rank_df["Business Cr"] = (
@@ -5601,16 +5615,127 @@ def show_overview():
                 )
                 max_cy = float(branch_rank_df["CY_Display"].max() or 1)
 
-                header_html = (
-                    '<div style="display:grid;grid-template-columns:42px minmax(155px,1.15fr) '
-                    'minmax(180px,2.1fr) 95px 95px 72px 78px;gap:8px;align-items:center;'
-                    'padding:0 8px 7px 8px;border-bottom:1px solid #dbe4ef;color:#52667d;'
-                    'font-size:10px;font-weight:700;">'
-                    '<div style="text-align:center;">#</div><div>Branch</div><div>Scale</div>'
-                    '<div style="text-align:right;">CY Avg</div>'
-                    '<div style="text-align:right;">LY Avg</div>'
-                    '<div style="text-align:right;">Share</div>'
-                    '<div style="text-align:right;">Growth</div></div>'
+                # Header is rendered with Streamlit columns so CY Avg can be a real
+                # clickable sort control while keeping the same visual position.
+                st.markdown(
+                    """
+                    <style>
+                        .branch-rank-header-cell {
+                            height: 22px;
+                            display: flex;
+                            align-items: center;
+                            color: #52667d;
+                            font-size: 10px;
+                            font-weight: 700;
+                            line-height: 1;
+                            white-space: nowrap;
+                        }
+                        .branch-rank-header-left { justify-content: flex-start; }
+                        .branch-rank-header-center { justify-content: center; }
+                        .branch-rank-header-right { justify-content: flex-end; }
+
+                        .st-key-branch_cy_avg_sort_btn {
+                            margin: 0 !important;
+                            padding: 0 !important;
+                        }
+                        .st-key-branch_cy_avg_sort_btn div[data-testid="stButton"] {
+                            width: 100% !important;
+                            margin: 0 !important;
+                            padding: 0 !important;
+                        }
+                        .st-key-branch_cy_avg_sort_btn button {
+                            width: 100% !important;
+                            min-height: 22px !important;
+                            height: 22px !important;
+                            padding: 0 !important;
+                            margin: 0 !important;
+                            border: 0 !important;
+                            border-radius: 0 !important;
+                            background: transparent !important;
+                            box-shadow: none !important;
+                            color: #52667d !important;
+                            font-size: 10px !important;
+                            font-weight: 700 !important;
+                            line-height: 1 !important;
+                            justify-content: flex-end !important;
+                            transform: none !important;
+                        }
+                        .st-key-branch_cy_avg_sort_btn button:hover {
+                            background: transparent !important;
+                            color: #2563eb !important;
+                            box-shadow: none !important;
+                            transform: none !important;
+                        }
+                        .st-key-branch_cy_avg_sort_btn button::after {
+                            display: none !important;
+                        }
+                        .st-key-branch_cy_avg_sort_btn button p,
+                        .st-key-branch_cy_avg_sort_btn button span {
+                            margin: 0 !important;
+                            padding: 0 !important;
+                            color: inherit !important;
+                            font-size: 10px !important;
+                            font-weight: 700 !important;
+                            line-height: 1 !important;
+                            white-space: nowrap !important;
+                        }
+                    </style>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                header_cols = st.columns(
+                    [0.42, 1.15, 2.10, 0.95, 0.95, 0.72, 0.78],
+                    gap="small",
+                    vertical_alignment="center",
+                )
+                with header_cols[0]:
+                    st.markdown(
+                        '<div class="branch-rank-header-cell branch-rank-header-center">#</div>',
+                        unsafe_allow_html=True,
+                    )
+                with header_cols[1]:
+                    st.markdown(
+                        '<div class="branch-rank-header-cell branch-rank-header-left">Branch</div>',
+                        unsafe_allow_html=True,
+                    )
+                with header_cols[2]:
+                    st.markdown(
+                        '<div class="branch-rank-header-cell branch-rank-header-left">Scale</div>',
+                        unsafe_allow_html=True,
+                    )
+                with header_cols[3]:
+                    if st.button(
+                        "CY Avg ⇅",
+                        key="branch_cy_avg_sort_btn",
+                        use_container_width=True,
+                        help=(
+                            "Current order: Ascending. Click for Descending."
+                            if branch_sort_ascending
+                            else "Current order: Descending. Click for Ascending."
+                        ),
+                    ):
+                        st.session_state["branch_monthly_avg_sort_ascending"] = not branch_sort_ascending
+                        st.rerun()
+                with header_cols[4]:
+                    st.markdown(
+                        '<div class="branch-rank-header-cell branch-rank-header-right">LY Avg</div>',
+                        unsafe_allow_html=True,
+                    )
+                with header_cols[5]:
+                    st.markdown(
+                        '<div class="branch-rank-header-cell branch-rank-header-right">Share</div>',
+                        unsafe_allow_html=True,
+                    )
+                with header_cols[6]:
+                    st.markdown(
+                        '<div class="branch-rank-header-cell branch-rank-header-right">Growth</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                st.markdown(
+                    '<div style="height:1px;background:#dbe4ef;margin:0 5px 7px 0;"></div>',
+                    unsafe_allow_html=True,
                 )
 
                 rows = []
@@ -5641,7 +5766,7 @@ def show_overview():
 
                 branch_scroll_html = (
                     '<div style="height:285px;overflow-y:auto;overflow-x:auto;padding:1px 5px 1px 0;'
-                    'scrollbar-gutter:stable;">' + header_html + ''.join(rows) + '</div>'
+                    'scrollbar-gutter:stable;">' + ''.join(rows) + '</div>'
                 )
                 if hasattr(st, "html"):
                     st.html(branch_scroll_html)
