@@ -13,7 +13,15 @@
     ],
     "reports": [
       "📊 Zone Booking Turnover",
-      "📋 GR Costing Head Wise"
+      "📋 GR Costing Head Wise",
+      "📋 Bangladesh Delivery Turnover",
+      "📈 Booking Summary Turnover",
+      "📊 Zone Wise Delivery Turnover",
+      "📊 Branch Wise Delivery Turnover",
+      "📊 Delivery Summary Turnover",
+      "📊 Branch Wise Booking Turnover",
+      "⚖️ Booking Weight Summary",
+      "📅 Monthly Trend EDD"
     ]
   },
   "manager": {
@@ -33,4 +41,4 @@
     ],
     "reports": []
   }
-} 
+}
