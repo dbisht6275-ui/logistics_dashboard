@@ -73,7 +73,9 @@ def _github_load_json(repo_path, default):
         timeout=20,
     )
     if response.status_code == 404:
-        return default.copy()
+        # First deployment: the repository file has not been bootstrapped yet.
+        # Returning None lets the caller use the JSON already shipped with the app.
+        return None
     response.raise_for_status()
     payload = response.json()
     decoded = base64.b64decode(payload["content"]).decode("utf-8")
@@ -162,7 +164,11 @@ def load_roles():
     """Returns {employee_id: role_name}."""
     if github_storage_enabled():
         try:
-            return _github_load_json(GITHUB_PATHS["roles"], {})
+            remote_roles = _github_load_json(GITHUB_PATHS["roles"], {})
+            # Never replace a working local access directory with a missing or
+            # accidentally empty remote bootstrap file.
+            if remote_roles:
+                return remote_roles
         except (requests.RequestException, ValueError, KeyError) as exc:
             st.warning(f"GitHub roles could not be loaded; using local fallback. ({exc})")
     return _load_json(ROLES_FILE, {})
@@ -172,7 +178,11 @@ def load_roles():
 def load_permissions():
     if github_storage_enabled():
         try:
-            return _github_load_json(GITHUB_PATHS["permissions"], {})
+            remote_permissions = _github_load_json(GITHUB_PATHS["permissions"], {})
+            # An empty permission map would lock every user (including admin)
+            # out of the application, so bootstrap from the repository copy.
+            if remote_permissions:
+                return remote_permissions
         except (requests.RequestException, ValueError, KeyError) as exc:
             st.warning(f"GitHub permissions could not be loaded; using local fallback. ({exc})")
     return _load_json(PERMISSIONS_FILE, {})
@@ -206,7 +216,9 @@ def load_data_scope():
     means no restriction — that employee sees all data."""
     if github_storage_enabled():
         try:
-            return _github_load_json(GITHUB_PATHS["scope"], {})
+            remote_scope = _github_load_json(GITHUB_PATHS["scope"], {})
+            if remote_scope is not None:
+                return remote_scope
         except (requests.RequestException, ValueError, KeyError) as exc:
             st.warning(f"GitHub data scope could not be loaded; using local fallback. ({exc})")
     return _load_json(DATA_SCOPE_FILE, {})
