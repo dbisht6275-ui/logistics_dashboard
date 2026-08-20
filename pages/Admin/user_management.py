@@ -9,6 +9,7 @@ from services.roles import (
     save_permissions,
     save_data_scope,
     DATA_DIR,
+    github_storage_enabled,
 )
 
 # Fallback lists used only if app.py hasn't populated session_state yet
@@ -70,7 +71,7 @@ def show_UserManagement():
     m1.metric("Employees", len(summary_roles))
     m2.metric("Access Roles", len(summary_permissions))
     m3.metric("Restricted Users", sum(bool(v) for v in summary_scopes.values()))
-    m4.metric("Storage", "Persistent" if "USER_MANAGEMENT_DATA_DIR" in __import__("os").environ else "Local")
+    m4.metric("Storage", "GitHub" if github_storage_enabled() else "Local")
 
     tab1, tab2, tab3 = st.tabs(["👤 Employee Roles", "🔐 Role Permissions", "📍 Data Scope"])
 
