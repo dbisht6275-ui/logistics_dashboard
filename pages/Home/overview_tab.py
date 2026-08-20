@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.7.3
+# OVERVIEW VERSION: 8.7.4
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -5557,18 +5557,54 @@ def show_overview():
             if slab_max is not None:
                 top_branch_pool = top_branch_pool[top_branch_pool["Monthly_Avg_Business"] < slab_max]
 
-            branch_sort_ascending = st.session_state.get(
-                "branch_monthly_avg_sort_ascending", False
-            )
+            # Sort state for the clickable table headers.
+            # Default remains CY Avg descending, matching the previous dashboard behavior.
+            branch_sort_field = st.session_state.get("branch_rank_sort_field", "CY Avg")
+            branch_sort_ascending = st.session_state.get("branch_rank_sort_ascending", False)
 
-            branch_rank_df = (
-                top_branch_pool
-                .sort_values(
-                    "Monthly_Avg_Business",
-                    ascending=branch_sort_ascending,
+            branch_rank_df = top_branch_pool.copy()
+            total_branch_business = float(branch_summary["Monthly_Avg_Business"].sum())
+
+            if not branch_rank_df.empty:
+                branch_rank_df["CY_Display"] = (
+                    branch_rank_df["Monthly_Avg_Business"] / revenue_divisor
                 )
-                .copy()
-            )
+                branch_rank_df["LY_Display"] = (
+                    branch_rank_df["LY_Monthly_Avg_Business"] / revenue_divisor
+                )
+                branch_rank_df["Share_Pct"] = (
+                    branch_rank_df["Monthly_Avg_Business"] / total_branch_business * 100
+                    if total_branch_business else 0.0
+                )
+                branch_rank_df["Growth_Pct"] = branch_rank_df.apply(
+                    lambda row: pct_growth(
+                        row["Monthly_Avg_Business"],
+                        row["LY_Monthly_Avg_Business"],
+                    ),
+                    axis=1,
+                )
+                branch_rank_df["_Branch_Sort"] = (
+                    branch_rank_df["branch"].fillna("").astype(str).str.casefold()
+                )
+
+                branch_sort_column_map = {
+                    "Branch": "_Branch_Sort",
+                    "Scale": "CY_Display",
+                    "CY Avg": "CY_Display",
+                    "LY Avg": "LY_Display",
+                    "Share": "Share_Pct",
+                    "Growth": "Growth_Pct",
+                }
+                branch_sort_column = branch_sort_column_map.get(
+                    branch_sort_field, "CY_Display"
+                )
+                branch_rank_df = branch_rank_df.sort_values(
+                    branch_sort_column,
+                    ascending=branch_sort_ascending,
+                    na_position="last",
+                    kind="mergesort",
+                ).copy()
+
             branch_rank_df["Business Cr"] = (
                 branch_rank_df["Monthly_Avg_Business"] / revenue_divisor
             ).round(2)
@@ -5576,7 +5612,6 @@ def show_overview():
             if branch_rank_df.empty:
                 st.info(f"No branch falls in the {selected_business_slab} business slab.")
             else:
-                total_branch_business = float(branch_summary["Monthly_Avg_Business"].sum())
                 selected_branch_business = float(branch_rank_df["Monthly_Avg_Business"].sum())
                 selected_ly_business = float(branch_rank_df["LY_Monthly_Avg_Business"].sum())
                 selected_business_share = (
@@ -5604,19 +5639,10 @@ def show_overview():
                     unsafe_allow_html=True,
                 )
 
-                branch_rank_df["CY_Display"] = branch_rank_df["Monthly_Avg_Business"] / revenue_divisor
-                branch_rank_df["LY_Display"] = branch_rank_df["LY_Monthly_Avg_Business"] / revenue_divisor
-                branch_rank_df["Share_Pct"] = (
-                    branch_rank_df["Monthly_Avg_Business"] / total_branch_business * 100
-                    if total_branch_business else 0.0
-                )
-                branch_rank_df["Growth_Pct"] = branch_rank_df.apply(
-                    lambda row: pct_growth(row["Monthly_Avg_Business"], row["LY_Monthly_Avg_Business"]), axis=1
-                )
                 max_cy = float(branch_rank_df["CY_Display"].max() or 1)
 
-                # Header is rendered with Streamlit columns so CY Avg can be a real
-                # clickable sort control while keeping the same visual position.
+                # Header is rendered with Streamlit columns so each business column
+                # can be sorted in place without adding a separate control row.
                 st.markdown(
                     """
                     <style>
@@ -5634,16 +5660,16 @@ def show_overview():
                         .branch-rank-header-center { justify-content: center; }
                         .branch-rank-header-right { justify-content: flex-end; }
 
-                        .st-key-branch_cy_avg_sort_btn {
+                        div[class*="st-key-branch_"][class*="_sort_btn"] {
                             margin: 0 !important;
                             padding: 0 !important;
                         }
-                        .st-key-branch_cy_avg_sort_btn div[data-testid="stButton"] {
+                        div[class*="st-key-branch_"][class*="_sort_btn"] div[data-testid="stButton"] {
                             width: 100% !important;
                             margin: 0 !important;
                             padding: 0 !important;
                         }
-                        .st-key-branch_cy_avg_sort_btn button {
+                        div[class*="st-key-branch_"][class*="_sort_btn"] button {
                             width: 100% !important;
                             min-height: 22px !important;
                             height: 22px !important;
@@ -5660,17 +5686,17 @@ def show_overview():
                             justify-content: flex-end !important;
                             transform: none !important;
                         }
-                        .st-key-branch_cy_avg_sort_btn button:hover {
+                        div[class*="st-key-branch_"][class*="_sort_btn"] button:hover {
                             background: transparent !important;
                             color: #2563eb !important;
                             box-shadow: none !important;
                             transform: none !important;
                         }
-                        .st-key-branch_cy_avg_sort_btn button::after {
+                        div[class*="st-key-branch_"][class*="_sort_btn"] button::after {
                             display: none !important;
                         }
-                        .st-key-branch_cy_avg_sort_btn button p,
-                        .st-key-branch_cy_avg_sort_btn button span {
+                        div[class*="st-key-branch_"][class*="_sort_btn"] button p,
+                        div[class*="st-key-branch_"][class*="_sort_btn"] button span {
                             margin: 0 !important;
                             padding: 0 !important;
                             color: inherit !important;
@@ -5694,44 +5720,41 @@ def show_overview():
                         '<div class="branch-rank-header-cell branch-rank-header-center">#</div>',
                         unsafe_allow_html=True,
                     )
-                with header_cols[1]:
-                    st.markdown(
-                        '<div class="branch-rank-header-cell branch-rank-header-left">Branch</div>',
-                        unsafe_allow_html=True,
-                    )
-                with header_cols[2]:
-                    st.markdown(
-                        '<div class="branch-rank-header-cell branch-rank-header-left">Scale</div>',
-                        unsafe_allow_html=True,
-                    )
-                with header_cols[3]:
+                def _branch_sort_button(column, label, key):
+                    is_active = branch_sort_field == column
+                    if is_active:
+                        current_direction = "Ascending" if branch_sort_ascending else "Descending"
+                        next_direction = "Descending" if branch_sort_ascending else "Ascending"
+                        help_text = f"Current order: {current_direction}. Click for {next_direction}."
+                    else:
+                        first_direction = "Ascending" if column == "Branch" else "Descending"
+                        help_text = f"Sort by {label} ({first_direction.lower()} first)."
+
                     if st.button(
-                        "CY Avg ⇅",
-                        key="branch_cy_avg_sort_btn",
+                        f"{label} ⇅",
+                        key=key,
                         use_container_width=True,
-                        help=(
-                            "Current order: Ascending. Click for Descending."
-                            if branch_sort_ascending
-                            else "Current order: Descending. Click for Ascending."
-                        ),
+                        help=help_text,
                     ):
-                        st.session_state["branch_monthly_avg_sort_ascending"] = not branch_sort_ascending
+                        if is_active:
+                            st.session_state["branch_rank_sort_ascending"] = not branch_sort_ascending
+                        else:
+                            st.session_state["branch_rank_sort_field"] = column
+                            st.session_state["branch_rank_sort_ascending"] = (column == "Branch")
                         st.rerun()
+
+                with header_cols[1]:
+                    _branch_sort_button("Branch", "Branch", "branch_name_sort_btn")
+                with header_cols[2]:
+                    _branch_sort_button("Scale", "Scale", "branch_scale_sort_btn")
+                with header_cols[3]:
+                    _branch_sort_button("CY Avg", "CY Avg", "branch_cy_avg_sort_btn")
                 with header_cols[4]:
-                    st.markdown(
-                        '<div class="branch-rank-header-cell branch-rank-header-right">LY Avg</div>',
-                        unsafe_allow_html=True,
-                    )
+                    _branch_sort_button("LY Avg", "LY Avg", "branch_ly_avg_sort_btn")
                 with header_cols[5]:
-                    st.markdown(
-                        '<div class="branch-rank-header-cell branch-rank-header-right">Share</div>',
-                        unsafe_allow_html=True,
-                    )
+                    _branch_sort_button("Share", "Share", "branch_share_sort_btn")
                 with header_cols[6]:
-                    st.markdown(
-                        '<div class="branch-rank-header-cell branch-rank-header-right">Growth</div>',
-                        unsafe_allow_html=True,
-                    )
+                    _branch_sort_button("Growth", "Growth", "branch_growth_sort_btn")
 
                 st.markdown(
                     '<div style="height:1px;background:#dbe4ef;margin:0 5px 7px 0;"></div>',
