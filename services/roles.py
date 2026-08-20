@@ -3,6 +3,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import requests
 import streamlit as st
 
@@ -95,15 +96,23 @@ def _github_save_json(repo_path, data, label):
         (json.dumps(data, indent=2, ensure_ascii=False, sort_keys=True) + "\n").encode("utf-8")
     ).decode("ascii")
 
-    for attempt in range(2):
+    last_status = None
+    last_message = "Unknown GitHub error"
+    for attempt in range(3):
         current = requests.get(
             url,
             headers=headers,
-            params={"ref": settings["branch"]},
+            params={"ref": settings["branch"], "_": str(time.time_ns())},
             timeout=20,
         )
         if current.status_code not in (200, 404):
-            current.raise_for_status()
+            try:
+                message = current.json().get("message", current.text)
+            except ValueError:
+                message = current.text
+            raise RuntimeError(
+                f"GitHub could not read {repo_path} (HTTP {current.status_code}): {message}"
+            )
         body = {
             "message": f"Update {label} from User Management",
             "content": encoded,
@@ -114,10 +123,24 @@ def _github_save_json(repo_path, data, label):
         saved = requests.put(url, headers=headers, json=body, timeout=30)
         if saved.status_code in (200, 201):
             return
-        if saved.status_code in (409, 422) and attempt == 0:
+        last_status = saved.status_code
+        try:
+            last_message = saved.json().get("message", saved.text)
+        except ValueError:
+            last_message = saved.text
+        if saved.status_code in (409, 422) and attempt < 2:
+            time.sleep(0.4 * (attempt + 1))
             continue
-        saved.raise_for_status()
-    raise RuntimeError(f"Could not save {label} after retrying a GitHub conflict.")
+        break
+    if last_status in (401, 403):
+        hint = " Check that the fine-grained token has Contents: Read and write access to logistics_dashboard."
+    elif last_status in (409, 422):
+        hint = " GitHub rejected a branch/SHA update; check branch protection and retry once."
+    else:
+        hint = ""
+    raise RuntimeError(
+        f"GitHub save failed for {repo_path} (HTTP {last_status}): {last_message}.{hint}"
+    )
 
 
 def _load_json(path, default):
