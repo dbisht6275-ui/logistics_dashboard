@@ -1,4 +1,4 @@
-# P&L DASHBOARD VERSION: 1.0.1 - MoM M/Q selector
+# P&L DASHBOARD VERSION: 1.0.2 - sortable branch P&L headers
 import io
 from html import escape
 
@@ -2419,11 +2419,50 @@ def show_pnl_dashboard() -> None:
             if slab_high is not None:
                 selected_branch_pnl = selected_branch_pnl[selected_branch_pnl["Monthly_Avg_PNL"] < slab_high]
 
-        selected_branch_pnl = selected_branch_pnl.sort_values(
-            "Monthly_Avg_PNL", ascending=False
-        ).reset_index(drop=True)
+        # Clickable header sort state. Default remains CY Avg descending,
+        # which matches the previous dashboard ordering.
+        branch_sort_field = st.session_state.get("pnl_branch_rank_sort_field", "CY Avg")
+        branch_sort_ascending = st.session_state.get("pnl_branch_rank_sort_ascending", False)
 
         total_abs_branch_pnl = float(all_branch_pnl["Monthly_Avg_PNL"].abs().sum())
+
+        # Pre-compute every value used by the sortable header row.
+        if not selected_branch_pnl.empty:
+            selected_branch_pnl["CY_Display"] = selected_branch_pnl["Monthly_Avg_PNL"] / divisor
+            selected_branch_pnl["LY_Display"] = selected_branch_pnl["LY_Monthly_Avg_PNL"] / divisor
+            selected_branch_pnl["Share_Pct"] = (
+                selected_branch_pnl["Monthly_Avg_PNL"].abs() / total_abs_branch_pnl * 100
+                if total_abs_branch_pnl else 0.0
+            )
+            selected_branch_pnl["Growth_Pct"] = selected_branch_pnl.apply(
+                lambda row: (
+                    ((row["Monthly_Avg_PNL"] - row["LY_Monthly_Avg_PNL"]) /
+                     abs(row["LY_Monthly_Avg_PNL"])) * 100
+                    if row["LY_Monthly_Avg_PNL"] != 0 else float("nan")
+                ),
+                axis=1,
+            )
+            selected_branch_pnl["_Branch_Sort"] = (
+                selected_branch_pnl["branch"].fillna("").astype(str).str.casefold()
+            )
+            selected_branch_pnl["_Scale_Sort"] = selected_branch_pnl["Monthly_Avg_PNL"].abs()
+
+            branch_sort_column_map = {
+                "Branch": "_Branch_Sort",
+                "Scale": "_Scale_Sort",
+                "CY Avg": "Monthly_Avg_PNL",
+                "LY Avg": "LY_Monthly_Avg_PNL",
+                "Share": "Share_Pct",
+                "Growth": "Growth_Pct",
+            }
+            branch_sort_column = branch_sort_column_map.get(branch_sort_field, "Monthly_Avg_PNL")
+            selected_branch_pnl = selected_branch_pnl.sort_values(
+                branch_sort_column,
+                ascending=branch_sort_ascending,
+                na_position="last",
+                kind="mergesort",
+            ).reset_index(drop=True)
+
         selected_pnl_total = float(selected_branch_pnl["Monthly_Avg_PNL"].sum())
         selected_ly_total = float(selected_branch_pnl["LY_Monthly_Avg_PNL"].sum())
         selected_abs_share = (
@@ -2494,16 +2533,127 @@ def show_pnl_dashboard() -> None:
                     f'</div></div>'
                 )
 
-            branch_header = (
-                '<div style="display:grid;grid-template-columns:34px minmax(175px,280px) minmax(100px,1fr) 105px 105px 70px 82px;align-items:center;gap:10px;'
-                'padding:0 10px 5px 10px;color:#64748b;font-size:10px;font-weight:700;">'
-                '<div style="text-align:center;">#</div><div>Branch</div><div>P&L Scale</div>'
-                '<div style="text-align:right;">CY Avg</div><div style="text-align:right;">LY Avg</div>'
-                '<div style="text-align:right;">Share</div><div style="text-align:right;">Growth</div></div>'
+            # Render the header with native Streamlit buttons so each visible
+            # column can sort the same table in place. No extra control row is used.
+            st.markdown(
+                """
+                <style>
+                    .pnl-branch-rank-header-cell {
+                        height:22px;
+                        display:flex;
+                        align-items:center;
+                        color:#64748b;
+                        font-size:10px;
+                        font-weight:700;
+                        line-height:1;
+                        white-space:nowrap;
+                    }
+                    .pnl-branch-rank-header-center { justify-content:center; }
+
+                    div[class*="st-key-pnl_branch_"][class*="_sort_btn"] {
+                        margin:0 !important;
+                        padding:0 !important;
+                    }
+                    div[class*="st-key-pnl_branch_"][class*="_sort_btn"] div[data-testid="stButton"] {
+                        width:100% !important;
+                        margin:0 !important;
+                        padding:0 !important;
+                    }
+                    div[class*="st-key-pnl_branch_"][class*="_sort_btn"] button {
+                        width:100% !important;
+                        min-height:22px !important;
+                        height:22px !important;
+                        padding:0 !important;
+                        margin:0 !important;
+                        border:0 !important;
+                        border-radius:0 !important;
+                        background:transparent !important;
+                        box-shadow:none !important;
+                        color:#64748b !important;
+                        font-size:10px !important;
+                        font-weight:700 !important;
+                        line-height:1 !important;
+                        justify-content:flex-end !important;
+                        transform:none !important;
+                    }
+                    div[class*="st-key-pnl_branch_"][class*="_sort_btn"] button:hover {
+                        background:transparent !important;
+                        color:#2563eb !important;
+                        box-shadow:none !important;
+                        transform:none !important;
+                    }
+                    div[class*="st-key-pnl_branch_"][class*="_sort_btn"] button::after {
+                        display:none !important;
+                    }
+                    div[class*="st-key-pnl_branch_"][class*="_sort_btn"] button p,
+                    div[class*="st-key-pnl_branch_"][class*="_sort_btn"] button span {
+                        margin:0 !important;
+                        padding:0 !important;
+                        color:inherit !important;
+                        font-size:10px !important;
+                        font-weight:700 !important;
+                        line-height:1 !important;
+                        white-space:nowrap !important;
+                    }
+                </style>
+                """,
+                unsafe_allow_html=True,
             )
+
+            header_cols = st.columns(
+                [0.34, 2.25, 1.35, 1.05, 1.05, 0.70, 0.82],
+                gap="small",
+                vertical_alignment="center",
+            )
+            with header_cols[0]:
+                st.markdown(
+                    '<div class="pnl-branch-rank-header-cell pnl-branch-rank-header-center">#</div>',
+                    unsafe_allow_html=True,
+                )
+
+            def _pnl_branch_sort_button(column, label, key):
+                is_active = branch_sort_field == column
+                if is_active:
+                    current_direction = "Ascending" if branch_sort_ascending else "Descending"
+                    next_direction = "Descending" if branch_sort_ascending else "Ascending"
+                    help_text = f"Current order: {current_direction}. Click for {next_direction}."
+                else:
+                    first_direction = "Ascending" if column == "Branch" else "Descending"
+                    help_text = f"Sort by {label} ({first_direction.lower()} first)."
+
+                if st.button(
+                    f"{label} ⇅",
+                    key=key,
+                    use_container_width=True,
+                    help=help_text,
+                ):
+                    if is_active:
+                        st.session_state["pnl_branch_rank_sort_ascending"] = not branch_sort_ascending
+                    else:
+                        st.session_state["pnl_branch_rank_sort_field"] = column
+                        st.session_state["pnl_branch_rank_sort_ascending"] = (column == "Branch")
+                    st.rerun()
+
+            with header_cols[1]:
+                _pnl_branch_sort_button("Branch", "Branch", "pnl_branch_name_sort_btn")
+            with header_cols[2]:
+                _pnl_branch_sort_button("Scale", "P&L Scale", "pnl_branch_scale_sort_btn")
+            with header_cols[3]:
+                _pnl_branch_sort_button("CY Avg", "CY Avg", "pnl_branch_cy_avg_sort_btn")
+            with header_cols[4]:
+                _pnl_branch_sort_button("LY Avg", "LY Avg", "pnl_branch_ly_avg_sort_btn")
+            with header_cols[5]:
+                _pnl_branch_sort_button("Share", "Share", "pnl_branch_share_sort_btn")
+            with header_cols[6]:
+                _pnl_branch_sort_button("Growth", "Growth", "pnl_branch_growth_sort_btn")
+
+            st.markdown(
+                '<div style="height:1px;background:#dbe4ef;margin:0 3px 7px 0;"></div>',
+                unsafe_allow_html=True,
+            )
+
             branch_html = (
-                branch_header
-                + '<div style="max-height:430px;overflow-y:auto;padding-right:3px;">'
+                '<div style="max-height:430px;overflow-y:auto;padding-right:3px;">'
                 + "".join(branch_rows)
                 + "</div>"
             )
