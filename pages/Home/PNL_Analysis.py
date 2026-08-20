@@ -1,7 +1,6 @@
 # P&L DASHBOARD VERSION: 1.0.2 - sortable branch P&L headers
 import io
 from html import escape
-
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -22,7 +21,6 @@ FY_OPTIONS = [
     "Select FY", "2026-2027", "2025-2026", "2024-2025",
     "2023-2024", "2022-2023", "2021-2022", "2020-2021",
 ]
-
 
 # =====================================================
 # Styling
