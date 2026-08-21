@@ -24,7 +24,7 @@ Only three report parameters are selected by the user:
 The database query runs only when the user clicks Run Report.
 
 Database credentials are handled centrally by services.database.get_engine()
-through services.data_outstanding.get_outstanding_data().
+through services.data_Outstanding.get_outstanding_data().
 
 Role-based data scope is read from:
     st.session_state["data_scope"]
@@ -57,7 +57,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from services.data_outstanding import get_outstanding_data
+from services.data_Outstanding import get_outstanding_data
 
 
 # ---------------------------------------------------------------------------
@@ -634,9 +634,14 @@ def main():
     with st.spinner("Loading Outstanding data..."):
         try:
             raw_df = get_outstanding_data(
-                from_date=from_date,
-                to_date=to_date,
-                as_on_date=as_on_date,
+                branch=SP_BRANCH,
+                grtype=SP_GRTYPE,
+                from_dt=from_date,
+                to_dt=to_date,
+                as_on_dt=as_on_date,
+                custcode=SP_CUSTCODE,
+                invoiceno=SP_INVOICENO,
+                user=SP_USER,
             )
             
             if raw_df is None or raw_df.empty:
