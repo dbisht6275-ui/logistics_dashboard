@@ -1,4 +1,4 @@
-# OVERVIEW VERSION: 8.7.5
+# OVERVIEW VERSION: 8.7.6
 from pathlib import Path
 import streamlit as st
 import pandas as pd
@@ -2355,6 +2355,11 @@ def _build_sla_metrics(current_df, previous_df):
     current_col, current = status_counts(current_df)
     previous_col, previous = status_counts(previous_df)
 
+    # Denominators used to show each SLA status as a share of all recognised
+    # SLA shipments for the selected CY/PY periods.
+    current_total = sum(current.values())
+    previous_total = sum(previous.values())
+
     current_completed = (
         current["Before EDD"] + current["On EDD"] +
         current["After EDD"] + current["Overdue"]
@@ -2388,6 +2393,8 @@ def _build_sla_metrics(current_df, previous_df):
             "icon": "⏱️",
             "current": current["Before EDD"],
             "previous": previous["Before EDD"],
+            "current_percent": (current["Before EDD"] / current_total * 100) if current_total else 0.0,
+            "previous_percent": (previous["Before EDD"] / previous_total * 100) if previous_total else 0.0,
             "is_percent": False,
             "accent": "#16a34a",
             "icon_bg": "#dcfce7",
@@ -2397,6 +2404,8 @@ def _build_sla_metrics(current_df, previous_df):
             "icon": "✅",
             "current": current["On EDD"],
             "previous": previous["On EDD"],
+            "current_percent": (current["On EDD"] / current_total * 100) if current_total else 0.0,
+            "previous_percent": (previous["On EDD"] / previous_total * 100) if previous_total else 0.0,
             "is_percent": False,
             "accent": "#0f766e",
             "icon_bg": "#ccfbf1",
@@ -2406,6 +2415,8 @@ def _build_sla_metrics(current_df, previous_df):
             "icon": "📅",
             "current": current["After EDD"],
             "previous": previous["After EDD"],
+            "current_percent": (current["After EDD"] / current_total * 100) if current_total else 0.0,
+            "previous_percent": (previous["After EDD"] / previous_total * 100) if previous_total else 0.0,
             "is_percent": False,
             "accent": "#f59e0b",
             "icon_bg": "#fef3c7",
@@ -2415,6 +2426,8 @@ def _build_sla_metrics(current_df, previous_df):
             "icon": "📦",
             "current": current["In Transit"],
             "previous": previous["In Transit"],
+            "current_percent": (current["In Transit"] / current_total * 100) if current_total else 0.0,
+            "previous_percent": (previous["In Transit"] / previous_total * 100) if previous_total else 0.0,
             "is_percent": False,
             "accent": "#7c3aed",
             "icon_bg": "#ede9fe",
@@ -2424,6 +2437,8 @@ def _build_sla_metrics(current_df, previous_df):
             "icon": "⚠️",
             "current": current["Overdue"],
             "previous": previous["Overdue"],
+            "current_percent": (current["Overdue"] / current_total * 100) if current_total else 0.0,
+            "previous_percent": (previous["Overdue"] / previous_total * 100) if previous_total else 0.0,
             "is_percent": False,
             "accent": "#dc2626",
             "icon_bg": "#fee2e2",
@@ -2454,13 +2469,15 @@ def _render_operational_highlights(current_df, previous_df):
 
             if metric["is_percent"]:
                 change = current - previous
-                current_text = f"{current:.2f}%"
-                previous_text = f"{previous:.2f}%"
+                current_text = f"CY {current:.2f}%"
+                previous_text = f"PY {previous:.2f}%"
                 change_text = f"{abs(change):.2f} pp"
             else:
                 change = ((current - previous) / previous * 100) if previous else 0.0
-                current_text = f"{int(current):,}"
-                previous_text = f"{int(previous):,}"
+                current_percent = float(metric.get("current_percent", 0.0))
+                previous_percent = float(metric.get("previous_percent", 0.0))
+                current_text = f"CY {int(current):,} ({current_percent:.2f}%)"
+                previous_text = f"PY {int(previous):,} ({previous_percent:.2f}%)"
                 change_text = f"{abs(change):.2f}%" if previous else "N/A"
 
             lower_is_better = metric["label"] in {"After EDD", "In Transit", "Overdue"}
@@ -2476,14 +2493,14 @@ def _render_operational_highlights(current_df, previous_df):
                 f'border:1px solid {metric["accent"]}33;">{metric["icon"]}</div>'
                 f'<div style="font-size:12px;font-weight:400;color:#243b53;line-height:1.15;">{metric["label"]}</div>'
                 f'<div style="line-height:1.1;">'
-                f'<div style="font-size:14px;font-weight:400;color:#102a43;">{current_text}</div>'
-                f'<div style="font-size:10px;color:#64748b;">LY {previous_text}</div></div>'
+                f'<div style="font-size:13px;font-weight:400;color:#102a43;white-space:nowrap;">{current_text}</div>'
+                f'<div style="font-size:10px;color:#64748b;white-space:nowrap;">{previous_text}</div></div>'
                 f'<div style="font-size:11px;font-weight:400;color:{change_color};text-align:right;white-space:nowrap;">'
                 f'{arrow} {change_text}</div></div>'
             )
 
         note = "" if previous_col is not None else (
-            "<div style='font-size:10px;color:#94a3b8;margin-top:5px;'>LY SLAStatus unavailable.</div>"
+            "<div style='font-size:10px;color:#94a3b8;margin-top:5px;'>PY SLAStatus unavailable.</div>"
         )
         st.markdown("<div>" + "".join(rows) + note + "</div>", unsafe_allow_html=True)
 
