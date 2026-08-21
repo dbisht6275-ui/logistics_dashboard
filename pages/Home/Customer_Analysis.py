@@ -1082,11 +1082,25 @@ def add_customer_segments(customer_summary: pd.DataFrame) -> pd.DataFrame:
 # =====================================================
 # UI Sections
 # =====================================================
+def _invalidate_customer_report():
+    """Require Run Report after the pending FY or View selection changes."""
+    st.session_state["customer_report_ready"] = False
+
+
 def render_dashboard_header():
-    """Render the compact Overview-style header and return content/export placeholders."""
+    """Render Overview-style FY/View controls and the Run Report button."""
     with st.container(border=True):
-        header_left, header_right = st.columns(
-            [7, 1],
+        (
+            header_left,
+            view_label_col,
+            view_col,
+            fy_label_col,
+            fy_col,
+            run_col,
+            header_space,
+            header_right,
+        ) = st.columns(
+            [1.55, 0.45, 0.72, 0.22, 0.82, 0.82, 3.10, 1.05],
             gap="small",
             vertical_alignment="center",
         )
@@ -1103,10 +1117,57 @@ def render_dashboard_header():
                     unsafe_allow_html=True,
                 )
 
+        with view_label_col:
+            st.markdown(
+                '<div style="font-size:11px;font-weight:700;color:#475569;white-space:nowrap;">View Type</div>',
+                unsafe_allow_html=True,
+            )
+
+        with view_col:
+            pending_view_type = st.selectbox(
+                "View Type",
+                ["origin", "destination"],
+                format_func=lambda value: "Origin" if value == "origin" else "Destination",
+                key="customer_view_type",
+                help="Choose Origin or Destination view.",
+                on_change=_invalidate_customer_report,
+                label_visibility="collapsed",
+            )
+
+        with fy_label_col:
+            st.markdown(
+                '<div style="font-size:11px;font-weight:700;color:#475569;white-space:nowrap;">F.Y.</div>',
+                unsafe_allow_html=True,
+            )
+
+        with fy_col:
+            pending_fin_year = st.selectbox(
+                "Financial Year",
+                FINANCIAL_YEARS,
+                key="customer_financial_year",
+                help="Choose the financial year to run.",
+                on_change=_invalidate_customer_report,
+                label_visibility="collapsed",
+            )
+
+        with run_col:
+            run_report = st.button(
+                "▶ Run Report",
+                key="customer_run_report",
+                type="primary",
+                width="stretch",
+            )
+
         with header_right:
             export_placeholder = st.empty()
 
-    return header_content_placeholder, export_placeholder
+    return (
+        header_content_placeholder,
+        export_placeholder,
+        pending_fin_year,
+        pending_view_type,
+        run_report,
+    )
 
 
 def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
@@ -1192,28 +1253,11 @@ def _checkbox_slicer(label, options, key, locked_values=None, searchable=False):
 
 
 def render_filter_row_start():
-    """Create the Overview-style single filter row with View Type first, then FY."""
-    filter_columns = st.columns(
-        [1.00, 1.10, 0.82, 0.92, 1.00, 0.72, 0.82, 0.92, 1.25, 0.82],
+    """Create the secondary filter row used by the last successfully run report."""
+    return st.columns(
+        [0.82, 0.92, 1.00, 0.72, 0.82, 0.92, 1.25, 0.82],
         gap="small",
     )
-
-    with filter_columns[0]:
-        view_type = st.selectbox(
-            "⇄ View Type",
-            ["origin", "destination"],
-            format_func=lambda x: "Origin" if x == "origin" else "Destination",
-            key="customer_view_type",
-        )
-
-    with filter_columns[1]:
-        fin_year = st.selectbox(
-            "◷ Financial Year",
-            FINANCIAL_YEARS,
-            key="customer_financial_year",
-        )
-
-    return filter_columns, fin_year, view_type
 
 
 def render_data_filters(
@@ -1277,7 +1321,7 @@ def render_data_filters(
         if not role_row.empty:
             locked_zone = role_row["Zone"].iloc[0]
 
-    f1, f2, f3, f4, f5, f6, f7, f8 = filter_columns[2:]
+    f1, f2, f3, f4, f5, f6, f7, f8 = filter_columns
     filter_source_df = df.copy()
 
     def _customer_safe_options(source_df, column):
@@ -2581,29 +2625,89 @@ def load_customer_analysis_periods(fin_year: str, view_type: str):
 # =====================================================
 def show_CustomerAnalysis() -> None:
     apply_dashboard_style()
-    header_content_placeholder, export_placeholder = render_dashboard_header()
+    (
+        header_content_placeholder,
+        export_placeholder,
+        pending_fin_year,
+        pending_view_type,
+        run_report,
+    ) = render_dashboard_header()
 
-    filter_columns, fin_year, view_type = render_filter_row_start()
-    if fin_year == "Select FY":
-        st.info("Please select a Financial Year to continue.")
+    active_fin_year = st.session_state.get("customer_active_financial_year")
+    active_view_type = st.session_state.get("customer_active_view_type")
+
+    # Database access is restricted to this button block. Secondary filter
+    # reruns use only the DataFrames stored in session state below.
+    if run_report:
+        if pending_fin_year == "Select FY":
+            st.warning("Please select a financial year before running the report.")
+            return
+
+        st.session_state["customer_report_ready"] = False
+        try:
+            with st.spinner("Loading customer summary data..."):
+                (
+                    loaded_df,
+                    loaded_prev_df,
+                    loaded_old_df,
+                    loaded_previous_year,
+                    loaded_older_year,
+                ) = load_customer_analysis_periods(
+                    pending_fin_year,
+                    pending_view_type,
+                )
+        except Exception as exc:
+            st.error(f"Unable to load Customer Analysis data: {exc}")
+            return
+
+        st.session_state["customer_report_df"] = loaded_df
+        st.session_state["customer_report_prev_df"] = loaded_prev_df
+        st.session_state["customer_report_old_df"] = loaded_old_df
+        st.session_state["customer_report_previous_year"] = loaded_previous_year
+        st.session_state["customer_report_older_year"] = loaded_older_year
+        st.session_state["customer_active_financial_year"] = pending_fin_year
+        st.session_state["customer_active_view_type"] = pending_view_type
+        st.session_state["customer_report_ready"] = True
+        active_fin_year = pending_fin_year
+        active_view_type = pending_view_type
+
+    if not st.session_state.get("customer_report_ready", False):
+        st.info("Select a financial year, then click ▶ Run Report.")
         return
+
+    if not active_fin_year or not active_view_type:
+        st.info("Select a financial year, then click ▶ Run Report.")
+        return
+
+    if (
+        pending_fin_year != active_fin_year
+        or pending_view_type != active_view_type
+    ):
+        st.info("Selections changed. Click ▶ Run Report to refresh the dashboard.")
+        return
+
+    fin_year = active_fin_year
+    view_type = active_view_type
 
     config         = get_customer_config(view_type)
     code_col       = config["code_col"]
     name_col       = config["name_col"]
     customer_label = config["label"]
 
-    # Load the three financial-year datasets once per FY/View combination.
-    # Filter widget changes now work against cached in-memory DataFrames instead
-    # of executing the stored procedure three more times on every Streamlit rerun.
-    try:
-        with st.spinner("Loading customer summary data..."):
-            df, prev_df, old_df, previous_year, older_year = load_customer_analysis_periods(
-                fin_year, view_type
-            )
-    except Exception as exc:
-        st.error(f"Unable to load Customer Analysis data: {exc}")
+    stored_df = st.session_state.get("customer_report_df")
+    stored_prev_df = st.session_state.get("customer_report_prev_df")
+    stored_old_df = st.session_state.get("customer_report_old_df")
+    previous_year = st.session_state.get("customer_report_previous_year")
+    older_year = st.session_state.get("customer_report_older_year")
+
+    if stored_df is None or stored_prev_df is None or stored_old_df is None:
+        st.session_state["customer_report_ready"] = False
+        st.info("Click ▶ Run Report to load the dashboard.")
         return
+
+    df = stored_df.copy()
+    prev_df = stored_prev_df.copy()
+    old_df = stored_old_df.copy()
 
     if df.empty:
         st.warning("No customer data found for the selected financial year.")
@@ -2657,6 +2761,7 @@ def show_CustomerAnalysis() -> None:
         period_df["Month"] = period_df["FIN_MONTH"].map(MONTH_MAP)
         period_df["Quarter"] = period_df["FIN_MONTH"].map(QUARTER_MAP)
 
+    filter_columns = render_filter_row_start()
     zone, circle, branch, quarter, month, load_type, customer, conversion_type = render_data_filters(
         df,
         customer_label,
