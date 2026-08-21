@@ -445,7 +445,6 @@ def _render_outstanding_header(placeholder, active_filters=None):
             unsafe_allow_html=True,
         )
 
-
 # ---------------------------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------------------------
@@ -466,7 +465,6 @@ def _inr_amount(value, conversion_type):
     negative = value < 0
     display_value = abs(value) / divisor
     return f"{'-' if negative else ''}₹{display_value:,.2f} {unit}"
-
 
 def _find_column(df, candidates):
     """
