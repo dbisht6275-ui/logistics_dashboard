@@ -55,6 +55,10 @@ CHANGES IN THIS VERSION
 4. "Total Billed" and "Total Received" KPI cards have been replaced with
    "Total Invoices" and "Total Customers" (plain counts), which removes the
    ambiguity those two amount-based cards used to cause.
+
+5. Zone, Circle and Branch now use the same native cascading multiselect
+   filters as the Overview page. Customer is also a cascading multiselect,
+   allowing several customers to be analysed together.
 ------------------------------------------------------------------------------
 """
 
@@ -517,6 +521,28 @@ def _match_scope_value(series, scope_value):
     )
 
 
+def _match_scope_values(series, scope_values):
+    """Return rows matching any selected value, ignoring case and spaces."""
+    if not scope_values:
+        return pd.Series(True, index=series.index)
+
+    targets = {
+        str(value).strip().casefold()
+        for value in scope_values
+        if value is not None and str(value).strip()
+    }
+    if not targets:
+        return pd.Series(True, index=series.index)
+
+    return (
+        series.fillna("")
+        .astype(str)
+        .str.strip()
+        .str.casefold()
+        .isin(targets)
+    )
+
+
 def _derive_role_scope(df, zone_col, circle_col, branch_col):
     """
     Read role rights from session state and derive parent hierarchy.
@@ -610,6 +636,18 @@ def _sorted_values(df, column):
     values = values[values.ne("")]
 
     return sorted(values.unique().tolist(), key=str.casefold)
+
+
+def _prune_multiselect_state(key, allowed_options):
+    """Remove stale selections when a parent cascading filter changes."""
+    if key not in st.session_state:
+        return
+
+    current = st.session_state.get(key, [])
+    if isinstance(current, (list, tuple, set)):
+        st.session_state[key] = [
+            value for value in current if value in allowed_options
+        ]
 
 
 def _validate_dates(from_date, to_date, as_on_date):
@@ -978,48 +1016,88 @@ def show_OutstandingAnalysis():
 
     working_df = scoped_df.copy()
 
+    zone_options = _sorted_values(working_df, zone_col)
     with filter_columns[3]:
-        selected_zones = _checkbox_slicer(
-            "◉ Zone",
-            _sorted_values(working_df, zone_col),
-            "oa_zone_slicer_v4",
-            locked_values=[locked_zone] if locked_zone else None,
-        )
-    if selected_zones:
-        working_df = working_df[working_df[zone_col].isin(selected_zones)]
-
-    with filter_columns[4]:
-        selected_circles = _checkbox_slicer(
-            "◎ Circle",
-            _sorted_values(working_df, circle_col),
-            "oa_circle_slicer_v4",
-            locked_values=[locked_circle] if locked_circle else None,
-        )
-    if selected_circles:
-        working_df = working_df[working_df[circle_col].isin(selected_circles)]
-
-    with filter_columns[5]:
-        selected_branches = _checkbox_slicer(
-            "⌂ Branch",
-            _sorted_values(working_df, branch_col),
-            "oa_branch_slicer_v4",
-            locked_values=[locked_branch] if locked_branch else None,
-        )
-    if selected_branches:
-        working_df = working_df[working_df[branch_col].isin(selected_branches)]
-
-    with filter_columns[6]:
-        selected_customer = (
-            _safe_selectbox(
-                "Customer",
-                ["All"] + _sorted_values(working_df, customer_col),
-                "oa_filter_customer_v4",
+        if locked_zone:
+            selected_zones = st.multiselect(
+                "◉ Zone",
+                [locked_zone],
+                default=[locked_zone],
+                key="oa_zone_locked_v5",
+                disabled=True,
             )
-            if customer_col else "All"
-        )
-    if selected_customer != "All" and customer_col:
+        else:
+            _prune_multiselect_state("oa_zone_v5", zone_options)
+            selected_zones = st.multiselect(
+                "◉ Zone",
+                zone_options,
+                key="oa_zone_v5",
+                placeholder="All zones",
+                disabled=not zone_options,
+            )
+    if selected_zones:
+        working_df = working_df[_match_scope_values(working_df[zone_col], selected_zones)]
+
+    circle_options = _sorted_values(working_df, circle_col)
+    with filter_columns[4]:
+        if locked_circle:
+            selected_circles = st.multiselect(
+                "◎ Circle",
+                [locked_circle],
+                default=[locked_circle],
+                key="oa_circle_locked_v5",
+                disabled=True,
+            )
+        else:
+            _prune_multiselect_state("oa_circle_v5", circle_options)
+            selected_circles = st.multiselect(
+                "◎ Circle",
+                circle_options,
+                key="oa_circle_v5",
+                placeholder="All circles",
+                disabled=not circle_options,
+            )
+    if selected_circles:
+        working_df = working_df[_match_scope_values(working_df[circle_col], selected_circles)]
+
+    branch_options = _sorted_values(working_df, branch_col)
+    with filter_columns[5]:
+        if locked_branch:
+            selected_branches = st.multiselect(
+                "⌂ Branch",
+                [locked_branch],
+                default=[locked_branch],
+                key="oa_branch_locked_v5",
+                disabled=True,
+            )
+        else:
+            _prune_multiselect_state("oa_branch_v5", branch_options)
+            selected_branches = st.multiselect(
+                "⌂ Branch",
+                branch_options,
+                key="oa_branch_v5",
+                placeholder="All branches",
+                disabled=not branch_options,
+            )
+    if selected_branches:
+        working_df = working_df[_match_scope_values(working_df[branch_col], selected_branches)]
+
+    customer_options = _sorted_values(working_df, customer_col)
+    with filter_columns[6]:
+        if customer_col:
+            _prune_multiselect_state("oa_customer_v5", customer_options)
+            selected_customers = st.multiselect(
+                "Customer",
+                customer_options,
+                key="oa_customer_v5",
+                placeholder="All customers",
+                disabled=not customer_options,
+            )
+        else:
+            selected_customers = []
+    if selected_customers and customer_col:
         working_df = working_df[
-            _match_scope_value(working_df[customer_col], selected_customer)
+            _match_scope_values(working_df[customer_col], selected_customers)
         ]
 
     with filter_columns[7]:
@@ -1116,7 +1194,7 @@ def show_OutstandingAnalysis():
         ("Zone", ", ".join(map(str, selected_zones)) if selected_zones else "All"),
         ("Circle", ", ".join(map(str, selected_circles)) if selected_circles else "All"),
         ("Branch", ", ".join(map(str, selected_branches)) if selected_branches else "All"),
-        ("Customer", selected_customer),
+        ("Customer", ", ".join(map(str, selected_customers)) if selected_customers else "All"),
         ("Document", selected_document),
         ("Age", selected_bucket),
         ("Unit", conversion_type),
