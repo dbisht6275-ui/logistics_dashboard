@@ -24,6 +24,14 @@
       "📅 Monthly Trend EDD"
     ]
   },
+  "circle": {
+    "menu": [
+      "🏠 Business Overview",
+      "📈 Outstanding Analysis",
+      "👥 Customer Analysis"
+    ],
+    "reports": []
+  },
   "manager": {
     "menu": [
       "🏠 Business Overview",
