@@ -57,7 +57,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from services.data_Outstanding import get_outstanding_data
+from services.data_outstanding import get_outstanding_data
 
 
 # ---------------------------------------------------------------------------
@@ -582,14 +582,7 @@ def _get_responsive_chart_height(is_mobile: bool = False) -> int:
 # ---------------------------------------------------------------------------
 
 def main():
-    # Page config
-    st.set_page_config(
-        page_title="Outstanding Analysis - Responsive",
-        page_icon="📊",
-        layout="wide",
-        initial_sidebar_state="expanded",
-    )
-    
+    # Page configuration is set once by app.py before this imported page runs.
     # Inject responsive CSS
     _inject_responsive_css()
     
