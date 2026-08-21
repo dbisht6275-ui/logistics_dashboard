@@ -828,9 +828,9 @@ def show_OutstandingAnalysis():
                 loaded_df = get_outstanding_data(
                     branch=SP_BRANCH,
                     grtype=SP_GRTYPE,
-                    from_dt=from_date,
-                    to_dt=to_date,
-                    as_on_dt=as_on_date,
+                    from_date=from_date,
+                    to_date=to_date,
+                    as_on_date=as_on_date,
                     custcode=SP_CUSTCODE,
                     invoiceno=SP_INVOICENO,
                     user=SP_USER,
@@ -1077,9 +1077,9 @@ def show_OutstandingAnalysis():
             loaded_df = get_outstanding_data(
                 branch=SP_BRANCH,
                 grtype=SP_GRTYPE,
-                from_dt=from_date,
-                to_dt=to_date,
-                as_on_dt=as_on_date,
+                from_date=from_date,
+                to_date=to_date,
+                as_on_date=as_on_date,
                 custcode=SP_CUSTCODE,
                 invoiceno=SP_INVOICENO,
                 user=SP_USER,
@@ -2040,6 +2040,7 @@ def show_OutstandingAnalysis():
         f"Last refreshed: {last_refreshed.strftime('%d-%b-%Y %H:%M')} | "
         f"Records: {len(fdf):,}"
     )
+
 
 # Compatibility with the responsive/new page entry point.
 def main():
