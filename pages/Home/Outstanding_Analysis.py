@@ -546,22 +546,23 @@ def _render_responsive_filters():
     Desktop: Horizontal layout
     """
     
-    st.markdown(
-        "<div class='oa-section-title'>Filters & Parameters</div>",
-        unsafe_allow_html=True,
-    )
-    
     # Use 1 column on mobile, 3 on desktop through CSS media queries
     filter_cols = st.columns(3, gap="small")
     
     with filter_cols[0]:
-        from_date = st.date_input("From Date", value=date.today())
+        from_date = st.date_input(
+            "From Date", value=date.today(), format="DD/MM/YYYY"
+        )
     
     with filter_cols[1]:
-        to_date = st.date_input("To Date", value=date.today())
+        to_date = st.date_input(
+            "To Date", value=date.today(), format="DD/MM/YYYY"
+        )
     
     with filter_cols[2]:
-        as_on_date = st.date_input("As On Date", value=date.today())
+        as_on_date = st.date_input(
+            "As On Date", value=date.today(), format="DD/MM/YYYY"
+        )
     
     return from_date, to_date, as_on_date
 
@@ -606,56 +607,69 @@ def main():
     with st.container(border=True):
         from_date, to_date, as_on_date = _render_responsive_filters()
         
-        # Conversion unit selector
-        col_conv_a, col_conv_b = st.columns([1, 2], gap="small")
-        with col_conv_a:
-            conversion_unit = st.radio(
-                "Amount Unit",
-                options=["Crore", "Lac"],
-                horizontal=True,
-                help="Select currency unit for dashboard KPIs and charts"
-            )
-        
-        conversion_divisor = 10000000 if conversion_unit == "Crore" else 100000
-        
         # Run Report button (full width on mobile)
         col_run, _ = st.columns([1, 3], gap="small")
         with col_run:
             run_report = st.button("🔄 Run Report", use_container_width=True)
     
-    if not run_report:
-        st.info("👆 Click 'Run Report' to load data")
-        return
-    
     # -----------------------------------------------------------------------
     # LOAD DATA
     # -----------------------------------------------------------------------
-    
-    with st.spinner("Loading Outstanding data..."):
-        try:
-            raw_df = get_outstanding_data(
-                branch=SP_BRANCH,
-                grtype=SP_GRTYPE,
-                from_dt=from_date,
-                to_dt=to_date,
-                as_on_dt=as_on_date,
-                custcode=SP_CUSTCODE,
-                invoiceno=SP_INVOICENO,
-                user=SP_USER,
-            )
-            
-            if raw_df is None or raw_df.empty:
-                st.warning("No data available for selected period")
-                return
-            
-        except Exception as e:
-            st.error(f"Error loading data: {str(e)}")
-            st.stop()
+
+    if run_report:
+        with st.spinner("Loading Outstanding data..."):
+            try:
+                raw_df = get_outstanding_data(
+                    branch=SP_BRANCH,
+                    grtype=SP_GRTYPE,
+                    from_date=from_date,
+                    to_date=to_date,
+                    as_on_date=as_on_date,
+                    custcode=SP_CUSTCODE,
+                    invoiceno=SP_INVOICENO,
+                    user=SP_USER,
+                )
+
+                if raw_df is None or raw_df.empty:
+                    st.session_state.pop("oa_raw_df", None)
+                    st.warning("No data available for selected period")
+                    return
+
+                st.session_state["oa_raw_df"] = raw_df
+                st.session_state["oa_report_dates"] = (
+                    from_date,
+                    to_date,
+                    as_on_date,
+                )
+
+            except Exception as e:
+                st.error(f"Error loading data: {str(e)}")
+                st.stop()
+    elif "oa_raw_df" in st.session_state:
+        raw_df = st.session_state["oa_raw_df"]
+        from_date, to_date, as_on_date = st.session_state.get(
+            "oa_report_dates",
+            (from_date, to_date, as_on_date),
+        )
+    else:
+        st.info("👆 Click 'Run Report' to load data")
+        return
     
     # [Rest of data processing logic remains the same as original...]
     # This is placeholder - insert full data processing from original file
     
     fdf = raw_df.copy()
+
+    # Show the amount conversion option only after data loads successfully.
+    conversion_unit = st.radio(
+        "Amount Unit",
+        options=["Crore", "Lac"],
+        horizontal=True,
+        help="Select the currency unit for dashboard amounts",
+        key="oa_conversion_unit",
+    )
+    conversion_divisor = 10000000 if conversion_unit == "Crore" else 100000
+    conversion_suffix = "Cr" if conversion_unit == "Crore" else "Lac"
     
     # -----------------------------------------------------------------------
     # KPI CARDS - RESPONSIVE
@@ -668,7 +682,11 @@ def main():
     
     kpis = {
         "Total Invoices": (f"{len(fdf):,}", "📄", ACCENT["blue"]),
-        "Total Outstanding": (f"₹{fdf.get('balance', pd.Series()).sum():,.0f}", "💰", ACCENT["red"]),
+        "Total Outstanding": (
+            f"₹{fdf.get('balance', pd.Series(dtype=float)).sum() / conversion_divisor:,.2f} {conversion_suffix}",
+            "💰",
+            ACCENT["red"],
+        ),
         "Total Customers": (f"{fdf.get('customername', pd.Series()).nunique():,}", "👥", ACCENT["green"]),
         "Avg Outstanding Days": (f"{fdf.get('outstandingdays', pd.Series()).mean():.0f}", "📅", ACCENT["amber"]),
     }
