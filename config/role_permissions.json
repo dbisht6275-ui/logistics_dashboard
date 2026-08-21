@@ -40,5 +40,13 @@
       "🏠 Business Overview"
     ],
     "reports": []
+  },
+  "zone": {
+    "menu": [
+      "🏠 Business Overview",
+      "👥 Customer Analysis",
+      "📈 Outstanding Analysis"
+    ],
+    "reports": []
   }
 }
