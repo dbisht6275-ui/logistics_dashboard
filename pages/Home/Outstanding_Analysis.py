@@ -2119,11 +2119,9 @@ def show_OutstandingAnalysis():
         f"Records: {len(fdf):,}"
     )
 
-
 # Compatibility with the responsive/new page entry point.
 def main():
     show_OutstandingAnalysis()
-
 
 if __name__ == "__main__":
     main()
