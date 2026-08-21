@@ -2951,7 +2951,6 @@ def show_CustomerAnalysis() -> None:
     # --- Branch customer intelligence ---
     with st.container(border=True):
         render_branch_summary_table(df, prev_df, code_col, customer_label, conversion_type)
-
     dashboard_spacer()
 
     # --- Tabs ---
