@@ -2032,7 +2032,6 @@ def show_OutstandingAnalysis():
         "oa_last_refreshed",
         datetime.now(),
     )
-
     st.caption(
         f"Data period: {from_date.strftime('%d-%b-%Y')} to "
         f"{to_date.strftime('%d-%b-%Y')} | "
