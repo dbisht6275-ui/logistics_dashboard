@@ -6,14 +6,14 @@ from services.database import get_engine
 
 @st.cache_data(ttl=3600, show_spinner="Fetching outstanding data...")
 def get_outstanding_data(
-    branch,
-    grtype,
-    from_dt,
-    to_dt,
-    as_on_dt,
-    custcode,
-    invoiceno,
-    user,
+    from_date,
+    to_date,
+    as_on_date,
+    branch="00000",
+    grtype="C",
+    custcode="0000",
+    invoiceno="",
+    user="SYST",
 ):
     """Run dbo.Alloutstanding_BI using the shared database engine."""
 
@@ -34,9 +34,9 @@ def get_outstanding_data(
     params = {
         "branch": str(branch).strip(),
         "grtype": str(grtype).strip(),
-        "from_dt": _format_date(from_dt),
-        "to_dt": _format_date(to_dt),
-        "as_on_dt": _format_date(as_on_dt),
+        "from_dt": _format_date(from_date),
+        "to_dt": _format_date(to_date),
+        "as_on_dt": _format_date(as_on_date),
         "custcode": str(custcode).strip(),
         "invoiceno": str(invoiceno).strip(),
         "user": str(user).strip(),
@@ -122,9 +122,9 @@ def get_date_range(fin_year):
 DEFAULT_PARAMS = {
     "branch": "00000",
     "grtype": "C",
-    "from_dt": date(1980, 1, 1),
-    "to_dt": date(2026, 3, 31),
-    "as_on_dt": date(2026, 3, 31),
+    "from_date": date(1980, 1, 1),
+    "to_date": date(2026, 3, 31),
+    "as_on_date": date(2026, 3, 31),
     "custcode": "0000",
     "invoiceno": "",
     "user": "SYST",
