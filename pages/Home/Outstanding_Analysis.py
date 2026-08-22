@@ -400,6 +400,123 @@ def _inject_css():
                     padding-right: 1rem;
                 }
             }
+
+
+            /* ===== STRUCTURED RESPONSIVE GRIDS ===== */
+            .oa-responsive-marker { display:none !important; }
+
+            @media (max-width: 640px) {
+                /* Filter toolbar: 2 controls per row, Run Report full width. */
+                div[data-testid="stHorizontalBlock"]:has(.oa-filter-grid-marker) {
+                    flex-wrap: wrap !important;
+                    gap: .45rem !important;
+                }
+                div[data-testid="stHorizontalBlock"]:has(.oa-filter-grid-marker) > div[data-testid="stColumn"] {
+                    flex: 1 1 calc(50% - .45rem) !important;
+                    width: calc(50% - .45rem) !important;
+                    min-width: calc(50% - .45rem) !important;
+                }
+                div[data-testid="stHorizontalBlock"]:has(.oa-filter-grid-marker) > div[data-testid="stColumn"]:last-child {
+                    flex-basis: 100% !important;
+                    width: 100% !important;
+                    min-width: 100% !important;
+                }
+
+                /* KPI cards: 2 per row on normal phones. */
+                div[data-testid="stHorizontalBlock"]:has(.oa-kpi-grid-marker) {
+                    flex-wrap: wrap !important;
+                    gap: .45rem !important;
+                }
+                div[data-testid="stHorizontalBlock"]:has(.oa-kpi-grid-marker) > div[data-testid="stColumn"] {
+                    flex: 1 1 calc(50% - .45rem) !important;
+                    width: calc(50% - .45rem) !important;
+                    min-width: calc(50% - .45rem) !important;
+                }
+
+                /* Analytical chart/table pairs: one panel per row. */
+                div[data-testid="stHorizontalBlock"]:has(.oa-stack-grid-marker) {
+                    flex-wrap: wrap !important;
+                    gap: .6rem !important;
+                }
+                div[data-testid="stHorizontalBlock"]:has(.oa-stack-grid-marker) > div[data-testid="stColumn"] {
+                    flex: 1 1 100% !important;
+                    width: 100% !important;
+                    min-width: 100% !important;
+                }
+
+                /* Header title and Excel action stack cleanly. */
+                div[data-testid="stHorizontalBlock"]:has(.oa-header-grid-marker) {
+                    flex-wrap: wrap !important;
+                    gap: .35rem !important;
+                }
+                div[data-testid="stHorizontalBlock"]:has(.oa-header-grid-marker) > div[data-testid="stColumn"] {
+                    flex: 1 1 100% !important;
+                    width: 100% !important;
+                    min-width: 100% !important;
+                }
+                div[data-testid="stHorizontalBlock"]:has(.oa-header-grid-marker) div[data-testid="stDownloadButton"] > button {
+                    width: 100% !important;
+                }
+
+                /* Make popovers/selects and text inputs touch friendly. */
+                div[data-testid="stPopover"] > div > button,
+                div[data-baseweb="select"] > div,
+                div[data-testid="stTextInput"] input,
+                div[data-testid="stDateInput"] input {
+                    min-height: 42px !important;
+                }
+
+                /* Plotly labels get more usable horizontal room. */
+                .js-plotly-plot, .plot-container, .svg-container {
+                    max-width: 100% !important;
+                }
+
+                /* Tables should scroll horizontally rather than squeeze columns. */
+                [data-testid="stDataFrame"] {
+                    overflow-x: auto !important;
+                    -webkit-overflow-scrolling: touch;
+                }
+                .oa-scale-wrap {
+                    overflow-x: auto !important;
+                    -webkit-overflow-scrolling: touch;
+                }
+            }
+
+            @media (max-width: 420px) {
+                /* Very narrow phones: use one control/card per row. */
+                div[data-testid="stHorizontalBlock"]:has(.oa-filter-grid-marker) > div[data-testid="stColumn"],
+                div[data-testid="stHorizontalBlock"]:has(.oa-kpi-grid-marker) > div[data-testid="stColumn"] {
+                    flex: 1 1 100% !important;
+                    width: 100% !important;
+                    min-width: 100% !important;
+                }
+                .oa-kpi-card { min-height: 62px; }
+                .oa-filter-chip { max-width: 100%; overflow:hidden; text-overflow:ellipsis; }
+            }
+
+            @media (min-width: 641px) and (max-width: 1024px) {
+                /* Tablet: filters 3 per row and KPI cards 3 per row. */
+                div[data-testid="stHorizontalBlock"]:has(.oa-filter-grid-marker),
+                div[data-testid="stHorizontalBlock"]:has(.oa-kpi-grid-marker) {
+                    flex-wrap: wrap !important;
+                    gap: .55rem !important;
+                }
+                div[data-testid="stHorizontalBlock"]:has(.oa-filter-grid-marker) > div[data-testid="stColumn"],
+                div[data-testid="stHorizontalBlock"]:has(.oa-kpi-grid-marker) > div[data-testid="stColumn"] {
+                    flex: 1 1 calc(33.333% - .55rem) !important;
+                    width: calc(33.333% - .55rem) !important;
+                    min-width: calc(33.333% - .55rem) !important;
+                }
+                div[data-testid="stHorizontalBlock"]:has(.oa-stack-grid-marker) {
+                    flex-wrap: wrap !important;
+                    gap: .65rem !important;
+                }
+                div[data-testid="stHorizontalBlock"]:has(.oa-stack-grid-marker) > div[data-testid="stColumn"] {
+                    flex: 1 1 100% !important;
+                    width: 100% !important;
+                    min-width: 100% !important;
+                }
+            }
         </style>
         """,
         unsafe_allow_html=True,
@@ -799,6 +916,7 @@ def show_OutstandingAnalysis():
         )
 
         with header_left:
+            st.markdown('<span class="oa-responsive-marker oa-header-grid-marker"></span>', unsafe_allow_html=True)
             header_content_placeholder = st.empty()
 
         with header_right:
@@ -824,6 +942,7 @@ def show_OutstandingAnalysis():
         )
 
         with date_col1:
+            st.markdown('<span class="oa-responsive-marker oa-filter-grid-marker"></span>', unsafe_allow_html=True)
             from_date = st.date_input(
                 "From Date",
                 value=st.session_state.get("oa_from_date", default_from_date),
@@ -988,6 +1107,7 @@ def show_OutstandingAnalysis():
     )
 
     with filter_columns[0]:
+        st.markdown('<span class="oa-responsive-marker oa-filter-grid-marker"></span>', unsafe_allow_html=True)
         from_date = st.date_input(
             "From Date",
             value=st.session_state.get("oa_from_date", default_from_date),
@@ -1258,6 +1378,7 @@ def show_OutstandingAnalysis():
     k1, k2, k3, k4, k5, k6 = st.columns(6)
 
     with k1:
+        st.markdown('<span class="oa-responsive-marker oa-kpi-grid-marker"></span>', unsafe_allow_html=True)
         _kpi_card(
             "Total Invoices",
             f"{invoice_count:,}",
@@ -1317,6 +1438,7 @@ def show_OutstandingAnalysis():
     chart_col1, chart_col2 = st.columns([1, 1.3])
 
     with chart_col1:
+        st.markdown('<span class="oa-responsive-marker oa-stack-grid-marker"></span>', unsafe_allow_html=True)
         if age_bucket_col and "netbalance" in fdf.columns:
             age_df = (
                 fdf.groupby(age_bucket_col, dropna=False)["netbalance"]
@@ -1338,6 +1460,7 @@ def show_OutstandingAnalysis():
             age_chart_col, age_value_col = st.columns([1.35, 0.65])
 
             with age_chart_col:
+                st.markdown('<span class="oa-responsive-marker oa-stack-grid-marker"></span>', unsafe_allow_html=True)
                 fig_age = px.pie(
                     age_df,
                     names=age_bucket_col,
@@ -1565,6 +1688,7 @@ def show_OutstandingAnalysis():
         doc_chart_col, doc_table_col = st.columns([1.35, 0.85])
 
         with doc_chart_col:
+            st.markdown('<span class="oa-responsive-marker oa-stack-grid-marker"></span>', unsafe_allow_html=True)
             fig_document = px.bar(
                 document_summary,
                 x="Net_Outstanding_Display",
@@ -1634,6 +1758,7 @@ def show_OutstandingAnalysis():
     customer_chart_col, branch_table_col = st.columns([1.2, 1], gap="medium")
 
     with customer_chart_col:
+        st.markdown('<span class="oa-responsive-marker oa-stack-grid-marker"></span>', unsafe_allow_html=True)
         cust_title_col, cust_top_col = st.columns([3.2, 1.0], gap="small", vertical_alignment="center")
         with cust_title_col:
             st.markdown(
@@ -1787,6 +1912,7 @@ def show_OutstandingAnalysis():
             ).fillna(0).sum()
 
             with insight_cols[0]:
+                st.markdown('<span class="oa-responsive-marker oa-kpi-grid-marker"></span>', unsafe_allow_html=True)
                 _kpi_card("Oldest Invoice Year", f"{oldest_year}", "Still contributing to outstanding", "blue")
             with insight_cols[1]:
                 _kpi_card("Peak Outstanding Year", f"{int(peak_row['Invoice Year'])}", _inr_amount(peak_row["Net_Outstanding"], conversion_type), "purple")
@@ -1797,6 +1923,7 @@ def show_OutstandingAnalysis():
 
             year_chart_col, year_table_col = st.columns([1.35, 1.0], gap="medium")
             with year_chart_col:
+                st.markdown('<span class="oa-responsive-marker oa-stack-grid-marker"></span>', unsafe_allow_html=True)
                 fig_year = go.Figure()
                 fig_year.add_trace(
                     go.Bar(
