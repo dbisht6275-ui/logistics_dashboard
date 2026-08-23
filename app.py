@@ -1,5 +1,7 @@
 import streamlit as st
 from datetime import datetime
+from pathlib import Path
+import runpy
 from services.login import login_page
 from services.roles import get_allowed_menu, get_allowed_reports, clear_role_cache
 
@@ -22,6 +24,15 @@ from pages.IT.BookingWeightSummaryTurnover import show_booking_weight_summary_tu
 
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
 from pages.Admin.user_management import show_UserManagement
+
+
+def show_tariff_rate_dashboard():
+    """Render the standalone tariff dashboard inside the existing app shell."""
+    dashboard_file = Path(__file__).resolve().parent / "tariff_rate_dashboard.py"
+    if not dashboard_file.exists():
+        st.error("tariff_rate_dashboard.py was not found beside app.py.")
+        return
+    runpy.run_path(str(dashboard_file), run_name="tariff_rate_dashboard")
 
 
 st.set_page_config(
@@ -485,7 +496,10 @@ REPORTS = {
     },
     "💰 Accounts Reports": {
         "📋 GR Costing Head Wise": show_GrCostingHeadWise,
-    }
+    },
+    "📦 Tariff Reports": {
+        "📦 Tariff Rate Dashboard": show_tariff_rate_dashboard,
+    },
 }
 
 # Expose to the User Management page so it never drifts out of sync
@@ -515,6 +529,7 @@ allowed_menu = get_allowed_menu(role)          # e.g. ["🏠 Overview", "📊 Co
 allowed_reports = set(get_allowed_reports(role))    # e.g. {"📊 Zone Booking Turnover"}
 # Make the new EDD report immediately available in the Reports menu.
 allowed_reports.add("📅 Monthly Trend EDD")
+allowed_reports.add("📦 Tariff Rate Dashboard")
 
 # Only keep report entries this role is allowed to see, in every department folder
 REPORTS_VISIBLE = {
