@@ -180,6 +180,14 @@ def _inject_css():
                 line-height: 1.15;
             }
 
+            .oa-inline-date-label {
+                color: #243b53;
+                font-size: 10px;
+                font-weight: 600;
+                line-height: 1.1;
+                white-space: nowrap;
+            }
+
             /* Keep the bordered dashboard header compact like Business Overview. */
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-title) {
                 border-radius: 14px !important;
@@ -733,6 +741,34 @@ def _outstanding_excel_bytes(df: pd.DataFrame) -> bytes:
     return excel_buffer.getvalue()
 
 
+def _header_date_input(
+    label: str,
+    key: str,
+    value,
+    minimum_date,
+    maximum_date,
+):
+    """Render a compact header date with its label on the same line."""
+    label_col, input_col = st.columns(
+        [0.48, 1.0], gap="small", vertical_alignment="center"
+    )
+    with label_col:
+        st.markdown(
+            f'<div class="oa-inline-date-label">{escape(label)}</div>',
+            unsafe_allow_html=True,
+        )
+    with input_col:
+        return st.date_input(
+            label,
+            value=value,
+            min_value=minimum_date,
+            max_value=maximum_date,
+            format="DD/MM/YYYY",
+            key=key,
+            label_visibility="collapsed",
+        )
+
+
 def _safe_selectbox(
     label,
     options,
@@ -859,7 +895,8 @@ def show_OutstandingAnalysis():
     _clear_old_outstanding_widget_state()
     _inject_css()
 
-    default_from_date = date(1980, 1, 1)
+    minimum_report_date = date(1980, 1, 1)
+    default_from_date = date(2020, 8, 1)
     default_to_date = date.today()
     default_as_on_date = date.today()
     report_loaded = "oa_df" in st.session_state
@@ -872,7 +909,7 @@ def show_OutstandingAnalysis():
     with st.container(border=True):
         if report_loaded:
             header_title, header_from, header_to, header_as_on, header_right = st.columns(
-                [2.25, 1.15, 1.15, 1.15, 0.70],
+                [2.00, 1.40, 1.40, 1.40, 0.65],
                 gap="small",
                 vertical_alignment="bottom",
             )
@@ -880,31 +917,25 @@ def show_OutstandingAnalysis():
                 st.markdown('<span class="oa-responsive-marker oa-header-grid-marker"></span>', unsafe_allow_html=True)
                 st.markdown('<div class="oa-header-title">Outstanding Analysis</div>', unsafe_allow_html=True)
             with header_from:
-                from_date = st.date_input(
-                    "From Date",
+                from_date = _header_date_input(
+                    "From Date", "oa_from_date",
                     value=st.session_state.get("oa_from_date", default_from_date),
-                    min_value=default_from_date,
-                    max_value=default_to_date,
-                    format="DD/MM/YYYY",
-                    key="oa_from_date",
+                    minimum_date=minimum_report_date,
+                    maximum_date=default_to_date,
                 )
             with header_to:
-                to_date = st.date_input(
-                    "To Date",
+                to_date = _header_date_input(
+                    "To Date", "oa_to_date",
                     value=st.session_state.get("oa_to_date", default_to_date),
-                    min_value=default_from_date,
-                    max_value=default_to_date,
-                    format="DD/MM/YYYY",
-                    key="oa_to_date",
+                    minimum_date=minimum_report_date,
+                    maximum_date=default_to_date,
                 )
             with header_as_on:
-                as_on_date = st.date_input(
-                    "As On Date",
+                as_on_date = _header_date_input(
+                    "As On Date", "oa_as_on_date",
                     value=st.session_state.get("oa_as_on_date", default_as_on_date),
-                    min_value=default_from_date,
-                    max_value=default_to_date,
-                    format="DD/MM/YYYY",
-                    key="oa_as_on_date",
+                    minimum_date=minimum_report_date,
+                    maximum_date=default_to_date,
                 )
             with header_right:
                 header_action_placeholder = st.empty()
@@ -937,7 +968,7 @@ def show_OutstandingAnalysis():
             from_date = st.date_input(
                 "From Date",
                 value=st.session_state.get("oa_from_date", default_from_date),
-                min_value=default_from_date,
+                min_value=minimum_report_date,
                 max_value=default_to_date,
                 format="DD/MM/YYYY",
                 key="oa_from_date",
@@ -947,7 +978,7 @@ def show_OutstandingAnalysis():
             to_date = st.date_input(
                 "To Date",
                 value=st.session_state.get("oa_to_date", default_to_date),
-                min_value=default_from_date,
+                min_value=minimum_report_date,
                 max_value=default_to_date,
                 format="DD/MM/YYYY",
                 key="oa_to_date",
@@ -957,7 +988,7 @@ def show_OutstandingAnalysis():
             as_on_date = st.date_input(
                 "As On Date",
                 value=st.session_state.get("oa_as_on_date", default_as_on_date),
-                min_value=default_from_date,
+                min_value=minimum_report_date,
                 max_value=default_to_date,
                 format="DD/MM/YYYY",
                 key="oa_as_on_date",
