@@ -485,6 +485,7 @@ FULL_MENU_ITEMS = [
     "💹 P&L Dashboard",
     "💰 Net Profit Dashboard",
     "📊 Comparison",
+    "📦 Tariff Rate Dashboard",
     "📈 Outstanding Analysis",
     "👥 Customer Analysis",
     "🚛 Service Analysis",
@@ -507,9 +508,6 @@ REPORTS = {
     },
     "💰 Accounts Reports": {
         "📋 GR Costing Head Wise": show_GrCostingHeadWise,
-    },
-    "📦 Tariff Reports": {
-        "📦 Tariff Rate Dashboard": show_tariff_rate_dashboard,
     },
 }
 
@@ -536,11 +534,19 @@ if not st.session_state["logged_in"]:
 # =========================
 role = st.session_state.get("role", "viewer")
 
-allowed_menu = get_allowed_menu(role)          # e.g. ["🏠 Overview", "📊 Comparison", ...]
+allowed_menu = list(get_allowed_menu(role) or [])  # e.g. ["🏠 Overview", "📊 Comparison", ...]
 allowed_reports = set(get_allowed_reports(role))    # e.g. {"📊 Zone Booking Turnover"}
 # Make the new EDD report immediately available in the Reports menu.
 allowed_reports.add("📅 Monthly Trend EDD")
-allowed_reports.add("📦 Tariff Rate Dashboard")
+
+# Tariff dashboard is a primary navigation page, not a report-folder item.
+# Keep it available to every authenticated role.
+if "📦 Tariff Rate Dashboard" not in allowed_menu:
+    if "📊 Comparison" in allowed_menu:
+        tariff_position = allowed_menu.index("📊 Comparison") + 1
+    else:
+        tariff_position = min(1, len(allowed_menu))
+    allowed_menu.insert(tariff_position, "📦 Tariff Rate Dashboard")
 
 # Only keep report entries this role is allowed to see, in every department folder
 REPORTS_VISIBLE = {
@@ -765,6 +771,9 @@ elif menu == "💰 Net Profit Dashboard":
 
 elif menu == "📊 Comparison":
     show_comparison()
+
+elif menu == "📦 Tariff Rate Dashboard":
+    show_tariff_rate_dashboard()
 
 elif menu == "📈 Outstanding Analysis":
     show_OutstandingAnalysis()
