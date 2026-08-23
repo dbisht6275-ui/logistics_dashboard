@@ -41,15 +41,18 @@ def get_engine():
 
 
 QUERY = r"""
-WITH PARAMS AS
-(
-    SELECT CAST(:active_on AS DATE) AS AS_ON_DATE,
-           CAST(:origin_name AS VARCHAR(100)) AS ORIGIN_NAME,
-           CAST(:destination_name AS VARCHAR(100)) AS DESTINATION_NAME
-)
+DECLARE @AsOnDate DATE = CAST(:active_on AS DATE);
+DECLARE @OriginName VARCHAR(100) = CAST(:origin_name AS VARCHAR(100));
+DECLARE @DestinationName VARCHAR(100) = CAST(:destination_name AS VARCHAR(100));
+
 SELECT
     COALESCE(RT.CUSTCODE,RT.CNGECODE,RT.CNGRCODE) AS CUSTOMER_CODE,
-    COALESCE(C.CUSTNAME,E.NAME,R.NAME) AS CUSTOMER_NAME,
+    CASE
+        WHEN COALESCE(RT.CUSTCODE,RT.CNGECODE,RT.CNGRCODE)
+             IN ('0000007565','7565')
+        THEN 'TARIFF RATE'
+        ELSE COALESCE(C.CUSTNAME,E.NAME,R.NAME)
+    END AS CUSTOMER_NAME,
     CASE RT.RATEFOR
         WHEN 'E' THEN 'CONSIGNEE'
         WHEN 'R' THEN 'CONSIGNOR'
@@ -88,7 +91,6 @@ SELECT
     ISNULL(CHG.TPND,0) AS TPND,
     ISNULL(CHG.ICCNCC,0) AS ICC_NCC
 FROM RATEMAST RT
-CROSS JOIN PARAMS P
 INNER JOIN VIEWSTATIONMAST ORG ON ORG.STNCODE=RT.ORGCODE
 INNER JOIN VIEWSTATIONMAST DEST ON DEST.STNCODE=RT.DESTCODE
 LEFT JOIN VEHICLETYPEMAST VM ON VM.TYPECODE=RT.VEHICLETYPECODE
@@ -133,9 +135,9 @@ OUTER APPLY
            'A0114','A0105','A0110','A0108','A0121','A0104','A0005')
     ) X
 ) CHG
-WHERE RT.TODT > P.AS_ON_DATE
-  AND ORG.STNNAME=P.ORIGIN_NAME
-  AND (P.DESTINATION_NAME='' OR DEST.STNNAME=P.DESTINATION_NAME)
+WHERE RT.TODT > @AsOnDate
+  AND ORG.STNNAME = @OriginName
+  AND (@DestinationName='' OR DEST.STNNAME=@DestinationName)
 ORDER BY RT.FROMDT;
 """
 
@@ -218,7 +220,7 @@ def options(frame: pd.DataFrame, column: str) -> list[str]:
 
 
 st.title("Tariff Rate Dashboard")
-st.caption("Customer tariff, routes, weight slabs and additional charges")
+st.caption("Origin-to-destination tariff rates, weight slabs and additional charges")
 
 st.subheader("Search rates by route")
 date_col, origin_col, destination_col = st.columns([1, 1.5, 1.5])
