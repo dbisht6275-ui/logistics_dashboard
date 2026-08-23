@@ -7,11 +7,7 @@ import plotly.express as px
 import streamlit as st
 from sqlalchemy import text
 
-try:
-    from config.database import get_engine
-except ImportError:
-    # Supports projects where database.py is kept at repository root.
-    from database import get_engine
+from config.database import get_engine
 
 
 QUERY = r"""
