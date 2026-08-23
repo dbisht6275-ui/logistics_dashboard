@@ -40,12 +40,12 @@ def _fetch_booking_data(start_date, end_date, view_type):
     return df
 
 
-@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=20)
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=2)
 def load_booking_data(start_date, end_date, view_type="origin"):
     return _fetch_booking_data(start_date, end_date, view_type)
 
 
-@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=12)
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=1)
 def load_booking_data_pair(
     start_date,
     end_date,
