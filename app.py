@@ -27,13 +27,25 @@ from pages.Admin.user_management import show_UserManagement
 
 
 def show_tariff_rate_dashboard():
-    """Render the standalone tariff dashboard inside the existing app shell."""
-    dashboard_file = Path(__file__).resolve().parent / "tariff_rate_dashboard.py"
-    if not dashboard_file.exists():
-        st.error("tariff_rate_dashboard.py was not found beside app.py.")
-        return
-    runpy.run_path(str(dashboard_file), run_name="tariff_rate_dashboard")
+    app_directory = Path(__file__).resolve().parent
 
+    dashboard_file = (
+        app_directory
+        / "pages"
+        / "Home"
+        / "tariff_rate_dashboard.py"
+    )
+
+    if not dashboard_file.is_file():
+        st.error(
+            f"Tariff dashboard not found at: {dashboard_file}"
+        )
+        return
+
+    runpy.run_path(
+        str(dashboard_file),
+        run_name="tariff_rate_dashboard",
+    )
 st.set_page_config(
     page_title="Sugam Dashboard",
     layout="wide",
