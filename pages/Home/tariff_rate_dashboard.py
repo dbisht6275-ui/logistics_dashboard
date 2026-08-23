@@ -1,0 +1,314 @@
+from __future__ import annotations
+
+import os
+from datetime import date
+
+import pandas as pd
+import plotly.express as px
+import pyodbc
+import streamlit as st
+
+
+st.set_page_config(page_title="Tariff Rate Dashboard", page_icon="📦", layout="wide")
+
+QUERY = r"""
+WITH PARAMS AS
+(
+    SELECT CAST(? AS VARCHAR(20)) AS CUSTOMER_CODE,
+           CAST(? AS DATE) AS AS_ON_DATE
+)
+SELECT
+    COALESCE(RT.CUSTCODE,RT.CNGECODE,RT.CNGRCODE) AS CUSTOMER_CODE,
+    COALESCE(C.CUSTNAME,E.NAME,R.NAME) AS CUSTOMER_NAME,
+    CASE RT.RATEFOR
+        WHEN 'E' THEN 'CONSIGNEE'
+        WHEN 'R' THEN 'CONSIGNOR'
+        WHEN 'C' THEN 'CREDIT CUSTOMER'
+        ELSE 'N/A'
+    END AS RATEFOR,
+    RT.RATEID,
+    ORG.ZONENAME AS ORG_ZONE,
+    ORG.HUBNAME AS ORG_CIRCLE,
+    ORG.STNNAME AS ORIGIN,
+    DEST.ZONENAME AS DEST_ZONE,
+    DEST.HUBNAME AS DEST_CIRCLE,
+    DEST.STNNAME AS DESTINATION,
+    RT.FROMDT, RT.TODT, RT.FROMWT, RT.TOWT,
+    PR.PRODNAME AS PRODUCT_NAME,
+    G.ITEMNAME AS GOODS,
+    VM.TYPENAME AS VEHICLE_TYPE,
+    RT.MINCWEIGHT, RT.RATETYPE,
+    VIA.STNNAME AS VIA_BORDER,
+    RT.PCKGRATE, RT.SLAB1, RT.RATE1,
+    RT.AMOUNT AS FLAT_AMOUNT,
+    RT.RATECATEGORY,
+    ISNULL(CHG.BOE,0) AS BOE,
+    ISNULL(CHG.CNCHG,0) AS CN_CHARGE,
+    ISNULL(CHG.COD,0) AS COD_DOD,
+    ISNULL(CHG.DD,0) AS DD,
+    ISNULL(CHG.FOV,0) AS FOV,
+    ISNULL(CHG.FOD,0) AS FOD,
+    ISNULL(CHG.FUEL,0) AS FUEL_SUR,
+    ISNULL(CHG.HANDLING,0) AS HANDLING,
+    ISNULL(CHG.MISC,0) AS MISC,
+    ISNULL(CHG.ODA,0) AS ODA,
+    ISNULL(CHG.PICKUP,0) AS PICKUP,
+    ISNULL(CHG.ST,0) AS ST,
+    ISNULL(CHG.SA,0) AS SA_SF,
+    ISNULL(CHG.TPND,0) AS TPND,
+    ISNULL(CHG.ICCNCC,0) AS ICC_NCC
+FROM RATEMAST RT
+CROSS JOIN PARAMS P
+INNER JOIN VIEWSTATIONMAST ORG ON ORG.STNCODE=RT.ORGCODE
+INNER JOIN VIEWSTATIONMAST DEST ON DEST.STNCODE=RT.DESTCODE
+LEFT JOIN VEHICLETYPEMAST VM ON VM.TYPECODE=RT.VEHICLETYPECODE
+LEFT JOIN PRODUCTMAST PR ON PR.PRODCODE=RT.PRODUCTCODE
+LEFT JOIN STATIONMAST VIA ON VIA.STNCODE=RT.VIABORDERSTNCODE
+LEFT JOIN VIEWGOODSMAST G ON G.ITEMCODE=RT.GOODSGROUPCODE
+LEFT JOIN CNGRCNGEMAST E ON E.CODE=RT.CNGECODE
+LEFT JOIN CNGRCNGEMAST R ON R.CODE=RT.CNGRCODE
+LEFT JOIN CUSTMAST C ON C.CUSTCODE=RT.CUSTCODE
+OUTER APPLY
+(
+    SELECT
+        MAX(CASE WHEN X.CHGCODE='A0098' THEN X.VAL END) AS BOE,
+        MAX(CASE WHEN X.CHGCODE='A0120' THEN X.VAL END) AS CNCHG,
+        MAX(CASE WHEN X.CHGCODE='A0106' THEN X.VAL END) AS COD,
+        MAX(CASE WHEN X.CHGCODE='A0123' THEN X.VAL END) AS DD,
+        MAX(CASE WHEN X.CHGCODE='A0107' THEN X.VAL END) AS FOV,
+        MAX(CASE WHEN X.CHGCODE='A0093' THEN X.VAL END) AS FOD,
+        MAX(CASE WHEN X.CHGCODE='A0113' THEN X.VAL END) AS FUEL,
+        MAX(CASE WHEN X.CHGCODE='A0103' THEN X.VAL END) AS HANDLING,
+        MAX(CASE WHEN X.CHGCODE='A0114' THEN X.VAL END) AS MISC,
+        MAX(CASE WHEN X.CHGCODE='A0105' THEN X.VAL END) AS ODA,
+        MAX(CASE WHEN X.CHGCODE='A0110' THEN X.VAL END) AS PICKUP,
+        MAX(CASE WHEN X.CHGCODE='A0108' THEN X.VAL END) AS ST,
+        MAX(CASE WHEN X.CHGCODE='A0121' THEN X.VAL END) AS SA,
+        MAX(CASE WHEN X.CHGCODE='A0104' THEN X.VAL END) AS TPND,
+        MAX(CASE WHEN X.CHGCODE='A0005' THEN X.VAL END) AS ICCNCC
+    FROM
+    (
+        SELECT CC.CHGCODE,
+               CASE WHEN V.CHGAMT_VALUE > 0
+                    THEN V.CHGAMT_VALUE ELSE V.CHGRATE_VALUE END AS VAL
+        FROM CUSTCHRG CC
+        CROSS APPLY
+        (
+            SELECT TRY_CONVERT(DECIMAL(18,2),CC.CHGAMT) AS CHGAMT_VALUE,
+                   TRY_CONVERT(DECIMAL(18,2),CC.CHGRATE) AS CHGRATE_VALUE
+        ) V
+        WHERE CC.RATEDATAID=RT.RATEDATAID
+          AND CC.CHGCODE IN
+          ('A0098','A0120','A0106','A0123','A0107','A0093','A0113','A0103',
+           'A0114','A0105','A0110','A0108','A0121','A0104','A0005')
+    ) X
+) CHG
+WHERE RT.TODT > P.AS_ON_DATE
+  AND
+  (
+      RT.CUSTCODE=P.CUSTOMER_CODE
+      OR (RT.CUSTCODE IS NULL AND RT.CNGECODE=P.CUSTOMER_CODE)
+      OR (RT.CUSTCODE IS NULL AND RT.CNGECODE IS NULL
+          AND RT.CNGRCODE=P.CUSTOMER_CODE)
+  )
+ORDER BY RT.FROMDT;
+"""
+
+CHARGES = {
+    "BOE": "B.O.E", "CN_CHARGE": "C.N. Charge", "COD_DOD": "COD/DOD",
+    "DD": "D/D", "FOV": "F.O.V", "FOD": "FOD",
+    "FUEL_SUR": "Fuel Surcharge", "HANDLING": "Handling", "MISC": "Misc",
+    "ODA": "O.D.A", "PICKUP": "Pickup", "ST": "S.T", "SA_SF": "SA/SF",
+    "TPND": "T.P.N.D", "ICC_NCC": "ICC/NCC",
+}
+
+
+def setting(name: str, default: str | None = None) -> str | None:
+    try:
+        value = st.secrets.get(name)
+    except FileNotFoundError:
+        value = None
+    return str(value) if value is not None else os.getenv(name, default)
+
+
+def odbc_value(value: str) -> str:
+    return "{" + value.replace("}", "}}") + "}"
+
+
+def connection() -> pyodbc.Connection:
+    values = {name: setting(name) for name in
+              ("DB_SERVER", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD")}
+    missing = [name for name, value in values.items() if not value]
+    if missing:
+        raise RuntimeError("Missing settings: " + ", ".join(missing))
+    parts = [
+        f"DRIVER={odbc_value(setting('DB_DRIVER','ODBC Driver 18 for SQL Server'))}",
+        f"SERVER={odbc_value(values['DB_SERVER'])}",
+        f"DATABASE={odbc_value(values['DB_DATABASE'])}",
+        f"UID={odbc_value(values['DB_USERNAME'])}",
+        f"PWD={odbc_value(values['DB_PASSWORD'])}",
+        f"Encrypt={setting('DB_ENCRYPT','yes')}",
+        f"TrustServerCertificate={setting('DB_TRUST_SERVER_CERTIFICATE','yes')}",
+        "Connection Timeout=30",
+    ]
+    return pyodbc.connect(";".join(parts))
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def load_rates(customer_code: str, active_on: date) -> pd.DataFrame:
+    cn = connection()
+    try:
+        return pd.read_sql_query(QUERY, cn, params=[customer_code, active_on])
+    finally:
+        cn.close()
+
+
+def options(frame: pd.DataFrame, column: str) -> list[str]:
+    return sorted(frame[column].dropna().astype(str).unique().tolist())
+
+
+st.title("Tariff Rate Dashboard")
+st.caption("Customer tariff, routes, weight slabs and additional charges")
+
+with st.sidebar:
+    st.header("Rate query")
+    customer = st.text_input("Customer code", placeholder="0000007565").strip()
+    active_date = st.date_input("Active on", date.today())
+    load = st.button("Load tariff rates", type="primary", use_container_width=True)
+
+if not customer:
+    st.info("Enter a customer code and select **Load tariff rates**.")
+    st.stop()
+
+key = (customer, active_date)
+if load or st.session_state.get("tariff_key") != key:
+    try:
+        with st.spinner("Loading tariff rates..."):
+            st.session_state.tariff_data = load_rates(customer, active_date)
+            st.session_state.tariff_key = key
+    except Exception as exc:
+        st.error("Tariff data could not be loaded.")
+        with st.expander("Technical details"):
+            st.code(str(exc))
+        st.stop()
+
+data = st.session_state.get("tariff_data", pd.DataFrame()).copy()
+if data.empty:
+    st.warning("No active tariff rates found.")
+    st.stop()
+
+for col in ("FROMDT", "TODT"):
+    data[col] = pd.to_datetime(data[col], errors="coerce")
+for col in ("SLAB1", "RATE1", "FROMWT", "TOWT", "MINCWEIGHT", "FLAT_AMOUNT"):
+    data[col] = pd.to_numeric(data[col], errors="coerce")
+
+with st.sidebar:
+    st.divider()
+    st.subheader("Filters")
+    rate_for = st.multiselect("Rate applicable to", options(data, "RATEFOR"))
+    origin_zone = st.multiselect("Origin zone", options(data, "ORG_ZONE"))
+    destination_zone = st.multiselect("Destination zone", options(data, "DEST_ZONE"))
+    origins = st.multiselect("Origin", options(data, "ORIGIN"))
+    destinations = st.multiselect("Destination", options(data, "DESTINATION"))
+    products = st.multiselect("Product", options(data, "PRODUCT_NAME"))
+
+filtered = data
+for column, selected in {
+    "RATEFOR": rate_for, "ORG_ZONE": origin_zone, "DEST_ZONE": destination_zone,
+    "ORIGIN": origins, "DESTINATION": destinations, "PRODUCT_NAME": products,
+}.items():
+    if selected:
+        filtered = filtered[filtered[column].astype(str).isin(selected)]
+
+if filtered.empty:
+    st.warning("No records match the selected filters.")
+    st.stop()
+
+today = pd.Timestamp(date.today())
+expiring = filtered[filtered["TODT"].between(today, today + pd.Timedelta(days=30))]
+routes = filtered[["ORIGIN", "DESTINATION"]].drop_duplicates().shape[0]
+metrics = st.columns(5)
+metrics[0].metric("Active records", f"{len(filtered):,}")
+metrics[1].metric("Unique routes", f"{routes:,}")
+metrics[2].metric("Destinations", f"{filtered['DESTINATION'].nunique():,}")
+metrics[3].metric("Average Rate 1", f"{filtered['RATE1'].mean():,.2f}")
+metrics[4].metric("Expiring in 30 days", f"{len(expiring):,}")
+
+overview, rate_analysis, charge_analysis, records = st.tabs(
+    ["Overview", "Rate analysis", "Additional charges", "Rate records"]
+)
+
+with overview:
+    left, right = st.columns(2)
+    with left:
+        summary = filtered["RATEFOR"].fillna("N/A").value_counts().reset_index()
+        summary.columns = ["Rate for", "Records"]
+        st.plotly_chart(px.bar(summary, x="Rate for", y="Records", text_auto=True,
+                               title="Rates by applicability"), use_container_width=True)
+    with right:
+        summary = filtered["PRODUCT_NAME"].fillna("Not specified").value_counts().reset_index()
+        summary.columns = ["Product", "Records"]
+        st.plotly_chart(px.bar(summary, x="Product", y="Records", text_auto=True,
+                               title="Rates by product"), use_container_width=True)
+
+    top_routes = filtered.assign(
+        ROUTE=filtered["ORIGIN"].fillna("N/A") + " → " +
+              filtered["DESTINATION"].fillna("N/A")
+    )["ROUTE"].value_counts().head(15).sort_values().reset_index()
+    top_routes.columns = ["Route", "Records"]
+    st.plotly_chart(px.bar(top_routes, x="Records", y="Route", orientation="h",
+                           text_auto=True, title="Top 15 routes"),
+                    use_container_width=True)
+
+with rate_analysis:
+    rates = filtered.groupby(
+        ["DESTINATION", "DEST_CIRCLE", "DEST_ZONE"], dropna=False, as_index=False
+    ).agg(SLAB1=("SLAB1", "mean"), RATE1=("RATE1", "mean"),
+          MIN_WEIGHT=("MINCWEIGHT", "min"), MAX_WEIGHT=("TOWT", "max"),
+          RATE_RECORDS=("RATEID", "size"))
+    rates["RATE_DIFFERENCE"] = rates["RATE1"] - rates["SLAB1"]
+    rank_col, limit_col = st.columns(2)
+    ranking = rank_col.radio("Ranking", ["Highest Rate 1", "Lowest Rate 1"],
+                             horizontal=True)
+    limit = limit_col.slider("Destinations", 5, 30, 15)
+    ranked = rates.sort_values("RATE1", ascending=ranking == "Lowest Rate 1").head(limit)
+    chart = ranked.melt(id_vars="DESTINATION", value_vars=["SLAB1", "RATE1"],
+                        var_name="Rate", value_name="Value")
+    st.plotly_chart(px.bar(chart, x="Value", y="DESTINATION", color="Rate",
+                           barmode="group", orientation="h",
+                           title="Destination tariff comparison"),
+                    use_container_width=True)
+    st.dataframe(rates.sort_values("RATE1", ascending=False), use_container_width=True,
+                 hide_index=True)
+
+with charge_analysis:
+    charge_cols = [col for col in CHARGES if col in filtered]
+    numeric = filtered[charge_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+    charges = pd.DataFrame({
+        "Charge": [CHARGES[col] for col in charge_cols],
+        "Configured records": [(numeric[col] != 0).sum() for col in charge_cols],
+        "Average non-zero value": [
+            numeric.loc[numeric[col] != 0, col].mean() if (numeric[col] != 0).any() else 0
+            for col in charge_cols
+        ],
+        "Maximum value": [numeric[col].max() for col in charge_cols],
+    })
+    st.plotly_chart(px.bar(charges.sort_values("Configured records"),
+                           x="Configured records", y="Charge", orientation="h",
+                           text_auto=True, title="Additional-charge coverage"),
+                    use_container_width=True)
+    st.dataframe(charges.sort_values("Configured records", ascending=False),
+                 use_container_width=True, hide_index=True)
+
+with records:
+    st.dataframe(filtered, use_container_width=True, hide_index=True, height=560,
+                 column_config={
+                     "FROMDT": st.column_config.DateColumn(format="DD-MM-YYYY"),
+                     "TODT": st.column_config.DateColumn(format="DD-MM-YYYY"),
+                 })
+    st.download_button(
+        "Download filtered rates (CSV)",
+        filtered.to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"tariff_rates_{date.today():%Y%m%d}.csv",
+        mime="text/csv",
+    )
