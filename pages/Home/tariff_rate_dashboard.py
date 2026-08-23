@@ -1,20 +1,25 @@
 from __future__ import annotations
 
-import os
 from datetime import date
 
 import pandas as pd
 import plotly.express as px
-import pymssql
 import streamlit as st
+from sqlalchemy import text
+
+try:
+    from config.database import get_engine
+except ImportError:
+    # Supports projects where database.py is kept at repository root.
+    from database import get_engine
 
 
 QUERY = r"""
 WITH PARAMS AS
 (
-    SELECT CAST(%s AS DATE) AS AS_ON_DATE,
-           CAST(%s AS VARCHAR(100)) AS ORIGIN_NAME,
-           CAST(%s AS VARCHAR(100)) AS DESTINATION_NAME
+    SELECT CAST(:active_on AS DATE) AS AS_ON_DATE,
+           CAST(:origin_name AS VARCHAR(100)) AS ORIGIN_NAME,
+           CAST(:destination_name AS VARCHAR(100)) AS DESTINATION_NAME
 )
 SELECT
     COALESCE(RT.CUSTCODE,RT.CNGECODE,RT.CNGRCODE) AS CUSTOMER_CODE,
@@ -103,9 +108,29 @@ OUTER APPLY
     ) X
 ) CHG
 WHERE RT.TODT > P.AS_ON_DATE
-  AND (P.ORIGIN_NAME='' OR ORG.STNNAME LIKE '%' + P.ORIGIN_NAME + '%')
-  AND (P.DESTINATION_NAME='' OR DEST.STNNAME LIKE '%' + P.DESTINATION_NAME + '%')
+  AND ORG.STNNAME=P.ORIGIN_NAME
+  AND (P.DESTINATION_NAME='' OR DEST.STNNAME=P.DESTINATION_NAME)
 ORDER BY RT.FROMDT;
+"""
+
+ORIGIN_QUERY = r"""
+SELECT DISTINCT ORG.STNNAME AS ORIGIN
+FROM RATEMAST RT
+INNER JOIN VIEWSTATIONMAST ORG ON ORG.STNCODE=RT.ORGCODE
+WHERE RT.TODT > CAST(:active_on AS DATE)
+  AND ORG.STNNAME IS NOT NULL
+ORDER BY ORG.STNNAME;
+"""
+
+DESTINATION_QUERY = r"""
+SELECT DISTINCT DEST.STNNAME AS DESTINATION
+FROM RATEMAST RT
+INNER JOIN VIEWSTATIONMAST ORG ON ORG.STNCODE=RT.ORGCODE
+INNER JOIN VIEWSTATIONMAST DEST ON DEST.STNCODE=RT.DESTCODE
+WHERE RT.TODT > CAST(:active_on AS DATE)
+  AND ORG.STNNAME=:origin_name
+  AND DEST.STNNAME IS NOT NULL
+ORDER BY DEST.STNNAME;
 """
 
 CHARGES = {
@@ -117,58 +142,49 @@ CHARGES = {
 }
 
 
-def setting(name: str, default: str | None = None) -> str | None:
-    try:
-        value = st.secrets.get(name)
-    except FileNotFoundError:
-        value = None
-    return str(value) if value is not None else os.getenv(name, default)
-
-
-def connection():
-    values = {name: setting(name) for name in
-              ("DB_SERVER", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD")}
-    missing = [name for name, value in values.items() if not value]
-    if missing:
-        raise RuntimeError("Missing settings: " + ", ".join(missing))
-    server_value = values["DB_SERVER"].strip()
-    port = 1433
-    if "," in server_value:
-        server_value, port_text = server_value.rsplit(",", 1)
-        if port_text.strip().isdigit():
-            port = int(port_text.strip())
-    elif server_value.count(":") == 1:
-        possible_server, port_text = server_value.rsplit(":", 1)
-        if port_text.strip().isdigit():
-            server_value = possible_server
-            port = int(port_text.strip())
-
-    return pymssql.connect(
-        server=server_value.strip(),
-        port=port,
-        user=values["DB_USERNAME"],
-        password=values["DB_PASSWORD"],
-        database=values["DB_DATABASE"],
-        login_timeout=30,
-        timeout=60,
-    )
-
-
 @st.cache_data(ttl=900, show_spinner=False)
 def load_rates(
     active_on: date,
     origin_name: str,
     destination_name: str,
 ) -> pd.DataFrame:
-    cn = connection()
-    try:
+    engine = get_engine()
+    with engine.connect() as cn:
         return pd.read_sql_query(
-            QUERY,
+            text(QUERY),
             cn,
-            params=[active_on, origin_name, destination_name],
+            params={
+                "active_on": active_on,
+                "origin_name": origin_name,
+                "destination_name": destination_name,
+            },
         )
-    finally:
-        cn.close()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_origins(active_on: date) -> list[str]:
+    engine = get_engine()
+    with engine.connect() as cn:
+        frame = pd.read_sql_query(
+            text(ORIGIN_QUERY),
+            cn,
+            params={"active_on": active_on},
+        )
+    return frame["ORIGIN"].dropna().astype(str).tolist()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_destinations(active_on: date, origin_name: str) -> list[str]:
+    if not origin_name:
+        return []
+    engine = get_engine()
+    with engine.connect() as cn:
+        frame = pd.read_sql_query(
+            text(DESTINATION_QUERY),
+            cn,
+            params={"active_on": active_on, "origin_name": origin_name},
+        )
+    return frame["DESTINATION"].dropna().astype(str).tolist()
 
 
 def options(frame: pd.DataFrame, column: str) -> list[str]:
@@ -178,32 +194,48 @@ def options(frame: pd.DataFrame, column: str) -> list[str]:
 st.title("Tariff Rate Dashboard")
 st.caption("Customer tariff, routes, weight slabs and additional charges")
 
-with st.form("tariff_search_form"):
-    st.subheader("Search rates by route")
-    search_col1, search_col2, search_col3 = st.columns([1.5, 1.5, 1])
-    origin_search = search_col1.text_input(
-        "Origin",
-        placeholder="e.g. SRICITY",
-    ).strip()
-    destination_search = search_col2.text_input(
-        "Destination",
-        placeholder="e.g. GUWAHATI",
-    ).strip()
-    active_date = search_col3.date_input("Active on", date.today())
-    load = st.form_submit_button(
-        "Load tariff rates",
-        type="primary",
-        use_container_width=True,
-    )
+st.subheader("Search rates by route")
+date_col, origin_col, destination_col = st.columns([1, 1.5, 1.5])
+active_date = date_col.date_input("Active on", date.today())
 
-if not any((origin_search, destination_search)):
-    st.info(
-        "Enter an **Origin or Destination**, then select **Load tariff rates**."
-    )
+try:
+    origin_names = load_origins(active_date)
+except Exception as exc:
+    st.error("Origin list could not be loaded from the database.")
+    with st.expander("Technical details"):
+        st.code(str(exc))
+    st.stop()
+
+origin_options = ["Select Origin"] + origin_names
+origin_search = origin_col.selectbox("Origin", origin_options)
+if origin_search == "Select Origin":
+    origin_search = ""
+
+try:
+    destination_names = load_destinations(active_date, origin_search)
+except Exception as exc:
+    st.error("Destination list could not be loaded from the database.")
+    with st.expander("Technical details"):
+        st.code(str(exc))
+    st.stop()
+
+destination_options = ["All Destinations"] + destination_names
+destination_search = destination_col.selectbox(
+    "Destination (optional)",
+    destination_options,
+    disabled=not bool(origin_search),
+)
+if destination_search == "All Destinations":
+    destination_search = ""
+
+load = st.button("Load tariff rates", type="primary")
+
+if not origin_search:
+    st.info("Select an **Origin**. Destination is optional.")
     st.stop()
 
 key = (active_date, origin_search, destination_search)
-if load or st.session_state.get("tariff_key") != key:
+if load:
     try:
         with st.spinner("Loading tariff rates..."):
             st.session_state.tariff_data = load_rates(
@@ -217,6 +249,10 @@ if load or st.session_state.get("tariff_key") != key:
         with st.expander("Technical details"):
             st.code(str(exc))
         st.stop()
+
+if st.session_state.get("tariff_key") != key:
+    st.info("Select the route and click **Load tariff rates**.")
+    st.stop()
 
 data = st.session_state.get("tariff_data", pd.DataFrame()).copy()
 if data.empty:
