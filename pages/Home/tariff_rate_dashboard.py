@@ -12,8 +12,9 @@ import streamlit as st
 QUERY = r"""
 WITH PARAMS AS
 (
-    SELECT CAST(%s AS VARCHAR(20)) AS CUSTOMER_CODE,
-           CAST(%s AS DATE) AS AS_ON_DATE
+    SELECT CAST(%s AS DATE) AS AS_ON_DATE,
+           CAST(%s AS VARCHAR(100)) AS ORIGIN_NAME,
+           CAST(%s AS VARCHAR(100)) AS DESTINATION_NAME
 )
 SELECT
     COALESCE(RT.CUSTCODE,RT.CNGECODE,RT.CNGRCODE) AS CUSTOMER_CODE,
@@ -102,13 +103,8 @@ OUTER APPLY
     ) X
 ) CHG
 WHERE RT.TODT > P.AS_ON_DATE
-  AND
-  (
-      RT.CUSTCODE=P.CUSTOMER_CODE
-      OR (RT.CUSTCODE IS NULL AND RT.CNGECODE=P.CUSTOMER_CODE)
-      OR (RT.CUSTCODE IS NULL AND RT.CNGECODE IS NULL
-          AND RT.CNGRCODE=P.CUSTOMER_CODE)
-  )
+  AND (P.ORIGIN_NAME='' OR ORG.STNNAME LIKE '%' + P.ORIGIN_NAME + '%')
+  AND (P.DESTINATION_NAME='' OR DEST.STNNAME LIKE '%' + P.DESTINATION_NAME + '%')
 ORDER BY RT.FROMDT;
 """
 
@@ -159,10 +155,18 @@ def connection():
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def load_rates(customer_code: str, active_on: date) -> pd.DataFrame:
+def load_rates(
+    active_on: date,
+    origin_name: str,
+    destination_name: str,
+) -> pd.DataFrame:
     cn = connection()
     try:
-        return pd.read_sql_query(QUERY, cn, params=[customer_code, active_on])
+        return pd.read_sql_query(
+            QUERY,
+            cn,
+            params=[active_on, origin_name, destination_name],
+        )
     finally:
         cn.close()
 
@@ -174,21 +178,39 @@ def options(frame: pd.DataFrame, column: str) -> list[str]:
 st.title("Tariff Rate Dashboard")
 st.caption("Customer tariff, routes, weight slabs and additional charges")
 
-with st.sidebar:
-    st.header("Rate query")
-    customer = st.text_input("Customer code", placeholder="0000007565").strip()
-    active_date = st.date_input("Active on", date.today())
-    load = st.button("Load tariff rates", type="primary", use_container_width=True)
+with st.form("tariff_search_form"):
+    st.subheader("Search rates by route")
+    search_col1, search_col2, search_col3 = st.columns([1.5, 1.5, 1])
+    origin_search = search_col1.text_input(
+        "Origin",
+        placeholder="e.g. SRICITY",
+    ).strip()
+    destination_search = search_col2.text_input(
+        "Destination",
+        placeholder="e.g. GUWAHATI",
+    ).strip()
+    active_date = search_col3.date_input("Active on", date.today())
+    load = st.form_submit_button(
+        "Load tariff rates",
+        type="primary",
+        use_container_width=True,
+    )
 
-if not customer:
-    st.info("Enter a customer code and select **Load tariff rates**.")
+if not any((origin_search, destination_search)):
+    st.info(
+        "Enter an **Origin or Destination**, then select **Load tariff rates**."
+    )
     st.stop()
 
-key = (customer, active_date)
+key = (active_date, origin_search, destination_search)
 if load or st.session_state.get("tariff_key") != key:
     try:
         with st.spinner("Loading tariff rates..."):
-            st.session_state.tariff_data = load_rates(customer, active_date)
+            st.session_state.tariff_data = load_rates(
+                active_date,
+                origin_search,
+                destination_search,
+            )
             st.session_state.tariff_key = key
     except Exception as exc:
         st.error("Tariff data could not be loaded.")
@@ -206,15 +228,17 @@ for col in ("FROMDT", "TODT"):
 for col in ("SLAB1", "RATE1", "FROMWT", "TOWT", "MINCWEIGHT", "FLAT_AMOUNT"):
     data[col] = pd.to_numeric(data[col], errors="coerce")
 
-with st.sidebar:
-    st.divider()
-    st.subheader("Filters")
-    rate_for = st.multiselect("Rate applicable to", options(data, "RATEFOR"))
-    origin_zone = st.multiselect("Origin zone", options(data, "ORG_ZONE"))
-    destination_zone = st.multiselect("Destination zone", options(data, "DEST_ZONE"))
-    origins = st.multiselect("Origin", options(data, "ORIGIN"))
-    destinations = st.multiselect("Destination", options(data, "DESTINATION"))
-    products = st.multiselect("Product", options(data, "PRODUCT_NAME"))
+with st.expander("Refine loaded results", expanded=True):
+    filter_row1 = st.columns(3)
+    rate_for = filter_row1[0].multiselect("Rate applicable to", options(data, "RATEFOR"))
+    origins = filter_row1[1].multiselect("Origin", options(data, "ORIGIN"))
+    destinations = filter_row1[2].multiselect("Destination", options(data, "DESTINATION"))
+    filter_row2 = st.columns(3)
+    origin_zone = filter_row2[0].multiselect("Origin zone", options(data, "ORG_ZONE"))
+    destination_zone = filter_row2[1].multiselect(
+        "Destination zone", options(data, "DEST_ZONE")
+    )
+    products = filter_row2[2].multiselect("Product", options(data, "PRODUCT_NAME"))
 
 filtered = data
 for column, selected in {
