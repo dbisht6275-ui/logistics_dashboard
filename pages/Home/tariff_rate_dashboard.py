@@ -1,33 +1,43 @@
 from __future__ import annotations
 
-import importlib.util
 from datetime import date
-from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATABASE_FILE = PROJECT_ROOT / "config" / "database.py"
+@st.cache_resource
+def get_engine():
+    """Build and cache the project's existing SQL Server connection."""
 
-if not DATABASE_FILE.is_file():
-    raise FileNotFoundError(
-        f"Required database helper was not found at: {DATABASE_FILE}"
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(3),
+        retry=retry_if_exception_type(Exception),
+        reraise=True,
     )
+    def _build_engine():
+        connection_url = URL.create(
+            "mssql+pymssql",
+            username=st.secrets["DB_USER"],
+            password=st.secrets["DB_PASSWORD"],
+            host=st.secrets["DB_SERVER"],
+            port=int(st.secrets["DB_PORT"]),
+            database=st.secrets["DB_NAME"],
+        )
+        return create_engine(
+            connection_url,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+            pool_size=2,
+            max_overflow=1,
+        )
 
-database_spec = importlib.util.spec_from_file_location(
-    "sugam_config_database",
-    DATABASE_FILE,
-)
-if database_spec is None or database_spec.loader is None:
-    raise ImportError(f"Could not load database helper from: {DATABASE_FILE}")
-
-database_module = importlib.util.module_from_spec(database_spec)
-database_spec.loader.exec_module(database_module)
-get_engine = database_module.get_engine
+    return _build_engine()
 
 
 QUERY = r"""
