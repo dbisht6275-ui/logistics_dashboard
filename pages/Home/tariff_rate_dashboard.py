@@ -5,17 +5,15 @@ from datetime import date
 
 import pandas as pd
 import plotly.express as px
-import pyodbc
+import pymssql
 import streamlit as st
 
-
-st.set_page_config(page_title="Tariff Rate Dashboard", page_icon="📦", layout="wide")
 
 QUERY = r"""
 WITH PARAMS AS
 (
-    SELECT CAST(? AS VARCHAR(20)) AS CUSTOMER_CODE,
-           CAST(? AS DATE) AS AS_ON_DATE
+    SELECT CAST(%s AS VARCHAR(20)) AS CUSTOMER_CODE,
+           CAST(%s AS DATE) AS AS_ON_DATE
 )
 SELECT
     COALESCE(RT.CUSTCODE,RT.CNGECODE,RT.CNGRCODE) AS CUSTOMER_CODE,
@@ -131,27 +129,33 @@ def setting(name: str, default: str | None = None) -> str | None:
     return str(value) if value is not None else os.getenv(name, default)
 
 
-def odbc_value(value: str) -> str:
-    return "{" + value.replace("}", "}}") + "}"
-
-
-def connection() -> pyodbc.Connection:
+def connection():
     values = {name: setting(name) for name in
               ("DB_SERVER", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD")}
     missing = [name for name, value in values.items() if not value]
     if missing:
         raise RuntimeError("Missing settings: " + ", ".join(missing))
-    parts = [
-        f"DRIVER={odbc_value(setting('DB_DRIVER','ODBC Driver 18 for SQL Server'))}",
-        f"SERVER={odbc_value(values['DB_SERVER'])}",
-        f"DATABASE={odbc_value(values['DB_DATABASE'])}",
-        f"UID={odbc_value(values['DB_USERNAME'])}",
-        f"PWD={odbc_value(values['DB_PASSWORD'])}",
-        f"Encrypt={setting('DB_ENCRYPT','yes')}",
-        f"TrustServerCertificate={setting('DB_TRUST_SERVER_CERTIFICATE','yes')}",
-        "Connection Timeout=30",
-    ]
-    return pyodbc.connect(";".join(parts))
+    server_value = values["DB_SERVER"].strip()
+    port = 1433
+    if "," in server_value:
+        server_value, port_text = server_value.rsplit(",", 1)
+        if port_text.strip().isdigit():
+            port = int(port_text.strip())
+    elif server_value.count(":") == 1:
+        possible_server, port_text = server_value.rsplit(":", 1)
+        if port_text.strip().isdigit():
+            server_value = possible_server
+            port = int(port_text.strip())
+
+    return pymssql.connect(
+        server=server_value.strip(),
+        port=port,
+        user=values["DB_USERNAME"],
+        password=values["DB_PASSWORD"],
+        database=values["DB_DATABASE"],
+        login_timeout=30,
+        timeout=60,
+    )
 
 
 @st.cache_data(ttl=900, show_spinner=False)
