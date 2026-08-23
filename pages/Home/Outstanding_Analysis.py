@@ -883,6 +883,8 @@ def show_OutstandingAnalysis():
                 from_date = st.date_input(
                     "From Date",
                     value=st.session_state.get("oa_from_date", default_from_date),
+                    min_value=default_from_date,
+                    max_value=default_to_date,
                     format="DD/MM/YYYY",
                     key="oa_from_date",
                 )
@@ -890,6 +892,8 @@ def show_OutstandingAnalysis():
                 to_date = st.date_input(
                     "To Date",
                     value=st.session_state.get("oa_to_date", default_to_date),
+                    min_value=default_from_date,
+                    max_value=default_to_date,
                     format="DD/MM/YYYY",
                     key="oa_to_date",
                 )
@@ -897,6 +901,8 @@ def show_OutstandingAnalysis():
                 as_on_date = st.date_input(
                     "As On Date",
                     value=st.session_state.get("oa_as_on_date", default_as_on_date),
+                    min_value=default_from_date,
+                    max_value=default_to_date,
                     format="DD/MM/YYYY",
                     key="oa_as_on_date",
                 )
@@ -931,6 +937,8 @@ def show_OutstandingAnalysis():
             from_date = st.date_input(
                 "From Date",
                 value=st.session_state.get("oa_from_date", default_from_date),
+                min_value=default_from_date,
+                max_value=default_to_date,
                 format="DD/MM/YYYY",
                 key="oa_from_date",
             )
@@ -939,6 +947,8 @@ def show_OutstandingAnalysis():
             to_date = st.date_input(
                 "To Date",
                 value=st.session_state.get("oa_to_date", default_to_date),
+                min_value=default_from_date,
+                max_value=default_to_date,
                 format="DD/MM/YYYY",
                 key="oa_to_date",
             )
@@ -947,6 +957,8 @@ def show_OutstandingAnalysis():
             as_on_date = st.date_input(
                 "As On Date",
                 value=st.session_state.get("oa_as_on_date", default_as_on_date),
+                min_value=default_from_date,
+                max_value=default_to_date,
                 format="DD/MM/YYYY",
                 key="oa_as_on_date",
             )
