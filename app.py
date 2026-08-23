@@ -34,7 +34,6 @@ def show_tariff_rate_dashboard():
         return
     runpy.run_path(str(dashboard_file), run_name="tariff_rate_dashboard")
 
-
 st.set_page_config(
     page_title="Sugam Dashboard",
     layout="wide",
