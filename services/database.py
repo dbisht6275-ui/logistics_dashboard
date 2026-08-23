@@ -32,8 +32,10 @@ def get_engine():
             connection_url,
             pool_pre_ping=True,
             pool_recycle=1800,
-            pool_size=5,
-            max_overflow=10,
+            # The EC2 t3.micro has limited memory. A small pool is sufficient
+            # for this dashboard and avoids retaining unnecessary connections.
+            pool_size=2,
+            max_overflow=1,
         )
 
     return _build_engine()
