@@ -3,8 +3,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import html
+import gc
 from io import BytesIO
-from concurrent.futures import ThreadPoolExecutor
 from services.data_CustomerAnalysis import load_booking_data, get_date_range
 
 # =====================================================
@@ -298,8 +298,6 @@ def apply_dashboard_style() -> None:
         }
 
         .dashboard-row-gap { height: 12px; min-height: 12px; width: 100%; clear: both; display:block; line-height:12px; font-size:1px; }
-        .header-filter-summary { display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-width:0; }
-        .header-filter-chip { display:inline-flex; align-items:center; min-height:26px; padding:4px 11px; border:1px solid #bfdbfe; border-radius:999px; background:#f8fbff; color:#1d4ed8; font-size:10px; font-weight:650; white-space:nowrap; box-shadow:0 1px 3px rgba(37,99,235,.06); }
         .section-header {
             border-bottom:0 !important; padding-bottom:0 !important; margin-bottom:7px !important;
             color:#0f2744 !important; font-weight:650 !important;
@@ -611,17 +609,6 @@ def apply_dashboard_style() -> None:
 
             .dashboard-title { font-size: 18px !important; }
             .dashboard-subtitle { font-size: 10.5px !important; }
-            .header-filter-summary {
-                width: 100% !important;
-                max-width: 100% !important;
-                flex-wrap: wrap !important;
-                gap: 4px !important;
-            }
-            .header-filter-chip {
-                max-width: 100% !important;
-                white-space: normal !important;
-                overflow-wrap: anywhere !important;
-            }
 
             div[data-testid="stSelectbox"],
             div[data-testid="stPopover"],
@@ -895,7 +882,9 @@ def apply_filters(
     customer: str,
     customer_name_col: str,
 ) -> pd.DataFrame:
-    filtered = df.copy()
+    # Start with the existing frame. Boolean filtering below creates a new
+    # frame only when the user actually selects a filter.
+    filtered = df
 
     def apply_multi(frame, column, selected):
         if column not in frame.columns:
@@ -961,7 +950,7 @@ def kpi_card(
 # =====================================================
 # Export
 # =====================================================
-@st.cache_data(show_spinner=False, ttl=600, max_entries=6)
+@st.cache_data(show_spinner=False, ttl=600, max_entries=1)
 def export_to_excel(
     df: pd.DataFrame,
     customer_summary: pd.DataFrame,
@@ -1322,7 +1311,7 @@ def render_data_filters(
             locked_zone = role_row["Zone"].iloc[0]
 
     f1, f2, f3, f4, f5, f6, f7, f8 = filter_columns
-    filter_source_df = df.copy()
+    filter_source_df = df
 
     def _customer_safe_options(source_df, column):
         if source_df is None or source_df.empty or column not in source_df.columns:
@@ -1339,7 +1328,7 @@ def render_data_filters(
             or not selected
         ):
             return source_df
-        return source_df[source_df[column].isin(selected)].copy()
+        return source_df[source_df[column].isin(selected)]
 
     def _prune_customer_multiselect_state(key, allowed_options):
         if key in st.session_state:
@@ -1373,7 +1362,7 @@ def render_data_filters(
                 disabled=not zone_options,
             )
 
-    zone_source_df = filter_source_df.copy()
+    zone_source_df = filter_source_df
     zone_source_df = _customer_apply_multi_filter(zone_source_df, "Zone", selected_zones)
 
     # ------------------------------------------------------------------
@@ -1400,7 +1389,7 @@ def render_data_filters(
                 disabled=not circle_options,
             )
 
-    circle_source_df = zone_source_df.copy()
+    circle_source_df = zone_source_df
     circle_source_df = _customer_apply_multi_filter(circle_source_df, "Circle", selected_circles)
 
     # ------------------------------------------------------------------
@@ -1427,7 +1416,7 @@ def render_data_filters(
                 disabled=not branch_options,
             )
 
-    branch_source_df = circle_source_df.copy()
+    branch_source_df = circle_source_df
     branch_source_df = _customer_apply_multi_filter(branch_source_df, "Branch", selected_branches)
 
     # ------------------------------------------------------------------
@@ -1448,7 +1437,7 @@ def render_data_filters(
             disabled=not available_quarters,
         )
 
-    quarter_source_df = branch_source_df.copy()
+    quarter_source_df = branch_source_df
     quarter_source_df = _customer_apply_multi_filter(
         quarter_source_df, "Quarter", selected_quarters
     )
@@ -1471,7 +1460,7 @@ def render_data_filters(
             disabled=not available_months,
         )
 
-    selection_df = quarter_source_df.copy()
+    selection_df = quarter_source_df
     selection_df = _customer_apply_multi_filter(selection_df, "Month", selected_months)
 
     # ------------------------------------------------------------------
@@ -2586,7 +2575,7 @@ def dashboard_spacer(height: int = 12) -> None:
 # =====================================================
 # Cached base data loader
 # =====================================================
-@st.cache_data(show_spinner=False, ttl=1800, max_entries=8)
+@st.cache_resource(show_spinner=False, ttl=1800, max_entries=2)
 def load_customer_analysis_periods(fin_year: str, view_type: str):
     """Load current, previous and older FY data once per FY/view.
 
@@ -2602,20 +2591,17 @@ def load_customer_analysis_periods(fin_year: str, view_type: str):
     older_year = previous_financial_year(fin_year, 2)
     old_start, old_end = get_date_range(older_year)
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        current_future = executor.submit(
-            load_booking_data, start_date, end_date, view_type
-        )
-        previous_future = executor.submit(
-            load_booking_data, prev_start, prev_end, view_type
-        )
-        older_future = executor.submit(
-            load_booking_data, old_start, old_end, view_type
-        )
-
-        current_df = clean_booking_data(current_future.result())
-        previous_df = clean_booking_data(previous_future.result())
-        older_df = clean_booking_data(older_future.result())
+    # Load sequentially on small EC2 instances. Three concurrent SQL results
+    # caused a large peak and triggered Linux's out-of-memory killer.
+    current_df = clean_booking_data(
+        load_booking_data(start_date, end_date, view_type)
+    )
+    previous_df = clean_booking_data(
+        load_booking_data(prev_start, prev_end, view_type)
+    )
+    older_df = clean_booking_data(
+        load_booking_data(old_start, old_end, view_type)
+    )
 
     return current_df, previous_df, older_df, previous_year, older_year
 
@@ -2644,6 +2630,15 @@ def show_CustomerAnalysis() -> None:
             return
 
         st.session_state["customer_report_ready"] = False
+        # Release references from the previously selected report before
+        # loading another three-year dataset.
+        for key in (
+            "customer_report_df",
+            "customer_report_prev_df",
+            "customer_report_old_df",
+        ):
+            st.session_state.pop(key, None)
+        gc.collect()
         try:
             with st.spinner("Loading customer summary data..."):
                 (
@@ -2705,9 +2700,11 @@ def show_CustomerAnalysis() -> None:
         st.info("Click ▶ Run Report to load the dashboard.")
         return
 
-    df = stored_df.copy()
-    prev_df = stored_prev_df.copy()
-    old_df = stored_old_df.copy()
+    # Shallow copies share the large underlying column arrays. New helper
+    # columns can still be added safely without tripling the base-data memory.
+    df = stored_df.copy(deep=False)
+    prev_df = stored_prev_df.copy(deep=False)
+    old_df = stored_old_df.copy(deep=False)
 
     if df.empty:
         st.warning("No customer data found for the selected financial year.")
@@ -2769,47 +2766,11 @@ def show_CustomerAnalysis() -> None:
         filter_columns,
     )
 
-    def _chip_value(values, all_label="All"):
-        if values in (None, "All"):
-            return all_label
-        if isinstance(values, (list, tuple, set)):
-            vals = [str(v) for v in values if v not in (None, "", "All")]
-            if not vals:
-                return all_label
-            return vals[0] if len(vals) == 1 else f"{len(vals)} selected"
-        return str(values)
-
-    header_items = [
-        ("FY", fin_year),
-        ("View", "Origin" if view_type == "origin" else "Destination"),
-        ("Unit", conversion_type),
-    ]
-
-    # Show active slicer selections in the header as compact chips.
-    # All/default selections are omitted so the header stays clean.
-    active_header_filters = [
-        ("Zone", zone),
-        ("Circle", circle),
-        ("Branch", branch),
-        ("Quarter", quarter),
-        ("Month", month),
-        ("Load", load_type),
-        (customer_label, customer),
-    ]
-    for label, value in active_header_filters:
-        chip_val = _chip_value(value)
-        if chip_val != "All":
-            header_items.append((label, chip_val))
-    header_chips = "".join(
-        f'<span class="header-filter-chip">{label}: {value}</span>'
-        for label, value in header_items
-    )
     with header_content_placeholder:
         st.markdown(
-            f"""
-            <div class="dashboard-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            """
+            <div class="dashboard-header">
                 <div class="dashboard-title" style="white-space:nowrap;">Customer Analysis</div>
-                <div class="header-filter-summary">{header_chips}</div>
             </div>
             """,
             unsafe_allow_html=True,

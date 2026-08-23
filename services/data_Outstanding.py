@@ -1,10 +1,15 @@
 from datetime import date
+import time
 import pandas as pd
 import streamlit as st
 from sqlalchemy import text
 from services.database import get_engine
 
-@st.cache_data(ttl=3600, show_spinner="Fetching outstanding data...")
+@st.cache_data(
+    ttl=3600,
+    max_entries=2,
+    show_spinner="Fetching outstanding data...",
+)
 def get_outstanding_data(
     from_date,
     to_date,
@@ -42,10 +47,21 @@ def get_outstanding_data(
         "user": str(user).strip(),
     }
 
+    query_started = time.perf_counter()
     with engine.connect() as conn:
         df = pd.read_sql(query, conn, params=params)
+    query_seconds = time.perf_counter() - query_started
 
-    return clean_data(df)
+    clean_started = time.perf_counter()
+    cleaned = clean_data(df)
+    clean_seconds = time.perf_counter() - clean_started
+
+    print(
+        f"[Outstanding Loader] rows={len(cleaned):,} | "
+        f"query={query_seconds:.2f}s | clean={clean_seconds:.2f}s | "
+        f"total={query_seconds + clean_seconds:.2f}s"
+    )
+    return cleaned
 
 
 def _format_date(value):
@@ -75,7 +91,9 @@ def clean_data(df_raw: pd.DataFrame) -> pd.DataFrame:
     if df_raw is None or df_raw.empty:
         return pd.DataFrame()
 
-    df = df_raw.copy()
+    # The freshly fetched frame is private to this function. Cleaning it in
+    # place avoids holding a second full historical DataFrame in EC2 memory.
+    df = df_raw
     df.columns = [str(c).strip().lower() for c in df.columns]
 
     date_cols = [
@@ -106,7 +124,13 @@ def clean_data(df_raw: pd.DataFrame) -> pd.DataFrame:
         df[col] = df[col].fillna("").astype(str).str.strip()
 
     if "outstandingdays" in df.columns:
-        df["age_bucket"] = df["outstandingdays"].apply(age_bucket)
+        # Vectorized bucketing is substantially faster than row-wise apply.
+        df["age_bucket"] = pd.cut(
+            df["outstandingdays"],
+            bins=[float("-inf"), 30, 60, 90, float("inf")],
+            labels=["0-30", "31-60", "61-90", "Above 90"],
+            right=True,
+        )
     else:
         df["age_bucket"] = "0-30"
 

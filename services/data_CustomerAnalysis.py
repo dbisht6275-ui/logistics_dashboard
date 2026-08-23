@@ -1,5 +1,4 @@
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 import streamlit as st
@@ -42,12 +41,15 @@ def _fetch_customer_data(start_date, end_date, view_type):
     return df
 
 
-@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=20)
 def load_booking_data(start_date, end_date, view_type="origin"):
+    """Fetch one period without retaining a second raw DataFrame cache.
+
+    Customer Analysis owns the cleaned multi-period cache. Caching the raw
+    result here as well duplicated every large result in memory.
+    """
     return _fetch_customer_data(start_date, end_date, view_type)
 
 
-@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=12)
 def load_booking_data_pair(
     start_date,
     end_date,
@@ -55,23 +57,8 @@ def load_booking_data_pair(
     prev_end,
     view_type="origin",
 ):
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        current_future = executor.submit(
-            _fetch_customer_data,
-            start_date,
-            end_date,
-            view_type,
-        )
-
-        previous_future = executor.submit(
-            _fetch_customer_data,
-            prev_start,
-            prev_end,
-            view_type,
-        )
-
-        current_df = current_future.result()
-        previous_df = previous_future.result()
+    current_df = _fetch_customer_data(start_date, end_date, view_type)
+    previous_df = _fetch_customer_data(prev_start, prev_end, view_type)
 
     return current_df, previous_df
 
