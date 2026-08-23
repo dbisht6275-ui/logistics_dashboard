@@ -1,5 +1,4 @@
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 import streamlit as st
@@ -568,10 +567,8 @@ def _aggregate_view_pnl(df, view_type):
             ]
         )
 
-    out = df.copy()
-
-    branch_col = _get_branch_identity_column(out, view_type)
-    date_col = _get_date_column(out)
+    branch_col = _get_branch_identity_column(df, view_type)
+    date_col = _get_date_column(df)
 
     required_metrics = {
         "REVENUE": ["REVENUE", "revenue", "business"],
@@ -582,15 +579,28 @@ def _aggregate_view_pnl(df, view_type):
     rename_map = {}
 
     for target, candidates in required_metrics.items():
-        source = _find_column(out, candidates)
+        source = _find_column(df, candidates)
         if source is None:
             raise ValueError(
                 f"{view_type} P&L data is missing {target}. "
-                f"Available columns: {list(out.columns)}"
+                f"Available columns: {list(df.columns)}"
             )
         if source != target:
             rename_map[source] = target
 
+    # The P&L stored procedure can return many GR-detail columns. Net Profit
+    # aggregation only needs the branch, date, three metrics and hierarchy.
+    # Project those columns before copying to keep peak RAM low on EC2.
+    metadata = _first_existing_metadata(df)
+    required_sources = [
+        branch_col,
+        date_col,
+        *rename_map.keys(),
+        *[name for name in ["REVENUE", "EXPENSE", "PNL"] if name in df.columns],
+        *metadata.values(),
+    ]
+    required_sources = list(dict.fromkeys(required_sources))
+    out = df.loc[:, required_sources].copy()
     out = out.rename(columns=rename_map)
 
     out["_BRANCH"] = (
@@ -1134,27 +1144,12 @@ def _fetch_complete_net_profit_period(start_date, end_date):
     """
     started = time.perf_counter()
 
-    # Origin and Destination share the same heavy P&L stored-procedure output.
-    # Fetch both views together so that SP executes only once for this period.
-    with ThreadPoolExecutor(
-        max_workers=2,
-        thread_name_prefix="net-profit",
-    ) as executor:
-
-        pnl_views_future = executor.submit(
-            load_pnl_both_views,
-            start_date,
-            end_date,
-        )
-
-        overhead_future = executor.submit(
-            _fetch_overhead_data,
-            start_date,
-            end_date,
-        )
-
-        origin_df, destination_df = pnl_views_future.result()
-        overhead_df = overhead_future.result()
+    # Keep the two heavy database operations sequential. Running them in two
+    # threads raised peak RAM enough for Linux to OOM-kill Streamlit on a
+    # 1 GiB EC2 instance. The P&L helper still obtains both views with one SP
+    # execution, so this does not duplicate the expensive P&L query.
+    origin_df, destination_df = load_pnl_both_views(start_date, end_date)
+    overhead_df = _fetch_overhead_data(start_date, end_date)
 
     final = _build_net_profit(
         origin_df,
@@ -1174,7 +1169,8 @@ def _fetch_complete_net_profit_period(start_date, end_date):
 @st.cache_data(
     ttl=_CACHE_TTL_SECONDS,
     show_spinner=False,
-    max_entries=8,
+    # Only Current FY and Previous FY are required by the dashboard.
+    max_entries=2,
 )
 def load_net_profit_data(start_date, end_date):
     return _fetch_complete_net_profit_period(
@@ -1183,11 +1179,6 @@ def load_net_profit_data(start_date, end_date):
     )
 
 
-@st.cache_data(
-    ttl=_CACHE_TTL_SECONDS,
-    show_spinner=False,
-    max_entries=4,
-)
 def load_net_profit_data_pair(
     start_date,
     end_date,
@@ -1201,8 +1192,9 @@ def load_net_profit_data_pair(
     Current FY and Previous FY are loaded SEQUENTIALLY
     to reduce peak memory usage on Streamlit Cloud.
 
-    Inside each period, Origin + Destination + Overhead
-    are still fetched in parallel for reasonable speed.
+    The pair itself is intentionally not cached: both returned DataFrames are
+    already cached individually by ``load_net_profit_data``. A second cache
+    layer would serialize and retain duplicate copies of both financial years.
     """
 
     print(
