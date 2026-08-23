@@ -298,8 +298,6 @@ def apply_dashboard_style() -> None:
         }
 
         .dashboard-row-gap { height: 12px; min-height: 12px; width: 100%; clear: both; display:block; line-height:12px; font-size:1px; }
-        .header-filter-summary { display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-width:0; }
-        .header-filter-chip { display:inline-flex; align-items:center; min-height:26px; padding:4px 11px; border:1px solid #bfdbfe; border-radius:999px; background:#f8fbff; color:#1d4ed8; font-size:10px; font-weight:650; white-space:nowrap; box-shadow:0 1px 3px rgba(37,99,235,.06); }
         .section-header {
             border-bottom:0 !important; padding-bottom:0 !important; margin-bottom:7px !important;
             color:#0f2744 !important; font-weight:650 !important;
@@ -611,17 +609,6 @@ def apply_dashboard_style() -> None:
 
             .dashboard-title { font-size: 18px !important; }
             .dashboard-subtitle { font-size: 10.5px !important; }
-            .header-filter-summary {
-                width: 100% !important;
-                max-width: 100% !important;
-                flex-wrap: wrap !important;
-                gap: 4px !important;
-            }
-            .header-filter-chip {
-                max-width: 100% !important;
-                white-space: normal !important;
-                overflow-wrap: anywhere !important;
-            }
 
             div[data-testid="stSelectbox"],
             div[data-testid="stPopover"],
@@ -2779,47 +2766,11 @@ def show_CustomerAnalysis() -> None:
         filter_columns,
     )
 
-    def _chip_value(values, all_label="All"):
-        if values in (None, "All"):
-            return all_label
-        if isinstance(values, (list, tuple, set)):
-            vals = [str(v) for v in values if v not in (None, "", "All")]
-            if not vals:
-                return all_label
-            return vals[0] if len(vals) == 1 else f"{len(vals)} selected"
-        return str(values)
-
-    header_items = [
-        ("FY", fin_year),
-        ("View", "Origin" if view_type == "origin" else "Destination"),
-        ("Unit", conversion_type),
-    ]
-
-    # Show active slicer selections in the header as compact chips.
-    # All/default selections are omitted so the header stays clean.
-    active_header_filters = [
-        ("Zone", zone),
-        ("Circle", circle),
-        ("Branch", branch),
-        ("Quarter", quarter),
-        ("Month", month),
-        ("Load", load_type),
-        (customer_label, customer),
-    ]
-    for label, value in active_header_filters:
-        chip_val = _chip_value(value)
-        if chip_val != "All":
-            header_items.append((label, chip_val))
-    header_chips = "".join(
-        f'<span class="header-filter-chip">{label}: {value}</span>'
-        for label, value in header_items
-    )
     with header_content_placeholder:
         st.markdown(
-            f"""
-            <div class="dashboard-header" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            """
+            <div class="dashboard-header">
                 <div class="dashboard-title" style="white-space:nowrap;">Customer Analysis</div>
-                <div class="header-filter-summary">{header_chips}</div>
             </div>
             """,
             unsafe_allow_html=True,
