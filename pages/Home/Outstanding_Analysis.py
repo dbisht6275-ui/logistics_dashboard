@@ -170,17 +170,6 @@ def _inject_css():
                 padding-bottom: 6px;
             }
 
-            /* Outstanding header: title + active filter chips on one line. */
-            .oa-header-row {
-                display: flex;
-                align-items: center;
-                flex-wrap: wrap;
-                gap: 8px;
-                width: 100%;
-                min-height: 36px;
-                padding: 1px 0 1px 2px;
-            }
-
             .oa-header-title {
                 color: #102a43;
                 font-size: 21px;
@@ -191,32 +180,15 @@ def _inject_css():
                 line-height: 1.15;
             }
 
-            .oa-filter-chip {
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                min-height: 28px;
-                padding: 6px 13px;
-                border: 1px solid #b8d1f2;
-                border-radius: 999px;
-                background: #f5f9ff;
-                color: #31557d;
-                font-size: 11px;
-                font-weight: 500;
-                line-height: 1;
-                white-space: nowrap;
-                box-shadow: inset 0 1px 0 #ffffff;
-            }
-
             /* Keep the bordered dashboard header compact like Business Overview. */
-            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-row) {
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-title) {
                 border-radius: 14px !important;
                 border-color: #d8e3f0 !important;
                 background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
                 box-shadow: 0 4px 12px rgba(15, 42, 67, .06) !important;
             }
 
-            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-row) > div {
+            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-title) > div {
                 padding-top: .45rem !important;
                 padding-bottom: .45rem !important;
             }
@@ -346,17 +318,6 @@ def _inject_css():
                     font-size: 16px;
                     white-space: normal;
                     min-width: 140px;
-                }
-
-                .oa-header-row {
-                    gap: 4px;
-                    padding: 6px 4px;
-                }
-
-                .oa-filter-chip {
-                    font-size: 9px;
-                    padding: 4px 9px;
-                    min-height: 24px;
                 }
 
                 div[data-testid="stDateInput"] input,
@@ -500,7 +461,6 @@ def _inject_css():
                     min-width: 100% !important;
                 }
                 .oa-kpi-card { min-height: 62px; }
-                .oa-filter-chip { max-width: 100%; overflow:hidden; text-overflow:ellipsis; }
             }
 
             @media (min-width: 641px) and (max-width: 1024px) {
@@ -548,28 +508,6 @@ def _kpi_card(label, value, sub="", color="blue"):
         """,
         unsafe_allow_html=True,
     )
-
-
-def _render_outstanding_header(placeholder, active_filters=None):
-    """Render Outstanding Analysis title with active-filter chips beside it."""
-    active_filters = active_filters or []
-
-    chip_html = "".join(
-        f'<span class="oa-filter-chip">{escape(str(label))}: {escape(str(value))}</span>'
-        for label, value in active_filters
-        if value not in (None, "", "All", "Not available")
-    )
-
-    with placeholder:
-        st.markdown(
-            f"""
-            <div class="oa-header-row">
-                <div class="oa-header-title">Outstanding Analysis</div>
-                {chip_html}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -921,35 +859,62 @@ def show_OutstandingAnalysis():
     _clear_old_outstanding_widget_state()
     _inject_css()
 
+    default_from_date = date(1980, 1, 1)
+    default_to_date = date.today()
+    default_as_on_date = date.today()
+    report_loaded = "oa_df" in st.session_state
+
     # -----------------------------------------------------------------------
     # DASHBOARD HEADER
-    # Title and active filter chips follow the Business Overview layout.
+    # Once data is loaded, the three stored-procedure dates live here.
     # -----------------------------------------------------------------------
 
     with st.container(border=True):
-        header_left, header_right = st.columns(
-            [7, 1],
-            gap="small",
-            vertical_alignment="center",
-        )
-
-        with header_left:
-            st.markdown('<span class="oa-responsive-marker oa-header-grid-marker"></span>', unsafe_allow_html=True)
-            header_content_placeholder = st.empty()
-
-        with header_right:
-            header_action_placeholder = st.empty()
-
-    # Always show the page title, even before the first report is run.
-    _render_outstanding_header(header_content_placeholder)
+        if report_loaded:
+            header_title, header_from, header_to, header_as_on, header_right = st.columns(
+                [2.25, 1.15, 1.15, 1.15, 0.70],
+                gap="small",
+                vertical_alignment="bottom",
+            )
+            with header_title:
+                st.markdown('<span class="oa-responsive-marker oa-header-grid-marker"></span>', unsafe_allow_html=True)
+                st.markdown('<div class="oa-header-title">Outstanding Analysis</div>', unsafe_allow_html=True)
+            with header_from:
+                from_date = st.date_input(
+                    "From Date",
+                    value=st.session_state.get("oa_from_date", default_from_date),
+                    format="DD/MM/YYYY",
+                    key="oa_from_date",
+                )
+            with header_to:
+                to_date = st.date_input(
+                    "To Date",
+                    value=st.session_state.get("oa_to_date", default_to_date),
+                    format="DD/MM/YYYY",
+                    key="oa_to_date",
+                )
+            with header_as_on:
+                as_on_date = st.date_input(
+                    "As On Date",
+                    value=st.session_state.get("oa_as_on_date", default_as_on_date),
+                    format="DD/MM/YYYY",
+                    key="oa_as_on_date",
+                )
+            with header_right:
+                header_action_placeholder = st.empty()
+        else:
+            header_left, header_right = st.columns(
+                [7, 1], gap="small", vertical_alignment="center"
+            )
+            with header_left:
+                st.markdown('<span class="oa-responsive-marker oa-header-grid-marker"></span>', unsafe_allow_html=True)
+                st.markdown('<div class="oa-header-title">Outstanding Analysis</div>', unsafe_allow_html=True)
+            with header_right:
+                header_action_placeholder = st.empty()
 
     # -----------------------------------------------------------------------
     # REPORT DATES / INITIAL LOAD
     # -----------------------------------------------------------------------
-
-    default_from_date = date(1980, 1, 1)
-    default_to_date = date.today()
-    default_as_on_date = date.today()
 
     # On the very first visit there is no report dataframe yet, so only the
     # three stored-procedure dates and Run Report are shown. After the first
@@ -1022,11 +987,7 @@ def show_OutstandingAnalysis():
         st.info("Select the three dates and click **Run Report** to load data.")
         return
 
-    # A report is already loaded. The date widgets are rendered later in the
-    # same single row as Zone/Circle/Branch/Customer/etc.
-    from_date = st.session_state.get("oa_from_date", default_from_date)
-    to_date = st.session_state.get("oa_to_date", default_to_date)
-    as_on_date = st.session_state.get("oa_as_on_date", default_as_on_date)
+    # A report is already loaded. Date widgets were rendered in the header.
 
     df = st.session_state["oa_df"].copy(deep=False)
 
@@ -1115,39 +1076,15 @@ def show_OutstandingAnalysis():
         return
 
     # -----------------------------------------------------------------------
-    # DATES + ALL DASHBOARD FILTERS IN ONE ROW (Overview-style)
+    # DASHBOARD FILTERS IN ONE ROW (dates are in the header)
     # -----------------------------------------------------------------------
-    # 11 controls in one compact row:
-    # From | To | As On | Zone | Circle | Branch | Customer | Document |
-    # Age Bucket | Conversion | Run Report
+    # Zone | Circle | Branch | Customer | Document | Age Bucket |
+    # Conversion | Run Report
     filter_columns = st.columns(
-        [1.05, 1.05, 1.05, 0.95, 0.95, 0.95, 1.08, 1.00, 0.90, 0.82, 0.82],
+        [1.00, 1.00, 1.00, 1.15, 1.05, 0.95, 0.90, 0.82],
         gap="small",
         vertical_alignment="bottom",
     )
-
-    with filter_columns[0]:
-        st.markdown('<span class="oa-responsive-marker oa-filter-grid-marker"></span>', unsafe_allow_html=True)
-        from_date = st.date_input(
-            "From Date",
-            value=st.session_state.get("oa_from_date", default_from_date),
-            format="DD/MM/YYYY",
-            key="oa_from_date",
-        )
-    with filter_columns[1]:
-        to_date = st.date_input(
-            "To Date",
-            value=st.session_state.get("oa_to_date", default_to_date),
-            format="DD/MM/YYYY",
-            key="oa_to_date",
-        )
-    with filter_columns[2]:
-        as_on_date = st.date_input(
-            "As On Date",
-            value=st.session_state.get("oa_as_on_date", default_as_on_date),
-            format="DD/MM/YYYY",
-            key="oa_as_on_date",
-        )
 
     date_error = _validate_dates(from_date, to_date, as_on_date)
     if date_error:
@@ -1157,7 +1094,8 @@ def show_OutstandingAnalysis():
     working_df = scoped_df
 
     zone_options = _sorted_values(working_df, zone_col)
-    with filter_columns[3]:
+    with filter_columns[0]:
+        st.markdown('<span class="oa-responsive-marker oa-filter-grid-marker"></span>', unsafe_allow_html=True)
         if locked_zone:
             selected_zones = st.multiselect(
                 "◉ Zone",
@@ -1179,7 +1117,7 @@ def show_OutstandingAnalysis():
         working_df = working_df[_match_scope_values(working_df[zone_col], selected_zones)]
 
     circle_options = _sorted_values(working_df, circle_col)
-    with filter_columns[4]:
+    with filter_columns[1]:
         if locked_circle:
             selected_circles = st.multiselect(
                 "◎ Circle",
@@ -1201,7 +1139,7 @@ def show_OutstandingAnalysis():
         working_df = working_df[_match_scope_values(working_df[circle_col], selected_circles)]
 
     branch_options = _sorted_values(working_df, branch_col)
-    with filter_columns[5]:
+    with filter_columns[2]:
         if locked_branch:
             selected_branches = st.multiselect(
                 "⌂ Branch",
@@ -1223,7 +1161,7 @@ def show_OutstandingAnalysis():
         working_df = working_df[_match_scope_values(working_df[branch_col], selected_branches)]
 
     customer_options = _sorted_values(working_df, customer_col)
-    with filter_columns[6]:
+    with filter_columns[3]:
         if customer_col:
             _prune_multiselect_state("oa_customer_v5", customer_options)
             selected_customers = st.multiselect(
@@ -1240,7 +1178,7 @@ def show_OutstandingAnalysis():
             _match_scope_values(working_df[customer_col], selected_customers)
         ]
 
-    with filter_columns[7]:
+    with filter_columns[4]:
         selected_document = (
             _safe_selectbox(
                 "Document Type",
@@ -1254,7 +1192,7 @@ def show_OutstandingAnalysis():
             _match_scope_value(working_df[document_col], selected_document)
         ]
 
-    with filter_columns[8]:
+    with filter_columns[5]:
         available_buckets = [
             b for b in AGE_BUCKET_ORDER
             if age_bucket_col and b in working_df[age_bucket_col].dropna().astype(str).unique()
@@ -1272,14 +1210,14 @@ def show_OutstandingAnalysis():
             _match_scope_value(working_df[age_bucket_col], selected_bucket)
         ]
 
-    with filter_columns[9]:
+    with filter_columns[6]:
         conversion_type = _safe_selectbox(
             "₹ Conversion",
             ["Crore", "Lac"],
             "oa_conversion_v3",
         )
 
-    with filter_columns[10]:
+    with filter_columns[7]:
         run_report = st.button(
             "Run Report",
             type="primary",
@@ -1322,27 +1260,6 @@ def show_OutstandingAnalysis():
     selected_zone = selected_zones[0] if len(selected_zones) == 1 else "All"
     selected_circle = selected_circles[0] if len(selected_circles) == 1 else "All"
     selected_branch = selected_branches[0] if len(selected_branches) == 1 else "All"
-
-    # -----------------------------------------------------------------------
-    # ACTIVE FILTER CHIPS IN DASHBOARD HEADER
-    # Only non-All values are shown. Locked role values (Zone/Circle/Branch)
-    # remain visible because they explain the user's reporting scope.
-    # -----------------------------------------------------------------------
-
-    active_filter_items = [
-        ("Zone", ", ".join(map(str, selected_zones)) if selected_zones else "All"),
-        ("Circle", ", ".join(map(str, selected_circles)) if selected_circles else "All"),
-        ("Branch", ", ".join(map(str, selected_branches)) if selected_branches else "All"),
-        ("Customer", ", ".join(map(str, selected_customers)) if selected_customers else "All"),
-        ("Document", selected_document),
-        ("Age", selected_bucket),
-        ("Unit", conversion_type),
-    ]
-
-    _render_outstanding_header(
-        header_content_placeholder,
-        active_filter_items,
-    )
 
     if fdf.empty:
         st.warning("No data found for the selected filters.")
