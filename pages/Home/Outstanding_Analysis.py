@@ -404,6 +404,15 @@ def _inject_css():
 
             /* ===== STRUCTURED RESPONSIVE GRIDS ===== */
             .oa-responsive-marker { display:none !important; }
+            /* Hide the Streamlit wrapper too. The empty wrapper previously
+               pushed only the first date control down by one row. */
+            div[data-testid="stElementContainer"]:has(.oa-responsive-marker) {
+                display: none !important;
+                height: 0 !important;
+                min-height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
 
             @media (max-width: 640px) {
                 /* Filter toolbar: 2 controls per row, Run Report full width. */
@@ -719,7 +728,7 @@ def _apply_locked_scope(
     """
     Restrict the dataframe before normal dashboard filters are created.
     """
-    scoped_df = df.copy()
+    scoped_df = df
 
     if locked_zone and zone_col:
         scoped_df = scoped_df[
@@ -775,6 +784,15 @@ def _validate_dates(from_date, to_date, as_on_date):
         return "As On Date cannot be earlier than From Date."
 
     return None
+
+
+@st.cache_data(show_spinner=False, ttl=600, max_entries=1)
+def _outstanding_excel_bytes(df: pd.DataFrame) -> bytes:
+    """Build the current export once instead of on every widget rerun."""
+    excel_buffer = io.BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Outstanding")
+    return excel_buffer.getvalue()
 
 
 def _safe_selectbox(
@@ -938,7 +956,9 @@ def show_OutstandingAnalysis():
     # successful run, dates + all dashboard filters are rendered in ONE row.
     if "oa_df" not in st.session_state:
         date_col1, date_col2, date_col3, run_col = st.columns(
-            [1.25, 1.25, 1.25, 0.9], gap="small"
+            [1.25, 1.25, 1.25, 0.9],
+            gap="small",
+            vertical_alignment="bottom",
         )
 
         with date_col1:
@@ -967,7 +987,6 @@ def show_OutstandingAnalysis():
             )
 
         with run_col:
-            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
             run_report = st.button(
                 "Run Report",
                 type="primary",
@@ -1009,7 +1028,7 @@ def show_OutstandingAnalysis():
     to_date = st.session_state.get("oa_to_date", default_to_date)
     as_on_date = st.session_state.get("oa_as_on_date", default_as_on_date)
 
-    df = st.session_state["oa_df"].copy()
+    df = st.session_state["oa_df"].copy(deep=False)
 
     if df.empty:
         st.warning("No outstanding data was found for the selected dates.")
@@ -1104,6 +1123,7 @@ def show_OutstandingAnalysis():
     filter_columns = st.columns(
         [1.05, 1.05, 1.05, 0.95, 0.95, 0.95, 1.08, 1.00, 0.90, 0.82, 0.82],
         gap="small",
+        vertical_alignment="bottom",
     )
 
     with filter_columns[0]:
@@ -1134,7 +1154,7 @@ def show_OutstandingAnalysis():
         st.error(date_error)
         return
 
-    working_df = scoped_df.copy()
+    working_df = scoped_df
 
     zone_options = _sorted_values(working_df, zone_col)
     with filter_columns[3]:
@@ -1260,7 +1280,6 @@ def show_OutstandingAnalysis():
         )
 
     with filter_columns[10]:
-        st.markdown("<div style='height:26px'></div>", unsafe_allow_html=True)
         run_report = st.button(
             "Run Report",
             type="primary",
@@ -1299,7 +1318,7 @@ def show_OutstandingAnalysis():
         )
 
     conversion_divisor, conversion_unit = _get_conversion(conversion_type)
-    fdf = working_df.copy()
+    fdf = working_df
     selected_zone = selected_zones[0] if len(selected_zones) == 1 else "All"
     selected_circle = selected_circles[0] if len(selected_circles) == 1 else "All"
     selected_branch = selected_branches[0] if len(selected_branches) == 1 else "All"
@@ -2206,20 +2225,13 @@ def show_OutstandingAnalysis():
         column_config=column_config,
     )
 
-    excel_buffer = io.BytesIO()
-
-    with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
-        detail_df.to_excel(
-            writer,
-            index=False,
-            sheet_name="Outstanding",
-        )
+    excel_data = _outstanding_excel_bytes(detail_df)
 
     # Put the export action in the top dashboard header, matching Overview.
     with header_action_placeholder:
         st.download_button(
             "⬇ Excel",
-            data=excel_buffer.getvalue(),
+            data=excel_data,
             file_name=(
                 "outstanding_filtered_"
                 f"{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
