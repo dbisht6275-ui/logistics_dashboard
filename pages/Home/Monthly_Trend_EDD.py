@@ -344,7 +344,12 @@ def build_html_table(summary: pd.DataFrame) -> str:
 def show_monthly_trend_edd():
     st.markdown("""
     <style>
-    .stApp{background:#f7f9fc}.main .block-container{padding-top:.45rem;max-width:1600px}
+    .stApp{background:#f7f9fc}
+    [data-testid="stAppViewContainer"] .main .block-container,
+    [data-testid="stMainBlockContainer"]{
+        padding-top:.2rem!important;margin-top:0!important;max-width:1600px!important
+    }
+    [data-testid="stMain"]{padding-top:0!important}
     .edd-compact-header{
         display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:8px 12px;
         border:1px solid #d8e2ef;border-left:4px solid #2563eb;border-radius:10px;
@@ -359,7 +364,8 @@ def show_monthly_trend_edd():
     .edd-header-copy{min-width:0;line-height:1.15}
     .edd-header-eyebrow{margin-bottom:2px;color:#2563eb;font-size:8px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase}
     .edd-header-title{margin:0;color:#102a43;font-size:18px;font-weight:850;letter-spacing:-.25px}
-    .edd-header-subtitle{margin-top:3px;color:#64748b;font-size:10px;font-weight:500}
+    .edd-header-subtitle{margin-top:3px;color:#64748b;font-size:10px;font-weight:600}
+    .edd-header-subtitle strong{color:#334e68;font-weight:800}
     div[data-testid="stDateInput"] label{font-size:10px!important;font-weight:700!important;color:#334155!important}
     div[data-testid="stDateInput"] input{font-size:11px!important}
     .stButton>button{min-height:38px!important;border-radius:8px!important;font-size:11px!important;font-weight:800!important}
@@ -380,7 +386,7 @@ def show_monthly_trend_edd():
         <div class="edd-header-copy">
             <div class="edd-header-eyebrow">Service Performance</div>
             <div class="edd-header-title">Monthly EDD Trend</div>
-            <div class="edd-header-subtitle">Track delivery performance and TAT compliance across any selected period.</div>
+            <div class="edd-header-subtitle"><strong>Where we were. Where we are.</strong> &nbsp;·&nbsp; Monthly delivery performance and TAT compliance.</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
