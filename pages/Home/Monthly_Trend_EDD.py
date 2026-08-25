@@ -344,10 +344,25 @@ def build_html_table(summary: pd.DataFrame) -> str:
 def show_monthly_trend_edd():
     st.markdown("""
     <style>
-    .stApp {background:#fff}.main .block-container{padding-top:.7rem;max-width:1600px}
-    .title-panel{background:#071629;border-top:5px solid #2f69d8;border-bottom:2px solid #2f69d8;padding:12px 10px 10px}
-    .title-panel h1{color:white;margin:0;font-size:28px;font-weight:800}
-    .subtitle-panel{background:#071629;color:#7891ba;font-style:italic;padding:8px 10px 10px;margin-bottom:20px;font-size:15px}
+    .stApp{background:#f7f9fc}.main .block-container{padding-top:.45rem;max-width:1600px}
+    .edd-compact-header{
+        display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:8px 12px;
+        border:1px solid #d8e2ef;border-left:4px solid #2563eb;border-radius:10px;
+        background:linear-gradient(135deg,#ffffff 0%,#f2f7ff 100%);
+        box-shadow:0 3px 10px rgba(15,42,67,.07)
+    }
+    .edd-header-icon{
+        display:flex;align-items:center;justify-content:center;flex:0 0 34px;width:34px;height:34px;
+        border-radius:9px;background:linear-gradient(145deg,#2563eb,#174ea6);color:#fff;
+        font-size:17px;box-shadow:0 3px 7px rgba(37,99,235,.22)
+    }
+    .edd-header-copy{min-width:0;line-height:1.15}
+    .edd-header-eyebrow{margin-bottom:2px;color:#2563eb;font-size:8px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase}
+    .edd-header-title{margin:0;color:#102a43;font-size:18px;font-weight:850;letter-spacing:-.25px}
+    .edd-header-subtitle{margin-top:3px;color:#64748b;font-size:10px;font-weight:500}
+    div[data-testid="stDateInput"] label{font-size:10px!important;font-weight:700!important;color:#334155!important}
+    div[data-testid="stDateInput"] input{font-size:11px!important}
+    .stButton>button{min-height:38px!important;border-radius:8px!important;font-size:11px!important;font-weight:800!important}
     .table-wrap{overflow-x:auto;border-left:1px solid #c7d0dd;border-right:1px solid #c7d0dd}
     table.edd-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;text-align:center}
     .edd-table th{background:#071629;color:#00d9ff;padding:12px 8px;border:1px solid #c9d1dc;font-weight:800}
@@ -360,14 +375,22 @@ def show_monthly_trend_edd():
     """, unsafe_allow_html=True)
 
     st.markdown("""
-    <div class="title-panel"><h1>Monthly Trend EDD · Where we were and where we are</h1></div>
-    <div class="subtitle-panel">Select any From Date and To Date to view the monthly EDD trend from live SQL data.</div>
+    <div class="edd-compact-header">
+        <div class="edd-header-icon">↗</div>
+        <div class="edd-header-copy">
+            <div class="edd-header-eyebrow">Service Performance</div>
+            <div class="edd-header-title">Monthly EDD Trend</div>
+            <div class="edd-header-subtitle">Track delivery performance and TAT compliance across any selected period.</div>
+        </div>
+    </div>
     """, unsafe_allow_html=True)
 
     today = date.today()
     default_from = today.replace(day=1)
 
-    filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 0.7])
+    filter_col1, filter_col2, filter_col3 = st.columns(
+        [1, 1, 0.55], gap="small", vertical_alignment="bottom"
+    )
     with filter_col1:
         from_date = st.date_input(
             "From Date",
@@ -381,8 +404,6 @@ def show_monthly_trend_edd():
             key="monthly_trend_edd_to_date",
         )
     with filter_col3:
-        st.write("")
-        st.write("")
         run_report = st.button(
             "Run Report",
             type="primary",
