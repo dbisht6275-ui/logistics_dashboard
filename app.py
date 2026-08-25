@@ -464,6 +464,7 @@ FULL_MENU_ITEMS = [
     "💰 Net Profit Dashboard",
     "📊 Comparison",
     "📈 Outstanding Analysis",
+    "📅 Monthly Trend EDD",
     "👥 Customer Analysis",
     "🚛 Service Analysis",
     "📄 Reports",
