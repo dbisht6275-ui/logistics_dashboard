@@ -488,23 +488,138 @@ def show_monthly_trend_edd():
             key="monthly_trend_edd_run",
         )
 
-    # Do not query SQL until the user explicitly presses Run Report.
-    if not run_report:
-        st.info("Select the From Date and To Date, then click **Run Report**.")
-        return
-
     if from_date > to_date:
         st.error("The From date cannot be later than the To date.")
         return
 
-    try:
-        # A fresh query is executed only when Run Report is pressed.
+    # Query SQL only when Run Report is pressed. The prepared data is retained
+    # in Session State so changing dashboard filters never runs SQL again.
+    if run_report:
         load_sql_data.clear()
+        try:
+            with st.spinner("Loading EDD data from SQL Server..."):
+                raw_df = load_sql_data(from_date, to_date)
+            st.session_state["monthly_edd_loaded_detail"] = prepare_detail_data(raw_df)
+            st.session_state["monthly_edd_active_from"] = from_date
+            st.session_state["monthly_edd_active_to"] = to_date
 
-        with st.spinner("Loading EDD data from SQL Server..."):
-            raw_df = load_sql_data(from_date, to_date)
+            # A new date-range report starts with clean hierarchy filters.
+            for filter_key in (
+                "monthly_edd_booking_zone",
+                "monthly_edd_booking_circle",
+                "monthly_edd_origin",
+                "monthly_edd_destination_zone",
+                "monthly_edd_destination_circle",
+                "monthly_edd_destination",
+            ):
+                st.session_state.pop(filter_key, None)
+        except Exception as exc:
+            st.error("The report could not be loaded.")
+            st.exception(exc)
+            st.info("Check the existing SQL credentials, database permissions, and database object names.")
+            return
 
-        detail_df = prepare_detail_data(raw_df)
+    stored_detail = st.session_state.get("monthly_edd_loaded_detail")
+    if stored_detail is None:
+        st.info("Select the From Date and To Date, then click **Run Report**.")
+        return
+
+    active_from = st.session_state.get("monthly_edd_active_from")
+    active_to = st.session_state.get("monthly_edd_active_to")
+    if from_date != active_from or to_date != active_to:
+        st.info("Date range changed. Click **Run Report** to load the new period.")
+        return
+
+    try:
+        detail_df = stored_detail.copy()
+
+        def _filter_options(source: pd.DataFrame, column: str) -> list[str]:
+            if source is None or source.empty or column not in source.columns:
+                return []
+            values = source[column].dropna().astype(str).str.strip()
+            return sorted(values[values.ne("")].unique().tolist(), key=str.casefold)
+
+        def _prune_filter_state(key: str, options: list[str]) -> None:
+            current = st.session_state.get(key, [])
+            if isinstance(current, (list, tuple, set)):
+                st.session_state[key] = [value for value in current if value in options]
+
+        def _apply_multi_filter(source: pd.DataFrame, column: str, selected: list[str]) -> pd.DataFrame:
+            if not selected or column not in source.columns:
+                return source
+            return source[source[column].astype(str).isin(selected)].copy()
+
+        # Cascading multi-select filters. An empty selection means All.
+        filter_row_1 = st.columns(3, gap="small")
+
+        booking_zone_options = _filter_options(detail_df, "BOOKING ZONE")
+        _prune_filter_state("monthly_edd_booking_zone", booking_zone_options)
+        with filter_row_1[0]:
+            booking_zones = st.multiselect(
+                "Booking Zone",
+                booking_zone_options,
+                key="monthly_edd_booking_zone",
+                placeholder="All booking zones",
+            )
+        detail_df = _apply_multi_filter(detail_df, "BOOKING ZONE", booking_zones)
+
+        booking_circle_options = _filter_options(detail_df, "BOOKING CIRCLE")
+        _prune_filter_state("monthly_edd_booking_circle", booking_circle_options)
+        with filter_row_1[1]:
+            booking_circles = st.multiselect(
+                "Booking Circle",
+                booking_circle_options,
+                key="monthly_edd_booking_circle",
+                placeholder="All booking circles",
+            )
+        detail_df = _apply_multi_filter(detail_df, "BOOKING CIRCLE", booking_circles)
+
+        origin_options = _filter_options(detail_df, "ORIGIN")
+        _prune_filter_state("monthly_edd_origin", origin_options)
+        with filter_row_1[2]:
+            origins = st.multiselect(
+                "Origin",
+                origin_options,
+                key="monthly_edd_origin",
+                placeholder="All origins",
+            )
+        detail_df = _apply_multi_filter(detail_df, "ORIGIN", origins)
+
+        filter_row_2 = st.columns(3, gap="small")
+
+        destination_zone_options = _filter_options(detail_df, "DESTINATION ZONE")
+        _prune_filter_state("monthly_edd_destination_zone", destination_zone_options)
+        with filter_row_2[0]:
+            destination_zones = st.multiselect(
+                "Destination Zone",
+                destination_zone_options,
+                key="monthly_edd_destination_zone",
+                placeholder="All destination zones",
+            )
+        detail_df = _apply_multi_filter(detail_df, "DESTINATION ZONE", destination_zones)
+
+        destination_circle_options = _filter_options(detail_df, "DESTINATION CIRCLE")
+        _prune_filter_state("monthly_edd_destination_circle", destination_circle_options)
+        with filter_row_2[1]:
+            destination_circles = st.multiselect(
+                "Destination Circle",
+                destination_circle_options,
+                key="monthly_edd_destination_circle",
+                placeholder="All destination circles",
+            )
+        detail_df = _apply_multi_filter(detail_df, "DESTINATION CIRCLE", destination_circles)
+
+        destination_options = _filter_options(detail_df, "DESTINATION")
+        _prune_filter_state("monthly_edd_destination", destination_options)
+        with filter_row_2[2]:
+            destinations = st.multiselect(
+                "Destination",
+                destination_options,
+                key="monthly_edd_destination",
+                placeholder="All destinations",
+            )
+        detail_df = _apply_multi_filter(detail_df, "DESTINATION", destinations)
+
         final_summary = calculate_monthly_summary(detail_df)
         unmapped_branch_summary = calculate_unmapped_branch_summary(detail_df)
 
