@@ -7,7 +7,8 @@
       "📈 Outstanding Analysis",
       "👥 Customer Analysis",
       "📄 Reports",
-      "🛠️ User Management"
+      "🛠️ User Management",
+      "📅 Monthly Trend EDD"
     ],
     "reports": [
       "📊 Zone Booking Turnover",
@@ -18,9 +19,7 @@
       "📊 Branch Wise Delivery Turnover",
       "📊 Delivery Summary Turnover",
       "📊 Branch Wise Booking Turnover",
-      "⚖️ Booking Weight Summary",
-      "📅 Monthly Trend EDD",
-      "📦 Tariff Rate Dashboard"
+      "⚖️ Booking Weight Summary"
     ]
   },
   "branch": {
