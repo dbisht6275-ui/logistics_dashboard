@@ -437,9 +437,19 @@ def show_monthly_trend_edd():
     .edd-header-title{margin:0;color:#102a43;font-size:18px;font-weight:850;letter-spacing:-.25px}
     .edd-header-subtitle{margin-top:3px;color:#64748b;font-size:10px;font-weight:600}
     .edd-header-subtitle strong{color:#334e68;font-weight:800}
-    div[data-testid="stDateInput"] label{font-size:10px!important;font-weight:700!important;color:#334155!important}
-    div[data-testid="stDateInput"] input{font-size:11px!important}
-    .stButton>button{min-height:38px!important;border-radius:8px!important;font-size:11px!important;font-weight:800!important}
+    div[data-testid="stDateInput"] label,
+    div[data-testid="stMultiSelect"] label{
+        min-height:14px!important;margin:0 0 2px 1px!important;padding:0!important;
+        font-size:9px!important;line-height:14px!important;font-weight:700!important;color:#334155!important
+    }
+    div[data-testid="stDateInput"] input{height:34px!important;min-height:34px!important;padding:4px 9px!important;font-size:10px!important}
+    div[data-testid="stDateInput"] div[data-baseweb="input"]{height:34px!important;min-height:34px!important;border-radius:8px!important}
+    div[data-testid="stMultiSelect"]{margin:0!important}
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"]>div{
+        min-height:34px!important;padding:1px 6px!important;border-radius:8px!important;font-size:9px!important
+    }
+    div[data-testid="stMultiSelect"] span{font-size:9px!important}
+    .stButton>button{min-height:34px!important;height:34px!important;border-radius:8px!important;font-size:10px!important;font-weight:800!important}
     .table-wrap{overflow-x:auto;border-left:1px solid #c7d0dd;border-right:1px solid #c7d0dd}
     table.edd-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;text-align:center}
     .edd-table th{background:#071629;color:#00d9ff;padding:12px 8px;border:1px solid #c9d1dc;font-weight:800}
@@ -549,12 +559,14 @@ def show_monthly_trend_edd():
                 return source
             return source[source[column].astype(str).isin(selected)].copy()
 
-        # Cascading multi-select filters. An empty selection means All.
-        filter_row_1 = st.columns(3, gap="small")
+        # Cascading multi-select filters. An empty selection means All. Keep
+        # all six controls in one compact desktop row; Streamlit stacks them
+        # automatically on narrow screens.
+        filter_row = st.columns(6, gap="small")
 
         booking_zone_options = _filter_options(detail_df, "BOOKING ZONE")
         _prune_filter_state("monthly_edd_booking_zone", booking_zone_options)
-        with filter_row_1[0]:
+        with filter_row[0]:
             booking_zones = st.multiselect(
                 "Booking Zone",
                 booking_zone_options,
@@ -565,7 +577,7 @@ def show_monthly_trend_edd():
 
         booking_circle_options = _filter_options(detail_df, "BOOKING CIRCLE")
         _prune_filter_state("monthly_edd_booking_circle", booking_circle_options)
-        with filter_row_1[1]:
+        with filter_row[1]:
             booking_circles = st.multiselect(
                 "Booking Circle",
                 booking_circle_options,
@@ -576,7 +588,7 @@ def show_monthly_trend_edd():
 
         origin_options = _filter_options(detail_df, "ORIGIN")
         _prune_filter_state("monthly_edd_origin", origin_options)
-        with filter_row_1[2]:
+        with filter_row[2]:
             origins = st.multiselect(
                 "Origin",
                 origin_options,
@@ -585,11 +597,9 @@ def show_monthly_trend_edd():
             )
         detail_df = _apply_multi_filter(detail_df, "ORIGIN", origins)
 
-        filter_row_2 = st.columns(3, gap="small")
-
         destination_zone_options = _filter_options(detail_df, "DESTINATION ZONE")
         _prune_filter_state("monthly_edd_destination_zone", destination_zone_options)
-        with filter_row_2[0]:
+        with filter_row[3]:
             destination_zones = st.multiselect(
                 "Destination Zone",
                 destination_zone_options,
@@ -600,7 +610,7 @@ def show_monthly_trend_edd():
 
         destination_circle_options = _filter_options(detail_df, "DESTINATION CIRCLE")
         _prune_filter_state("monthly_edd_destination_circle", destination_circle_options)
-        with filter_row_2[1]:
+        with filter_row[4]:
             destination_circles = st.multiselect(
                 "Destination Circle",
                 destination_circle_options,
@@ -611,7 +621,7 @@ def show_monthly_trend_edd():
 
         destination_options = _filter_options(detail_df, "DESTINATION")
         _prune_filter_state("monthly_edd_destination", destination_options)
-        with filter_row_2[2]:
+        with filter_row[5]:
             destinations = st.multiselect(
                 "Destination",
                 destination_options,
@@ -642,27 +652,30 @@ def show_monthly_trend_edd():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
-            st.subheader("Branches Where TAT E.D.D Is Not Mapped")
-            if unmapped_branch_summary.empty:
-                st.success("TAT E.D.D is mapped for all branches in the selected period.")
-            else:
-                unmapped_display = unmapped_branch_summary.copy()
-                unmapped_display["Total CN"] = unmapped_display["Total CN"].map(fmt_integer)
-                unmapped_display["TAT Not Mapped CN"] = unmapped_display["TAT Not Mapped CN"].map(fmt_integer)
-                unmapped_display["TAT Not Mapped %"] = unmapped_display["TAT Not Mapped %"].map(fmt_percent)
-                st.dataframe(
-                    unmapped_display,
-                    use_container_width=True,
-                    hide_index=True,
-                )
+            with st.expander(
+                "Branches Where TAT E.D.D Is Not Mapped",
+                expanded=False,
+            ):
+                if unmapped_branch_summary.empty:
+                    st.success("TAT E.D.D is mapped for all branches in the selected period.")
+                else:
+                    unmapped_display = unmapped_branch_summary.copy()
+                    unmapped_display["Total CN"] = unmapped_display["Total CN"].map(fmt_integer)
+                    unmapped_display["TAT Not Mapped CN"] = unmapped_display["TAT Not Mapped CN"].map(fmt_integer)
+                    unmapped_display["TAT Not Mapped %"] = unmapped_display["TAT Not Mapped %"].map(fmt_percent)
+                    st.dataframe(
+                        unmapped_display,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
-                st.download_button(
-                    "Download TAT Not Mapped Branches",
-                    data=unmapped_branch_summary.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"TAT_Not_Mapped_Branches_{from_date:%Y%m%d}_{to_date:%Y%m%d}.csv",
-                    mime="text/csv",
-                    key="download_tat_unmapped_branches",
-                )
+                    st.download_button(
+                        "Download TAT Not Mapped Branches",
+                        data=unmapped_branch_summary.to_csv(index=False).encode("utf-8-sig"),
+                        file_name=f"TAT_Not_Mapped_Branches_{from_date:%Y%m%d}_{to_date:%Y%m%d}.csv",
+                        mime="text/csv",
+                        key="download_tat_unmapped_branches",
+                    )
 
             with st.expander("View consignment-level data"):
                 st.dataframe(detail_df, use_container_width=True, hide_index=True)
