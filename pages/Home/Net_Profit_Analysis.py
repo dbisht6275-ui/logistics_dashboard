@@ -692,7 +692,9 @@ def overhead_kpi_item_html(title, current, previous, conversion_type, icon):
 
 
 def _apply_same_filters(df, filters):
-    out = df.copy()
+    # Filtering creates a new frame only when a filter is active. Avoid a full
+    # unconditional copy of both FY datasets on every Streamlit rerun.
+    out = df
 
     for column, selected in filters.items():
         out = apply_multi_filter(out, column, selected)
@@ -2191,12 +2193,12 @@ def show_net_profit_dashboard():
     # Restrict P&L/overhead to branches returned by Branch/Agency Master.
     # Also backfill Zone/Circle from Branch Master when the raw P&L data does not carry them.
     df = _attach_branch_hierarchy(
-        _filter_to_branch_scope(raw_df.copy(), valid_branches),
+        _filter_to_branch_scope(raw_df, valid_branches),
         branch_master_df,
     )
     prev_df = (
         _attach_branch_hierarchy(
-            _filter_to_branch_scope(raw_prev_df.copy(), valid_branches),
+            _filter_to_branch_scope(raw_prev_df, valid_branches),
             branch_master_df,
         )
         if raw_prev_df is not None
@@ -2216,7 +2218,7 @@ def show_net_profit_dashboard():
     # Circle choices must follow the current Branch/Zone scope.  Building the
     # option list from the unscoped dataframe can leave the widget empty when
     # hierarchy values are populated from Branch Master.
-    circle_scope = df.copy()
+    circle_scope = df
     circle_scope = apply_multi_filter(circle_scope, "zone", zones)
     circle_options = safe_options(circle_scope, "circle")
 
@@ -2230,7 +2232,7 @@ def show_net_profit_dashboard():
         )
 
     # Branch choices follow the selected Zone/Circle scope.
-    branch_scope = df.copy()
+    branch_scope = df
     branch_scope = apply_multi_filter(branch_scope, "zone", zones)
     branch_scope = apply_multi_filter(branch_scope, "circle", circles)
     branch_options = safe_options(branch_scope, "BRANCH")
@@ -2245,7 +2247,7 @@ def show_net_profit_dashboard():
 
     # Quarter choices come only from rows available in the selected FY and
     # current Zone -> Circle -> Branch scope.
-    quarter_scope = branch_scope.copy()
+    quarter_scope = branch_scope
     quarter_scope = apply_multi_filter(quarter_scope, "BRANCH", branches)
     available_quarters = set(safe_options(quarter_scope, "QUARTER"))
     quarter_options = [
@@ -2268,7 +2270,7 @@ def show_net_profit_dashboard():
         )
 
     # Month choices cascade from the selected FY, hierarchy and Quarter.
-    month_scope = quarter_scope.copy()
+    month_scope = quarter_scope
     month_scope = apply_multi_filter(month_scope, "QUARTER", quarters)
     available_months = set(safe_options(month_scope, "MONTH"))
     month_options = [

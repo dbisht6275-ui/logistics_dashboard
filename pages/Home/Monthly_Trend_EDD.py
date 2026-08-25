@@ -9,15 +9,134 @@ from sqlalchemy import text
 from services.database import get_engine
 
 SQL_QUERY = text(r"""
+SET NOCOUNT ON;
+SET XACT_ABORT ON;
+
+DROP TABLE IF EXISTS #CNMT_BASE;
+DROP TABLE IF EXISTS #GR_LIST;
+DROP TABLE IF EXISTS #ARRIVAL;
+DROP TABLE IF EXISTS #GATEPASS;
+DROP TABLE IF EXISTS #TAT_ROUTE;
+
 SELECT
-    '_' + CAST(YEAR(D.GRDT) AS VARCHAR) + '_' +
-    RIGHT('0' + CAST(MONTH(D.GRDT) AS VARCHAR), 2) + '_' +
+    D.GRNO,
+    D.GRDT,
+    D.ORGCODE,
+    D.DESTCODE,
+    D.CNGR,
+    D.CNGE,
+    D.AWEIGHT,
+    D.CWEIGHT,
+    D.EXPECTEDDELIVERYDT
+INTO #CNMT_BASE
+FROM dbo.CNMT D WITH (NOLOCK)
+WHERE D.GRDT >= :from_date
+  AND D.GRDT < DATEADD(DAY, 1, :to_date)
+  AND D.FTL = 'N'
+  AND D.GRTYPE <> 'N'
+OPTION (RECOMPILE);
+
+CREATE CLUSTERED INDEX CX_CNMT_BASE_GRNO
+    ON #CNMT_BASE (GRNO);
+
+CREATE NONCLUSTERED INDEX IX_CNMT_BASE_ROUTE
+    ON #CNMT_BASE (ORGCODE, DESTCODE);
+
+SELECT DISTINCT GRNO
+INTO #GR_LIST
+FROM #CNMT_BASE;
+
+CREATE UNIQUE CLUSTERED INDEX CX_GR_LIST
+    ON #GR_LIST (GRNO);
+
+SELECT
+    X.GRNO,
+    X.BRANCHCODE,
+    X.ARRIVALDT,
+    X.VEHICLE_ARRIVAL_DT
+INTO #ARRIVAL
+FROM (
+    SELECT
+        A.GRNO,
+        A.BRANCHCODE,
+        A.ARRIVALDT,
+        A.VEHICLE_ARRIVAL_DT,
+        ROW_NUMBER() OVER (
+            PARTITION BY A.GRNO
+            ORDER BY A.VEHICLE_ARRIVAL_DT DESC, A.ARRIVALDT DESC
+        ) AS RN
+    FROM dbo.VW_GRARRIVALDETAILS A
+    INNER JOIN #GR_LIST G
+        ON G.GRNO = A.GRNO
+) X
+WHERE X.RN = 1
+OPTION (RECOMPILE);
+
+CREATE UNIQUE CLUSTERED INDEX CX_ARRIVAL_GRNO
+    ON #ARRIVAL (GRNO);
+
+SELECT
+    X.GRNO,
+    X.DRNO
+INTO #GATEPASS
+FROM (
+    SELECT
+        GP.GRNO,
+        GP.DRNO,
+        ROW_NUMBER() OVER (
+            PARTITION BY GP.GRNO
+            ORDER BY GP.DRDT DESC
+        ) AS RN
+    FROM dbo.VIEWALLCOMPANIESGATEPASS GP
+    INNER JOIN #GR_LIST G
+        ON G.GRNO = GP.GRNO
+    WHERE GP.COMPANYID IN ('26498132', '26498133', '26498134', '26498135')
+      AND GP.CANCEL <> 'Y'
+) X
+WHERE X.RN = 1
+OPTION (RECOMPILE);
+
+CREATE UNIQUE CLUSTERED INDEX CX_GATEPASS_GRNO
+    ON #GATEPASS (GRNO);
+
+SELECT
+    X.ORGCODE,
+    X.DESTCODE,
+    X.SDHOUR
+INTO #TAT_ROUTE
+FROM (
+    SELECT
+        T.ORGCODE,
+        T.DESTCODE,
+        T.SDHOUR,
+        ROW_NUMBER() OVER (
+            PARTITION BY T.ORGCODE, T.DESTCODE
+            ORDER BY T.SDHOUR DESC
+        ) AS RN
+    FROM dbo.TATMAST T
+    INNER JOIN (
+        SELECT DISTINCT ORGCODE, DESTCODE
+        FROM #CNMT_BASE
+    ) R
+        ON R.ORGCODE = T.ORGCODE
+       AND R.DESTCODE = T.DESTCODE
+    WHERE T.TATTYPE = 'D'
+) X
+WHERE X.RN = 1
+OPTION (RECOMPILE);
+
+CREATE UNIQUE CLUSTERED INDEX CX_TAT_ROUTE
+    ON #TAT_ROUTE (ORGCODE, DESTCODE);
+
+SELECT
+    '_' + CAST(YEAR(D.GRDT) AS VARCHAR(4)) + '_' +
+    RIGHT('0' + CAST(MONTH(D.GRDT) AS VARCHAR(2)), 2) + '_' +
     DATENAME(MONTH, D.GRDT) + '_' AS [SALE MONTH],
     ORG.STNNAME AS ORIGIN,
     D.GRDT,
-    RIGHT('0' + CAST(DAY(D.GRDT) AS VARCHAR), 2) + '-' +
+    RIGHT('0' + CAST(DAY(D.GRDT) AS VARCHAR(2)), 2) + '-' +
     UPPER(LEFT(DATENAME(MONTH, D.GRDT), 3)) + '-' +
-    CAST(YEAR(D.GRDT) AS VARCHAR) AS GR_DT,
+    CAST(YEAR(D.GRDT) AS VARCHAR(4)) AS GR_DT,
     D.GRNO,
     DEST.STNNAME AS DESTINATION,
     D.CNGR,
@@ -31,77 +150,29 @@ SELECT
     DEST.COUNTRY AS DESTCOUNTRY,
     D.EXPECTEDDELIVERYDT AS [E.D.D],
     CASE
-        WHEN D.DESTCODE = ARR.BRANCHCODE THEN ARR.VEHICLE_ARRIVAL_DT
-        WHEN GP.DRNO IS NOT NULL THEN ARR.VEHICLE_ARRIVAL_DT
+        WHEN D.DESTCODE = ARR.BRANCHCODE OR GP.DRNO IS NOT NULL
+        THEN ARR.VEHICLE_ARRIVAL_DT
     END AS [FINAL ARRIVAL DT],
     DATEADD(HOUR, TAT.SDHOUR, D.GRDT) AS [TAT_E.D.D]
-FROM CNMT D WITH (NOLOCK)
-INNER JOIN VIEWSTATIONMAST ORG
+FROM #CNMT_BASE D
+INNER JOIN dbo.VIEWSTATIONMAST ORG
     ON ORG.STNCODE = D.ORGCODE
-INNER JOIN VIEWSTATIONMAST DEST
+INNER JOIN dbo.VIEWSTATIONMAST DEST
     ON DEST.STNCODE = D.DESTCODE
-LEFT JOIN (
-    SELECT GRNO, BRANCHCODE, ARRIVALDT, VEHICLE_ARRIVAL_DT
-    FROM (
-        SELECT
-            GRNO,
-            BRANCHCODE,
-            ARRIVALDT,
-            VEHICLE_ARRIVAL_DT,
-            ROW_NUMBER() OVER (
-                PARTITION BY GRNO
-                ORDER BY VEHICLE_ARRIVAL_DT DESC, ARRIVALDT DESC
-            ) AS RN
-        FROM VW_GRARRIVALDETAILS
-    ) A
-    WHERE RN = 1
-) ARR
+LEFT JOIN #ARRIVAL ARR
     ON D.GRNO = ARR.GRNO
-LEFT JOIN (
-    SELECT *
-    FROM (
-        SELECT
-            *,
-            ROW_NUMBER() OVER (
-                PARTITION BY GRNO
-                ORDER BY DRDT DESC
-            ) AS RN
-        FROM VIEWALLCOMPANIESGATEPASS
-        WHERE COMPANYID IN ('26498132', '26498133', '26498134', '26498135')
-          AND CANCEL <> 'Y'
-    ) G
-    WHERE RN = 1
-) GP
+LEFT JOIN #GATEPASS GP
     ON D.GRNO = GP.GRNO
-LEFT JOIN (
-    SELECT ORGCODE, DESTCODE, SDHOUR
-    FROM (
-        SELECT
-            ORGCODE,
-            DESTCODE,
-            SDHOUR,
-            ROW_NUMBER() OVER (
-                PARTITION BY ORGCODE, DESTCODE
-                ORDER BY SDHOUR DESC
-            ) AS RN
-        FROM TATMAST
-        WHERE TATTYPE = 'D'
-    ) X
-    WHERE RN = 1
-) TAT
+LEFT JOIN #TAT_ROUTE TAT
     ON TAT.ORGCODE = D.ORGCODE
-   AND TAT.DESTCODE = D.DESTCODE
-WHERE D.FTL = 'N'
-  AND D.GRTYPE <> 'N'
-  AND D.GRDT >= :from_date
-  AND D.GRDT < DATEADD(DAY, 1, :to_date)
+   AND TAT.DESTCODE = D.DESTCODE;
 """)
 
 
 # Increment this value whenever the SQL source or returned columns change.
 # It is part of the Streamlit cache key and prevents an old query result from
 # being reused after deployment.
-EDD_DATA_CACHE_VERSION = "8.6.1"
+EDD_DATA_CACHE_VERSION = "8.7.0-fast-temp-tables"
 
 
 
@@ -344,10 +415,41 @@ def build_html_table(summary: pd.DataFrame) -> str:
 def show_monthly_trend_edd():
     st.markdown("""
     <style>
-    .stApp {background:#fff}.main .block-container{padding-top:.7rem;max-width:1600px}
-    .title-panel{background:#071629;border-top:5px solid #2f69d8;border-bottom:2px solid #2f69d8;padding:12px 10px 10px}
-    .title-panel h1{color:white;margin:0;font-size:28px;font-weight:800}
-    .subtitle-panel{background:#071629;color:#7891ba;font-style:italic;padding:8px 10px 10px;margin-bottom:20px;font-size:15px}
+    .stApp{background:#f7f9fc}
+    [data-testid="stAppViewContainer"] .main .block-container,
+    [data-testid="stMainBlockContainer"]{
+        padding-top:.2rem!important;margin-top:0!important;max-width:1600px!important
+    }
+    [data-testid="stMain"]{padding-top:0!important}
+    .edd-compact-header{
+        display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:8px 12px;
+        border:1px solid #d8e2ef;border-left:4px solid #2563eb;border-radius:10px;
+        background:linear-gradient(135deg,#ffffff 0%,#f2f7ff 100%);
+        box-shadow:0 3px 10px rgba(15,42,67,.07)
+    }
+    .edd-header-icon{
+        display:flex;align-items:center;justify-content:center;flex:0 0 34px;width:34px;height:34px;
+        border-radius:9px;background:linear-gradient(145deg,#2563eb,#174ea6);color:#fff;
+        font-size:17px;box-shadow:0 3px 7px rgba(37,99,235,.22)
+    }
+    .edd-header-copy{min-width:0;line-height:1.15}
+    .edd-header-eyebrow{margin-bottom:2px;color:#2563eb;font-size:8px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase}
+    .edd-header-title{margin:0;color:#102a43;font-size:18px;font-weight:850;letter-spacing:-.25px}
+    .edd-header-subtitle{margin-top:3px;color:#64748b;font-size:10px;font-weight:600}
+    .edd-header-subtitle strong{color:#334e68;font-weight:800}
+    div[data-testid="stDateInput"] label,
+    div[data-testid="stMultiSelect"] label{
+        min-height:14px!important;margin:0 0 2px 1px!important;padding:0!important;
+        font-size:9px!important;line-height:14px!important;font-weight:700!important;color:#334155!important
+    }
+    div[data-testid="stDateInput"] input{height:34px!important;min-height:34px!important;padding:4px 9px!important;font-size:10px!important}
+    div[data-testid="stDateInput"] div[data-baseweb="input"]{height:34px!important;min-height:34px!important;border-radius:8px!important}
+    div[data-testid="stMultiSelect"]{margin:0!important}
+    div[data-testid="stMultiSelect"] div[data-baseweb="select"]>div{
+        min-height:34px!important;padding:1px 6px!important;border-radius:8px!important;font-size:9px!important
+    }
+    div[data-testid="stMultiSelect"] span{font-size:9px!important}
+    .stButton>button{min-height:34px!important;height:34px!important;border-radius:8px!important;font-size:10px!important;font-weight:800!important}
     .table-wrap{overflow-x:auto;border-left:1px solid #c7d0dd;border-right:1px solid #c7d0dd}
     table.edd-table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:14px;text-align:center}
     .edd-table th{background:#071629;color:#00d9ff;padding:12px 8px;border:1px solid #c9d1dc;font-weight:800}
@@ -360,14 +462,22 @@ def show_monthly_trend_edd():
     """, unsafe_allow_html=True)
 
     st.markdown("""
-    <div class="title-panel"><h1>Monthly Trend EDD · Where we were and where we are</h1></div>
-    <div class="subtitle-panel">Select any From Date and To Date to view the monthly EDD trend from live SQL data.</div>
+    <div class="edd-compact-header">
+        <div class="edd-header-icon">↗</div>
+        <div class="edd-header-copy">
+            <div class="edd-header-eyebrow">Service Performance</div>
+            <div class="edd-header-title">Monthly EDD Trend</div>
+            <div class="edd-header-subtitle"><strong>Where we were. Where we are.</strong> &nbsp;·&nbsp; Monthly delivery performance and TAT compliance.</div>
+        </div>
+    </div>
     """, unsafe_allow_html=True)
 
     today = date.today()
     default_from = today.replace(day=1)
 
-    filter_col1, filter_col2, filter_col3 = st.columns([1, 1, 0.7])
+    filter_col1, filter_col2, filter_col3 = st.columns(
+        [1, 1, 0.55], gap="small", vertical_alignment="bottom"
+    )
     with filter_col1:
         from_date = st.date_input(
             "From Date",
@@ -381,8 +491,6 @@ def show_monthly_trend_edd():
             key="monthly_trend_edd_to_date",
         )
     with filter_col3:
-        st.write("")
-        st.write("")
         run_report = st.button(
             "Run Report",
             type="primary",
@@ -390,23 +498,138 @@ def show_monthly_trend_edd():
             key="monthly_trend_edd_run",
         )
 
-    # Do not query SQL until the user explicitly presses Run Report.
-    if not run_report:
-        st.info("Select the From Date and To Date, then click **Run Report**.")
-        return
-
     if from_date > to_date:
         st.error("The From date cannot be later than the To date.")
         return
 
-    try:
-        # A fresh query is executed only when Run Report is pressed.
+    # Query SQL only when Run Report is pressed. The prepared data is retained
+    # in Session State so changing dashboard filters never runs SQL again.
+    if run_report:
         load_sql_data.clear()
+        try:
+            with st.spinner("Loading EDD data from SQL Server..."):
+                raw_df = load_sql_data(from_date, to_date)
+            st.session_state["monthly_edd_loaded_detail"] = prepare_detail_data(raw_df)
+            st.session_state["monthly_edd_active_from"] = from_date
+            st.session_state["monthly_edd_active_to"] = to_date
 
-        with st.spinner("Loading EDD data from SQL Server..."):
-            raw_df = load_sql_data(from_date, to_date)
+            # A new date-range report starts with clean hierarchy filters.
+            for filter_key in (
+                "monthly_edd_booking_zone",
+                "monthly_edd_booking_circle",
+                "monthly_edd_origin",
+                "monthly_edd_destination_zone",
+                "monthly_edd_destination_circle",
+                "monthly_edd_destination",
+            ):
+                st.session_state.pop(filter_key, None)
+        except Exception as exc:
+            st.error("The report could not be loaded.")
+            st.exception(exc)
+            st.info("Check the existing SQL credentials, database permissions, and database object names.")
+            return
 
-        detail_df = prepare_detail_data(raw_df)
+    stored_detail = st.session_state.get("monthly_edd_loaded_detail")
+    if stored_detail is None:
+        st.info("Select the From Date and To Date, then click **Run Report**.")
+        return
+
+    active_from = st.session_state.get("monthly_edd_active_from")
+    active_to = st.session_state.get("monthly_edd_active_to")
+    if from_date != active_from or to_date != active_to:
+        st.info("Date range changed. Click **Run Report** to load the new period.")
+        return
+
+    try:
+        detail_df = stored_detail.copy()
+
+        def _filter_options(source: pd.DataFrame, column: str) -> list[str]:
+            if source is None or source.empty or column not in source.columns:
+                return []
+            values = source[column].dropna().astype(str).str.strip()
+            return sorted(values[values.ne("")].unique().tolist(), key=str.casefold)
+
+        def _prune_filter_state(key: str, options: list[str]) -> None:
+            current = st.session_state.get(key, [])
+            if isinstance(current, (list, tuple, set)):
+                st.session_state[key] = [value for value in current if value in options]
+
+        def _apply_multi_filter(source: pd.DataFrame, column: str, selected: list[str]) -> pd.DataFrame:
+            if not selected or column not in source.columns:
+                return source
+            return source[source[column].astype(str).isin(selected)].copy()
+
+        # Cascading multi-select filters. An empty selection means All. Keep
+        # all six controls in one compact desktop row; Streamlit stacks them
+        # automatically on narrow screens.
+        filter_row = st.columns(6, gap="small")
+
+        booking_zone_options = _filter_options(detail_df, "BOOKING ZONE")
+        _prune_filter_state("monthly_edd_booking_zone", booking_zone_options)
+        with filter_row[0]:
+            booking_zones = st.multiselect(
+                "Booking Zone",
+                booking_zone_options,
+                key="monthly_edd_booking_zone",
+                placeholder="All booking zones",
+            )
+        detail_df = _apply_multi_filter(detail_df, "BOOKING ZONE", booking_zones)
+
+        booking_circle_options = _filter_options(detail_df, "BOOKING CIRCLE")
+        _prune_filter_state("monthly_edd_booking_circle", booking_circle_options)
+        with filter_row[1]:
+            booking_circles = st.multiselect(
+                "Booking Circle",
+                booking_circle_options,
+                key="monthly_edd_booking_circle",
+                placeholder="All booking circles",
+            )
+        detail_df = _apply_multi_filter(detail_df, "BOOKING CIRCLE", booking_circles)
+
+        origin_options = _filter_options(detail_df, "ORIGIN")
+        _prune_filter_state("monthly_edd_origin", origin_options)
+        with filter_row[2]:
+            origins = st.multiselect(
+                "Origin",
+                origin_options,
+                key="monthly_edd_origin",
+                placeholder="All origins",
+            )
+        detail_df = _apply_multi_filter(detail_df, "ORIGIN", origins)
+
+        destination_zone_options = _filter_options(detail_df, "DESTINATION ZONE")
+        _prune_filter_state("monthly_edd_destination_zone", destination_zone_options)
+        with filter_row[3]:
+            destination_zones = st.multiselect(
+                "Destination Zone",
+                destination_zone_options,
+                key="monthly_edd_destination_zone",
+                placeholder="All destination zones",
+            )
+        detail_df = _apply_multi_filter(detail_df, "DESTINATION ZONE", destination_zones)
+
+        destination_circle_options = _filter_options(detail_df, "DESTINATION CIRCLE")
+        _prune_filter_state("monthly_edd_destination_circle", destination_circle_options)
+        with filter_row[4]:
+            destination_circles = st.multiselect(
+                "Destination Circle",
+                destination_circle_options,
+                key="monthly_edd_destination_circle",
+                placeholder="All destination circles",
+            )
+        detail_df = _apply_multi_filter(detail_df, "DESTINATION CIRCLE", destination_circles)
+
+        destination_options = _filter_options(detail_df, "DESTINATION")
+        _prune_filter_state("monthly_edd_destination", destination_options)
+        with filter_row[5]:
+            destinations = st.multiselect(
+                "Destination",
+                destination_options,
+                key="monthly_edd_destination",
+                placeholder="All destinations",
+            )
+        detail_df = _apply_multi_filter(detail_df, "DESTINATION", destinations)
+
         final_summary = calculate_monthly_summary(detail_df)
         unmapped_branch_summary = calculate_unmapped_branch_summary(detail_df)
 
@@ -429,27 +652,30 @@ def show_monthly_trend_edd():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
 
-            st.subheader("Branches Where TAT E.D.D Is Not Mapped")
-            if unmapped_branch_summary.empty:
-                st.success("TAT E.D.D is mapped for all branches in the selected period.")
-            else:
-                unmapped_display = unmapped_branch_summary.copy()
-                unmapped_display["Total CN"] = unmapped_display["Total CN"].map(fmt_integer)
-                unmapped_display["TAT Not Mapped CN"] = unmapped_display["TAT Not Mapped CN"].map(fmt_integer)
-                unmapped_display["TAT Not Mapped %"] = unmapped_display["TAT Not Mapped %"].map(fmt_percent)
-                st.dataframe(
-                    unmapped_display,
-                    use_container_width=True,
-                    hide_index=True,
-                )
+            with st.expander(
+                "Branches Where TAT E.D.D Is Not Mapped",
+                expanded=False,
+            ):
+                if unmapped_branch_summary.empty:
+                    st.success("TAT E.D.D is mapped for all branches in the selected period.")
+                else:
+                    unmapped_display = unmapped_branch_summary.copy()
+                    unmapped_display["Total CN"] = unmapped_display["Total CN"].map(fmt_integer)
+                    unmapped_display["TAT Not Mapped CN"] = unmapped_display["TAT Not Mapped CN"].map(fmt_integer)
+                    unmapped_display["TAT Not Mapped %"] = unmapped_display["TAT Not Mapped %"].map(fmt_percent)
+                    st.dataframe(
+                        unmapped_display,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
-                st.download_button(
-                    "Download TAT Not Mapped Branches",
-                    data=unmapped_branch_summary.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"TAT_Not_Mapped_Branches_{from_date:%Y%m%d}_{to_date:%Y%m%d}.csv",
-                    mime="text/csv",
-                    key="download_tat_unmapped_branches",
-                )
+                    st.download_button(
+                        "Download TAT Not Mapped Branches",
+                        data=unmapped_branch_summary.to_csv(index=False).encode("utf-8-sig"),
+                        file_name=f"TAT_Not_Mapped_Branches_{from_date:%Y%m%d}_{to_date:%Y%m%d}.csv",
+                        mime="text/csv",
+                        key="download_tat_unmapped_branches",
+                    )
 
             with st.expander("View consignment-level data"):
                 st.dataframe(detail_df, use_container_width=True, hide_index=True)

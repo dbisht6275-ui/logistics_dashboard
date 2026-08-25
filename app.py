@@ -487,6 +487,7 @@ FULL_MENU_ITEMS = [
     "📊 Comparison",
     "📦 Tariff Rate Dashboard",
     "📈 Outstanding Analysis",
+    "📅 Monthly Trend EDD",
     "👥 Customer Analysis",
     "🚛 Service Analysis",
     "📄 Reports",
@@ -504,7 +505,7 @@ REPORTS = {
         "📊 Delivery Summary Turnover": show_delivery_summary_turnover,
         "📊 Branch Wise Booking Turnover": show_branch_wise_booking_turnover,
         "⚖️ Booking Weight Summary": show_booking_weight_summary_turnover,
-        "📅 Monthly Trend EDD": show_monthly_trend_edd,
+        
     },
     "💰 Accounts Reports": {
         "📋 GR Costing Head Wise": show_GrCostingHeadWise,
@@ -780,6 +781,9 @@ elif menu == "📈 Outstanding Analysis":
 
 elif menu == "👥 Customer Analysis":
     show_CustomerAnalysis()
+
+elif menu == "📅 Monthly Trend EDD":
+    show_monthly_trend_edd()
 
 elif menu == "🚛 Service Analysis":
     show_service_level()
