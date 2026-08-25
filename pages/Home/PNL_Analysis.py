@@ -1,4 +1,4 @@
-# P&L DASHBOARD VERSION: 1.0.2 - sortable branch P&L headers
+# P&L DASHBOARD VERSION: 1.0.3 - reuse loaded data on filter reruns
 import io
 from html import escape
 import pandas as pd
@@ -1067,9 +1067,10 @@ def show_pnl_dashboard() -> None:
         st.session_state["pnl_report_ready"] = False
 
     def _invalidate_pnl_report():
-        st.session_state["pnl_report_ready"] = False
-        st.session_state.pop("pnl_report_df", None)
-        st.session_state.pop("pnl_report_prev_df", None)
+        # View Type/FY are report parameters, not dashboard filters.  Keep the
+        # last successfully loaded frames in memory until the replacement
+        # report has loaded; otherwise a widget rerun can discard valid data.
+        st.session_state["pnl_report_parameters_changed"] = True
 
     pending_view_type, pending_fy, run_report, export_placeholder = render_header(_invalidate_pnl_report)
 
@@ -1081,18 +1082,30 @@ def show_pnl_dashboard() -> None:
         return
 
     if run_report:
-        st.session_state["pnl_report_ready"] = False
         start_date, end_date = get_date_range(pending_fy)
         prev_fy = get_previous_fy(pending_fy)
         prev_start, prev_end = get_date_range(prev_fy)
-        with st.spinner("Loading P&L data..."):
-            raw_df, raw_prev_df = load_pnl_data_pair(
-                start_date, end_date, prev_start, prev_end, pending_view_type
-            )
+        try:
+            with st.spinner("Loading P&L data..."):
+                raw_df, raw_prev_df = load_pnl_data_pair(
+                    start_date, end_date, prev_start, prev_end, pending_view_type
+                )
+        except Exception as exc:
+            # Do not destroy the previous successful report when a refresh
+            # fails. This also prevents subsequent filter reruns from querying
+            # the database again.
+            st.error(f"Unable to load P&L data: {exc}")
+            return
+
+        # These are the only assignments to the loaded report data. All other
+        # widgets below work on copies held in Session State, so changing
+        # Company/Zone/Circle/Branch/Quarter/Month/Load Type/Conversion never
+        # calls load_pnl_data_pair again.
         st.session_state["pnl_report_df"] = raw_df
         st.session_state["pnl_report_prev_df"] = raw_prev_df
         st.session_state["pnl_active_fy"] = pending_fy
         st.session_state["pnl_active_view_type"] = pending_view_type
+        st.session_state["pnl_report_parameters_changed"] = False
         st.session_state["pnl_report_ready"] = True
 
     if not st.session_state.get("pnl_report_ready", False):
