@@ -1,9 +1,9 @@
-"""Operational control-tower dashboard for branch stock."""
+"""Analytics & Trends page for Sugam Dashboard."""
 
 from __future__ import annotations
 
 import html
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import plotly.express as px
@@ -12,28 +12,362 @@ import streamlit as st
 
 from services.stock_data_loader import load_stock_data
 
-
+# Use same palette as main dashboard
 PALETTE = {
     "blue": "#2f73d8", "orange": "#ed8b25", "cyan": "#1e91a0",
     "purple": "#7953c6", "green": "#269b54", "red": "#d63f48",
     "brown": "#8a613d", "navy": "#0b3158", "text": "#172238",
 }
-STOCK_ORDER = ["BOOKING STOCK", "IN-TRANSIT STOCK", "TRANSIT STOCK", "DELIVERY STOCK"]
 
 
 def _inject_css():
+    """Apply dashboard styling."""
     st.markdown(
         """
         <style>
         .main .block-container{padding:4px 10px 14px!important;max-width:100%!important}
-        .stock-title{font:800 18px Inter,sans-serif;color:#102a49;margin:0}.stock-sub{font:500 9px Inter,sans-serif;color:#718096;margin-top:2px}
-        .stock-note{padding:7px 10px;border:1px solid #d8e1ec;background:#f8fbff;border-radius:7px;color:#40536b;font-size:9px;margin-bottom:6px}
-        div[data-testid="stVerticalBlockBorderWrapper"]{border-color:#dde3ea!important;border-radius:5px!important;box-shadow:0 1px 4px rgba(20,40,65,.05)!important}
-        .stock-kpi{height:72px;padding:8px;display:flex;gap:7px;align-items:center;background:#fff;border:1px solid #dde3ea;box-shadow:0 1px 4px rgba(20,40,65,.06)}
-        .stock-kpi-icon{width:33px;height:33px;border-radius:50%;display:grid;place-items:center;font-size:15px;flex:none}.stock-kpi-copy{min-width:0}.stock-kpi-label{font-size:8px;font-weight:750;color:#26354a;white-space:nowrap}.stock-kpi-value{font-size:17px;line-height:1.05;font-weight:800;color:#172238;margin:2px 0}.stock-kpi-note{font-size:7px;color:#6d798b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stock-kpi-red .stock-kpi-value{color:#ce343e}
-        .stock-panel-title{display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:800;color:#1a283b;margin-bottom:4px}.stock-panel-title span{font-size:8px;color:#788496;font-weight:500}
-        .stock-flow{display:flex;align-items:center;justify-content:space-around;padding:9px 3px 5px}.stock-flow-step{text-align:center;position:relative;min-width:75px}.stock-flow-dot{width:39px;height:39px;border-radius:50%;display:grid;place-items:center;margin:auto;border:1px solid currentColor;background:#fff;font-size:16px}.stock-flow-step b{display:block;font-size:8px;margin-top:3px}.stock-flow-step strong{font-size:12px}.stock-flow-arrow{color:#8290a3;font-size:15px}
-        .stock-alert-title{font-size:10px;font-weight:800;color:#bf323a;text-transform:uppercase}.stock-view-all{text-align:center;color:#1c5fa8;font-size:8px;font-weight:700;padding-top:3px}.stock-summary{display:grid;grid-template-columns:repeat(7,1fr);background:#fff;border:1px solid #dde3ea;padding:9px}.stock-summary span{text-align:center;border-right:1px dashed #d6dce4;font-size:8px}.stock-summary span:last-child{border:0}.stock-summary strong{display:block;font-size:14px;margin-top:4px}.stock-critical{color:#ce343e!important}.stock-orange{color:#d97918!important}
+        .analytics-title{font:800 18px Inter,sans-serif;color:#102a49;margin:0}
+        .analytics-subtitle{font:500 10px Inter,sans-serif;color:#718096;margin-top:4px}
+        .metric-box{background:#f8fbff;border:1px solid #d8e1ec;border-radius:7px;padding:12px;text-align:center}
+        .metric-value{font:800 22px Inter,sans-serif;color:#172238}
+        .metric-label{font:500 9px Inter,sans-serif;color:#40536b}
+        .metric-change{font:600 10px Inter,sans-serif;margin-top:4px}
+        .metric-up{color:#269b54}
+        .metric-down{color:#d63f48}
+        div[data-testid="stVerticalBlockBorderWrapper"]{border-color:#dde3ea!important;box-shadow:0 1px 4px rgba(20,40,65,.05)!important}
+        .stPlotlyChart{margin-top:-6px}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _apply_scope(df):
+    """Apply branch/circle/zone filters from session state."""
+    scope = st.session_state.get("data_scope", {}) or {}
+    rules = [
+        ("branch", "branch"),
+        ("circle", "origin_circle"),
+        ("zone", "origin_zone"),
+    ]
+    scoped = df.copy()
+    for scope_key, column in rules:
+        value = scope.get(scope_key)
+        if value and column in scoped.columns:
+            scoped = scoped[scoped[column].astype(str).str.casefold() == str(value).casefold()]
+    return scoped
+
+
+def _fmt_money(value):
+    """Format rupees with Cr/L suffix."""
+    value = float(value)
+    if abs(value) >= 10_000_000:
+        return f"₹{value / 10_000_000:.2f} Cr"
+    if abs(value) >= 100_000:
+        return f"₹{value / 100_000:.2f} L"
+    return f"₹{value:,.0f}"
+
+
+def _fmt_number(value):
+    """Format large numbers with commas."""
+    return f"{float(value):,.0f}"
+
+
+def show():
+    """Main analytics page."""
+    _inject_css()
+    
+    # Page title
+    st.markdown('<h1 class="analytics-title">📈 Analytics & Trends</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="analytics-subtitle">Historical analysis, trends, and forecasting</p>', unsafe_allow_html=True)
+    
+    # Sidebar filters
+    with st.sidebar:
+        st.subheader("Filters")
+        
+        start_date = st.date_input("From Date", value=date.today().replace(day=1))
+        end_date = st.date_input("To Date", value=date.today())
+        
+        # Load data
+        if start_date > end_date:
+            st.error("Start date must be before end date")
+            return
+    
+    # Load data with cache
+    try:
+        raw_data = load_stock_data(start_date, end_date, end_date)
+        if raw_data.empty:
+            st.warning("No data available for selected date range.")
+            return
+    except Exception as e:
+        st.error(f"Data load error: {str(e)}")
+        return
+    
+    # Apply scope filters
+    filtered = _apply_scope(raw_data)
+    
+    if filtered.empty:
+        st.warning("No records match the selected filters.")
+        return
+    
+    # ============ METRIC CARDS ============
+    col1, col2, col3, col4 = st.columns(4, gap="small")
+    
+    with col1:
+        total_records = len(filtered)
+        avg_age = filtered["stock_days"].mean()
+        st.markdown(f"""
+        <div class="metric-box">
+            <div class="metric-value">{total_records:,.0f}</div>
+            <div class="metric-label">Total Records</div>
+            <div class="metric-label" style="margin-top:6px">Avg Age: {avg_age:.1f} days</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        total_stock_value = filtered["stock_topay"].sum()
+        paid_amount = filtered["paid"].sum()
+        st.markdown(f"""
+        <div class="metric-box">
+            <div class="metric-value">{_fmt_money(total_stock_value)}</div>
+            <div class="metric-label">Stock Value</div>
+            <div class="metric-label" style="margin-top:6px">Paid: {_fmt_money(paid_amount)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        critical_count = len(filtered[filtered["is_critical"]])
+        critical_pct = (critical_count / len(filtered) * 100)
+        st.markdown(f"""
+        <div class="metric-box">
+            <div class="metric-value">{critical_count:,.0f}</div>
+            <div class="metric-label">Critical Items (15+ days)</div>
+            <div class="metric-label" style="margin-top:6px">{critical_pct:.1f}% of total</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        total_packages = filtered["balance_packages"].sum()
+        total_weight = filtered["balance_charge_weight"].sum()
+        st.markdown(f"""
+        <div class="metric-box">
+            <div class="metric-value">{_fmt_number(total_packages)}</div>
+            <div class="metric-label">Total Packages</div>
+            <div class="metric-label" style="margin-top:6px">{_fmt_number(total_weight)} kg</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # ============ STOCK AGE TREND (30/60/90 days) ============
+    col_trend, col_abc = st.columns([1.5, 1], gap="small")
+    
+    with col_trend:
+        with st.container(border=True):
+            st.markdown("**📊 Stock Age Trend**")
+            
+            # Create day-wise trend
+            trend_data = filtered.groupby("stock_days")["gr_no"].nunique().reset_index(name="Count")
+            trend_data = trend_data.sort_values("stock_days")
+            
+            fig = px.line(
+                trend_data,
+                x="stock_days",
+                y="Count",
+                title="Distribution of Stock by Age (in days)",
+                labels={"stock_days": "Days", "Count": "Number of GRs"},
+                markers=True,
+            )
+            fig.update_traces(line=dict(color=PALETTE["blue"], width=2), marker=dict(size=6))
+            fig.update_layout(
+                height=280,
+                margin=dict(l=8, r=8, t=30, b=30),
+                hovermode="x unified",
+                paper_bgcolor="white",
+                plot_bgcolor="white",
+                font=dict(size=9),
+            )
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    
+    with col_abc:
+        with st.container(border=True):
+            st.markdown("**🎯 ABC Analysis**")
+            
+            # ABC Analysis: 80-20 rule
+            gr_value = filtered.groupby("gr_no")["stock_topay"].sum().sort_values(ascending=False).reset_index(name="value")
+            total_value = gr_value["value"].sum()
+            gr_value["cumsum"] = gr_value["value"].cumsum() / total_value * 100
+            
+            gr_value["category"] = pd.cut(
+                gr_value["cumsum"],
+                bins=[0, 80, 95, 100],
+                labels=["A (80%)", "B (15%)", "C (5%)"],
+            )
+            
+            abc_summary = gr_value.groupby("category", observed=True).agg({
+                "gr_no": "count",
+                "value": "sum",
+            }).reset_index().rename(columns={"gr_no": "Items", "value": "Value"})
+            
+            fig = px.bar(
+                abc_summary,
+                x="category",
+                y=["Items"],
+                color="category",
+                color_discrete_map={
+                    "A (80%)": PALETTE["red"],
+                    "B (15%)": PALETTE["orange"],
+                    "C (5%)": PALETTE["green"],
+                },
+                text="Items",
+            )
+            fig.update_layout(
+                height=280,
+                margin=dict(l=8, r=8, t=30, b=30),
+                showlegend=False,
+                paper_bgcolor="white",
+                plot_bgcolor="white",
+                font=dict(size=9),
+            )
+            fig.update_traces(textposition="outside")
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    
+    st.divider()
+    
+    # ============ STOCK TYPE MOVEMENT ============
+    col_type, col_dwell = st.columns([1, 1], gap="small")
+    
+    with col_type:
+        with st.container(border=True):
+            st.markdown("**🚛 Stock Type Distribution**")
+            
+            type_dist = filtered.groupby("stock_type")["gr_no"].nunique().reset_index(name="Count")
+            
+            fig = px.bar(
+                type_dist,
+                x="stock_type",
+                y="Count",
+                color="stock_type",
+                color_discrete_sequence=[PALETTE["blue"], PALETTE["orange"], PALETTE["green"], PALETTE["purple"]],
+                text="Count",
+            )
+            fig.update_layout(
+                height=280,
+                margin=dict(l=8, r=8, t=30, b=30),
+                showlegend=False,
+                xaxis_title=None,
+                yaxis_title=None,
+                paper_bgcolor="white",
+                plot_bgcolor="white",
+                font=dict(size=9),
+            )
+            fig.update_traces(textposition="outside")
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    
+    with col_dwell:
+        with st.container(border=True):
+            st.markdown("**⏱️ Average Dwell Time by Branch**")
+            
+            dwell_data = filtered.groupby("branch").agg({
+                "stock_days": "mean",
+                "gr_no": "count",
+            }).reset_index().rename(columns={"stock_days": "Avg Days", "gr_no": "Items"})
+            dwell_data = dwell_data.sort_values("Avg Days", ascending=False).head(8)
+            
+            fig = px.barh(
+                dwell_data,
+                x="Avg Days",
+                y="branch",
+                color="Avg Days",
+                color_continuous_scale="RdYlGn_r",
+                text="Avg Days",
+            )
+            fig.update_layout(
+                height=280,
+                margin=dict(l=80, r=8, t=30, b=30),
+                yaxis_title=None,
+                xaxis_title=None,
+                paper_bgcolor="white",
+                plot_bgcolor="white",
+                font=dict(size=9),
+            )
+            fig.update_traces(textposition="outside", texttemplate="%.1f d")
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    
+    st.divider()
+    
+    # ============ ROUTE PERFORMANCE HEATMAP ============
+    with st.container(border=True):
+        st.markdown("**🗺️ Route Performance Heatmap (Origin → Destination)**")
+        
+        route_perf = filtered.groupby(["origin", "destination"]).agg({
+            "stock_days": "mean",
+            "gr_no": "count",
+        }).reset_index().rename(columns={"stock_days": "Avg Age", "gr_no": "Count"})
+        
+        # Create pivot for heatmap
+        heatmap_data = route_perf.pivot_table(
+            values="Avg Age",
+            index="origin",
+            columns="destination",
+            aggfunc="mean",
+        )
+        
+        if not heatmap_data.empty and heatmap_data.shape[0] > 1 and heatmap_data.shape[1] > 1:
+            fig = px.imshow(
+                heatmap_data,
+                labels=dict(x="Destination", y="Origin", color="Avg Days"),
+                color_continuous_scale="RdYlGn_r",
+                aspect="auto",
+                text_auto=".1f",
+            )
+            fig.update_layout(height=400, font=dict(size=9))
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.info("Not enough origin-destination combinations for heatmap visualization.")
+    
+    st.divider()
+    
+    # ============ DETAILED ANALYTICS TABLE ============
+    with st.container(border=True):
+        st.markdown("**📋 Detailed Route Analytics**")
+        
+        route_analytics = filtered.groupby(["origin", "destination"]).agg({
+            "gr_no": "nunique",
+            "stock_days": ["mean", "max", "min"],
+            "is_critical": "sum",
+            "balance_packages": "sum",
+            "stock_topay": "sum",
+        }).reset_index()
+        
+        route_analytics.columns = ["Origin", "Destination", "GR Count", "Avg Days", "Max Days", "Min Days", "Critical", "Packages", "Value"]
+        route_analytics = route_analytics.sort_values("Avg Days", ascending=False).head(15)
+        
+        # Format columns
+        route_analytics["Route"] = route_analytics["Origin"] + " → " + route_analytics["Destination"]
+        route_analytics["Value"] = route_analytics["Value"].map(_fmt_money)
+        route_analytics["Avg Days"] = route_analytics["Avg Days"].map(lambda x: f"{x:.1f}d")
+        route_analytics["Max Days"] = route_analytics["Max Days"].map(lambda x: f"{x:.0f}d")
+        
+        display_cols = ["Route", "GR Count", "Avg Days", "Max Days", "Critical", "Packages", "Value"]
+        st.dataframe(
+            route_analytics[display_cols].reset_index(drop=True),
+            use_container_width=True,
+            hide_index=True,
+        )
+    
+    # ============ FOOTER ============
+    st.divider()
+    st.markdown(
+        f'<div style="text-align:center;color:#718096;font-size:8px;padding-top:6px">'
+        f'📊 Analytics · Period {start_date:%d %b %Y} to {end_date:%d %b %Y} · Total Records: {len(filtered):,}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
+if __name__ == "__main__":
+    show()
         div[data-testid="stDataFrame"]{font-size:8px!important}div[data-testid="stDataFrame"] [role="columnheader"]{font-size:8px!important;font-weight:800!important}
         div[data-testid="stSelectbox"] label,div[data-testid="stMultiSelect"] label,div[data-testid="stTextInput"] label,div[data-testid="stDateInput"] label{font-size:8px!important;font-weight:750!important;margin-bottom:1px!important}div[data-baseweb="select"]>div,div[data-testid="stTextInput"] input,div[data-testid="stDateInput"] input{min-height:29px!important;height:29px!important;font-size:8px!important}
         div[data-testid="stDateInput"]{margin-bottom:0!important}.stock-filter-divider{height:1px;background:#edf0f4;margin:2px 0 6px}
