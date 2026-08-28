@@ -25,19 +25,20 @@ def _inject_css():
     st.markdown(
         """
         <style>
-        .main .block-container{padding:8px 14px 20px!important;max-width:100%!important}
+        .main .block-container{padding:4px 10px 14px!important;max-width:100%!important}
         .stock-title{font:800 18px Inter,sans-serif;color:#102a49;margin:0}.stock-sub{font:500 9px Inter,sans-serif;color:#718096;margin-top:2px}
         .stock-note{padding:7px 10px;border:1px solid #d8e1ec;background:#f8fbff;border-radius:7px;color:#40536b;font-size:9px;margin-bottom:6px}
         div[data-testid="stVerticalBlockBorderWrapper"]{border-color:#dde3ea!important;border-radius:5px!important;box-shadow:0 1px 4px rgba(20,40,65,.05)!important}
-        .stock-kpi{height:88px;padding:13px 10px;display:flex;gap:9px;align-items:center;background:#fff;border:1px solid #dde3ea;box-shadow:0 1px 4px rgba(20,40,65,.06)}
-        .stock-kpi-icon{width:39px;height:39px;border-radius:50%;display:grid;place-items:center;font-size:18px;flex:none}.stock-kpi-copy{min-width:0}.stock-kpi-label{font-size:9px;font-weight:750;color:#26354a;white-space:nowrap}.stock-kpi-value{font-size:20px;line-height:1.1;font-weight:800;color:#172238;margin:3px 0}.stock-kpi-note{font-size:8px;color:#6d798b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stock-kpi-red .stock-kpi-value{color:#ce343e}
+        .stock-kpi{height:72px;padding:8px;display:flex;gap:7px;align-items:center;background:#fff;border:1px solid #dde3ea;box-shadow:0 1px 4px rgba(20,40,65,.06)}
+        .stock-kpi-icon{width:33px;height:33px;border-radius:50%;display:grid;place-items:center;font-size:15px;flex:none}.stock-kpi-copy{min-width:0}.stock-kpi-label{font-size:8px;font-weight:750;color:#26354a;white-space:nowrap}.stock-kpi-value{font-size:17px;line-height:1.05;font-weight:800;color:#172238;margin:2px 0}.stock-kpi-note{font-size:7px;color:#6d798b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stock-kpi-red .stock-kpi-value{color:#ce343e}
         .stock-panel-title{display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:800;color:#1a283b;margin-bottom:4px}.stock-panel-title span{font-size:8px;color:#788496;font-weight:500}
-        .stock-flow{display:flex;align-items:center;justify-content:space-around;padding:10px 4px 7px}.stock-flow-step{text-align:center;position:relative;min-width:88px}.stock-flow-dot{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;margin:auto;border:1px solid currentColor;background:#fff;font-size:19px}.stock-flow-step b{display:block;font-size:9px;margin-top:4px}.stock-flow-step strong{font-size:13px}.stock-flow-arrow{color:#8290a3;font-size:17px}.stock-flow-summary{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid #e0e5eb;margin:3px 28px 5px}.stock-flow-summary span{text-align:center;padding:7px 3px;border-right:1px solid #e0e5eb;font-size:8px}.stock-flow-summary span:last-child{border:0}.stock-flow-summary strong{display:block;font-size:11px;margin-top:2px}
+        .stock-flow{display:flex;align-items:center;justify-content:space-around;padding:9px 3px 5px}.stock-flow-step{text-align:center;position:relative;min-width:75px}.stock-flow-dot{width:39px;height:39px;border-radius:50%;display:grid;place-items:center;margin:auto;border:1px solid currentColor;background:#fff;font-size:16px}.stock-flow-step b{display:block;font-size:8px;margin-top:3px}.stock-flow-step strong{font-size:12px}.stock-flow-arrow{color:#8290a3;font-size:15px}
         .stock-alert-title{font-size:10px;font-weight:800;color:#bf323a;text-transform:uppercase}.stock-view-all{text-align:center;color:#1c5fa8;font-size:8px;font-weight:700;padding-top:3px}.stock-summary{display:grid;grid-template-columns:repeat(7,1fr);background:#fff;border:1px solid #dde3ea;padding:9px}.stock-summary span{text-align:center;border-right:1px dashed #d6dce4;font-size:8px}.stock-summary span:last-child{border:0}.stock-summary strong{display:block;font-size:14px;margin-top:4px}.stock-critical{color:#ce343e!important}.stock-orange{color:#d97918!important}
         div[data-testid="stDataFrame"]{font-size:8px!important}div[data-testid="stDataFrame"] [role="columnheader"]{font-size:8px!important;font-weight:800!important}
-        div[data-testid="stSelectbox"] label,div[data-testid="stMultiSelect"] label,div[data-testid="stTextInput"] label{font-size:9px!important;font-weight:750!important}div[data-baseweb="select"]>div,div[data-testid="stTextInput"] input{min-height:32px!important;height:32px!important;font-size:9px!important}
+        div[data-testid="stSelectbox"] label,div[data-testid="stMultiSelect"] label,div[data-testid="stTextInput"] label,div[data-testid="stDateInput"] label{font-size:8px!important;font-weight:750!important;margin-bottom:1px!important}div[data-baseweb="select"]>div,div[data-testid="stTextInput"] input,div[data-testid="stDateInput"] input{min-height:29px!important;height:29px!important;font-size:8px!important}
+        div[data-testid="stDateInput"]{margin-bottom:0!important}.stock-filter-divider{height:1px;background:#edf0f4;margin:2px 0 6px}
         .stPlotlyChart{margin-top:-6px}.stock-footer{text-align:center;color:#718096;font-size:8px;padding-top:6px}
-        @media(max-width:900px){.stock-summary{grid-template-columns:repeat(2,1fr);gap:8px}.stock-summary span{border:0}.stock-flow{min-width:560px}.stock-flow-summary{min-width:500px;margin:3px 0}.stock-flow-wrap{overflow-x:auto}}
+        @media(max-width:900px){.stock-summary{grid-template-columns:repeat(2,1fr);gap:8px}.stock-summary span{border:0}.stock-flow{min-width:500px}.stock-flow-wrap{overflow-x:auto}}
         </style>
         """,
         unsafe_allow_html=True,
@@ -102,7 +103,18 @@ def _donut(df, column, title):
     )
     fig.update_traces(textinfo="none", hovertemplate="%{label}<br>%{value:,} GR (%{percent})<extra></extra>")
     fig.add_annotation(text=f"<b>{df['gr_no'].nunique():,}</b><br><span style='font-size:9px'>Total GR</span>", showarrow=False)
-    fig.update_layout(title=dict(text=title, font=dict(size=11), x=.01), height=205, margin=dict(l=5,r=5,t=28,b=5), legend=dict(font=dict(size=8), orientation="v", x=.75, y=.5), paper_bgcolor="white")
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=10), x=.01),
+        height=215,
+        margin=dict(l=4, r=4, t=26, b=46),
+        legend=dict(
+            font=dict(size=7), orientation="h", x=.5, xanchor="center",
+            y=-.08, yanchor="top", entrywidth=86, entrywidthmode="pixels",
+        ),
+        paper_bgcolor="white",
+        uniformtext_minsize=7,
+        uniformtext_mode="hide",
+    )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -121,31 +133,42 @@ def _stock_flow(df):
         flow.append(f'<div class="stock-flow-step" style="color:{colour}"><div class="stock-flow-dot">{icon}</div><b>{label}</b><strong>{value:,}</strong></div>')
         if index < len(steps) - 1:
             flow.append('<div class="stock-flow-arrow">→</div>')
-    summary = "".join(f"<span>{label}<strong>{value:,}</strong></span>" for label, value, _, _ in steps)
-    st.markdown(f'<div class="stock-flow-wrap"><div class="stock-flow">{"".join(flow)}</div><div class="stock-flow-summary">{summary}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="stock-flow-wrap"><div class="stock-flow">{"".join(flow)}</div></div>', unsafe_allow_html=True)
 
 
 def show_stock_operations():
     _inject_css()
     today = date.today()
     month_start = today.replace(day=1)
-    title_col, date_col = st.columns([3, 1])
+    title_col, from_col, to_col, as_on_col = st.columns([2.5, .62, .62, .62], gap="small")
     with title_col:
         st.markdown('<div class="stock-title">Stock Operations Control Tower</div><div class="stock-sub">Branch stock, ageing exposure and operational action queue</div>', unsafe_allow_html=True)
-    with date_col:
-        selected_period = st.date_input(
-            "Stock Period / As-on Date",
-            value=(month_start, today),
+    with from_col:
+        start_date = st.date_input(
+            "From Date",
+            value=month_start,
             max_value=today,
-            key="stock_dashboard_period",
+            key="stock_dashboard_from_date",
         )
-
-    if not isinstance(selected_period, (list, tuple)) or len(selected_period) != 2:
-        st.info("Please select both From Date and To Date.")
-        return
-    start_date, end_date = selected_period
+    with to_col:
+        end_date = st.date_input(
+            "To Date",
+            value=today,
+            max_value=today,
+            key="stock_dashboard_to_date",
+        )
+    with as_on_col:
+        as_on_date = st.date_input(
+            "As-on Date",
+            value=end_date,
+            max_value=today,
+            key="stock_dashboard_as_on_date",
+        )
     if start_date > end_date:
         st.error("From Date cannot be after To Date.")
+        return
+    if as_on_date < start_date:
+        st.error("As-on Date cannot be before From Date.")
         return
 
     try:
@@ -154,7 +177,7 @@ def show_stock_operations():
                 load_stock_data(
                     start_date=start_date,
                     end_date=end_date,
-                    as_on_date=end_date,
+                    as_on_date=as_on_date,
                 )
             )
     except Exception as exc:
@@ -165,23 +188,38 @@ def show_stock_operations():
         return
 
     with st.container(border=True):
-        filters = st.columns([1, 1, 1, 1, 1, 1.2], gap="small")
-        with filters[0]:
-            zones = st.multiselect("Destination Zone", _safe_options(stock_df, "destination_zone"), placeholder="All")
-        zone_df = stock_df[stock_df["destination_zone"].isin(zones)] if zones else stock_df
-        with filters[1]:
-            circles = st.multiselect("Destination Circle", _safe_options(zone_df, "destination_circle"), placeholder="All")
-        circle_df = zone_df[zone_df["destination_circle"].isin(circles)] if circles else zone_df
-        with filters[2]:
-            branches = st.multiselect("Branch / Location", _safe_options(circle_df, "branch"), placeholder="All")
-        branch_df = circle_df[circle_df["branch"].isin(branches)] if branches else circle_df
-        with filters[3]:
+        filter_row_1 = st.columns(5, gap="small")
+        with filter_row_1[0]:
+            origin_zones = st.multiselect("Origin Zone", _safe_options(stock_df, "origin_zone"), placeholder="All")
+        origin_zone_df = stock_df[stock_df["origin_zone"].isin(origin_zones)] if origin_zones else stock_df
+        with filter_row_1[1]:
+            origin_circles = st.multiselect("Origin Circle", _safe_options(origin_zone_df, "origin_circle"), placeholder="All")
+        origin_circle_df = origin_zone_df[origin_zone_df["origin_circle"].isin(origin_circles)] if origin_circles else origin_zone_df
+        with filter_row_1[2]:
+            branches = st.multiselect("Branch / Location", _safe_options(origin_circle_df, "branch"), placeholder="All")
+        branch_df = origin_circle_df[origin_circle_df["branch"].isin(branches)] if branches else origin_circle_df
+        with filter_row_1[3]:
             stock_types = st.multiselect("Stock Type", _safe_options(branch_df, "stock_type"), placeholder="All")
         type_df = branch_df[branch_df["stock_type"].isin(stock_types)] if stock_types else branch_df
-        with filters[4]:
+        with filter_row_1[4]:
             load_types = st.multiselect("PTL / FTL", _safe_options(type_df, "load_type"), placeholder="All")
-        filtered = type_df[type_df["load_type"].isin(load_types)] if load_types else type_df
-        with filters[5]:
+        load_df = type_df[type_df["load_type"].isin(load_types)] if load_types else type_df
+
+        st.markdown('<div class="stock-filter-divider"></div>', unsafe_allow_html=True)
+        filter_row_2 = st.columns([1, 1, 1, 1, 1.15], gap="small")
+        with filter_row_2[0]:
+            destination_zones = st.multiselect("Destination Zone", _safe_options(load_df, "destination_zone"), placeholder="All")
+        destination_zone_df = load_df[load_df["destination_zone"].isin(destination_zones)] if destination_zones else load_df
+        with filter_row_2[1]:
+            destination_circles = st.multiselect("Destination Circle", _safe_options(destination_zone_df, "destination_circle"), placeholder="All")
+        destination_circle_df = destination_zone_df[destination_zone_df["destination_circle"].isin(destination_circles)] if destination_circles else destination_zone_df
+        with filter_row_2[2]:
+            origins = st.multiselect("Origin", _safe_options(destination_circle_df, "origin"), placeholder="All")
+        origin_df = destination_circle_df[destination_circle_df["origin"].isin(origins)] if origins else destination_circle_df
+        with filter_row_2[3]:
+            destinations = st.multiselect("Destination", _safe_options(origin_df, "destination"), placeholder="All")
+        filtered = origin_df[origin_df["destination"].isin(destinations)] if destinations else origin_df
+        with filter_row_2[4]:
             search = st.text_input("Search GR / Party", placeholder="GR, origin, destination, party")
         if search:
             needle = search.casefold()
@@ -282,4 +320,4 @@ def show_stock_operations():
     summary_html="".join(f'<span>{html.escape(str(label))}<strong class="{css}">{html.escape(str(value))}</strong></span>' for label,value,css in summary_items)
     st.markdown(f'<div class="stock-summary">{summary_html}</div>',unsafe_allow_html=True)
     st.markdown('<div class="stock-note"><b>Stock definition:</b> The dashboard uses the four exact values returned by the ERP stored procedure: Booking Stock, In-Transit Stock, Transit Stock and Delivery Stock. “Hub Stock” is intentionally not inferred until the operational rule is confirmed.</div>',unsafe_allow_html=True)
-    st.markdown(f'<div class="stock-footer">Live source: dbo.greentransweb_branchstock_v5_sugam · As on {end_date:%d %b %Y}</div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="stock-footer">Live source: dbo.greentransweb_branchstock_v5_sugam · Period {start_date:%d %b %Y} to {end_date:%d %b %Y} · As on {as_on_date:%d %b %Y}</div>',unsafe_allow_html=True)
