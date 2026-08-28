@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import html
+from datetime import date
 
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from services.stock_data_loader import configured_stock_source, load_stock_data
+from services.stock_data_loader import load_stock_data
 
 
 PALETTE = {
@@ -126,16 +127,36 @@ def _stock_flow(df):
 
 def show_stock_operations():
     _inject_css()
-    title_col, meta_col = st.columns([3, 1])
+    today = date.today()
+    month_start = today.replace(day=1)
+    title_col, date_col = st.columns([3, 1])
     with title_col:
         st.markdown('<div class="stock-title">Stock Operations Control Tower</div><div class="stock-sub">Branch stock, ageing exposure and operational action queue</div>', unsafe_allow_html=True)
-    with meta_col:
-        st.caption("Excel snapshot · stored-procedure ready")
+    with date_col:
+        selected_period = st.date_input(
+            "Stock Period / As-on Date",
+            value=(month_start, today),
+            max_value=today,
+            key="stock_dashboard_period",
+        )
 
-    source = configured_stock_source()
+    if not isinstance(selected_period, (list, tuple)) or len(selected_period) != 2:
+        st.info("Please select both From Date and To Date.")
+        return
+    start_date, end_date = selected_period
+    if start_date > end_date:
+        st.error("From Date cannot be after To Date.")
+        return
+
     try:
-        with st.spinner("Loading stock data..."):
-            stock_df = _apply_scope(load_stock_data(source=source))
+        with st.spinner("Loading live stock data from ERP..."):
+            stock_df = _apply_scope(
+                load_stock_data(
+                    start_date=start_date,
+                    end_date=end_date,
+                    as_on_date=end_date,
+                )
+            )
     except Exception as exc:
         st.error(f"Stock dashboard data could not be loaded: {exc}")
         return
@@ -178,7 +199,7 @@ def show_stock_operations():
     kpis = [
         ("Booking Stock", type_counts["BOOKING STOCK"], _fmt_money(filtered.loc[filtered.stock_type.eq("BOOKING STOCK"), "stock_topay"].sum()), "▤", PALETTE["blue"], False),
         ("In-Transit", type_counts["IN-TRANSIT STOCK"], f"{_fmt_number(filtered.loc[filtered.stock_type.eq('IN-TRANSIT STOCK'), 'balance_packages'].sum())} packages", "🚚", PALETTE["orange"], False),
-        ("Transit Stock", type_counts["TRANSIT STOCK"], "Exact workbook stock type", "⌂", PALETTE["purple"], False),
+        ("Transit Stock", type_counts["TRANSIT STOCK"], "Exact stored-procedure stock type", "⌂", PALETTE["purple"], False),
         ("Delivery Stock", type_counts["DELIVERY STOCK"], f"{_fmt_number(filtered.loc[filtered.stock_type.eq('DELIVERY STOCK'), 'balance_packages'].sum())} packages", "✓", PALETTE["green"], False),
         ("Critical 15+ Days", critical, f"{critical / len(filtered) * 100:.1f}% of records", "!", PALETTE["red"], True),
         ("Balance Packages", _fmt_number(filtered["balance_packages"].sum()), f"{_fmt_number(filtered['balance_charge_weight'].sum())} kg", "▣", PALETTE["cyan"], False),
@@ -260,5 +281,5 @@ def show_stock_operations():
     ]
     summary_html="".join(f'<span>{html.escape(str(label))}<strong class="{css}">{html.escape(str(value))}</strong></span>' for label,value,css in summary_items)
     st.markdown(f'<div class="stock-summary">{summary_html}</div>',unsafe_allow_html=True)
-    st.markdown('<div class="stock-note"><b>Stock definition:</b> The dashboard uses the four exact values from the uploaded report: Booking Stock, In-Transit Stock, Transit Stock and Delivery Stock. “Hub Stock” is intentionally not inferred until the operational rule is confirmed.</div>',unsafe_allow_html=True)
-    st.markdown('<div class="stock-footer">Excel-backed dashboard · service layer ready for SQL Server stored-procedure integration</div>',unsafe_allow_html=True)
+    st.markdown('<div class="stock-note"><b>Stock definition:</b> The dashboard uses the four exact values returned by the ERP stored procedure: Booking Stock, In-Transit Stock, Transit Stock and Delivery Stock. “Hub Stock” is intentionally not inferred until the operational rule is confirmed.</div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="stock-footer">Live source: dbo.greentransweb_branchstock_v5_sugam · As on {end_date:%d %b %Y}</div>',unsafe_allow_html=True)
