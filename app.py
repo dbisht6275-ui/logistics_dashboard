@@ -26,6 +26,13 @@ from pages.IT.BookingWeightSummaryTurnover import show_booking_weight_summary_tu
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
 from pages.Admin.user_management import show_UserManagement
 
+# ✅ FIX: Import missing functions
+try:
+    from pages.IT.service_analysis import show_service_level
+except ImportError:
+    def show_service_level():
+        st.warning("🚛 Service Analysis page not found. Please create pages/IT/service_analysis.py")
+
 
 def show_tariff_rate_dashboard():
     app_directory = Path(__file__).resolve().parent
@@ -35,6 +42,613 @@ def show_tariff_rate_dashboard():
         / "pages"
         / "Home"
         / "tariff_rate_dashboard.py"
+    )
+
+    if not dashboard_file.is_file():
+        st.error(
+            f"Tariff dashboard not found at: {dashboard_file}"
+        )
+        return
+
+    runpy.run_path(
+        str(dashboard_file),
+        run_name="tariff_rate_dashboard",
+    )
+
+
+st.set_page_config(
+    page_title="Sugam Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+
+# =========================
+# Sidebar styling (professional / enterprise theme)
+# =========================
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+/* Keep the application content close to the top. */
+[data-testid="stHeader"] {
+    height: 2.1rem;
+    background: transparent;
+}
+[data-testid="stToolbar"] { right: 1rem; }
+[data-testid="stDecoration"] { display: none; }
+.main .block-container { padding-top: 1.05rem !important; }
+
+/* ============================================================
+   SUGAM sidebar shell — visual-only update.
+   All menu values, role checks, report routing and button logic
+   remain unchanged in the Python code below.
+   ============================================================ */
+[data-testid="stSidebar"] {
+    width: 242px !important;
+    min-width: 242px !important;
+    background: linear-gradient(180deg, #123568 0%, #0b2a58 58%, #08244d 100%);
+    border-right: 1px solid rgba(7, 28, 63, .45);
+    box-shadow: 5px 0 18px rgba(15, 42, 82, .12);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+[data-testid="stSidebar"] > div:first-child {
+    padding: 0 !important;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
+    padding: 0 12px 12px !important;
+}
+[data-testid="stSidebar"] * { box-sizing: border-box; }
+
+
+/* ============================================================
+   Highly visible sidebar expand / collapse controls.
+   These selectors cover current and older Streamlit DOM names.
+   Visual-only: no sidebar state or routing logic is changed.
+   ============================================================ */
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapseButton"] {
+    z-index: 999999 !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button,
+[data-testid="stSidebarCollapseButton"] button,
+[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] {
+    width: 38px !important;
+    min-width: 38px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 7px !important;
+    border: 2px solid #ffffff !important;
+    border-radius: 10px !important;
+    background: linear-gradient(145deg, #3182f6 0%, #1761d2 62%, #104eae 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 0 #0a3c8d, 0 7px 14px rgba(4, 29, 72, .35) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button:hover,
+[data-testid="stSidebarCollapseButton"] button:hover,
+[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:hover {
+    background: linear-gradient(145deg, #4d98ff 0%, #1f70e8 62%, #1558c0 100%) !important;
+    transform: translateY(-1px) scale(1.04) !important;
+    box-shadow: 0 5px 0 #0a3c8d, 0 10px 18px rgba(4, 29, 72, .42) !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] button:active,
+[data-testid="stSidebarCollapseButton"] button:active,
+[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:active {
+    transform: translateY(2px) !important;
+    box-shadow: 0 1px 0 #0a3c8d, 0 4px 8px rgba(4, 29, 72, .30) !important;
+}
+
+[data-testid="stSidebarCollapsedControl"] svg,
+[data-testid="stSidebarCollapseButton"] svg,
+[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg {
+    width: 23px !important;
+    height: 23px !important;
+    color: #ffffff !important;
+    fill: none !important;
+    stroke: #ffffff !important;
+    stroke-width: 3 !important;
+    opacity: 1 !important;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,.25));
+}
+
+/* Keep the expand button away from the browser edge when sidebar is closed. */
+[data-testid="stSidebarCollapsedControl"] {
+    top: 10px !important;
+    left: 10px !important;
+}
+
+/* ============================================================
+   Full-width dashboard after collapsing the sidebar.
+
+   The sidebar has a custom fixed expanded width above. Without an explicit
+   collapsed-state override, some Streamlit versions keep that width reserved,
+   leaving a blank strip and preventing the dashboard from using the viewport.
+   These rules affect layout only; no navigation or page logic is changed.
+   ============================================================ */
+[data-testid="stSidebar"][aria-expanded="false"],
+[data-testid="stSidebar"]:has([data-testid="stSidebarCollapsedControl"]) {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    flex: 0 0 0 !important;
+    border-right: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+
+/* Remove any width still reserved by the sidebar wrapper in collapsed state. */
+[data-testid="stAppViewContainer"] > section:has(
+    [data-testid="stSidebar"][aria-expanded="false"]
+) {
+    grid-template-columns: 0 minmax(0, 1fr) !important;
+}
+
+/* Let the main dashboard consume all remaining viewport width. */
+[data-testid="stAppViewContainer"] > .main,
+[data-testid="stAppViewContainer"] main,
+section.main {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin-left: 0 !important;
+}
+
+/* Keep normal wide padding, but prevent the main block from retaining a
+   sidebar-sized offset after collapse. */
+[data-testid="stAppViewContainer"] .main .block-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+/* Brand block matching the shared reference layout. */
+.sugam-logo-wrap {
+    min-height: 78px;
+    margin: 0 -12px 10px;
+    padding: 15px 15px 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(5, 28, 63, .36);
+    border-bottom: 1px solid rgba(255,255,255,.10);
+}
+.sugam-logo-mark {
+    position: relative;
+    width: 35px;
+    height: 31px;
+    flex: 0 0 35px;
+}
+.sugam-logo-mark::before,
+.sugam-logo-mark::after {
+    content: "";
+    position: absolute;
+    left: 2px;
+    width: 30px;
+    height: 9px;
+    background: #5ba3ff;
+    border-radius: 2px;
+    box-shadow: 0 10px 0 #5ba3ff;
+}
+.sugam-logo-mark::after { top: 20px; }
+.sugam-logo-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    line-height: 1.15;
+}
+.sugam-logo-name {
+    color: #ffffff;
+    font: 700 13px / 1 'Inter', sans-serif;
+    letter-spacing: -.5px;
+}
+.sugam-logo-sub {
+    color: #a8b9d0;
+    font: 500 9px / 1 'Inter', sans-serif;
+    letter-spacing: .3px;
+}
+
+.sugam-nav-label {
+    color: #ffffff;
+    font: 600 10px / 1.2 'Inter', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    margin: 12px 0 8px;
+    opacity: .70;
+}
+
+[data-testid="stSidebar"] [role="radio"] {
+    background: transparent !important;
+}
+
+[data-testid="stSidebar"] [role="radio"] > label {
+    padding: 10px 12px !important;
+    border-radius: 7px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    color: #a3b5cc !important;
+    cursor: pointer;
+    transition: all .15s ease !important;
+}
+
+[data-testid="stSidebar"] [role="radio"] input:checked + label {
+    background: linear-gradient(90deg, rgba(91,163,255,.08) 0%, rgba(91,163,255,.02) 100%) !important;
+    color: #ffffff !important;
+    border-left: 3px solid #5ba3ff !important;
+    padding-left: 9px !important;
+}
+
+[data-testid="stSidebar"] [role="radio"] > label:hover {
+    background: rgba(91,163,255,.04) !important;
+}
+
+.sugam-sidebar-spacer {
+    height: 16px;
+}
+
+.sugam-refresh-card {
+    background: rgba(91,163,255,.08);
+    border: 1px solid rgba(91,163,255,.20);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: #e8f0fc;
+}
+
+.sugam-refresh-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.sugam-refresh-icon {
+    font-size: 16px;
+    opacity: .75;
+}
+
+.sugam-refresh-time {
+    font-size: 10px;
+    color: #a3b5cc;
+    margin-top: 2px;
+}
+
+.sugam-auto-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+}
+
+.sugam-static-toggle {
+    display: inline-flex;
+    align-items: center;
+    width: 28px;
+    height: 16px;
+    background: rgba(91,163,255,.15);
+    border-radius: 8px;
+    padding: 2px;
+}
+
+.sugam-static-toggle span {
+    display: block;
+    width: 12px;
+    height: 12px;
+    background: #5ba3ff;
+    border-radius: 50%;
+    margin-left: auto;
+}
+
+.sugam-profile-card {
+    background: rgba(5,28,63,.36);
+    border: 1px solid rgba(91,163,255,.15);
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sugam-avatar {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, #3182f6 0%, #1761d2 100%);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #ffffff;
+    flex: 0 0 32px;
+}
+
+.sugam-status-dot {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 8px;
+    height: 8px;
+    background: #22c55e;
+    border: 2px solid #123568;
+    border-radius: 50%;
+}
+
+.sugam-profile-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.sugam-user-name {
+    font: 500 12px 'Inter', sans-serif;
+    color: #ffffff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sugam-user-meta {
+    font: 400 10px 'Inter', sans-serif;
+    color: #a3b5cc;
+    margin-top: 2px;
+}
+
+.sugam-role-badge {
+    color: #5ba3ff;
+    font-size: 12px;
+    opacity: .60;
+}
+
+.sugam-session-meta {
+    font: 400 9px 'Inter', sans-serif;
+    color: #6b7d99;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(91,163,255,.10);
+}
+
+[data-testid="stSidebar"] button {
+    color: #ffffff !important;
+    font-weight: 500 !important;
+}
+
+[data-testid="stSidebar"] button:hover {
+    background: rgba(91,163,255,.08) !important;
+}
+
+.sugam-footer {
+    font: 400 8px 'Inter', sans-serif;
+    color: #6b7d99;
+    text-align: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(91,163,255,.10);
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Original login logic
+if "user_id" not in st.session_state:
+    login_page()
+    st.stop()
+
+user_id = st.session_state.get("user_id")
+employee_id = st.session_state.get("employee_id", "Unknown")
+role = st.session_state.get("role", "viewer")
+display_name = st.session_state.get("display_name", "User")
+
+# Get allowed pages
+allowed_menu = get_allowed_menu(role)
+REPORTS_VISIBLE = get_allowed_reports(role)
+
+_role_class_map = {
+    "admin": "sugam-role-admin",
+    "manager": "sugam-role-manager",
+    "officer": "sugam-role-officer",
+    "viewer": "sugam-role-viewer"
+}
+role_class = _role_class_map.get(role.lower(), "sugam-role-viewer")
+
+# Session meta (current date + login time, shown once per session)
+if "_login_time" not in st.session_state:
+    st.session_state["_login_time"] = datetime.now().strftime("%I:%M %p")
+
+today_str = datetime.now().strftime("%d %b %Y")
+
+# Get user initials
+initials = "".join([name[0].upper() for name in display_name.split()[:2]]) or "U"
+
+
+with st.sidebar:
+    # ==========================================================
+    # Brand header — visual placement only; no routing logic changed.
+    # ==========================================================
+    st.markdown(
+        """
+        <div class="sugam-logo-wrap">
+            <div class="sugam-logo-mark" aria-hidden="true"></div>
+            <div class="sugam-logo-copy">
+                <div class="sugam-logo-name">SUGAM</div>
+                <div class="sugam-logo-sub">LOGISTICS</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if not allowed_menu:
+        st.warning("No access has been assigned to your role yet. Contact the admin.")
+        st.stop()
+
+    # ==========================================================
+    # Navigation — same role-filtered menu values and same radio.
+    # ==========================================================
+    st.markdown('<div class="sugam-nav-label">Navigation</div>', unsafe_allow_html=True)
+    menu = st.radio(
+        "Navigation",
+        allowed_menu,
+        label_visibility="collapsed",
+        key="sidebar_main_navigation",
+    )
+
+    # Existing reports search/folder logic is preserved exactly.
+    if menu == "📄 Reports":
+
+        # ---------------------------------
+        # SEARCH REPORT
+        # ---------------------------------
+        st.markdown(
+            """
+            <style>
+            section[data-testid="stSidebar"]
+            div[data-testid="stTextInput"] input {
+                color: #111827 !important;
+                -webkit-text-fill-color: #111827 !important;
+                background-color: #ffffff !important;
+                caret-color: #111827 !important;
+            }
+
+            section[data-testid="stSidebar"]
+            div[data-testid="stTextInput"] input::placeholder {
+                color: #64748b !important;
+                -webkit-text-fill-color: #64748b !important;
+                opacity: 1 !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        search_text = st.text_input(
+            "SEARCH REPORT",
+            placeholder="Search report",
+            key="report_search",
+        )
+
+        if search_text:
+            for department, reports in REPORTS_VISIBLE.items():
+                for report_name in reports.keys():
+                    if search_text.lower() in report_name.lower():
+                        if st.button(
+                            report_name,
+                            key=f"search_{report_name}",
+                            use_container_width=True,
+                        ):
+                            st.session_state["selected_report"] = report_name
+                            st.rerun()
+
+        st.markdown(
+            '<div class="sugam-nav-label">Report Folders</div>',
+            unsafe_allow_html=True,
+        )
+
+        if not REPORTS_VISIBLE:
+            st.info("No reports assigned to your role.")
+        else:
+            for department, reports in REPORTS_VISIBLE.items():
+                with st.expander(department, expanded=False):
+                    for report_name in reports.keys():
+                        if st.button(
+                            report_name,
+                            key=f"{department}_{report_name}",
+                            use_container_width=True,
+                        ):
+                            st.session_state["selected_report"] = report_name
+                            st.rerun()
+
+    # ==========================================================
+    # Operational status card. The displayed toggle is decorative;
+    # Refresh Data below retains the original cache-clearing logic.
+    # ==========================================================
+    st.markdown('<div class="sugam-sidebar-spacer"></div>', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="sugam-refresh-card">
+            <div class="sugam-refresh-head">
+                <span class="sugam-refresh-icon">↻</span>
+                <span>
+                    Data Last Refreshed
+                    <div class="sugam-refresh-time">{today_str} · {st.session_state['_login_time']}</div>
+                </span>
+            </div>
+            <div class="sugam-auto-row">
+                <span>Auto Refresh</span>
+                <span class="sugam-static-toggle" title="Visual status only"><span></span></span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Original refresh behavior: clear Streamlit data cache and role cache.
+    if st.button("🔄 Refresh Data", use_container_width=True, key="sidebar_refresh_data"):
+        st.cache_data.clear()
+        clear_role_cache()
+        st.success("Data refreshed!")
+
+    # ==========================================================
+    # User profile at the bottom, matching the shared design.
+    # ==========================================================
+    st.markdown(
+        f"""
+        <div class="sugam-profile-card">
+            <div class="sugam-avatar">
+                {initials}
+                <span class="sugam-status-dot"></span>
+            </div>
+            <div class="sugam-profile-text">
+                <div class="sugam-user-name" title="{display_name}">{display_name}</div>
+                <div class="sugam-user-meta">
+                    ID: {st.session_state.get('employee_id', '-')} · {role.title()}
+                </div>
+            </div>
+            <span class="sugam-role-badge">⌄</span>
+        </div>
+        <div class="sugam-session-meta">Logged in {st.session_state['_login_time']}</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Original logout behavior preserved.
+    if st.button("🚪 Logout", use_container_width=True, key="sidebar_logout"):
+        st.session_state.clear()
+        st.rerun()
+
+    st.markdown(
+        '<div class="sugam-footer">Sugam Dashboard · v1.0</div>',
+        unsafe_allow_html=True,
+    )
+
+
+# ✅ FIXED: All menu routing
+if menu == "🏠 Business Overview":
+    show_overview()
+
+elif menu == "📦 Stock Operations":
+    show_stock_operations()
+
+elif menu == "💹 P&L Dashboard":
+    show_pnl_dashboard()
+
+elif menu == "💰 Net Profit Dashboard":
+    show_net_profit_dashboard()
+
+elif menu == "📊 Comparison":
+    show_comparison()
+
+elif menu == "📦 Tariff Rate Dashboard":
+    show_tariff_rate_dashboard()
+
+elif men        / "tariff_rate_dashboard.py"
     )
 
     if not dashboard_file.is_file():
