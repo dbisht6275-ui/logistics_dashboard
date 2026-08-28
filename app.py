@@ -13,6 +13,7 @@ from pages.Home.Customer_Analysis import show_CustomerAnalysis
 
 from pages.Home.Outstanding_Analysis import show_OutstandingAnalysis
 from pages.Home.Monthly_Trend_EDD import show_monthly_trend_edd
+from pages.Home.Stock_Operations import show_stock_operations
 from pages.IT.zone_booking_turnover import show_ZoneBookingTurnover
 from pages.IT.Bangladesh_Delivery_Turnover import show_bangladesh_delivery_turnover
 from pages.IT.BookingSummaryTurnover import show_booking_summary_turnover
@@ -490,6 +491,7 @@ FULL_MENU_ITEMS = [
     "📅 Monthly Trend EDD",
     "👥 Customer Analysis",
     "🚛 Service Analysis",
+    "📦 Stock Operations",
     "📄 Reports",
     "🛠️ User Management",
 ]
@@ -548,6 +550,13 @@ if "📦 Tariff Rate Dashboard" not in allowed_menu:
     else:
         tariff_position = min(1, len(allowed_menu))
     allowed_menu.insert(tariff_position, "📦 Tariff Rate Dashboard")
+
+# Stock Operations is a core operational page. Data-scope restrictions are
+# enforced inside the page for branch/circle/zone users.
+if "📦 Stock Operations" not in allowed_menu:
+    stock_position = allowed_menu.index("🏠 Business Overview") + 1 \
+        if "🏠 Business Overview" in allowed_menu else 0
+    allowed_menu.insert(stock_position, "📦 Stock Operations")
 
 # Only keep report entries this role is allowed to see, in every department folder
 REPORTS_VISIBLE = {
@@ -763,6 +772,9 @@ with st.sidebar:
 
 if menu == "🏠 Business Overview":
     show_overview()
+
+elif menu == "📦 Stock Operations":
+    show_stock_operations()
 
 elif menu == "💹 P&L Dashboard":
     show_pnl_dashboard()
