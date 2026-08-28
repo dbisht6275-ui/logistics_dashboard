@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -134,7 +135,7 @@ def _runtime_parameters(start_date, end_date, as_on_date):
         "user_code": str(settings.get("user_code", "0000"))[:4],
         "menu_code": str(settings.get("menu_code", ""))[:30],
         "session_id": str(settings.get("session_id", "SYST"))[:18],
-        # Y is required for the IN-TRANSIT STOCK records shown in the Excel output.
+        # Y includes stock currently moving between branches.
         "show_in_transit": str(settings.get("show_in_transit", "Y"))[:1],
         "execute_report": "Y",
         "gr_numbers": None,
@@ -216,13 +217,15 @@ def normalise_stock_data(raw_df, as_on_date=None):
 
 
 @st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False, max_entries=4)
-def load_stock_data(start_date, end_date, as_on_date=None, source=None, excel_path=None):
+def load_stock_data(
+    start_date=None,
+    end_date=None,
+    as_on_date=None,
+):
     """Execute the ERP stock procedure and return dashboard-ready data."""
+    today = date.today()
+    start_date = start_date or today.replace(day=1)
+    end_date = end_date or today
     as_on_date = as_on_date or end_date
     raw_df = _fetch_stock_data(start_date, end_date, as_on_date)
     return normalise_stock_data(raw_df, as_on_date=as_on_date)
-
-
-def configured_stock_source():
-    """Compatibility helper retained for the existing dashboard page."""
-    return "stored_procedure"
