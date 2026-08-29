@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
 
+from services.stock_branch_mast import load_stock_branch_mast
 from services.stock_data_loader import load_stock_data
 
 # Use same palette as main dashboard
@@ -658,18 +659,139 @@ def _render_table(df, height=300, key="stock_grid"):
     )
 
 
-def _apply_scope(df):
-    scope = st.session_state.get("data_scope", {}) or {}
-    rules = [
-        ("branch", "branch"),
-        ("circle", "origin_circle"),
-        ("zone", "origin_zone"),
+def _find_column(df, candidates):
+    normalized = {
+        str(column).strip().casefold().replace("_", "").replace(" ", ""): column
+        for column in df.columns
+    }
+    for candidate in candidates:
+        key = candidate.strip().casefold().replace("_", "").replace(" ", "")
+        if key in normalized:
+            return normalized[key]
+    return None
+
+
+def _normalise_branch_code(series):
+    return (
+        series.fillna("")
+        .astype(str)
+        .str.strip()
+        .str.replace(r"\.0$", "", regex=True)
+        .str.zfill(3)
+    )
+
+
+def _match_scope_value(series, value):
+    if value is None or not str(value).strip():
+        return pd.Series(True, index=series.index)
+    target = str(value).strip().casefold()
+    return series.fillna("").astype(str).str.strip().str.casefold().eq(target)
+
+
+def _match_scope_values(series, values):
+    targets = {
+        str(value).strip().casefold()
+        for value in (values or [])
+        if value is not None and str(value).strip()
+    }
+    if not targets:
+        return pd.Series(True, index=series.index)
+    return series.fillna("").astype(str).str.strip().str.casefold().isin(targets)
+
+
+def _attach_stock_hierarchy(stock_df):
+    code_column = _find_column(
+        stock_df,
+        ["branchcode", "branch_code", "branch code", "stncode", "code"],
+    )
+    if not code_column:
+        raise ValueError(
+            "Stock data does not contain branchcode, so Zone/Circle rights cannot be mapped."
+        )
+
+    hierarchy = load_stock_branch_mast().copy()
+    zone_column = _find_column(hierarchy, ["zone", "zonename"])
+    circle_column = _find_column(hierarchy, ["circle", "hubname"])
+    branch_column = _find_column(hierarchy, ["branch", "branchname", "stnname"])
+    master_code_column = _find_column(
+        hierarchy, ["code", "branchcode", "branch_code", "stncode"]
+    )
+    missing = [
+        name
+        for name, column in {
+            "zone": zone_column,
+            "circle": circle_column,
+            "branch": branch_column,
+            "code": master_code_column,
+        }.items()
+        if not column
     ]
-    scoped = df.copy()
-    for scope_key, column in rules:
-        value = scope.get(scope_key)
-        if value and column in scoped.columns:
-            scoped = scoped[scoped[column].astype(str).str.casefold() == str(value).casefold()]
+    if missing:
+        raise ValueError(
+            "Stock branch hierarchy query is missing required columns: "
+            + ", ".join(missing)
+        )
+
+    hierarchy = hierarchy.rename(
+        columns={
+            zone_column: "zone",
+            circle_column: "circle",
+            branch_column: "master_branch",
+            master_code_column: "branchcode",
+        }
+    )
+    hierarchy["branchcode_key"] = _normalise_branch_code(hierarchy["branchcode"])
+
+    enriched = stock_df.copy()
+    enriched["branchcode_key"] = _normalise_branch_code(enriched[code_column])
+    enriched = enriched.merge(
+        hierarchy[["branchcode_key", "zone", "circle", "master_branch"]],
+        on="branchcode_key",
+        how="left",
+        validate="m:1",
+    )
+    enriched["scope_branch"] = enriched["master_branch"].fillna(enriched["branch"])
+    return enriched
+
+
+def _derive_role_scope(df):
+    data_scope = st.session_state.get("data_scope", {}) or {}
+    locked_zone = data_scope.get("zone")
+    locked_circle = data_scope.get("circle")
+    locked_branch = data_scope.get("branch")
+
+    if locked_branch:
+        branch_mask = (
+            _match_scope_value(df["scope_branch"], locked_branch)
+            | _match_scope_value(df["branch"], locked_branch)
+            | _match_scope_value(df["branchcode_key"], locked_branch)
+        )
+        rows = df[branch_mask]
+        if not rows.empty:
+            locked_branch = rows["scope_branch"].iloc[0]
+            locked_circle = rows["circle"].dropna().iloc[0] if rows["circle"].notna().any() else locked_circle
+            locked_zone = rows["zone"].dropna().iloc[0] if rows["zone"].notna().any() else locked_zone
+    elif locked_circle:
+        rows = df[_match_scope_value(df["circle"], locked_circle)]
+        if not rows.empty:
+            locked_circle = rows["circle"].iloc[0]
+            locked_zone = rows["zone"].dropna().iloc[0] if rows["zone"].notna().any() else locked_zone
+    elif locked_zone:
+        rows = df[_match_scope_value(df["zone"], locked_zone)]
+        if not rows.empty:
+            locked_zone = rows["zone"].iloc[0]
+
+    return locked_zone, locked_circle, locked_branch
+
+
+def _apply_locked_scope(df, locked_zone, locked_circle, locked_branch):
+    scoped = df
+    if locked_zone:
+        scoped = scoped[_match_scope_value(scoped["zone"], locked_zone)]
+    if locked_circle:
+        scoped = scoped[_match_scope_value(scoped["circle"], locked_circle)]
+    if locked_branch:
+        scoped = scoped[_match_scope_value(scoped["scope_branch"], locked_branch)]
     return scoped
 
 
@@ -822,12 +944,19 @@ def show_stock_operations():
 
     try:
         with st.spinner("Loading live stock data from ERP..."):
-            stock_df = _apply_scope(
+            stock_df = _attach_stock_hierarchy(
                 load_stock_data(
                     start_date=start_date,
                     end_date=end_date,
                     as_on_date=as_on_date,
                 )
+            )
+            locked_zone, locked_circle, locked_branch = _derive_role_scope(stock_df)
+            stock_df = _apply_locked_scope(
+                stock_df,
+                locked_zone,
+                locked_circle,
+                locked_branch,
             )
     except Exception as exc:
         st.error(f"Stock dashboard data could not be loaded: {exc}")
@@ -838,32 +967,74 @@ def show_stock_operations():
 
     with st.container(border=True):
         st.markdown('<div class="stock-filter-title">STOCK FILTERS</div>', unsafe_allow_html=True)
-        primary_filters = st.columns(4, gap="small")
+        primary_filters = st.columns(6, gap="small")
+        working_df = stock_df
+
         with primary_filters[0]:
-            branches = st.multiselect(
-                "Current Stock Branch",
-                _safe_options(stock_df, "branch"),
-                placeholder="All stock branches",
-            )
-        branch_df = stock_df[stock_df["branch"].isin(branches)] if branches else stock_df
+            if locked_zone:
+                selected_zones = st.multiselect(
+                    "Zone", [locked_zone], default=[locked_zone],
+                    disabled=True, key="stock_zone_locked",
+                )
+            else:
+                selected_zones = st.multiselect(
+                    "Zone", _safe_options(working_df, "zone"),
+                    placeholder="All zones", key="stock_zone_filter",
+                )
+        if selected_zones:
+            working_df = working_df[_match_scope_values(working_df["zone"], selected_zones)]
 
         with primary_filters[1]:
-            stock_types = st.multiselect("Stock Type", _safe_options(branch_df, "stock_type"), placeholder="All")
-        type_df = branch_df[branch_df["stock_type"].isin(stock_types)] if stock_types else branch_df
+            if locked_circle:
+                selected_circles = st.multiselect(
+                    "Circle", [locked_circle], default=[locked_circle],
+                    disabled=True, key="stock_circle_locked",
+                )
+            else:
+                selected_circles = st.multiselect(
+                    "Circle", _safe_options(working_df, "circle"),
+                    placeholder="All circles", key="stock_circle_filter",
+                )
+        if selected_circles:
+            working_df = working_df[_match_scope_values(working_df["circle"], selected_circles)]
 
         with primary_filters[2]:
+            branch_options = _safe_options(working_df, "branch")
+            if locked_branch:
+                branches = st.multiselect(
+                    "Current Stock Branch", branch_options,
+                    default=branch_options, disabled=True,
+                    key="stock_branch_locked",
+                )
+            else:
+                branches = st.multiselect(
+                    "Current Stock Branch", branch_options,
+                    placeholder="All branches", key="stock_branch_filter",
+                )
+        branch_df = working_df[_match_scope_values(working_df["branch"], branches)] if branches else working_df
+
+        with primary_filters[3]:
+            stock_types = st.multiselect(
+                "Stock Type", _safe_options(branch_df, "stock_type"),
+                placeholder="All", key="stock_type_filter",
+            )
+        type_df = branch_df[_match_scope_values(branch_df["stock_type"], stock_types)] if stock_types else branch_df
+
+        with primary_filters[4]:
             age_bands = st.multiselect(
                 "Ageing Bucket",
                 _safe_options(type_df, "age_band"),
                 placeholder="All ageing",
+                key="stock_age_filter",
             )
-        age_df = type_df[type_df["age_band"].isin(age_bands)] if age_bands else type_df
+        age_df = type_df[_match_scope_values(type_df["age_band"], age_bands)] if age_bands else type_df
 
-        with primary_filters[3]:
+        with primary_filters[5]:
             load_types = st.multiselect(
-                "Load Type", _safe_options(age_df, "load_type"), placeholder="PTL & FTL"
+                "Load Type", _safe_options(age_df, "load_type"),
+                placeholder="PTL & FTL", key="stock_load_filter",
             )
-        load_df = age_df[age_df["load_type"].isin(load_types)] if load_types else age_df
+        load_df = age_df[_match_scope_values(age_df["load_type"], load_types)] if load_types else age_df
 
         with st.expander("GR Route Filters", expanded=False):
             route_filters = st.columns(3, gap="small")
