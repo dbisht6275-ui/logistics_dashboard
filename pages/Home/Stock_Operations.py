@@ -147,7 +147,9 @@ def _inject_css():
 
         .stock-panel-title,.stock-alert-title{
             display:flex;justify-content:space-between;align-items:center;
-            font:800 9px/1.2 Inter,sans-serif;color:#20344e;margin:0 0 4px;
+            min-height:20px;position:relative;z-index:3;
+            font:800 10px/1.25 Inter,sans-serif;color:#20344e;
+            margin:0 0 8px;padding:2px 1px 4px;
         }
         .stock-panel-title span{font-size:7px;font-weight:650;color:#8290a2}
         .stock-alert-title{color:#b4232c}
@@ -192,10 +194,15 @@ def _inject_css():
         }
         .stock-insight-note{font:550 7px/1.2 Inter,sans-serif;color:#8290a2;margin-top:2px}
 
-        div[data-testid="stDataFrame"]{font-size:8px!important}
-        div[data-testid="stDataFrame"] [role="columnheader"]{
-            font-size:8px!important;font-weight:800!important;
+        div[data-testid="stDataFrame"]{
+            font-size:8px!important;margin-top:2px!important;
+            position:relative!important;z-index:1!important;
         }
+        div[data-testid="stDataFrame"] [role="columnheader"]{
+            background:#0b3158!important;color:#fff!important;
+            border-color:#274d75!important;font-size:8px!important;font-weight:800!important;
+        }
+        div[data-testid="stDataFrame"] [role="columnheader"] *{color:#fff!important}
         .stPlotlyChart{margin:-5px 0 -8px!important}
         .stock-view-all,.stock-note,.stock-footer{
             font:500 7px/1.35 Inter,sans-serif;color:#718096;
@@ -576,6 +583,22 @@ def _safe_options(df, column):
     return sorted(df[column].dropna().astype(str).unique().tolist(), key=str.casefold)
 
 
+def _styled_table(df):
+    return df.style.set_table_styles(
+        [
+            {
+                "selector": "th",
+                "props": [
+                    ("background-color", "#0b3158"),
+                    ("color", "#ffffff"),
+                    ("font-weight", "700"),
+                    ("border-color", "#274d75"),
+                ],
+            }
+        ]
+    )
+
+
 def _apply_scope(df):
     scope = st.session_state.get("data_scope", {}) or {}
     rules = [
@@ -861,7 +884,7 @@ def show_stock_operations():
             action_df["Issue"] = action_df["stock_type"].map({"IN-TRANSIT STOCK":"In-transit ageing", "TRANSIT STOCK":"Transit pending", "DELIVERY STOCK":"Delivery pending", "BOOKING STOCK":"Booking pending"}).fillna("Ageing stock")
             display = action_df[["gr_no", "origin", "destination", "branch", "Issue", "stock_days"]].rename(columns={"gr_no":"GR Number","origin":"Origin","destination":"Destination","branch":"Current Location","stock_days":"Ageing"})
             display["Ageing"] = display["Ageing"].map(lambda value: f"{value:.0f} Days")
-            st.dataframe(display, hide_index=True, use_container_width=True, height=300)
+            st.dataframe(_styled_table(display), hide_index=True, use_container_width=True, height=300)
             st.markdown('<div class="stock-view-all">Priority based on highest stock days and weight</div>', unsafe_allow_html=True)
     with branch_col:
         with st.container(border=True):
@@ -869,7 +892,7 @@ def show_stock_operations():
             branch_summary = filtered.groupby("branch").agg(Active_GR=("gr_no","nunique"),In_Transit=("stock_type",lambda s:(s=="IN-TRANSIT STOCK").sum()),Transit=("stock_type",lambda s:(s=="TRANSIT STOCK").sum()),Critical_15d=("is_critical","sum"),Avg_Dwell=("stock_days","mean")).sort_values("Active_GR",ascending=False).reset_index()
             branch_summary["Avg_Dwell"] = branch_summary["Avg_Dwell"].map(lambda value:f"{value:.1f} d")
             branch_summary=branch_summary.rename(columns={"branch":"Location","Active_GR":"Active","In_Transit":"In-Transit","Transit":"Transit Stock","Critical_15d":"15d+","Avg_Dwell":"Avg Dwell"})
-            st.dataframe(branch_summary,hide_index=True,use_container_width=True,height=300)
+            st.dataframe(_styled_table(branch_summary),hide_index=True,use_container_width=True,height=300)
 
     ageing_col, health_col = st.columns(2, gap="small")
     with ageing_col:
@@ -936,7 +959,8 @@ def show_stock_operations():
             route_summary=filtered.groupby(["origin","destination"]).agg(Active_GR=("gr_no","nunique"),Critical=("is_critical","sum"),Avg_Age=("stock_days","mean")).sort_values("Active_GR",ascending=False).reset_index()
             route_summary["Route"]=route_summary["origin"]+" → "+route_summary["destination"]
             route_summary["Avg_Age"]=route_summary["Avg_Age"].map(lambda x:f"{x:.1f} d")
-            st.dataframe(route_summary[["Route","Active_GR","Critical","Avg_Age"]].rename(columns={"Active_GR":"Active GR","Avg_Age":"Avg Age"}),hide_index=True,use_container_width=True,height=300)
+            route_display = route_summary[["Route","Active_GR","Critical","Avg_Age"]].rename(columns={"Active_GR":"Active GR","Avg_Age":"Avg Age"})
+            st.dataframe(_styled_table(route_display),hide_index=True,use_container_width=True,height=300)
     with detail_col:
         with st.container(border=True):
             st.markdown('<div class="stock-panel-title">Priority Stock Details<span>Filtered result</span></div>',unsafe_allow_html=True)
@@ -944,4 +968,5 @@ def show_stock_operations():
             details["Weight"]=details["balance_charge_weight"].map(lambda x:f"{x:,.0f} kg")
             details["To-Pay"]=details["stock_topay"].map(_fmt_money)
             details["Age"]=details["stock_days"].map(lambda x:f"{x:.0f} d")
-            st.dataframe(details[["gr_no","branch","stock_type","Weight","To-Pay","Age"]].rename(columns={"gr_no":"GR","branch":"Branch","stock_type":"Status"}),hide_index=True,use_container_width=True,height=300)
+            detail_display = details[["gr_no","branch","stock_type","Weight","To-Pay","Age"]].rename(columns={"gr_no":"GR","branch":"Branch","stock_type":"Status"})
+            st.dataframe(_styled_table(detail_display),hide_index=True,use_container_width=True,height=300)
