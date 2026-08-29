@@ -157,6 +157,27 @@ def _inject_css():
             background:#fff;font-size:13px;box-shadow:0 4px 10px rgba(20,40,65,.09);
         }
         .stock-flow-arrow{color:#a0aaba;font-size:15px;font-weight:800}
+        .stock-insight-grid{
+            display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
+            padding:5px 0 2px;
+        }
+        .stock-insight{
+            min-height:62px;padding:9px;border-radius:9px;
+            background:linear-gradient(145deg,#f8fbff,#ffffff);
+            border:1px solid #e0e8f1;position:relative;overflow:hidden;
+        }
+        .stock-insight:before{
+            content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+            background:var(--accent);
+        }
+        .stock-insight-label{
+            font:750 7px/1.15 Inter,sans-serif;color:#718096;
+            text-transform:uppercase;letter-spacing:.25px;
+        }
+        .stock-insight-value{
+            font:850 14px/1.2 Inter,sans-serif;color:#17314f;margin-top:5px;
+        }
+        .stock-insight-note{font:550 7px/1.2 Inter,sans-serif;color:#8290a2;margin-top:2px}
 
         div[data-testid="stDataFrame"]{font-size:8px!important}
         div[data-testid="stDataFrame"] [role="columnheader"]{
@@ -619,6 +640,36 @@ def _stock_flow(df):
     st.markdown(f'<div class="stock-flow-wrap"><div class="stock-flow">{"".join(flow)}</div></div>', unsafe_allow_html=True)
 
 
+def _operational_insights(df):
+    active_gr = int(df["gr_no"].nunique())
+    average_age = float(df["stock_days"].mean())
+    oldest_age = float(df["stock_days"].max())
+    critical_mask = df["is_critical"].fillna(False).astype(bool)
+    critical_gr = int(df.loc[critical_mask, "gr_no"].nunique())
+    critical_value = float(df.loc[critical_mask, "stock_topay"].sum())
+
+    branch_load = df.groupby("branch")["gr_no"].nunique().sort_values(ascending=False)
+    top_branch = str(branch_load.index[0]) if not branch_load.empty else "-"
+    top_branch_gr = int(branch_load.iloc[0]) if not branch_load.empty else 0
+
+    insights = [
+        ("Active GR", f"{active_gr:,}", "Current filtered stock", PALETTE["blue"]),
+        ("Average Age", f"{average_age:.1f} days", "Across active records", PALETTE["cyan"]),
+        ("Critical GR", f"{critical_gr:,}", f"{critical_gr / max(active_gr, 1) * 100:.1f}% of active GR", PALETTE["red"]),
+        ("Oldest Stock", f"{oldest_age:.0f} days", "Immediate review required", PALETTE["orange"]),
+        ("Critical To-Pay", _fmt_money(critical_value), "Collection exposure", PALETTE["brown"]),
+        ("Highest Load Branch", top_branch, f"{top_branch_gr:,} active GR", PALETTE["purple"]),
+    ]
+    cards = "".join(
+        f'<div class="stock-insight" style="--accent:{colour}">'
+        f'<div class="stock-insight-label">{html.escape(label)}</div>'
+        f'<div class="stock-insight-value">{html.escape(value)}</div>'
+        f'<div class="stock-insight-note">{html.escape(note)}</div></div>'
+        for label, value, note, colour in insights
+    )
+    st.markdown(f'<div class="stock-insight-grid">{cards}</div>', unsafe_allow_html=True)
+
+
 def show_stock_operations():
     _inject_css()
     today = date.today()
@@ -763,8 +814,12 @@ def show_stock_operations():
     flow_col, zone_col, load_col = st.columns([1.8, .9, .9], gap="small")
     with flow_col:
         with st.container(border=True):
-            st.markdown(f'<div class="stock-panel-title">Stock Flow (Current Snapshot)<span>{filtered.gr_no.nunique():,} active GR</span></div>', unsafe_allow_html=True)
-            _stock_flow(filtered)
+            st.markdown(
+                '<div class="stock-panel-title">Operational Risk Insights'
+                '<span>Decision snapshot</span></div>',
+                unsafe_allow_html=True,
+            )
+            _operational_insights(filtered)
     with zone_col:
         with st.container(border=True):
             _donut(filtered, "destination_zone", "Stock by Destination Zone")
