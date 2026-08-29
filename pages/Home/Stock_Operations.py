@@ -203,6 +203,29 @@ def _inject_css():
             border-color:#274d75!important;font-size:8px!important;font-weight:800!important;
         }
         div[data-testid="stDataFrame"] [role="columnheader"] *{color:#fff!important}
+        .stock-table-scroll{
+            width:100%;overflow:auto;border:1px solid #d9e2ec;
+            border-radius:7px;background:#fff;
+        }
+        table.stock-html-table{
+            width:100%;min-width:720px;border-collapse:separate;border-spacing:0;
+            font:500 10px/1.25 Inter,sans-serif;color:#26384f;
+        }
+        table.stock-html-table thead th{
+            position:sticky;top:0;z-index:5;
+            padding:9px 10px!important;text-align:left!important;
+            background:#0b3158!important;color:#ffffff!important;
+            border-right:1px solid #315578!important;
+            border-bottom:1px solid #082747!important;
+            font-weight:800!important;white-space:nowrap;
+        }
+        table.stock-html-table thead th:last-child{border-right:0!important}
+        table.stock-html-table tbody td{
+            padding:8px 10px;border-right:1px solid #e4e9ef;
+            border-bottom:1px solid #e4e9ef;white-space:nowrap;
+        }
+        table.stock-html-table tbody tr:nth-child(even){background:#f7f9fc}
+        table.stock-html-table tbody tr:hover{background:#eaf3ff}
         .stPlotlyChart{margin:-5px 0 -8px!important}
         .stock-view-all,.stock-note,.stock-footer{
             font:500 7px/1.35 Inter,sans-serif;color:#718096;
@@ -583,19 +606,17 @@ def _safe_options(df, column):
     return sorted(df[column].dropna().astype(str).unique().tolist(), key=str.casefold)
 
 
-def _styled_table(df):
-    return df.style.set_table_styles(
-        [
-            {
-                "selector": "th",
-                "props": [
-                    ("background-color", "#0b3158"),
-                    ("color", "#ffffff"),
-                    ("font-weight", "700"),
-                    ("border-color", "#274d75"),
-                ],
-            }
-        ]
+def _render_table(df, height=300):
+    table_html = df.to_html(
+        index=False,
+        escape=True,
+        classes="stock-html-table",
+        border=0,
+    )
+    st.markdown(
+        f'<div class="stock-table-scroll" style="height:{int(height)}px">'
+        f'{table_html}</div>',
+        unsafe_allow_html=True,
     )
 
 
@@ -884,7 +905,7 @@ def show_stock_operations():
             action_df["Issue"] = action_df["stock_type"].map({"IN-TRANSIT STOCK":"In-transit ageing", "TRANSIT STOCK":"Transit pending", "DELIVERY STOCK":"Delivery pending", "BOOKING STOCK":"Booking pending"}).fillna("Ageing stock")
             display = action_df[["gr_no", "origin", "destination", "branch", "Issue", "stock_days"]].rename(columns={"gr_no":"GR Number","origin":"Origin","destination":"Destination","branch":"Current Location","stock_days":"Ageing"})
             display["Ageing"] = display["Ageing"].map(lambda value: f"{value:.0f} Days")
-            st.dataframe(_styled_table(display), hide_index=True, use_container_width=True, height=300)
+            _render_table(display, height=300)
             st.markdown('<div class="stock-view-all">Priority based on highest stock days and weight</div>', unsafe_allow_html=True)
     with branch_col:
         with st.container(border=True):
@@ -892,7 +913,7 @@ def show_stock_operations():
             branch_summary = filtered.groupby("branch").agg(Active_GR=("gr_no","nunique"),In_Transit=("stock_type",lambda s:(s=="IN-TRANSIT STOCK").sum()),Transit=("stock_type",lambda s:(s=="TRANSIT STOCK").sum()),Critical_15d=("is_critical","sum"),Avg_Dwell=("stock_days","mean")).sort_values("Active_GR",ascending=False).reset_index()
             branch_summary["Avg_Dwell"] = branch_summary["Avg_Dwell"].map(lambda value:f"{value:.1f} d")
             branch_summary=branch_summary.rename(columns={"branch":"Location","Active_GR":"Active","In_Transit":"In-Transit","Transit":"Transit Stock","Critical_15d":"15d+","Avg_Dwell":"Avg Dwell"})
-            st.dataframe(_styled_table(branch_summary),hide_index=True,use_container_width=True,height=300)
+            _render_table(branch_summary, height=300)
 
     ageing_col, health_col = st.columns(2, gap="small")
     with ageing_col:
@@ -960,7 +981,7 @@ def show_stock_operations():
             route_summary["Route"]=route_summary["origin"]+" → "+route_summary["destination"]
             route_summary["Avg_Age"]=route_summary["Avg_Age"].map(lambda x:f"{x:.1f} d")
             route_display = route_summary[["Route","Active_GR","Critical","Avg_Age"]].rename(columns={"Active_GR":"Active GR","Avg_Age":"Avg Age"})
-            st.dataframe(_styled_table(route_display),hide_index=True,use_container_width=True,height=300)
+            _render_table(route_display, height=300)
     with detail_col:
         with st.container(border=True):
             st.markdown('<div class="stock-panel-title">Priority Stock Details<span>Filtered result</span></div>',unsafe_allow_html=True)
@@ -969,4 +990,4 @@ def show_stock_operations():
             details["To-Pay"]=details["stock_topay"].map(_fmt_money)
             details["Age"]=details["stock_days"].map(lambda x:f"{x:.0f} d")
             detail_display = details[["gr_no","branch","stock_type","Weight","To-Pay","Age"]].rename(columns={"gr_no":"GR","branch":"Branch","stock_type":"Status"})
-            st.dataframe(_styled_table(detail_display),hide_index=True,use_container_width=True,height=300)
+            _render_table(detail_display, height=300)
