@@ -855,7 +855,6 @@ def _stock_flow(df):
             flow.append('<div class="stock-flow-arrow">→</div>')
     st.markdown(f'<div class="stock-flow-wrap"><div class="stock-flow">{"".join(flow)}</div></div>', unsafe_allow_html=True)
 
-
 def _operational_insights(df):
     active_gr = int(df["gr_no"].nunique())
     average_age = float(df["stock_days"].mean())
