@@ -858,11 +858,15 @@ def _zone_bar(df, column, title):
         .reset_index(name="GR Count")
         .sort_values("GR Count", ascending=True)
     )
-    grouped[column] = grouped[column].fillna("Unmapped").astype(str)
+    grouped[column] = grouped[column].fillna("Unmapped").astype(str).str.strip()
+    grouped.loc[grouped[column].eq(""), column] = "Unmapped"
     total = max(int(grouped["GR Count"].sum()), 1)
     grouped["Share"] = grouped["GR Count"] / total * 100
     grouped["Label"] = grouped.apply(
-        lambda row: f"{int(row['GR Count']):,} GR  ·  {row['Share']:.1f}%",
+        lambda row: (
+            f"<b>{int(row['GR Count']):,} GR</b>  ·  "
+            f"<span style='color:#1769d2'>{row['Share']:.1f}%</span>"
+        ),
         axis=1,
     )
 
@@ -1190,6 +1194,39 @@ def show_stock_operations():
     with load_col:
         with st.container(border=True):
             _donut(filtered, "load_type", "PTL / FTL Overview")
+
+    unmapped_mask = (
+        filtered["zone"].isna()
+        | filtered["zone"].astype(str).str.strip().str.casefold().isin(
+            ["", "unmapped", "unknown", "none", "nan"]
+        )
+    )
+    unmapped_rows = filtered.loc[unmapped_mask].copy()
+    if not unmapped_rows.empty:
+        unmapped_gr = int(unmapped_rows["gr_no"].nunique())
+        with st.expander(f"Unmapped Current-Zone Branches — {unmapped_gr:,} GR"):
+            unmapped_summary = (
+                unmapped_rows.groupby(
+                    ["branchcode_key", "branch", "origin", "destination"],
+                    dropna=False,
+                )["gr_no"]
+                .nunique()
+                .reset_index(name="GR Count")
+                .sort_values("GR Count", ascending=False)
+                .rename(
+                    columns={
+                        "branchcode_key": "Branch Code",
+                        "branch": "Current Stock Branch",
+                        "origin": "Origin",
+                        "destination": "Destination",
+                    }
+                )
+            )
+            _render_table(
+                unmapped_summary,
+                height=280,
+                key="unmapped_current_zone_branches_grid",
+            )
 
     action_col, branch_col = st.columns(2, gap="small")
     with action_col:
