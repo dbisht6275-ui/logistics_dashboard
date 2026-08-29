@@ -28,21 +28,125 @@ STOCK_ORDER = [
 
 
 def _inject_css():
-    """Apply dashboard styling."""
+    """Apply compact Stock Operations dashboard styling."""
     st.markdown(
         """
         <style>
-        .main .block-container{padding:4px 10px 14px!important;max-width:100%!important}
-        .analytics-title{font:800 18px Inter,sans-serif;color:#102a49;margin:0}
-        .analytics-subtitle{font:500 10px Inter,sans-serif;color:#718096;margin-top:4px}
-        .metric-box{background:#f8fbff;border:1px solid #d8e1ec;border-radius:7px;padding:12px;text-align:center}
-        .metric-value{font:800 22px Inter,sans-serif;color:#172238}
-        .metric-label{font:500 9px Inter,sans-serif;color:#40536b}
-        .metric-change{font:600 10px Inter,sans-serif;margin-top:4px}
-        .metric-up{color:#269b54}
-        .metric-down{color:#d63f48}
-        div[data-testid="stVerticalBlockBorderWrapper"]{border-color:#dde3ea!important;box-shadow:0 1px 4px rgba(20,40,65,.05)!important}
-        .stPlotlyChart{margin-top:-6px}
+        [data-testid="stHeader"]{height:1.65rem!important;background:transparent}
+        .main .block-container{
+            padding:.15rem .85rem .8rem!important;
+            max-width:100%!important;
+        }
+        [data-testid="stVerticalBlock"]{gap:.45rem!important}
+        [data-testid="stHorizontalBlock"]{gap:.65rem!important}
+
+        .stock-title{font:800 17px/1.2 Inter,sans-serif;color:#102a49;margin:1px 0 2px}
+        .stock-sub{font:500 9px/1.3 Inter,sans-serif;color:#718096;margin:0}
+
+        div[data-testid="stDateInput"] label,
+        div[data-testid="stSelectbox"] label,
+        div[data-testid="stMultiSelect"] label,
+        div[data-testid="stTextInput"] label{
+            font-size:8px!important;font-weight:700!important;
+            color:#334155!important;margin-bottom:1px!important;
+        }
+        div[data-testid="stDateInput"] input,
+        div[data-testid="stTextInput"] input,
+        div[data-baseweb="select"]>div{
+            min-height:30px!important;height:30px!important;
+            font-size:8px!important;border-radius:6px!important;
+        }
+        div[data-testid="stButton"] button{
+            min-height:30px!important;height:30px!important;
+            padding:0 .65rem!important;border-radius:6px!important;
+            font-size:9px!important;font-weight:750!important;
+        }
+
+        div[data-testid="stVerticalBlockBorderWrapper"]{
+            border:1px solid #dde3ea!important;border-radius:7px!important;
+            box-shadow:0 1px 3px rgba(20,40,65,.04)!important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]>div{
+            padding:.55rem .65rem!important;
+        }
+        .stock-filter-divider{height:1px;background:#edf0f4;margin:1px 0 3px}
+
+        .stock-kpi{
+            min-height:76px;display:flex;align-items:flex-start;gap:7px;
+            background:#fff;border:1px solid #e1e7ef;border-radius:7px;
+            padding:8px;box-shadow:0 1px 3px rgba(20,40,65,.04);
+        }
+        .stock-kpi-red{border-color:#f4c9cc;background:#fffafa}
+        .stock-kpi-icon{
+            width:25px;height:25px;min-width:25px;border-radius:6px;
+            display:flex;align-items:center;justify-content:center;
+            font-size:12px;font-weight:800;
+        }
+        .stock-kpi-copy{min-width:0}
+        .stock-kpi-label{font:700 8px/1.15 Inter,sans-serif;color:#607086}
+        .stock-kpi-value{font:800 15px/1.2 Inter,sans-serif;color:#172238;margin-top:3px}
+        .stock-kpi-note{
+            font:500 7px/1.2 Inter,sans-serif;color:#718096;
+            margin-top:3px;white-space:normal;
+        }
+
+        .stock-panel-title,.stock-alert-title{
+            display:flex;justify-content:space-between;align-items:center;
+            font:800 9px/1.2 Inter,sans-serif;color:#20344e;margin:0 0 4px;
+        }
+        .stock-panel-title span{font-size:7px;font-weight:650;color:#8290a2}
+        .stock-alert-title{color:#b4232c}
+
+        .stock-flow-wrap{
+            width:100%;overflow-x:auto;padding:12px 4px 7px;
+        }
+        .stock-flow{
+            min-width:560px;display:flex;align-items:center;
+            justify-content:space-between;gap:5px;
+        }
+        .stock-flow-step{
+            flex:1;text-align:center;display:flex;flex-direction:column;
+            align-items:center;gap:3px;font:700 8px/1.1 Inter,sans-serif;
+        }
+        .stock-flow-step strong{font-size:13px;color:#172238}
+        .stock-flow-dot{
+            width:29px;height:29px;border:2px solid currentColor;border-radius:50%;
+            display:flex;align-items:center;justify-content:center;
+            background:#fff;font-size:12px;
+        }
+        .stock-flow-arrow{color:#a0aaba;font-size:15px;font-weight:800}
+
+        div[data-testid="stDataFrame"]{font-size:8px!important}
+        div[data-testid="stDataFrame"] [role="columnheader"]{
+            font-size:8px!important;font-weight:800!important;
+        }
+        .stPlotlyChart{margin:-5px 0 -8px!important}
+        .stock-view-all,.stock-note,.stock-footer{
+            font:500 7px/1.35 Inter,sans-serif;color:#718096;
+        }
+        .stock-view-all{text-align:right;margin-top:2px}
+        .stock-note{
+            background:#f7f9fc;border:1px solid #e3e8ef;
+            border-radius:6px;padding:6px 8px;margin-top:3px;
+        }
+        .stock-footer{text-align:center;padding-top:4px}
+        .stock-summary{
+            display:grid;grid-template-columns:repeat(7,1fr);
+            border:1px solid #dde3ea;border-radius:7px;background:#fff;
+            margin-top:2px;
+        }
+        .stock-summary span{
+            padding:6px 8px;border-right:1px solid #e8edf3;
+            font:650 7px/1.2 Inter,sans-serif;color:#718096;
+        }
+        .stock-summary span:last-child{border-right:0}
+        .stock-summary strong{display:block;font-size:11px;color:#172238;margin-top:2px}
+        .stock-critical{color:#d63f48!important}.stock-orange{color:#ed8b25!important}
+
+        @media(max-width:1000px){
+            .stock-summary{grid-template-columns:repeat(2,1fr)}
+            .stock-summary span{border-bottom:1px solid #e8edf3}
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -501,7 +605,7 @@ def show_stock_operations():
     with run_col:
         st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
         run_report = st.button(
-            "▶ Run Report",
+            "Run Report",
             type="primary",
             use_container_width=True,
             key="stock_dashboard_run_report",
@@ -516,7 +620,6 @@ def show_stock_operations():
         st.session_state["stock_dashboard_last_run"] = report_signature
 
     if st.session_state.get("stock_dashboard_last_run") != report_signature:
-        st.info("Select the required dates and click **Run Report** to load stock data.")
         return
 
     if start_date > end_date:
