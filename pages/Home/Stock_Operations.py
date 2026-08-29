@@ -19,6 +19,13 @@ PALETTE = {
     "brown": "#8a613d", "navy": "#0b3158", "text": "#172238",
 }
 
+STOCK_ORDER = [
+    "BOOKING STOCK",
+    "IN-TRANSIT STOCK",
+    "TRANSIT STOCK",
+    "DELIVERY STOCK",
+]
+
 
 def _inject_css():
     """Apply dashboard styling."""
@@ -465,7 +472,9 @@ def show_stock_operations():
     _inject_css()
     today = date.today()
     month_start = today.replace(day=1)
-    title_col, from_col, to_col, as_on_col = st.columns([2.5, .62, .62, .62], gap="small")
+    title_col, from_col, to_col, as_on_col, run_col = st.columns(
+        [2.3, .62, .62, .62, .55], gap="small"
+    )
     with title_col:
         st.markdown('<div class="stock-title">Stock Operations Control Tower</div><div class="stock-sub">Branch stock, ageing exposure and operational action queue</div>', unsafe_allow_html=True)
     with from_col:
@@ -489,6 +498,27 @@ def show_stock_operations():
             max_value=today,
             key="stock_dashboard_as_on_date",
         )
+    with run_col:
+        st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
+        run_report = st.button(
+            "▶ Run Report",
+            type="primary",
+            use_container_width=True,
+            key="stock_dashboard_run_report",
+        )
+
+    report_signature = (
+        start_date.isoformat(),
+        end_date.isoformat(),
+        as_on_date.isoformat(),
+    )
+    if run_report:
+        st.session_state["stock_dashboard_last_run"] = report_signature
+
+    if st.session_state.get("stock_dashboard_last_run") != report_signature:
+        st.info("Select the required dates and click **Run Report** to load stock data.")
+        return
+
     if start_date > end_date:
         st.error("From Date cannot be after To Date.")
         return
