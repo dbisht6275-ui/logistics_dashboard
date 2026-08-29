@@ -7,7 +7,6 @@ from services.roles import get_allowed_menu, get_allowed_reports, clear_role_cac
 
 from pages.Home.overview_tab import show_overview
 from pages.Home.PNL_Analysis import show_pnl_dashboard
-from pages.Home.Net_Profit_Analysis import show_net_profit_dashboard
 from pages.Home.comparison_tab import show_comparison
 from pages.Home.Customer_Analysis import show_CustomerAnalysis
 
@@ -493,7 +492,6 @@ section.main {
 FULL_MENU_ITEMS = [
     "🏠 Business Overview",
     "💹 P&L Dashboard",
-    "💰 Net Profit Dashboard",
     "📊 Comparison",
     "📦 Tariff Rate Dashboard",
     "📈 Outstanding Analysis",
@@ -547,6 +545,7 @@ if not st.session_state["logged_in"]:
 role = st.session_state.get("role", "viewer")
 
 allowed_menu = list(get_allowed_menu(role) or [])  # e.g. ["🏠 Overview", "📊 Comparison", ...]
+allowed_menu = [item for item in allowed_menu if item != "💰 Net Profit Dashboard"]
 allowed_reports = set(get_allowed_reports(role))    # e.g. {"📊 Zone Booking Turnover"}
 # Make the new EDD report immediately available in the Reports menu.
 allowed_reports.add("📅 Monthly Trend EDD")
@@ -787,9 +786,6 @@ elif menu == "📦 Stock Operations":
 
 elif menu == "💹 P&L Dashboard":
     show_pnl_dashboard()
-
-elif menu == "💰 Net Profit Dashboard":
-    show_net_profit_dashboard()
 
 elif menu == "📊 Comparison":
     show_comparison()
