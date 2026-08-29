@@ -1206,15 +1206,14 @@ def show_stock_operations():
         unmapped_gr = int(unmapped_rows["gr_no"].nunique())
         with st.expander(f"Unmapped Current-Zone Branches — {unmapped_gr:,} GR"):
             unmapped_summary = (
-                unmapped_rows.groupby(
-                    ["branchcode_key", "branch", "origin", "destination"],
-                    dropna=False,
-                )["gr_no"]
-                .nunique()
-                .reset_index(name="GR Count")
-                .sort_values("GR Count", ascending=False)
+                unmapped_rows[
+                    ["gr_no", "branchcode_key", "branch", "origin", "destination"]
+                ]
+                .drop_duplicates()
+                .sort_values(["branch", "gr_no"], ascending=[True, True])
                 .rename(
                     columns={
+                        "gr_no": "GR Number",
                         "branchcode_key": "Branch Code",
                         "branch": "Current Stock Branch",
                         "origin": "Origin",
