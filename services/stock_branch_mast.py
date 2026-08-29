@@ -3,9 +3,7 @@
 import pandas as pd
 import streamlit as st
 from sqlalchemy import text
-
 from services.database import get_engine
-
 
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=1)
 def load_stock_branch_mast():
