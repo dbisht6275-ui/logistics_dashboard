@@ -839,6 +839,54 @@ def _donut(df, column, title):
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
+def _zone_bar(df, column, title):
+    grouped = (
+        df.groupby(column, dropna=False)["gr_no"]
+        .nunique()
+        .reset_index(name="GR Count")
+        .sort_values("GR Count", ascending=True)
+    )
+    grouped[column] = grouped[column].fillna("Unmapped").astype(str)
+    total = max(int(grouped["GR Count"].sum()), 1)
+    grouped["Share"] = grouped["GR Count"] / total * 100
+    grouped["Label"] = grouped.apply(
+        lambda row: f"{int(row['GR Count']):,} GR  ·  {row['Share']:.1f}%",
+        axis=1,
+    )
+
+    colours = [
+        PALETTE["cyan"], PALETTE["green"], PALETTE["orange"],
+        PALETTE["purple"], PALETTE["blue"], PALETTE["brown"],
+    ]
+    fig = px.bar(
+        grouped,
+        x="GR Count",
+        y=column,
+        orientation="h",
+        text="Label",
+        color=column,
+        color_discrete_sequence=colours,
+    )
+    fig.update_traces(
+        textposition="outside",
+        textfont=dict(size=10, color="#243b55"),
+        cliponaxis=False,
+        hovertemplate="%{y}<br>%{x:,} GR<extra></extra>",
+    )
+    fig.update_layout(
+        title=dict(text=title, font=dict(size=11, color="#20344e"), x=.01),
+        height=max(245, 42 * len(grouped) + 55),
+        margin=dict(l=8, r=95, t=34, b=16),
+        showlegend=False,
+        xaxis=dict(visible=False),
+        yaxis=dict(title=None, tickfont=dict(size=9), automargin=True),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+        bargap=.30,
+    )
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
 def _stock_flow(df):
     counts = {stock_type: _count_type(df, stock_type) for stock_type in STOCK_ORDER}
     critical = int(df["is_critical"].sum())
@@ -1090,8 +1138,8 @@ def show_stock_operations():
         with column:
             st.markdown(_kpi_card(*values), unsafe_allow_html=True)
 
-    flow_col, zone_col, load_col = st.columns([1.8, .9, .9], gap="small")
-    with flow_col:
+    insight_col, load_col = st.columns([2.7, 1], gap="small")
+    with insight_col:
         with st.container(border=True):
             st.markdown(
                 '<div class="stock-panel-title">Operational Risk Insights'
@@ -1099,12 +1147,17 @@ def show_stock_operations():
                 unsafe_allow_html=True,
             )
             _operational_insights(filtered)
-    with zone_col:
-        with st.container(border=True):
-            _donut(filtered, "destination_zone", "Stock by Destination Zone")
     with load_col:
         with st.container(border=True):
             _donut(filtered, "load_type", "PTL / FTL Overview")
+
+    current_zone_col, destination_zone_col = st.columns(2, gap="small")
+    with current_zone_col:
+        with st.container(border=True):
+            _zone_bar(filtered, "zone", "Stock by Current Zone")
+    with destination_zone_col:
+        with st.container(border=True):
+            _zone_bar(filtered, "destination_zone", "Stock by Destination Zone")
 
     action_col, branch_col = st.columns(2, gap="small")
     with action_col:
