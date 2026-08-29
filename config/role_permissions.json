@@ -3,13 +3,13 @@
     "menu": [
       "🏠 Business Overview",
       "💹 P&L Dashboard",
-      "💰 Net Profit Dashboard",
       "📈 Outstanding Analysis",
       "👥 Customer Analysis",
       "📄 Reports",
-      "🛠️ User Management",
       "📅 Monthly Trend EDD",
-      "📦 Stock Operations"
+      "📦 Stock Operations",
+      "📦 Tariff Rate Dashboard",
+      "🛠️ User Management"
     ],
     "reports": [
       "📊 Zone Booking Turnover",
