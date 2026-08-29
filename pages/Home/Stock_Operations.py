@@ -918,24 +918,58 @@ def _stock_flow(df):
 
 
 def _operational_insights(df):
-    active_gr = int(df["gr_no"].nunique())
-    average_age = float(df["stock_days"].mean())
-    oldest_age = float(df["stock_days"].max())
     critical_mask = df["is_critical"].fillna(False).astype(bool)
-    critical_gr = int(df.loc[critical_mask, "gr_no"].nunique())
-    critical_value = float(df.loc[critical_mask, "stock_topay"].sum())
+    overdue_gr = int(df.loc[df["is_edd_overdue"].fillna(False), "gr_no"].nunique())
+    missing_edd_gr = int(df.loc[df["edd"].isna(), "gr_no"].nunique())
+    critical_delivery = int(
+        df.loc[
+            critical_mask & df["stock_type"].eq("DELIVERY STOCK"), "gr_no"
+        ].nunique()
+    )
+    critical_transit = int(
+        df.loc[
+            critical_mask
+            & df["stock_type"].isin(["IN-TRANSIT STOCK", "TRANSIT STOCK"]),
+            "gr_no",
+        ].nunique()
+    )
 
-    branch_load = df.groupby("branch")["gr_no"].nunique().sort_values(ascending=False)
-    top_branch = str(branch_load.index[0]) if not branch_load.empty else "-"
-    top_branch_gr = int(branch_load.iloc[0]) if not branch_load.empty else 0
+    route_risk = (
+        df.loc[critical_mask]
+        .groupby(["origin", "destination"])["gr_no"]
+        .nunique()
+        .sort_values(ascending=False)
+    )
+    if route_risk.empty:
+        risk_route, risk_route_gr = "-", 0
+    else:
+        origin, destination = route_risk.index[0]
+        risk_route = f"{origin} → {destination}"
+        risk_route_gr = int(route_risk.iloc[0])
+
+    reason_source = df[
+        ~df["reason_category"].astype(str).str.strip().str.casefold().isin(
+            ["", "unknown", "none", "nan"]
+        )
+    ]
+    reason_counts = (
+        reason_source.groupby("reason_category")["gr_no"]
+        .nunique()
+        .sort_values(ascending=False)
+    )
+    if reason_counts.empty:
+        top_reason, top_reason_gr = "Not recorded", 0
+    else:
+        top_reason = str(reason_counts.index[0])
+        top_reason_gr = int(reason_counts.iloc[0])
 
     insights = [
-        ("Active GR", f"{active_gr:,}", "Current filtered stock", PALETTE["blue"]),
-        ("Average Age", f"{average_age:.1f} days", "Across active records", PALETTE["cyan"]),
-        ("Critical GR", f"{critical_gr:,}", f"{critical_gr / max(active_gr, 1) * 100:.1f}% of active GR", PALETTE["red"]),
-        ("Oldest Stock", f"{oldest_age:.0f} days", "Immediate review required", PALETTE["orange"]),
-        ("Critical To-Pay", _fmt_money(critical_value), "Collection exposure", PALETTE["brown"]),
-        ("Highest Load Branch", top_branch, f"{top_branch_gr:,} active GR", PALETTE["purple"]),
+        ("EDD Overdue", f"{overdue_gr:,} GR", "Past committed delivery date", PALETTE["red"]),
+        ("Missing EDD", f"{missing_edd_gr:,} GR", "EDD needs to be updated", PALETTE["orange"]),
+        ("Critical Delivery", f"{critical_delivery:,} GR", "Delivery stock aged 15+ days", PALETTE["green"]),
+        ("Critical Transit", f"{critical_transit:,} GR", "Transit stock aged 15+ days", PALETTE["purple"]),
+        ("Highest-Risk Route", risk_route, f"{risk_route_gr:,} critical GR", PALETTE["blue"]),
+        ("Top Delay Reason", top_reason, f"{top_reason_gr:,} affected GR", PALETTE["brown"]),
     ]
     cards = "".join(
         f'<div class="stock-insight" style="--accent:{colour}">'
@@ -1154,8 +1188,8 @@ def show_stock_operations():
     with insight_col:
         with st.container(border=True):
             st.markdown(
-                '<div class="stock-panel-title">Operational Risk Insights'
-                '<span>Decision snapshot</span></div>',
+                '<div class="stock-panel-title">Exception & Delay Insights'
+                '<span>Action-focused snapshot</span></div>',
                 unsafe_allow_html=True,
             )
             _operational_insights(filtered)
