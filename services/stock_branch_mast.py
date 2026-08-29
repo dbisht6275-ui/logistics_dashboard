@@ -39,7 +39,6 @@ def load_stock_branch_mast():
             ON C.STNCODE = S.STNCODE
         WHERE
             (S.OWNED = 'Y' OR S.ISAGENCY = 'Y')
-            AND LEN(S.STNCODE) = 3
             
         ORDER BY
             IIF(
