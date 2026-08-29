@@ -43,8 +43,8 @@ def _inject_css():
             padding:.15rem 1rem 1rem!important;
             max-width:100%!important;
         }
-        [data-testid="stVerticalBlock"]{gap:.45rem!important}
-        [data-testid="stHorizontalBlock"]{gap:.65rem!important}
+        [data-testid="stVerticalBlock"]{gap:.25rem!important}
+        [data-testid="stHorizontalBlock"]{gap:.5rem!important}
 
         .stock-hero{
             display:flex;justify-content:space-between;align-items:center;
@@ -53,7 +53,7 @@ def _inject_css():
             box-shadow:none;margin:0;color:#fff;background:transparent;padding:0;
         }
         .st-key-stock_header{
-            padding:11px 15px 8px;border-radius:12px;
+            padding:7px 12px;border-radius:10px;
             background:linear-gradient(115deg,#082b57 0%,#10579b 58%,#1587b8 100%);
             box-shadow:0 7px 18px rgba(8,43,87,.18);margin:0 0 4px;
         }
@@ -63,8 +63,8 @@ def _inject_css():
             color:#ffffff!important;font-weight:800!important;
         }
         .st-key-stock_header [data-testid="stHorizontalBlock"]{align-items:end}
-        .stock-title{font:800 19px/1.15 Inter,sans-serif;color:#fff;margin:0 0 3px}
-        .stock-sub{font:500 9px/1.3 Inter,sans-serif;color:#d9eaff;margin:0}
+        .stock-title{font:800 16px/1.15 Inter,sans-serif;color:#fff;margin:0 0 2px}
+        .stock-sub{font:500 7px/1.25 Inter,sans-serif;color:#d9eaff;margin:0}
         .stock-live{
             display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.13);
             border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:5px 10px;
@@ -77,7 +77,7 @@ def _inject_css():
             background:#f8fafc!important;
         }
         div[data-testid="stExpander"] summary{
-            min-height:30px!important;font-size:8px!important;font-weight:750!important;
+            min-height:25px!important;height:25px!important;font-size:8px!important;font-weight:750!important;
             color:#38516d!important;
         }
 
@@ -91,18 +91,18 @@ def _inject_css():
         div[data-testid="stDateInput"] input,
         div[data-testid="stTextInput"] input,
         div[data-baseweb="select"]>div{
-            min-height:30px!important;height:30px!important;
+            min-height:27px!important;height:27px!important;
             font-size:8px!important;border-radius:6px!important;
         }
         div[data-testid="stButton"] button{
-            min-height:30px!important;height:30px!important;
+            min-height:27px!important;height:27px!important;
             padding:0 .65rem!important;border-radius:7px!important;border:0!important;
             background:linear-gradient(100deg,#ef4b4f,#e22f45)!important;
             box-shadow:0 4px 10px rgba(226,47,69,.22)!important;
             font-size:9px!important;font-weight:800!important;
         }
         div[data-testid="stDownloadButton"] button{
-            min-height:31px!important;height:31px!important;border:0!important;
+            min-height:27px!important;height:27px!important;border:0!important;
             border-radius:7px!important;color:#fff!important;
             background:linear-gradient(100deg,#1473c9,#0d9bb5)!important;
             box-shadow:0 4px 10px rgba(20,115,201,.2)!important;
@@ -119,30 +119,30 @@ def _inject_css():
             box-shadow:0 3px 10px rgba(20,40,65,.055)!important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"]>div{
-            padding:.55rem .65rem!important;
+            padding:.35rem .55rem!important;
         }
         .stock-filter-divider{height:1px;background:#edf0f4;margin:1px 0 3px}
 
         .stock-kpi{
-            position:relative;overflow:hidden;min-height:88px;display:flex;align-items:flex-start;gap:8px;
+            position:relative;overflow:hidden;min-height:64px;display:flex;align-items:flex-start;gap:7px;
             background:linear-gradient(145deg,#fff,#f9fbfe);border:1px solid #dfe7f0;border-radius:10px;
-            padding:10px 9px;box-shadow:0 4px 12px rgba(20,40,65,.065);
+            padding:7px 8px;box-shadow:0 4px 12px rgba(20,40,65,.065);
             transition:transform .15s ease,box-shadow .15s ease;
         }
         .stock-kpi:before{content:"";position:absolute;left:0;top:0;right:0;height:3px;background:var(--tone)}
         .stock-kpi:hover{transform:translateY(-2px);box-shadow:0 7px 16px rgba(20,40,65,.11)}
         .stock-kpi-red{border-color:#f4c9cc;background:#fffafa}
         .stock-kpi-icon{
-            width:29px;height:29px;min-width:29px;border-radius:8px;
+            width:25px;height:25px;min-width:25px;border-radius:7px;
             display:flex;align-items:center;justify-content:center;
             font-size:12px;font-weight:800;
         }
         .stock-kpi-copy{min-width:0}
         .stock-kpi-label{font:750 8px/1.15 Inter,sans-serif;color:#607086;text-transform:uppercase;letter-spacing:.2px}
-        .stock-kpi-value{font:850 16px/1.2 Inter,sans-serif;color:#142a44;margin-top:4px}
+        .stock-kpi-value{font:850 15px/1.15 Inter,sans-serif;color:#142a44;margin-top:2px}
         .stock-kpi-note{
             font:500 7px/1.2 Inter,sans-serif;color:#718096;
-            margin-top:3px;white-space:normal;
+            margin-top:2px;white-space:normal;
         }
 
         .stock-panel-title,.stock-alert-title{
@@ -688,14 +688,15 @@ def show_stock_operations():
     today = date.today()
     month_start = today.replace(day=1)
     with st.container(key="stock_header"):
-        st.markdown(
-            '<div class="stock-hero"><div><div class="stock-title">Stock Operations Control Tower</div>'
-            '<div class="stock-sub">Live branch stock · ageing exposure · operational action queue</div></div></div>',
-            unsafe_allow_html=True,
+        title_col, from_col, to_col, as_on_col, run_col, csv_col = st.columns(
+            [1.8, .58, .58, .58, .5, .55], gap="small"
         )
-        spacer_col, from_col, to_col, as_on_col, run_col = st.columns(
-            [2.3, .62, .62, .62, .55], gap="small"
-        )
+        with title_col:
+            st.markdown(
+                '<div class="stock-hero"><div><div class="stock-title">Stock Operations Control Tower</div>'
+                '<div class="stock-sub">Branch stock · ageing exposure · operational action queue</div></div></div>',
+                unsafe_allow_html=True,
+            )
         with from_col:
             start_date = st.date_input(
                 "From Date", value=month_start, max_value=today,
@@ -716,6 +717,8 @@ def show_stock_operations():
                 "Run Report", type="primary", use_container_width=True,
                 key="stock_dashboard_run_report",
             )
+        with csv_col:
+            download_placeholder = st.empty()
 
     report_signature = (
         start_date.isoformat(),
@@ -809,16 +812,14 @@ def show_stock_operations():
         st.warning("No records match the selected filters.")
         return
 
-    download_spacer, download_col = st.columns([6.2, 1])
-    with download_col:
-        st.download_button(
-            "Download CSV",
-            data=filtered.to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"stock_operations_{as_on_date:%d-%m-%Y}.csv",
-            mime="text/csv",
-            use_container_width=True,
-            key="stock_dashboard_download_csv",
-        )
+    download_placeholder.download_button(
+        "Download CSV",
+        data=filtered.to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"stock_operations_{as_on_date:%d-%m-%Y}.csv",
+        mime="text/csv",
+        use_container_width=True,
+        key="stock_dashboard_download_csv",
+    )
 
     type_counts = {stock_type: _count_type(filtered, stock_type) for stock_type in STOCK_ORDER}
     critical = int(filtered["is_critical"].sum())
@@ -876,7 +877,12 @@ def show_stock_operations():
             age_summary = filtered.groupby("age_band", observed=True)["gr_no"].nunique().reindex(["0-7 Days", "8-14 Days", "15+ Days"], fill_value=0).reset_index(name="GR Count")
             fig = px.bar(age_summary, x="GR Count", y="age_band", orientation="h", color="age_band", color_discrete_map={"0-7 Days":"#48a864","8-14 Days":"#f1bd42","15+ Days":"#df4742"}, text="GR Count")
             fig.update_layout(title=dict(text="Ageing – Stock",font=dict(size=11),x=.01),height=290,margin=dict(l=5,r=28,t=30,b=5),showlegend=False,xaxis=dict(visible=False),yaxis_title=None,paper_bgcolor="white",plot_bgcolor="white",font=dict(size=8))
-            fig.update_traces(textposition="outside", hovertemplate="%{y}: %{x:,} GR<extra></extra>")
+            fig.update_traces(
+                textposition="outside",
+                textfont=dict(size=13, color="#20344e"),
+                cliponaxis=False,
+                hovertemplate="%{y}: %{x:,} GR<extra></extra>",
+            )
             st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
     with health_col:
         with st.container(border=True):
@@ -887,18 +893,40 @@ def show_stock_operations():
                 key="stock_age_distribution_period",
                 label_visibility="collapsed",
             )
-            bucket_days = {"D": 1, "M": 30, "Q": 90, "Y": 365}[view]
             trend_source = filtered[["gr_no", "stock_days"]].copy()
             trend_source["stock_days"] = trend_source["stock_days"].fillna(0).clip(lower=0)
-            trend_source["Period No"] = (trend_source["stock_days"] // bucket_days).astype(int)
+            trend_source["Stock Date"] = (
+                pd.Timestamp(as_on_date)
+                - pd.to_timedelta(trend_source["stock_days"], unit="D")
+            )
             if view == "D":
-                trend_source["Age Period"] = trend_source["stock_days"].map(lambda value: f"{int(value)}d")
+                trend_source["Period Key"] = trend_source["Stock Date"].dt.floor("D")
+                trend_source["Period"] = trend_source["Stock Date"].dt.strftime("%d %b %Y")
+            elif view == "M":
+                trend_source["Period Key"] = trend_source["Stock Date"].dt.to_period("M").dt.start_time
+                trend_source["Period"] = trend_source["Stock Date"].dt.strftime("%b %Y")
+            elif view == "Q":
+                trend_source["Period Key"] = trend_source["Stock Date"].dt.to_period("Q").dt.start_time
+                trend_source["Period"] = (
+                    "Q" + trend_source["Stock Date"].dt.quarter.astype(str)
+                    + " " + trend_source["Stock Date"].dt.year.astype(str)
+                )
             else:
-                trend_source["Age Period"] = trend_source["Period No"].map(lambda value: f"{int(value) + 1}{view}")
-            trend = trend_source.groupby(["Period No", "Age Period"])["gr_no"].nunique().reset_index(name="GR Count").sort_values("Period No")
-            fig=px.bar(trend,x="Age Period",y="GR Count",text="GR Count",color_discrete_sequence=[PALETTE["blue"]])
-            fig.update_traces(textposition="outside",cliponaxis=False,hovertemplate="%{x}: %{y:,} GR<extra></extra>")
-            fig.update_layout(title=dict(text="Stock Age Distribution",font=dict(size=11),x=.01),height=255,margin=dict(l=8,r=8,t=30,b=25),xaxis_title=None,yaxis_title="GR Count",paper_bgcolor="white",plot_bgcolor="white",font=dict(size=8))
+                trend_source["Period Key"] = pd.to_datetime(
+                    trend_source["Stock Date"].dt.year.astype(str) + "-01-01"
+                )
+                trend_source["Period"] = trend_source["Stock Date"].dt.strftime("%Y")
+            trend = (
+                trend_source.groupby(["Period Key", "Period"])["gr_no"]
+                .nunique().reset_index(name="GR Count").sort_values("Period Key")
+            )
+            fig=px.bar(trend,x="Period",y="GR Count",text="GR Count",color_discrete_sequence=[PALETTE["blue"]])
+            fig.update_traces(
+                textposition="outside",cliponaxis=False,
+                textfont=dict(size=13, color="#20344e"),
+                hovertemplate="%{x}: %{y:,} GR<extra></extra>",
+            )
+            fig.update_layout(title=dict(text="Stock Date Distribution",font=dict(size=11),x=.01),height=255,margin=dict(l=8,r=8,t=32,b=35),xaxis_title=None,yaxis_title="GR Count",paper_bgcolor="white",plot_bgcolor="white",font=dict(size=9),xaxis=dict(tickangle=-30 if view=="D" else 0))
             st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
 
     route_col, detail_col = st.columns(2, gap="small")
