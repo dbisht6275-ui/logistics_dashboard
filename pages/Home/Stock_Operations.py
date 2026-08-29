@@ -32,8 +32,13 @@ def _inject_css():
     st.markdown(
         """
         <style>
-        [data-testid="stHeader"]{height:1.65rem!important;background:transparent}
+        [data-testid="stHeader"]{height:1.8rem!important;background:transparent}
         [data-testid="stAppViewContainer"]{background:#f4f7fb}
+        [data-testid="stAppViewBlockContainer"],
+        .main .block-container,
+        .block-container{
+            padding-top:.1rem!important;
+        }
         .main .block-container{
             padding:.15rem 1rem 1rem!important;
             max-width:100%!important;
@@ -53,6 +58,10 @@ def _inject_css():
             box-shadow:0 7px 18px rgba(8,43,87,.18);margin:0 0 4px;
         }
         .st-key-stock_header label{color:#e9f4ff!important}
+        .st-key-stock_header div[data-testid="stDateInput"] label,
+        .st-key-stock_header div[data-testid="stDateInput"] label p{
+            color:#ffffff!important;font-weight:800!important;
+        }
         .st-key-stock_header [data-testid="stHorizontalBlock"]{align-items:end}
         .stock-title{font:800 19px/1.15 Inter,sans-serif;color:#fff;margin:0 0 3px}
         .stock-sub{font:500 9px/1.3 Inter,sans-serif;color:#d9eaff;margin:0}
@@ -82,6 +91,13 @@ def _inject_css():
             padding:0 .65rem!important;border-radius:7px!important;border:0!important;
             background:linear-gradient(100deg,#ef4b4f,#e22f45)!important;
             box-shadow:0 4px 10px rgba(226,47,69,.22)!important;
+            font-size:9px!important;font-weight:800!important;
+        }
+        div[data-testid="stDownloadButton"] button{
+            min-height:31px!important;height:31px!important;border:0!important;
+            border-radius:7px!important;color:#fff!important;
+            background:linear-gradient(100deg,#1473c9,#0d9bb5)!important;
+            box-shadow:0 4px 10px rgba(20,115,201,.2)!important;
             font-size:9px!important;font-weight:800!important;
         }
 
@@ -610,8 +626,7 @@ def show_stock_operations():
     with st.container(key="stock_header"):
         st.markdown(
             '<div class="stock-hero"><div><div class="stock-title">Stock Operations Control Tower</div>'
-            '<div class="stock-sub">Live branch stock · ageing exposure · operational action queue</div></div>'
-            '<div class="stock-live">LIVE ERP DATA</div></div>',
+            '<div class="stock-sub">Live branch stock · ageing exposure · operational action queue</div></div></div>',
             unsafe_allow_html=True,
         )
         spacer_col, from_col, to_col, as_on_col, run_col = st.columns(
@@ -717,6 +732,17 @@ def show_stock_operations():
     if filtered.empty:
         st.warning("No records match the selected filters.")
         return
+
+    download_spacer, download_col = st.columns([6.2, 1])
+    with download_col:
+        st.download_button(
+            "Download CSV",
+            data=filtered.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"stock_operations_{as_on_date:%d-%m-%Y}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            key="stock_dashboard_download_csv",
+        )
 
     type_counts = {stock_type: _count_type(filtered, stock_type) for stock_type in STOCK_ORDER}
     critical = int(filtered["is_critical"].sum())
