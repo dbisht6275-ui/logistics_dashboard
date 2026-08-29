@@ -180,7 +180,7 @@ def normalise_stock_data(raw_df, as_on_date=None):
             raise RuntimeError(message)
 
     df = df.rename(columns={key: value for key, value in COLUMN_ALIASES.items() if key in df.columns})
-    required = {"branch", "stock_type", "gr_no"}
+    required = {"branch_code", "branch", "stock_type", "gr_no"}
     missing = sorted(required.difference(df.columns))
     if missing:
         raise ValueError(
@@ -188,6 +188,16 @@ def normalise_stock_data(raw_df, as_on_date=None):
         )
 
     df = df[df["gr_no"].notna() & df["branch"].notna()].copy()
+    cleaned_branch_code = (
+        df["branch_code"]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .str.replace(r"\.0$", "", regex=True)
+    )
+    df = df[cleaned_branch_code.ne("")].copy()
+    df["branch_code"] = cleaned_branch_code.loc[df.index].str.zfill(3)
+
     for column in NUMERIC_COLUMNS:
         if column not in df.columns:
             df[column] = 0.0
