@@ -36,13 +36,25 @@ def _inject_css():
         <style>
         [data-testid="stHeader"]{height:1.8rem!important;background:transparent}
         [data-testid="stAppViewContainer"]{background:#f4f7fb}
+        [data-testid="stMainBlockContainer"],
         [data-testid="stAppViewBlockContainer"],
         .main .block-container,
         .block-container{
             padding-top:.1rem!important;
+            padding-left:.75rem!important;
+            padding-right:.75rem!important;
+            width:100%!important;
+            max-width:100%!important;
         }
         .main .block-container{
-            padding:.15rem 1rem 1rem!important;
+            padding-top:.15rem!important;
+            padding-bottom:1rem!important;
+            max-width:100%!important;
+        }
+        section.main,
+        section.main>div,
+        [data-testid="stAppViewContainer"] .main{
+            width:100%!important;
             max-width:100%!important;
         }
         [data-testid="stVerticalBlock"]{gap:.25rem!important}
