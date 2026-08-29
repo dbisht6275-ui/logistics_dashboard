@@ -971,14 +971,10 @@ def _operational_insights(df):
         ("Highest-Risk Route", risk_route, f"{risk_route_gr:,} critical GR", PALETTE["blue"]),
         ("Top Delay Reason", top_reason, f"{top_reason_gr:,} affected GR", PALETTE["brown"]),
     ]
-    cards = "".join(
-        f'<div class="stock-insight" style="--accent:{colour}">'
-        f'<div class="stock-insight-label">{html.escape(label)}</div>'
-        f'<div class="stock-insight-value">{html.escape(value)}</div>'
-        f'<div class="stock-insight-note">{html.escape(note)}</div></div>'
-        for label, value, note, colour in insights
+    return pd.DataFrame(
+        [(label, value, note) for label, value, note, _ in insights],
+        columns=["Exception", "Current Position", "Action / Meaning"],
     )
-    st.markdown(f'<div class="stock-insight-grid">{cards}</div>', unsafe_allow_html=True)
 
 
 def show_stock_operations():
@@ -1184,26 +1180,16 @@ def show_stock_operations():
         with column:
             st.markdown(_kpi_card(*values), unsafe_allow_html=True)
 
-    insight_col, load_col = st.columns([2.7, 1], gap="small")
-    with insight_col:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="stock-panel-title">Exception & Delay Insights'
-                '<span>Action-focused snapshot</span></div>',
-                unsafe_allow_html=True,
-            )
-            _operational_insights(filtered)
-    with load_col:
-        with st.container(border=True):
-            _donut(filtered, "load_type", "PTL / FTL Overview")
-
-    current_zone_col, destination_zone_col = st.columns(2, gap="small")
+    current_zone_col, destination_zone_col, load_col = st.columns(3, gap="small")
     with current_zone_col:
         with st.container(border=True):
             _zone_bar(filtered, "zone", "Stock by Current Zone")
     with destination_zone_col:
         with st.container(border=True):
             _zone_bar(filtered, "destination_zone", "Stock by Destination Zone")
+    with load_col:
+        with st.container(border=True):
+            _donut(filtered, "load_type", "PTL / FTL Overview")
 
     action_col, branch_col = st.columns(2, gap="small")
     with action_col:
@@ -1279,6 +1265,18 @@ def show_stock_operations():
             )
             fig.update_layout(title=dict(text="Stock Date Distribution",font=dict(size=11),x=.01),height=255,margin=dict(l=8,r=8,t=32,b=35),xaxis_title=None,yaxis_title="GR Count",paper_bgcolor="white",plot_bgcolor="white",font=dict(size=9),xaxis=dict(tickangle=-30 if view=="D" else 0))
             st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+
+    with st.container(border=True):
+        st.markdown(
+            '<div class="stock-panel-title">Exception & Delay Analysis'
+            '<span>Action-focused details · not part of KPI</span></div>',
+            unsafe_allow_html=True,
+        )
+        _render_table(
+            _operational_insights(filtered),
+            height=245,
+            key="exception_delay_analysis_grid",
+        )
 
     route_col, detail_col = st.columns(2, gap="small")
     with route_col:
