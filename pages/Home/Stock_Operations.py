@@ -33,15 +33,29 @@ def _inject_css():
         """
         <style>
         [data-testid="stHeader"]{height:1.65rem!important;background:transparent}
+        [data-testid="stAppViewContainer"]{background:#f4f7fb}
         .main .block-container{
-            padding:.15rem .85rem .8rem!important;
+            padding:.15rem 1rem 1rem!important;
             max-width:100%!important;
         }
         [data-testid="stVerticalBlock"]{gap:.45rem!important}
         [data-testid="stHorizontalBlock"]{gap:.65rem!important}
 
-        .stock-title{font:800 17px/1.2 Inter,sans-serif;color:#102a49;margin:1px 0 2px}
-        .stock-sub{font:500 9px/1.3 Inter,sans-serif;color:#718096;margin:0}
+        .stock-hero{
+            display:flex;justify-content:space-between;align-items:center;
+            padding:13px 17px;border-radius:12px;
+            background:linear-gradient(115deg,#082b57 0%,#10579b 58%,#1587b8 100%);
+            box-shadow:0 7px 18px rgba(8,43,87,.18);margin:0 0 4px;color:#fff;
+        }
+        .stock-title{font:800 19px/1.15 Inter,sans-serif;color:#fff;margin:0 0 3px}
+        .stock-sub{font:500 9px/1.3 Inter,sans-serif;color:#d9eaff;margin:0}
+        .stock-live{
+            display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.13);
+            border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:5px 10px;
+            font:750 8px Inter,sans-serif;letter-spacing:.4px;
+        }
+        .stock-live:before{content:"";width:7px;height:7px;border-radius:50%;background:#43e594;box-shadow:0 0 0 4px rgba(67,229,148,.15)}
+        .stock-filter-title{font:800 10px Inter,sans-serif;color:#193653;margin-bottom:2px}
 
         div[data-testid="stDateInput"] label,
         div[data-testid="stSelectbox"] label,
@@ -58,13 +72,15 @@ def _inject_css():
         }
         div[data-testid="stButton"] button{
             min-height:30px!important;height:30px!important;
-            padding:0 .65rem!important;border-radius:6px!important;
-            font-size:9px!important;font-weight:750!important;
+            padding:0 .65rem!important;border-radius:7px!important;border:0!important;
+            background:linear-gradient(100deg,#ef4b4f,#e22f45)!important;
+            box-shadow:0 4px 10px rgba(226,47,69,.22)!important;
+            font-size:9px!important;font-weight:800!important;
         }
 
         div[data-testid="stVerticalBlockBorderWrapper"]{
-            border:1px solid #dde3ea!important;border-radius:7px!important;
-            box-shadow:0 1px 3px rgba(20,40,65,.04)!important;
+            background:#fff!important;border:1px solid #dce5ef!important;border-radius:10px!important;
+            box-shadow:0 3px 10px rgba(20,40,65,.055)!important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"]>div{
             padding:.55rem .65rem!important;
@@ -72,19 +88,22 @@ def _inject_css():
         .stock-filter-divider{height:1px;background:#edf0f4;margin:1px 0 3px}
 
         .stock-kpi{
-            min-height:76px;display:flex;align-items:flex-start;gap:7px;
-            background:#fff;border:1px solid #e1e7ef;border-radius:7px;
-            padding:8px;box-shadow:0 1px 3px rgba(20,40,65,.04);
+            position:relative;overflow:hidden;min-height:88px;display:flex;align-items:flex-start;gap:8px;
+            background:linear-gradient(145deg,#fff,#f9fbfe);border:1px solid #dfe7f0;border-radius:10px;
+            padding:10px 9px;box-shadow:0 4px 12px rgba(20,40,65,.065);
+            transition:transform .15s ease,box-shadow .15s ease;
         }
+        .stock-kpi:before{content:"";position:absolute;left:0;top:0;right:0;height:3px;background:var(--tone)}
+        .stock-kpi:hover{transform:translateY(-2px);box-shadow:0 7px 16px rgba(20,40,65,.11)}
         .stock-kpi-red{border-color:#f4c9cc;background:#fffafa}
         .stock-kpi-icon{
-            width:25px;height:25px;min-width:25px;border-radius:6px;
+            width:29px;height:29px;min-width:29px;border-radius:8px;
             display:flex;align-items:center;justify-content:center;
             font-size:12px;font-weight:800;
         }
         .stock-kpi-copy{min-width:0}
-        .stock-kpi-label{font:700 8px/1.15 Inter,sans-serif;color:#607086}
-        .stock-kpi-value{font:800 15px/1.2 Inter,sans-serif;color:#172238;margin-top:3px}
+        .stock-kpi-label{font:750 8px/1.15 Inter,sans-serif;color:#607086;text-transform:uppercase;letter-spacing:.2px}
+        .stock-kpi-value{font:850 16px/1.2 Inter,sans-serif;color:#142a44;margin-top:4px}
         .stock-kpi-note{
             font:500 7px/1.2 Inter,sans-serif;color:#718096;
             margin-top:3px;white-space:normal;
@@ -110,9 +129,9 @@ def _inject_css():
         }
         .stock-flow-step strong{font-size:13px;color:#172238}
         .stock-flow-dot{
-            width:29px;height:29px;border:2px solid currentColor;border-radius:50%;
+            width:36px;height:36px;border:2px solid currentColor;border-radius:50%;
             display:flex;align-items:center;justify-content:center;
-            background:#fff;font-size:12px;
+            background:#fff;font-size:13px;box-shadow:0 4px 10px rgba(20,40,65,.09);
         }
         .stock-flow-arrow{color:#a0aaba;font-size:15px;font-weight:800}
 
@@ -518,7 +537,7 @@ def _apply_scope(df):
 def _kpi_card(label, value, note, icon, tone, critical=False):
     css = " stock-kpi-red" if critical else ""
     return f"""
-    <div class="stock-kpi{css}">
+    <div class="stock-kpi{css}" style="--tone:{tone}">
       <div class="stock-kpi-icon" style="background:{tone}18;color:{tone}">{icon}</div>
       <div class="stock-kpi-copy"><div class="stock-kpi-label">{html.escape(label)}</div>
       <div class="stock-kpi-value">{html.escape(str(value))}</div>
@@ -576,11 +595,15 @@ def show_stock_operations():
     _inject_css()
     today = date.today()
     month_start = today.replace(day=1)
-    title_col, from_col, to_col, as_on_col, run_col = st.columns(
+    st.markdown(
+        '<div class="stock-hero"><div><div class="stock-title">Stock Operations Control Tower</div>'
+        '<div class="stock-sub">Live branch stock · ageing exposure · operational action queue</div></div>'
+        '<div class="stock-live">LIVE ERP DATA</div></div>',
+        unsafe_allow_html=True,
+    )
+    spacer_col, from_col, to_col, as_on_col, run_col = st.columns(
         [2.3, .62, .62, .62, .55], gap="small"
     )
-    with title_col:
-        st.markdown('<div class="stock-title">Stock Operations Control Tower</div><div class="stock-sub">Branch stock, ageing exposure and operational action queue</div>', unsafe_allow_html=True)
     with from_col:
         start_date = st.date_input(
             "From Date",
@@ -646,6 +669,7 @@ def show_stock_operations():
         return
 
     with st.container(border=True):
+        st.markdown('<div class="stock-filter-title">FILTER & SEARCH</div>', unsafe_allow_html=True)
         filter_row_1 = st.columns(5, gap="small")
         with filter_row_1[0]:
             origin_zones = st.multiselect("Origin Zone", _safe_options(stock_df, "origin_zone"), placeholder="All")
