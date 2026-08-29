@@ -45,8 +45,15 @@ def _inject_css():
             display:flex;justify-content:space-between;align-items:center;
             padding:13px 17px;border-radius:12px;
             background:linear-gradient(115deg,#082b57 0%,#10579b 58%,#1587b8 100%);
-            box-shadow:0 7px 18px rgba(8,43,87,.18);margin:0 0 4px;color:#fff;
+            box-shadow:none;margin:0;color:#fff;background:transparent;padding:0;
         }
+        .st-key-stock_header{
+            padding:11px 15px 8px;border-radius:12px;
+            background:linear-gradient(115deg,#082b57 0%,#10579b 58%,#1587b8 100%);
+            box-shadow:0 7px 18px rgba(8,43,87,.18);margin:0 0 4px;
+        }
+        .st-key-stock_header label{color:#e9f4ff!important}
+        .st-key-stock_header [data-testid="stHorizontalBlock"]{align-items:end}
         .stock-title{font:800 19px/1.15 Inter,sans-serif;color:#fff;margin:0 0 3px}
         .stock-sub{font:500 9px/1.3 Inter,sans-serif;color:#d9eaff;margin:0}
         .stock-live{
@@ -556,7 +563,12 @@ def _donut(df, column, title):
         grouped, names=column, values="GR Count", hole=.57,
         color_discrete_sequence=[PALETTE["blue"], PALETTE["green"], PALETTE["orange"], PALETTE["purple"], PALETTE["cyan"]],
     )
-    fig.update_traces(textinfo="none", hovertemplate="%{label}<br>%{value:,} GR (%{percent})<extra></extra>")
+    fig.update_traces(
+        textinfo="value+percent",
+        texttemplate="%{value:,}<br>%{percent}",
+        textfont_size=8,
+        hovertemplate="%{label}<br>%{value:,} GR (%{percent})<extra></extra>",
+    )
     fig.add_annotation(text=f"<b>{df['gr_no'].nunique():,}</b><br><span style='font-size:9px'>Total GR</span>", showarrow=False)
     fig.update_layout(
         title=dict(text=title, font=dict(size=10), x=.01),
@@ -595,44 +607,36 @@ def show_stock_operations():
     _inject_css()
     today = date.today()
     month_start = today.replace(day=1)
-    st.markdown(
-        '<div class="stock-hero"><div><div class="stock-title">Stock Operations Control Tower</div>'
-        '<div class="stock-sub">Live branch stock · ageing exposure · operational action queue</div></div>'
-        '<div class="stock-live">LIVE ERP DATA</div></div>',
-        unsafe_allow_html=True,
-    )
-    spacer_col, from_col, to_col, as_on_col, run_col = st.columns(
-        [2.3, .62, .62, .62, .55], gap="small"
-    )
-    with from_col:
-        start_date = st.date_input(
-            "From Date",
-            value=month_start,
-            max_value=today,
-            key="stock_dashboard_from_date",
+    with st.container(key="stock_header"):
+        st.markdown(
+            '<div class="stock-hero"><div><div class="stock-title">Stock Operations Control Tower</div>'
+            '<div class="stock-sub">Live branch stock · ageing exposure · operational action queue</div></div>'
+            '<div class="stock-live">LIVE ERP DATA</div></div>',
+            unsafe_allow_html=True,
         )
-    with to_col:
-        end_date = st.date_input(
-            "To Date",
-            value=today,
-            max_value=today,
-            key="stock_dashboard_to_date",
+        spacer_col, from_col, to_col, as_on_col, run_col = st.columns(
+            [2.3, .62, .62, .62, .55], gap="small"
         )
-    with as_on_col:
-        as_on_date = st.date_input(
-            "As-on Date",
-            value=end_date,
-            max_value=today,
-            key="stock_dashboard_as_on_date",
-        )
-    with run_col:
-        st.markdown("<div style='height:27px'></div>", unsafe_allow_html=True)
-        run_report = st.button(
-            "Run Report",
-            type="primary",
-            use_container_width=True,
-            key="stock_dashboard_run_report",
-        )
+        with from_col:
+            start_date = st.date_input(
+                "From Date", value=month_start, max_value=today,
+                format="DD/MM/YYYY", key="stock_dashboard_from_date",
+            )
+        with to_col:
+            end_date = st.date_input(
+                "To Date", value=today, max_value=today,
+                format="DD/MM/YYYY", key="stock_dashboard_to_date",
+            )
+        with as_on_col:
+            as_on_date = st.date_input(
+                "As-on Date", value=end_date, max_value=today,
+                format="DD/MM/YYYY", key="stock_dashboard_as_on_date",
+            )
+        with run_col:
+            run_report = st.button(
+                "Run Report", type="primary", use_container_width=True,
+                key="stock_dashboard_run_report",
+            )
 
     report_signature = (
         start_date.isoformat(),
@@ -746,11 +750,11 @@ def show_stock_operations():
     with action_col:
         with st.container(border=True):
             st.markdown('<div class="stock-alert-title">⚠ Action Required</div>', unsafe_allow_html=True)
-            action_df = filtered.sort_values(["stock_days", "balance_charge_weight"], ascending=False).head(7).copy()
+            action_df = filtered.sort_values(["stock_days", "balance_charge_weight"], ascending=False).copy()
             action_df["Issue"] = action_df["stock_type"].map({"IN-TRANSIT STOCK":"In-transit ageing", "TRANSIT STOCK":"Transit pending", "DELIVERY STOCK":"Delivery pending", "BOOKING STOCK":"Booking pending"}).fillna("Ageing stock")
             display = action_df[["gr_no", "origin", "destination", "branch", "Issue", "stock_days"]].rename(columns={"gr_no":"GR Number","origin":"Origin","destination":"Destination","branch":"Current Location","stock_days":"Ageing"})
             display["Ageing"] = display["Ageing"].map(lambda value: f"{value:.0f} Days")
-            st.dataframe(display, hide_index=True, use_container_width=True, height=225)
+            st.dataframe(display, hide_index=True, use_container_width=True, height=260)
             st.markdown('<div class="stock-view-all">Priority based on highest stock days and weight</div>', unsafe_allow_html=True)
     with ageing_col:
         with st.container(border=True):
@@ -761,20 +765,20 @@ def show_stock_operations():
             st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
     with branch_col:
         with st.container(border=True):
-            st.markdown('<div class="stock-panel-title">Branch / Location Pending<span>Top 7</span></div>', unsafe_allow_html=True)
-            branch_summary = filtered.groupby("branch").agg(Active_GR=("gr_no","nunique"),In_Transit=("stock_type",lambda s:(s=="IN-TRANSIT STOCK").sum()),Transit=("stock_type",lambda s:(s=="TRANSIT STOCK").sum()),Critical_15d=("is_critical","sum"),Avg_Dwell=("stock_days","mean")).sort_values("Active_GR",ascending=False).head(7).reset_index()
+            st.markdown('<div class="stock-panel-title">Branch / Location Pending<span>All branches</span></div>', unsafe_allow_html=True)
+            branch_summary = filtered.groupby("branch").agg(Active_GR=("gr_no","nunique"),In_Transit=("stock_type",lambda s:(s=="IN-TRANSIT STOCK").sum()),Transit=("stock_type",lambda s:(s=="TRANSIT STOCK").sum()),Critical_15d=("is_critical","sum"),Avg_Dwell=("stock_days","mean")).sort_values("Active_GR",ascending=False).reset_index()
             branch_summary["Avg_Dwell"] = branch_summary["Avg_Dwell"].map(lambda value:f"{value:.1f} d")
             branch_summary=branch_summary.rename(columns={"branch":"Location","Active_GR":"Active","In_Transit":"In-Transit","Transit":"Transit Stock","Critical_15d":"15d+","Avg_Dwell":"Avg Dwell"})
-            st.dataframe(branch_summary,hide_index=True,use_container_width=True,height=255)
+            st.dataframe(branch_summary,hide_index=True,use_container_width=True,height=260)
 
     route_col, health_col, detail_col = st.columns([.9, 1.05, 1.35], gap="small")
     with route_col:
         with st.container(border=True):
-            st.markdown('<div class="stock-panel-title">Top Routes by Active Stock<span>Top 5</span></div>',unsafe_allow_html=True)
-            route_summary=filtered.groupby(["origin","destination"]).agg(Active_GR=("gr_no","nunique"),Critical=("is_critical","sum"),Avg_Age=("stock_days","mean")).sort_values("Active_GR",ascending=False).head(5).reset_index()
+            st.markdown('<div class="stock-panel-title">Routes by Active Stock<span>Scrollable</span></div>',unsafe_allow_html=True)
+            route_summary=filtered.groupby(["origin","destination"]).agg(Active_GR=("gr_no","nunique"),Critical=("is_critical","sum"),Avg_Age=("stock_days","mean")).sort_values("Active_GR",ascending=False).reset_index()
             route_summary["Route"]=route_summary["origin"]+" → "+route_summary["destination"]
             route_summary["Avg_Age"]=route_summary["Avg_Age"].map(lambda x:f"{x:.1f} d")
-            st.dataframe(route_summary[["Route","Active_GR","Critical","Avg_Age"]].rename(columns={"Active_GR":"Active GR","Avg_Age":"Avg Age"}),hide_index=True,use_container_width=True,height=205)
+            st.dataframe(route_summary[["Route","Active_GR","Critical","Avg_Age"]].rename(columns={"Active_GR":"Active GR","Avg_Age":"Avg Age"}),hide_index=True,use_container_width=True,height=260)
     with health_col:
         with st.container(border=True):
             trend=filtered.groupby("stock_days")["gr_no"].nunique().reset_index(name="GR Count").sort_values("stock_days")
@@ -784,22 +788,8 @@ def show_stock_operations():
     with detail_col:
         with st.container(border=True):
             st.markdown('<div class="stock-panel-title">Priority Stock Details<span>Filtered result</span></div>',unsafe_allow_html=True)
-            details=filtered.sort_values(["stock_days","stock_topay"],ascending=False).head(6).copy()
+            details=filtered.sort_values(["stock_days","stock_topay"],ascending=False).copy()
             details["Weight"]=details["balance_charge_weight"].map(lambda x:f"{x:,.0f} kg")
             details["To-Pay"]=details["stock_topay"].map(_fmt_money)
             details["Age"]=details["stock_days"].map(lambda x:f"{x:.0f} d")
-            st.dataframe(details[["gr_no","branch","stock_type","Weight","To-Pay","Age"]].rename(columns={"gr_no":"GR","branch":"Branch","stock_type":"Status"}),hide_index=True,use_container_width=True,height=205)
-
-    summary_items = [
-        ("Booking Stock", type_counts["BOOKING STOCK"], ""),
-        ("In-Transit", type_counts["IN-TRANSIT STOCK"], ""),
-        ("Transit Stock", type_counts["TRANSIT STOCK"], ""),
-        ("Delivery Stock", type_counts["DELIVERY STOCK"], ""),
-        ("Critical 15+ Days", critical, "stock-critical"),
-        ("Balance Packages", _fmt_number(filtered["balance_packages"].sum()), ""),
-        ("Stock To-Pay", _fmt_money(filtered["stock_topay"].sum()), "stock-orange"),
-    ]
-    summary_html="".join(f'<span>{html.escape(str(label))}<strong class="{css}">{html.escape(str(value))}</strong></span>' for label,value,css in summary_items)
-    st.markdown(f'<div class="stock-summary">{summary_html}</div>',unsafe_allow_html=True)
-    st.markdown('<div class="stock-note"><b>Stock definition:</b> The dashboard uses the four exact values returned by the ERP stored procedure: Booking Stock, In-Transit Stock, Transit Stock and Delivery Stock. “Hub Stock” is intentionally not inferred until the operational rule is confirmed.</div>',unsafe_allow_html=True)
-    st.markdown(f'<div class="stock-footer">Live source: dbo.greentransweb_branchstock_v5_sugam · Period {start_date:%d %b %Y} to {end_date:%d %b %Y} · As on {as_on_date:%d %b %Y}</div>',unsafe_allow_html=True)
+            st.dataframe(details[["gr_no","branch","stock_type","Weight","To-Pay","Age"]].rename(columns={"gr_no":"GR","branch":"Branch","stock_type":"Status"}),hide_index=True,use_container_width=True,height=260)
