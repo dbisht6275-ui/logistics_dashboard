@@ -660,10 +660,13 @@ def _render_table(df, height=300, key="stock_grid"):
             ".ag-header-cell": {
                 "background-color": "#0b3158 !important",
                 "color": "#ffffff !important",
-                "font-weight": "800 !important",
+                "font-weight": "400 !important",
                 "border-right": "1px solid #315578 !important",
             },
-            ".ag-header-cell-text": {"color": "#ffffff !important"},
+            ".ag-header-cell-text": {
+                "color": "#ffffff !important",
+                "font-weight": "400 !important",
+            },
             ".ag-icon": {"color": "#ffffff !important"},
             ".ag-row-even": {"background-color": "#f7f9fc !important"},
         },
@@ -895,7 +898,15 @@ def _zone_bar(df, column, title):
         margin=dict(l=8, r=95, t=34, b=16),
         showlegend=False,
         xaxis=dict(visible=False),
-        yaxis=dict(title=None, tickfont=dict(size=9), automargin=True),
+        yaxis=dict(
+            title=None,
+            tickfont=dict(
+                size=9,
+                family="Arial Black, Arial, sans-serif",
+                color="#20344e",
+            ),
+            automargin=True,
+        ),
         paper_bgcolor="white",
         plot_bgcolor="white",
         bargap=.30,
