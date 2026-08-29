@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
 
-from services.net_profit_branch_mast import load_net_profit_branch_mast
+from services.stock_branch_mast import load_stock_branch_mast
 from services.stock_data_loader import load_stock_data
 
 # Use same palette as main dashboard
@@ -27,6 +27,7 @@ STOCK_ORDER = [
     "TRANSIT STOCK",
     "DELIVERY STOCK",
 ]
+
 
 def _inject_css():
     """Apply compact Stock Operations dashboard styling."""
@@ -708,7 +709,7 @@ def _attach_stock_hierarchy(stock_df):
             "Stock data does not contain branchcode, so Zone/Circle rights cannot be mapped."
         )
 
-    hierarchy = load_net_profit_branch_mast().copy()
+    hierarchy = load_stock_branch_mast().copy()
     zone_column = _find_column(hierarchy, ["zone", "zonename"])
     circle_column = _find_column(hierarchy, ["circle", "hubname"])
     branch_column = _find_column(hierarchy, ["branch", "branchname", "stnname"])
@@ -727,7 +728,7 @@ def _attach_stock_hierarchy(stock_df):
     ]
     if missing:
         raise ValueError(
-            "net_profit_branch_mast is missing required columns: "
+            "Stock branch hierarchy query is missing required columns: "
             + ", ".join(missing)
         )
 
