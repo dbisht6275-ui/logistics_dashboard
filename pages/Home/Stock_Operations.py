@@ -72,6 +72,14 @@ def _inject_css():
         }
         .stock-live:before{content:"";width:7px;height:7px;border-radius:50%;background:#43e594;box-shadow:0 0 0 4px rgba(67,229,148,.15)}
         .stock-filter-title{font:800 10px Inter,sans-serif;color:#193653;margin-bottom:2px}
+        div[data-testid="stExpander"]{
+            border:1px solid #e1e8f0!important;border-radius:7px!important;
+            background:#f8fafc!important;
+        }
+        div[data-testid="stExpander"] summary{
+            min-height:30px!important;font-size:8px!important;font-weight:750!important;
+            color:#38516d!important;
+        }
 
         div[data-testid="stDateInput"] label,
         div[data-testid="stSelectbox"] label,
@@ -740,39 +748,60 @@ def show_stock_operations():
 
     with st.container(border=True):
         st.markdown('<div class="stock-filter-title">FILTER & SEARCH</div>', unsafe_allow_html=True)
-        filter_row_1 = st.columns(5, gap="small")
-        with filter_row_1[0]:
-            origin_zones = st.multiselect("Origin Zone", _safe_options(stock_df, "origin_zone"), placeholder="All")
-        origin_zone_df = stock_df[stock_df["origin_zone"].isin(origin_zones)] if origin_zones else stock_df
-        with filter_row_1[1]:
-            origin_circles = st.multiselect("Origin Circle", _safe_options(origin_zone_df, "origin_circle"), placeholder="All")
-        origin_circle_df = origin_zone_df[origin_zone_df["origin_circle"].isin(origin_circles)] if origin_circles else origin_zone_df
-        with filter_row_1[2]:
-            branches = st.multiselect("Branch / Location", _safe_options(origin_circle_df, "branch"), placeholder="All")
-        branch_df = origin_circle_df[origin_circle_df["branch"].isin(branches)] if branches else origin_circle_df
-        with filter_row_1[3]:
+        primary_filters = st.columns([1.15, 1, 1, 1.35], gap="small")
+        with primary_filters[0]:
+            branches = st.multiselect(
+                "Current Stock Branch",
+                _safe_options(stock_df, "branch"),
+                placeholder="All stock branches",
+            )
+        branch_df = stock_df[stock_df["branch"].isin(branches)] if branches else stock_df
+
+        with primary_filters[1]:
             stock_types = st.multiselect("Stock Type", _safe_options(branch_df, "stock_type"), placeholder="All")
         type_df = branch_df[branch_df["stock_type"].isin(stock_types)] if stock_types else branch_df
-        with filter_row_1[4]:
-            load_types = st.multiselect("PTL / FTL", _safe_options(type_df, "load_type"), placeholder="All")
-        load_df = type_df[type_df["load_type"].isin(load_types)] if load_types else type_df
 
-        st.markdown('<div class="stock-filter-divider"></div>', unsafe_allow_html=True)
-        filter_row_2 = st.columns([1, 1, 1, 1, 1.15], gap="small")
-        with filter_row_2[0]:
-            destination_zones = st.multiselect("Destination Zone", _safe_options(load_df, "destination_zone"), placeholder="All")
-        destination_zone_df = load_df[load_df["destination_zone"].isin(destination_zones)] if destination_zones else load_df
-        with filter_row_2[1]:
-            destination_circles = st.multiselect("Destination Circle", _safe_options(destination_zone_df, "destination_circle"), placeholder="All")
-        destination_circle_df = destination_zone_df[destination_zone_df["destination_circle"].isin(destination_circles)] if destination_circles else destination_zone_df
-        with filter_row_2[2]:
-            origins = st.multiselect("Origin", _safe_options(destination_circle_df, "origin"), placeholder="All")
-        origin_df = destination_circle_df[destination_circle_df["origin"].isin(origins)] if origins else destination_circle_df
-        with filter_row_2[3]:
-            destinations = st.multiselect("Destination", _safe_options(origin_df, "destination"), placeholder="All")
-        filtered = origin_df[origin_df["destination"].isin(destinations)] if destinations else origin_df
-        with filter_row_2[4]:
+        with primary_filters[2]:
+            age_bands = st.multiselect(
+                "Ageing Bucket",
+                _safe_options(type_df, "age_band"),
+                placeholder="All ageing",
+            )
+        age_df = type_df[type_df["age_band"].isin(age_bands)] if age_bands else type_df
+
+        with primary_filters[3]:
             search = st.text_input("Search GR / Party", placeholder="GR, origin, destination, party")
+
+        with st.expander("Route & Movement Filters", expanded=False):
+            route_filters = st.columns(4, gap="small")
+            with route_filters[0]:
+                origins = st.multiselect(
+                    "GR Origin", _safe_options(age_df, "origin"), placeholder="All origins"
+                )
+            origin_df = age_df[age_df["origin"].isin(origins)] if origins else age_df
+
+            with route_filters[1]:
+                destinations = st.multiselect(
+                    "GR Destination",
+                    _safe_options(origin_df, "destination"),
+                    placeholder="All destinations",
+                )
+            destination_df = origin_df[origin_df["destination"].isin(destinations)] if destinations else origin_df
+
+            with route_filters[2]:
+                destination_zones = st.multiselect(
+                    "Destination Zone",
+                    _safe_options(destination_df, "destination_zone"),
+                    placeholder="All zones",
+                )
+            zone_df = destination_df[destination_df["destination_zone"].isin(destination_zones)] if destination_zones else destination_df
+
+            with route_filters[3]:
+                load_types = st.multiselect(
+                    "Movement Type", _safe_options(zone_df, "load_type"), placeholder="PTL & FTL"
+                )
+            filtered = zone_df[zone_df["load_type"].isin(load_types)] if load_types else zone_df
+
         if search:
             needle = search.casefold()
             mask = pd.Series(False, index=filtered.index)
