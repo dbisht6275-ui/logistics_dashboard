@@ -368,15 +368,6 @@ def show():
 
 if __name__ == "__main__":
     show()
-        div[data-testid="stDataFrame"]{font-size:8px!important}div[data-testid="stDataFrame"] [role="columnheader"]{font-size:8px!important;font-weight:800!important}
-        div[data-testid="stSelectbox"] label,div[data-testid="stMultiSelect"] label,div[data-testid="stTextInput"] label,div[data-testid="stDateInput"] label{font-size:8px!important;font-weight:750!important;margin-bottom:1px!important}div[data-baseweb="select"]>div,div[data-testid="stTextInput"] input,div[data-testid="stDateInput"] input{min-height:29px!important;height:29px!important;font-size:8px!important}
-        div[data-testid="stDateInput"]{margin-bottom:0!important}.stock-filter-divider{height:1px;background:#edf0f4;margin:2px 0 6px}
-        .stPlotlyChart{margin-top:-6px}.stock-footer{text-align:center;color:#718096;font-size:8px;padding-top:6px}
-        @media(max-width:900px){.stock-summary{grid-template-columns:repeat(2,1fr);gap:8px}.stock-summary span{border:0}.stock-flow{min-width:500px}.stock-flow-wrap{overflow-x:auto}}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def _fmt_number(value):
