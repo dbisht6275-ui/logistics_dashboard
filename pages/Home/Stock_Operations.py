@@ -9,6 +9,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
+from st_aggrid import AgGrid, GridOptionsBuilder
 
 from services.stock_data_loader import load_stock_data
 
@@ -606,17 +607,54 @@ def _safe_options(df, column):
     return sorted(df[column].dropna().astype(str).unique().tolist(), key=str.casefold)
 
 
-def _render_table(df, height=300):
-    table_html = df.to_html(
-        index=False,
-        escape=True,
-        classes="stock-html-table",
-        border=0,
+def _render_table(df, height=300, key="stock_grid"):
+    toolbar_spacer, download_col = st.columns([12, 1])
+    with download_col:
+        st.download_button(
+            "↓",
+            data=df.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"{key}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            help="Download this table as CSV",
+            key=f"{key}_download",
+        )
+
+    builder = GridOptionsBuilder.from_dataframe(df)
+    builder.configure_default_column(
+        sortable=True,
+        filter=True,
+        resizable=True,
+        suppressMovable=False,
     )
-    st.markdown(
-        f'<div class="stock-table-scroll" style="height:{int(height)}px">'
-        f'{table_html}</div>',
-        unsafe_allow_html=True,
+    builder.configure_grid_options(
+        headerHeight=34,
+        rowHeight=31,
+        suppressRowClickSelection=True,
+    )
+    AgGrid(
+        df,
+        gridOptions=builder.build(),
+        height=height,
+        theme="streamlit",
+        fit_columns_on_grid_load=False,
+        allow_unsafe_jscode=False,
+        custom_css={
+            ".ag-header": {
+                "background-color": "#0b3158 !important",
+                "color": "#ffffff !important",
+            },
+            ".ag-header-cell": {
+                "background-color": "#0b3158 !important",
+                "color": "#ffffff !important",
+                "font-weight": "800 !important",
+                "border-right": "1px solid #315578 !important",
+            },
+            ".ag-header-cell-text": {"color": "#ffffff !important"},
+            ".ag-icon": {"color": "#ffffff !important"},
+            ".ag-row-even": {"background-color": "#f7f9fc !important"},
+        },
+        key=key,
     )
 
 
@@ -905,15 +943,14 @@ def show_stock_operations():
             action_df["Issue"] = action_df["stock_type"].map({"IN-TRANSIT STOCK":"In-transit ageing", "TRANSIT STOCK":"Transit pending", "DELIVERY STOCK":"Delivery pending", "BOOKING STOCK":"Booking pending"}).fillna("Ageing stock")
             display = action_df[["gr_no", "origin", "destination", "branch", "Issue", "stock_days"]].rename(columns={"gr_no":"GR Number","origin":"Origin","destination":"Destination","branch":"Current Location","stock_days":"Ageing"})
             display["Ageing"] = display["Ageing"].map(lambda value: f"{value:.0f} Days")
-            _render_table(display, height=300)
-            st.markdown('<div class="stock-view-all">Priority based on highest stock days and weight</div>', unsafe_allow_html=True)
+            _render_table(display, height=300, key="action_required_grid")
     with branch_col:
         with st.container(border=True):
             st.markdown('<div class="stock-panel-title">Branch / Location Pending<span>All branches</span></div>', unsafe_allow_html=True)
             branch_summary = filtered.groupby("branch").agg(Active_GR=("gr_no","nunique"),In_Transit=("stock_type",lambda s:(s=="IN-TRANSIT STOCK").sum()),Transit=("stock_type",lambda s:(s=="TRANSIT STOCK").sum()),Critical_15d=("is_critical","sum"),Avg_Dwell=("stock_days","mean")).sort_values("Active_GR",ascending=False).reset_index()
             branch_summary["Avg_Dwell"] = branch_summary["Avg_Dwell"].map(lambda value:f"{value:.1f} d")
             branch_summary=branch_summary.rename(columns={"branch":"Location","Active_GR":"Active","In_Transit":"In-Transit","Transit":"Transit Stock","Critical_15d":"15d+","Avg_Dwell":"Avg Dwell"})
-            _render_table(branch_summary, height=300)
+            _render_table(branch_summary, height=300, key="branch_pending_grid")
 
     ageing_col, health_col = st.columns(2, gap="small")
     with ageing_col:
@@ -981,7 +1018,7 @@ def show_stock_operations():
             route_summary["Route"]=route_summary["origin"]+" → "+route_summary["destination"]
             route_summary["Avg_Age"]=route_summary["Avg_Age"].map(lambda x:f"{x:.1f} d")
             route_display = route_summary[["Route","Active_GR","Critical","Avg_Age"]].rename(columns={"Active_GR":"Active GR","Avg_Age":"Avg Age"})
-            _render_table(route_display, height=300)
+            _render_table(route_display, height=300, key="routes_grid")
     with detail_col:
         with st.container(border=True):
             st.markdown('<div class="stock-panel-title">Priority Stock Details<span>Filtered result</span></div>',unsafe_allow_html=True)
@@ -990,4 +1027,4 @@ def show_stock_operations():
             details["To-Pay"]=details["stock_topay"].map(_fmt_money)
             details["Age"]=details["stock_days"].map(lambda x:f"{x:.0f} d")
             detail_display = details[["gr_no","branch","stock_type","Weight","To-Pay","Age"]].rename(columns={"gr_no":"GR","branch":"Branch","stock_type":"Status"})
-            _render_table(detail_display, height=300)
+            _render_table(detail_display, height=300, key="priority_details_grid")
