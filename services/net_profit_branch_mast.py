@@ -10,9 +10,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
-from sqlalchemy import text
 
-from services.database import get_engine
+from services.net_profit_branch_mast import load_net_profit_branch_mast
 from services.stock_data_loader import load_stock_data
 
 # Use same palette as main dashboard
@@ -28,32 +27,6 @@ STOCK_ORDER = [
     "TRANSIT STOCK",
     "DELIVERY STOCK",
 ]
-
-
-@st.cache_data(ttl=3600, show_spinner=False, max_entries=1)
-def _load_stock_branch_hierarchy():
-    query = text("""
-        SELECT
-            ZONE.ZONENAME AS zone,
-            C.HUBNAME AS circle,
-            S.STNNAME AS master_branch,
-            S.STNCODE AS branchcode
-        FROM STATIONMAST S
-        LEFT JOIN ZONEMAST ZONE ON ZONE.ZONECODE = S.ZONECODE
-        LEFT JOIN VIEWSTATIONMAST C ON C.STNCODE = S.STNCODE
-        WHERE (S.OWNED = 'Y' OR S.ISAGENCY = 'Y')
-          AND LEN(S.STNCODE) = 3
-          AND S.STNCODE NOT IN (
-              '583','921','911','880','881','437','584','901','650','906',
-              '931','932','938','021','100','941','421','585','250','912',
-              '450','195','922','923','380','952','933','935','934','052',
-              '051','200','942','007','914','915','904','902','936','937',
-              '381','924','451','903','905','913','916','709','710','711',
-              '712','713','714','716','053'
-          )
-    """)
-    return pd.read_sql(query, get_engine())
-
 
 def _inject_css():
     """Apply compact Stock Operations dashboard styling."""
@@ -735,7 +708,37 @@ def _attach_stock_hierarchy(stock_df):
             "Stock data does not contain branchcode, so Zone/Circle rights cannot be mapped."
         )
 
-    hierarchy = _load_stock_branch_hierarchy().copy()
+    hierarchy = load_net_profit_branch_mast().copy()
+    zone_column = _find_column(hierarchy, ["zone", "zonename"])
+    circle_column = _find_column(hierarchy, ["circle", "hubname"])
+    branch_column = _find_column(hierarchy, ["branch", "branchname", "stnname"])
+    master_code_column = _find_column(
+        hierarchy, ["code", "branchcode", "branch_code", "stncode"]
+    )
+    missing = [
+        name
+        for name, column in {
+            "zone": zone_column,
+            "circle": circle_column,
+            "branch": branch_column,
+            "code": master_code_column,
+        }.items()
+        if not column
+    ]
+    if missing:
+        raise ValueError(
+            "net_profit_branch_mast is missing required columns: "
+            + ", ".join(missing)
+        )
+
+    hierarchy = hierarchy.rename(
+        columns={
+            zone_column: "zone",
+            circle_column: "circle",
+            branch_column: "master_branch",
+            master_code_column: "branchcode",
+        }
+    )
     hierarchy["branchcode_key"] = _normalise_branch_code(hierarchy["branchcode"])
 
     enriched = stock_df.copy()
