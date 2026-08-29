@@ -108,6 +108,11 @@ def _inject_css():
             box-shadow:0 4px 10px rgba(20,115,201,.2)!important;
             font-size:9px!important;font-weight:800!important;
         }
+        div[data-testid="stSegmentedControl"]{justify-content:flex-end!important}
+        div[data-testid="stSegmentedControl"] button{
+            min-height:25px!important;height:25px!important;min-width:34px!important;
+            padding:0 9px!important;font-size:8px!important;font-weight:800!important;
+        }
 
         div[data-testid="stVerticalBlockBorderWrapper"]{
             background:#fff!important;border:1px solid #dce5ef!important;border-radius:10px!important;
@@ -747,8 +752,8 @@ def show_stock_operations():
         return
 
     with st.container(border=True):
-        st.markdown('<div class="stock-filter-title">FILTER & SEARCH</div>', unsafe_allow_html=True)
-        primary_filters = st.columns([1.15, 1, 1, 1.35], gap="small")
+        st.markdown('<div class="stock-filter-title">STOCK FILTERS</div>', unsafe_allow_html=True)
+        primary_filters = st.columns(4, gap="small")
         with primary_filters[0]:
             branches = st.multiselect(
                 "Current Stock Branch",
@@ -770,15 +775,18 @@ def show_stock_operations():
         age_df = type_df[type_df["age_band"].isin(age_bands)] if age_bands else type_df
 
         with primary_filters[3]:
-            search = st.text_input("Search GR / Party", placeholder="GR, origin, destination, party")
+            load_types = st.multiselect(
+                "Load Type", _safe_options(age_df, "load_type"), placeholder="PTL & FTL"
+            )
+        load_df = age_df[age_df["load_type"].isin(load_types)] if load_types else age_df
 
-        with st.expander("Route & Movement Filters", expanded=False):
-            route_filters = st.columns(4, gap="small")
+        with st.expander("GR Route Filters", expanded=False):
+            route_filters = st.columns(3, gap="small")
             with route_filters[0]:
                 origins = st.multiselect(
-                    "GR Origin", _safe_options(age_df, "origin"), placeholder="All origins"
+                    "GR Origin", _safe_options(load_df, "origin"), placeholder="All origins"
                 )
-            origin_df = age_df[age_df["origin"].isin(origins)] if origins else age_df
+            origin_df = load_df[load_df["origin"].isin(origins)] if origins else load_df
 
             with route_filters[1]:
                 destinations = st.multiselect(
@@ -795,19 +803,7 @@ def show_stock_operations():
                     placeholder="All zones",
                 )
             zone_df = destination_df[destination_df["destination_zone"].isin(destination_zones)] if destination_zones else destination_df
-
-            with route_filters[3]:
-                load_types = st.multiselect(
-                    "Movement Type", _safe_options(zone_df, "load_type"), placeholder="PTL & FTL"
-                )
-            filtered = zone_df[zone_df["load_type"].isin(load_types)] if load_types else zone_df
-
-        if search:
-            needle = search.casefold()
-            mask = pd.Series(False, index=filtered.index)
-            for column in ["gr_no", "branch", "origin", "destination", "consignor", "consignee"]:
-                mask |= filtered[column].astype(str).str.casefold().str.contains(needle, regex=False, na=False)
-            filtered = filtered[mask]
+            filtered = zone_df
 
     if filtered.empty:
         st.warning("No records match the selected filters.")
@@ -856,7 +852,7 @@ def show_stock_operations():
         with st.container(border=True):
             _donut(filtered, "load_type", "PTL / FTL Overview")
 
-    action_col, ageing_col, branch_col = st.columns([1.5, .8, 1.1], gap="small")
+    action_col, branch_col = st.columns(2, gap="small")
     with action_col:
         with st.container(border=True):
             st.markdown('<div class="stock-alert-title">⚠ Action Required</div>', unsafe_allow_html=True)
@@ -864,37 +860,55 @@ def show_stock_operations():
             action_df["Issue"] = action_df["stock_type"].map({"IN-TRANSIT STOCK":"In-transit ageing", "TRANSIT STOCK":"Transit pending", "DELIVERY STOCK":"Delivery pending", "BOOKING STOCK":"Booking pending"}).fillna("Ageing stock")
             display = action_df[["gr_no", "origin", "destination", "branch", "Issue", "stock_days"]].rename(columns={"gr_no":"GR Number","origin":"Origin","destination":"Destination","branch":"Current Location","stock_days":"Ageing"})
             display["Ageing"] = display["Ageing"].map(lambda value: f"{value:.0f} Days")
-            st.dataframe(display, hide_index=True, use_container_width=True, height=260)
+            st.dataframe(display, hide_index=True, use_container_width=True, height=300)
             st.markdown('<div class="stock-view-all">Priority based on highest stock days and weight</div>', unsafe_allow_html=True)
-    with ageing_col:
-        with st.container(border=True):
-            age_summary = filtered.groupby("age_band", observed=True)["gr_no"].nunique().reindex(["0-7 Days", "8-14 Days", "15+ Days"], fill_value=0).reset_index(name="GR Count")
-            fig = px.bar(age_summary, x="GR Count", y="age_band", orientation="h", color="age_band", color_discrete_map={"0-7 Days":"#48a864","8-14 Days":"#f1bd42","15+ Days":"#df4742"}, text="GR Count")
-            fig.update_layout(title=dict(text="Ageing – Stock",font=dict(size=11),x=.01),height=260,margin=dict(l=5,r=8,t=30,b=5),showlegend=False,xaxis=dict(visible=False),yaxis_title=None,paper_bgcolor="white",plot_bgcolor="white",font=dict(size=8))
-            fig.update_traces(textposition="outside", hovertemplate="%{y}: %{x:,} GR<extra></extra>")
-            st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
     with branch_col:
         with st.container(border=True):
             st.markdown('<div class="stock-panel-title">Branch / Location Pending<span>All branches</span></div>', unsafe_allow_html=True)
             branch_summary = filtered.groupby("branch").agg(Active_GR=("gr_no","nunique"),In_Transit=("stock_type",lambda s:(s=="IN-TRANSIT STOCK").sum()),Transit=("stock_type",lambda s:(s=="TRANSIT STOCK").sum()),Critical_15d=("is_critical","sum"),Avg_Dwell=("stock_days","mean")).sort_values("Active_GR",ascending=False).reset_index()
             branch_summary["Avg_Dwell"] = branch_summary["Avg_Dwell"].map(lambda value:f"{value:.1f} d")
             branch_summary=branch_summary.rename(columns={"branch":"Location","Active_GR":"Active","In_Transit":"In-Transit","Transit":"Transit Stock","Critical_15d":"15d+","Avg_Dwell":"Avg Dwell"})
-            st.dataframe(branch_summary,hide_index=True,use_container_width=True,height=260)
+            st.dataframe(branch_summary,hide_index=True,use_container_width=True,height=300)
 
-    route_col, health_col, detail_col = st.columns([.9, 1.05, 1.35], gap="small")
+    ageing_col, health_col = st.columns(2, gap="small")
+    with ageing_col:
+        with st.container(border=True):
+            age_summary = filtered.groupby("age_band", observed=True)["gr_no"].nunique().reindex(["0-7 Days", "8-14 Days", "15+ Days"], fill_value=0).reset_index(name="GR Count")
+            fig = px.bar(age_summary, x="GR Count", y="age_band", orientation="h", color="age_band", color_discrete_map={"0-7 Days":"#48a864","8-14 Days":"#f1bd42","15+ Days":"#df4742"}, text="GR Count")
+            fig.update_layout(title=dict(text="Ageing – Stock",font=dict(size=11),x=.01),height=290,margin=dict(l=5,r=28,t=30,b=5),showlegend=False,xaxis=dict(visible=False),yaxis_title=None,paper_bgcolor="white",plot_bgcolor="white",font=dict(size=8))
+            fig.update_traces(textposition="outside", hovertemplate="%{y}: %{x:,} GR<extra></extra>")
+            st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+    with health_col:
+        with st.container(border=True):
+            view = st.segmented_control(
+                "Distribution period",
+                options=["D", "M", "Q", "Y"],
+                default="D",
+                key="stock_age_distribution_period",
+                label_visibility="collapsed",
+            )
+            bucket_days = {"D": 1, "M": 30, "Q": 90, "Y": 365}[view]
+            trend_source = filtered[["gr_no", "stock_days"]].copy()
+            trend_source["stock_days"] = trend_source["stock_days"].fillna(0).clip(lower=0)
+            trend_source["Period No"] = (trend_source["stock_days"] // bucket_days).astype(int)
+            if view == "D":
+                trend_source["Age Period"] = trend_source["stock_days"].map(lambda value: f"{int(value)}d")
+            else:
+                trend_source["Age Period"] = trend_source["Period No"].map(lambda value: f"{int(value) + 1}{view}")
+            trend = trend_source.groupby(["Period No", "Age Period"])["gr_no"].nunique().reset_index(name="GR Count").sort_values("Period No")
+            fig=px.bar(trend,x="Age Period",y="GR Count",text="GR Count",color_discrete_sequence=[PALETTE["blue"]])
+            fig.update_traces(textposition="outside",cliponaxis=False,hovertemplate="%{x}: %{y:,} GR<extra></extra>")
+            fig.update_layout(title=dict(text="Stock Age Distribution",font=dict(size=11),x=.01),height=255,margin=dict(l=8,r=8,t=30,b=25),xaxis_title=None,yaxis_title="GR Count",paper_bgcolor="white",plot_bgcolor="white",font=dict(size=8))
+            st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+
+    route_col, detail_col = st.columns(2, gap="small")
     with route_col:
         with st.container(border=True):
             st.markdown('<div class="stock-panel-title">Routes by Active Stock<span>Scrollable</span></div>',unsafe_allow_html=True)
             route_summary=filtered.groupby(["origin","destination"]).agg(Active_GR=("gr_no","nunique"),Critical=("is_critical","sum"),Avg_Age=("stock_days","mean")).sort_values("Active_GR",ascending=False).reset_index()
             route_summary["Route"]=route_summary["origin"]+" → "+route_summary["destination"]
             route_summary["Avg_Age"]=route_summary["Avg_Age"].map(lambda x:f"{x:.1f} d")
-            st.dataframe(route_summary[["Route","Active_GR","Critical","Avg_Age"]].rename(columns={"Active_GR":"Active GR","Avg_Age":"Avg Age"}),hide_index=True,use_container_width=True,height=260)
-    with health_col:
-        with st.container(border=True):
-            trend=filtered.groupby("stock_days")["gr_no"].nunique().reset_index(name="GR Count").sort_values("stock_days")
-            fig=px.bar(trend,x="stock_days",y="GR Count",color_discrete_sequence=[PALETTE["blue"]])
-            fig.update_layout(title=dict(text="Stock Age Distribution",font=dict(size=11),x=.01),height=210,margin=dict(l=8,r=8,t=30,b=25),xaxis_title="Stock Days",yaxis_title=None,paper_bgcolor="white",plot_bgcolor="white",font=dict(size=8))
-            st.plotly_chart(fig,use_container_width=True,config={"displayModeBar":False})
+            st.dataframe(route_summary[["Route","Active_GR","Critical","Avg_Age"]].rename(columns={"Active_GR":"Active GR","Avg_Age":"Avg Age"}),hide_index=True,use_container_width=True,height=300)
     with detail_col:
         with st.container(border=True):
             st.markdown('<div class="stock-panel-title">Priority Stock Details<span>Filtered result</span></div>',unsafe_allow_html=True)
@@ -902,4 +916,4 @@ def show_stock_operations():
             details["Weight"]=details["balance_charge_weight"].map(lambda x:f"{x:,.0f} kg")
             details["To-Pay"]=details["stock_topay"].map(_fmt_money)
             details["Age"]=details["stock_days"].map(lambda x:f"{x:.0f} d")
-            st.dataframe(details[["gr_no","branch","stock_type","Weight","To-Pay","Age"]].rename(columns={"gr_no":"GR","branch":"Branch","stock_type":"Status"}),hide_index=True,use_container_width=True,height=260)
+            st.dataframe(details[["gr_no","branch","stock_type","Weight","To-Pay","Age"]].rename(columns={"gr_no":"GR","branch":"Branch","stock_type":"Status"}),hide_index=True,use_container_width=True,height=300)
