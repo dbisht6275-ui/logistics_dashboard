@@ -70,7 +70,15 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-/* Keep dashboard content close to the top. */
+/* ============================================================
+   OPTION 3 - HOVER SIDEBAR (FIXED)
+   - Resting state: clean 72px icon rail
+   - Hover state: full 242px sidebar
+   - No blank space above SUGAM
+   - No native Streamlit radio circles / collapse control
+   - Bottom cards and action buttons stay hidden in icon rail
+   ============================================================ */
+
 [data-testid="stHeader"] {
     height: 2.1rem;
     background: transparent;
@@ -83,24 +91,18 @@ st.markdown("""
     max-width: 100% !important;
 }
 
-/* ============================================================
-   OPTION 3 — HOVER SIDEBAR
-   - Normal state: slim icon rail
-   - Hover over rail: expands automatically
-   - Move mouse away: returns to slim rail
-   - No manual hide/unhide button
-   ============================================================ */
+/* Sidebar shell. */
 [data-testid="stSidebar"] {
-    width: 68px !important;
-    min-width: 68px !important;
-    max-width: 68px !important;
-    flex: 0 0 68px !important;
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    flex: 0 0 72px !important;
     background: linear-gradient(180deg, #123568 0%, #0b2a58 58%, #08244d 100%);
     border-right: 1px solid rgba(7, 28, 63, .45);
-    box-shadow: 5px 0 18px rgba(15, 42, 82, .12);
+    box-shadow: 4px 0 14px rgba(15, 42, 82, .12);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    overflow: visible !important;
-    transition: width .22s ease, min-width .22s ease, max-width .22s ease, flex-basis .22s ease !important;
+    overflow: hidden !important;
+    transition: width .14s ease, min-width .14s ease, max-width .14s ease, flex-basis .14s ease !important;
     z-index: 9999 !important;
 }
 
@@ -109,15 +111,20 @@ st.markdown("""
     min-width: 242px !important;
     max-width: 242px !important;
     flex: 0 0 242px !important;
+    overflow: hidden !important;
 }
 
-/* Remove Streamlit's own collapse buttons: hover is automatic. */
+/* Remove ALL Streamlit sidebar header space and native hide/unhide controls. */
+[data-testid="stSidebarHeader"],
 [data-testid="stSidebarCollapseButton"],
 [data-testid="stSidebarCollapsedControl"] {
     display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 
-/* Remove top whitespace so logo touches the top area. */
 [data-testid="stSidebar"] > div:first-child,
 [data-testid="stSidebar"] [data-testid="stSidebarContent"],
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
@@ -129,7 +136,7 @@ st.markdown("""
 [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
     padding-left: 8px !important;
     padding-right: 8px !important;
-    padding-bottom: 12px !important;
+    padding-bottom: 10px !important;
     overflow-x: hidden !important;
 }
 
@@ -141,7 +148,7 @@ st.markdown("""
 
 [data-testid="stSidebar"] * { box-sizing: border-box; }
 
-/* Main page always uses all remaining width. */
+/* Keep the dashboard using all remaining width. */
 [data-testid="stAppViewContainer"] > .main,
 [data-testid="stAppViewContainer"] main,
 section.main {
@@ -159,9 +166,10 @@ section.main {
 
 /* ---------------- Brand ---------------- */
 .sugam-logo-wrap {
-    min-height: 56px;
-    margin: 0 -8px 10px;
-    padding: 7px 8px;
+    height: 58px;
+    min-height: 58px;
+    margin: 0 -8px 8px;
+    padding: 0 8px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -171,17 +179,19 @@ section.main {
     white-space: nowrap;
     overflow: hidden;
 }
+
 [data-testid="stSidebar"]:hover .sugam-logo-wrap {
     margin-left: -12px;
     margin-right: -12px;
-    padding-left: 15px;
-    padding-right: 15px;
+    padding: 0 15px;
     justify-content: flex-start;
 }
+
 .sugam-logo-mark {
     position: relative;
     width: 35px;
     height: 31px;
+    min-width: 35px;
     flex: 0 0 35px;
 }
 .sugam-logo-mark::before,
@@ -198,17 +208,14 @@ section.main {
 }
 .sugam-logo-mark::before { top: 4px; }
 .sugam-logo-mark::after { top: 17px; left: 6px; width: 25px; }
+
 .sugam-logo-copy {
+    display: none;
     min-width: 0;
     line-height: 1;
-    opacity: 0;
-    width: 0;
-    overflow: hidden;
-    transition: opacity .14s ease .05s, width .18s ease;
 }
 [data-testid="stSidebar"]:hover .sugam-logo-copy {
-    opacity: 1;
-    width: auto;
+    display: block;
 }
 .sugam-logo-name {
     color: #ffffff;
@@ -219,112 +226,124 @@ section.main {
 
 /* ---------------- Navigation ---------------- */
 .sugam-nav-label {
-    height: 14px;
-    margin: 10px 0 6px;
+    display: none;
+}
+[data-testid="stSidebar"]:hover .sugam-nav-label {
+    display: block;
+    margin: 10px 7px 6px;
     color: #91a9c9;
-    font-size: 0;
+    font-size: 9px;
     font-weight: 700;
     letter-spacing: 1.4px;
     text-transform: uppercase;
-    text-align: center;
     white-space: nowrap;
-    overflow: hidden;
 }
-.sugam-nav-label::after {
-    content: "•••";
-    font-size: 9px;
-    letter-spacing: 2px;
-}
-[data-testid="stSidebar"]:hover .sugam-nav-label {
-    margin-left: 7px;
-    margin-right: 7px;
-    font-size: 9px;
-    text-align: left;
-}
-[data-testid="stSidebar"]:hover .sugam-nav-label::after { content: ""; }
 
 [data-testid="stSidebar"] div[role="radiogroup"] {
-    gap: 3px !important;
+    gap: 5px !important;
 }
+
 [data-testid="stSidebar"] div[role="radiogroup"] label {
-    min-height: 42px;
-    width: 52px;
+    min-height: 44px !important;
+    width: 52px !important;
     margin: 0 auto !important;
-    padding: 8px 10px !important;
+    padding: 0 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    border: 1px solid transparent;
-    border-radius: 9px;
-    background: transparent;
-    overflow: hidden;
-    white-space: nowrap;
-    transition: background .14s ease, border-color .14s ease, width .18s ease, transform .14s ease;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    background: transparent !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
 }
+
 [data-testid="stSidebar"]:hover div[role="radiogroup"] label {
-    width: 100%;
-    justify-content: flex-start !important;
+    width: 100% !important;
+    min-height: 39px !important;
     margin: 0 !important;
+    padding: 8px 10px !important;
+    justify-content: flex-start !important;
 }
+
+/* Hide every native radio circle across Streamlit DOM variants. */
+[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"],
+[data-testid="stSidebar"] div[role="radiogroup"] label > div:has(input[type="radio"]),
+[data-testid="stSidebar"] div[role="radiogroup"] label [data-baseweb="radio"] > div:first-child,
+[data-testid="stSidebar"] div[role="radiogroup"] label [role="radio"] > div:first-child,
+[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child:not([data-testid="stMarkdownContainer"]) {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
 [data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-    background: rgba(255,255,255,.075);
-    transform: translateX(1px);
+    background: rgba(255,255,255,.075) !important;
 }
 [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-    background: linear-gradient(90deg, #1f70e8 0%, #1761d2 100%);
-    border-color: rgba(123,184,255,.32);
-    box-shadow: 0 5px 12px rgba(3, 35, 83, .28), inset 0 1px 0 rgba(255,255,255,.15);
+    background: linear-gradient(180deg, #2d82fb 0%, #1761d2 100%) !important;
+    border-color: rgba(123,184,255,.36) !important;
+    box-shadow: 0 5px 12px rgba(3, 35, 83, .28), inset 0 1px 0 rgba(255,255,255,.15) !important;
 }
-[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
-    display: none !important;
-}
+
+/* In rail mode the text itself is clipped to the emoji icon. */
 [data-testid="stSidebar"] div[role="radiogroup"] label p {
+    display: block !important;
+    width: 25px !important;
+    max-width: 25px !important;
     margin: 0 !important;
-    color: #d9e5f4 !important;
-    font-size: 0 !important;
+    padding: 0 !important;
+    color: #e7eff9 !important;
+    font-size: 18px !important;
     font-weight: 500 !important;
-    line-height: 1.2 !important;
-    overflow: hidden;
+    line-height: 1.05 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
 }
-[data-testid="stSidebar"] div[role="radiogroup"] label p::first-letter {
-    font-size: 18px;
-}
+
 [data-testid="stSidebar"]:hover div[role="radiogroup"] label p {
+    width: auto !important;
+    max-width: none !important;
+    color: #d9e5f4 !important;
     font-size: 12px !important;
-    overflow: visible;
+    line-height: 1.2 !important;
+    overflow: visible !important;
 }
+
 [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {
     color: #ffffff !important;
     font-weight: 700 !important;
 }
 
 /* ---------------- Reports controls ---------------- */
-[data-testid="stSidebar"] input[type="text"],
+/* Completely remove report/search controls from the rail so nothing is clipped. */
+[data-testid="stSidebar"] [data-testid="stTextInput"],
 [data-testid="stSidebar"] [data-testid="stExpander"] {
-    opacity: 0;
-    pointer-events: none;
-    height: 0;
-    min-height: 0 !important;
-    overflow: hidden;
-    margin: 0 !important;
-    transition: opacity .12s ease;
+    display: none !important;
+}
+[data-testid="stSidebar"]:hover [data-testid="stTextInput"] {
+    display: block !important;
+}
+[data-testid="stSidebar"]:hover [data-testid="stExpander"] {
+    display: block !important;
 }
 [data-testid="stSidebar"]:hover input[type="text"] {
-    opacity: 1;
-    pointer-events: auto;
-    height: auto;
     min-height: 37px !important;
-    color: #eef5ff !important;
-    background: rgba(255,255,255,.07) !important;
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+    background: #ffffff !important;
     border: 1px solid rgba(255,255,255,.12) !important;
     border-radius: 7px !important;
 }
-[data-testid="stSidebar"]:hover input[type="text"]::placeholder { color: #9fb2cc !important; }
+[data-testid="stSidebar"]:hover input[type="text"]::placeholder {
+    color: #64748b !important;
+    -webkit-text-fill-color: #64748b !important;
+    opacity: 1 !important;
+}
 [data-testid="stSidebar"]:hover [data-testid="stExpander"] {
-    opacity: 1;
-    pointer-events: auto;
-    height: auto;
-    min-height: initial !important;
     border: 1px solid rgba(255,255,255,.10) !important;
     border-radius: 7px !important;
     background: rgba(255,255,255,.045) !important;
@@ -334,29 +353,24 @@ section.main {
     font-size: 11px !important;
 }
 
-/* ---------------- Bottom cards ---------------- */
-.sugam-sidebar-spacer { height: 12px; }
+/* ---------------- Bottom content ---------------- */
+.sugam-sidebar-spacer,
 .sugam-refresh-card,
 .sugam-profile-card,
 .sugam-session-meta,
 .sugam-footer {
-    opacity: 0;
-    pointer-events: none;
-    max-height: 0;
-    overflow: hidden;
-    margin-top: 0 !important;
-    padding-top: 0 !important;
-    padding-bottom: 0 !important;
-    border-width: 0 !important;
-    transition: opacity .14s ease, max-height .18s ease, margin .18s ease, padding .18s ease;
+    display: none !important;
+}
+
+[data-testid="stSidebar"]:hover .sugam-sidebar-spacer {
+    display: block !important;
+    height: 12px;
 }
 [data-testid="stSidebar"]:hover .sugam-refresh-card {
-    opacity: 1;
-    pointer-events: auto;
-    max-height: 130px;
-    margin-top: 12px !important;
-    padding: 11px 11px 9px !important;
-    border: 1px solid rgba(255,255,255,.10) !important;
+    display: block !important;
+    margin-top: 12px;
+    padding: 11px 11px 9px;
+    border: 1px solid rgba(255,255,255,.10);
     border-radius: 8px;
     background: rgba(3, 25, 58, .32);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
@@ -414,15 +428,12 @@ section.main {
 }
 
 [data-testid="stSidebar"]:hover .sugam-profile-card {
-    opacity: 1;
-    pointer-events: auto;
-    max-height: 90px;
-    margin-top: 9px !important;
-    padding: 9px !important;
-    display: flex;
+    display: flex !important;
+    margin-top: 9px;
+    padding: 9px;
     align-items: center;
     gap: 9px;
-    border: 1px solid rgba(255,255,255,.10) !important;
+    border: 1px solid rgba(255,255,255,.10);
     border-radius: 8px;
     background: rgba(3, 25, 58, .35);
 }
@@ -476,55 +487,45 @@ section.main {
     text-transform: uppercase;
 }
 [data-testid="stSidebar"]:hover .sugam-session-meta {
-    opacity: 1;
-    pointer-events: auto;
-    max-height: 25px;
-    margin-top: 5px !important;
+    display: block !important;
+    margin-top: 5px;
     color: #8095b1;
     font-size: 8px;
     text-align: center;
 }
 [data-testid="stSidebar"]:hover .sugam-footer {
-    opacity: 1;
-    pointer-events: auto;
-    max-height: 28px;
-    padding: 7px 0 0 !important;
+    display: block !important;
+    padding: 7px 0 0;
     color: #6680a1;
     font-size: 8px;
     text-align: center;
 }
 
-/* Sidebar buttons stay compact in rail and reveal labels on hover. */
-[data-testid="stSidebar"] .stButton > button {
-    min-height: 38px;
-    width: 52px;
-    margin-left: auto;
-    margin-right: auto;
-    padding: 0 !important;
-    border-radius: 8px !important;
+/* Hide every sidebar action button in rail mode. Reveal them only on hover. */
+[data-testid="stSidebar"] .stButton {
+    display: none !important;
+}
+[data-testid="stSidebar"]:hover .stButton {
+    display: block !important;
+}
+[data-testid="stSidebar"]:hover .stButton > button {
+    min-height: 34px;
+    width: 100%;
+    padding: 0 10px !important;
+    border-radius: 7px !important;
     border: 1px solid rgba(255,255,255,.12) !important;
     color: #dce8f7 !important;
     background: rgba(255,255,255,.055) !important;
-    font-size: 0 !important;
+    font-size: 10px !important;
     font-weight: 600 !important;
     box-shadow: none !important;
-    overflow: hidden;
-    transition: width .18s ease, background .14s ease, border-color .14s ease;
 }
-[data-testid="stSidebar"] .stButton > button p::first-letter {
-    font-size: 16px;
-}
-[data-testid="stSidebar"]:hover .stButton > button {
-    width: 100%;
-    padding: 0 10px !important;
-    font-size: 10px !important;
-}
-[data-testid="stSidebar"] .stButton > button:hover {
+[data-testid="stSidebar"]:hover .stButton > button:hover {
     border-color: rgba(112,174,255,.55) !important;
     background: rgba(45,127,240,.18) !important;
     color: #ffffff !important;
 }
-[data-testid="stSidebar"] .stButton > button p {
+[data-testid="stSidebar"]:hover .stButton > button p {
     color: inherit !important;
     font-size: inherit !important;
 }
