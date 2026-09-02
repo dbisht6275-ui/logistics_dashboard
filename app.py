@@ -59,7 +59,7 @@ def show_tariff_rate_dashboard():
 st.set_page_config(
     page_title="Sugam Dashboard",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
 
@@ -101,119 +101,15 @@ st.markdown("""
 [data-testid="stSidebar"] * { box-sizing: border-box; }
 
 
-/* ============================================================
-   Highly visible sidebar expand / collapse controls.
-   These selectors cover current and older Streamlit DOM names.
-   Visual-only: no sidebar state or routing logic is changed.
-   ============================================================ */
-[data-testid="stSidebarCollapsedControl"],
-[data-testid="stSidebarCollapseButton"] {
-    z-index: 999999 !important;
-}
-
-[data-testid="stSidebarCollapsedControl"] button,
-[data-testid="stSidebarCollapseButton"] button,
-[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] {
-    width: 38px !important;
-    min-width: 38px !important;
-    height: 38px !important;
-    min-height: 38px !important;
-    padding: 7px !important;
-    border: 2px solid #ffffff !important;
-    border-radius: 10px !important;
-    background: linear-gradient(145deg, #3182f6 0%, #1761d2 62%, #104eae 100%) !important;
-    color: #ffffff !important;
-    box-shadow: 0 4px 0 #0a3c8d, 0 7px 14px rgba(4, 29, 72, .35) !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-    transform: none !important;
-    transition: transform .15s ease, box-shadow .15s ease, background .15s ease !important;
-}
-
-[data-testid="stSidebarCollapsedControl"] button:hover,
-[data-testid="stSidebarCollapseButton"] button:hover,
-[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:hover {
-    background: linear-gradient(145deg, #4d98ff 0%, #1f70e8 62%, #1558c0 100%) !important;
-    transform: translateY(-1px) scale(1.04) !important;
-    box-shadow: 0 5px 0 #0a3c8d, 0 10px 18px rgba(4, 29, 72, .42) !important;
-}
-
-[data-testid="stSidebarCollapsedControl"] button:active,
-[data-testid="stSidebarCollapseButton"] button:active,
-[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:active {
-    transform: translateY(2px) !important;
-    box-shadow: 0 1px 0 #0a3c8d, 0 4px 8px rgba(4, 29, 72, .30) !important;
-}
-
-[data-testid="stSidebarCollapsedControl"] svg,
-[data-testid="stSidebarCollapseButton"] svg,
-[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg {
-    width: 23px !important;
-    height: 23px !important;
-    color: #ffffff !important;
-    fill: none !important;
-    stroke: #ffffff !important;
-    stroke-width: 3 !important;
-    opacity: 1 !important;
-    filter: drop-shadow(0 1px 1px rgba(0,0,0,.25));
-}
-
-/* Keep the expand button away from the browser edge when sidebar is closed. */
-[data-testid="stSidebarCollapsedControl"] {
-    top: 10px !important;
-    left: 10px !important;
-}
-
-/* ============================================================
-   Full-width dashboard after collapsing the sidebar.
-
-   The sidebar has a custom fixed expanded width above. Without an explicit
-   collapsed-state override, some Streamlit versions keep that width reserved,
-   leaving a blank strip and preventing the dashboard from using the viewport.
-   These rules affect layout only; no navigation or page logic is changed.
-   ============================================================ */
-[data-testid="stSidebar"][aria-expanded="false"],
-[data-testid="stSidebar"]:has([data-testid="stSidebarCollapsedControl"]) {
-    width: 0 !important;
-    min-width: 0 !important;
-    max-width: 0 !important;
-    flex: 0 0 0 !important;
-    border-right: 0 !important;
-    box-shadow: none !important;
-    overflow: visible !important;
-}
-
-/* Remove any width still reserved by the sidebar wrapper in collapsed state. */
-[data-testid="stAppViewContainer"] > section:has(
-    [data-testid="stSidebar"][aria-expanded="false"]
-) {
-    grid-template-columns: 0 minmax(0, 1fr) !important;
-}
-
-/* Let the main dashboard consume all remaining viewport width. */
-[data-testid="stAppViewContainer"] > .main,
-[data-testid="stAppViewContainer"] main,
-section.main {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    margin-left: 0 !important;
-}
-
-/* Keep normal wide padding, but prevent the main block from retaining a
-   sidebar-sized offset after collapse. */
-[data-testid="stAppViewContainer"] .main .block-container {
-    width: 100% !important;
-    max-width: 100% !important;
-    margin-left: 0 !important;
-    margin-right: 0 !important;
-}
+/* Sidebar open/close behavior is left to Streamlit.
+   Using initial_sidebar_state="auto" avoids custom hide/unhide CSS conflicts
+   and lets Streamlit adapt the sidebar to the available screen width. */
 
 /* Brand block matching the shared reference layout. */
 .sugam-logo-wrap {
-    min-height: 78px;
+    min-height: 58px;
     margin: 0 -12px 10px;
-    padding: 15px 15px 13px;
+    padding: 12px 15px 10px;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -246,13 +142,6 @@ section.main {
     font-size: 17px;
     font-weight: 800;
     letter-spacing: 1.5px;
-}
-.sugam-logo-sub {
-    margin-top: 4px;
-    color: #cbd8ea;
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 3.1px;
 }
 
 /* Navigation. */
@@ -628,7 +517,6 @@ with st.sidebar:
             <div class="sugam-logo-mark" aria-hidden="true"></div>
             <div class="sugam-logo-copy">
                 <div class="sugam-logo-name">SUGAM</div>
-                <div class="sugam-logo-sub">LOGISTICS</div>
             </div>
         </div>
         """,
