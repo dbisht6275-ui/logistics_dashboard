@@ -1,7 +1,12 @@
 import streamlit as st
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+from collections import Counter
 import runpy
+import threading
+import time
+import uuid
 from services.login import login_page
 from services.roles import get_allowed_menu, get_allowed_reports, clear_role_cache
 
@@ -26,12 +31,287 @@ from pages.IT.BookingWeightSummaryTurnover import show_booking_weight_summary_tu
 from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
 from pages.Admin.user_management import show_UserManagement
 
+
+st.set_page_config(
+    page_title="Sugam Dashboard",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # ✅ FIX: Import missing functions
 try:
     from pages.IT.service_analysis import show_service_level
 except ImportError:
     def show_service_level():
         st.warning("🚛 Service Analysis page not found. Please create pages/IT/service_analysis.py")
+
+
+# ============================================================
+# LIVE USAGE ANALYTICS - NO DATABASE
+# ============================================================
+# This store lives only in the current Streamlit/AWS Python process.
+# It is intentionally NOT written to SQL/MySQL or any external database.
+# Counts reset whenever the app process restarts/redeploys.
+APP_TZ = ZoneInfo("Asia/Kolkata")
+ACTIVE_WINDOW_SECONDS = 15 * 60  # Keep aligned with your app's inactivity/logout window.
+
+
+@st.cache_resource(show_spinner=False)
+def get_usage_store():
+    return {
+        "lock": threading.RLock(),
+        "sessions": {},
+        "page_opens": Counter(),
+        "page_users": {},
+        "events": [],
+        "started_at": datetime.now(APP_TZ),
+    }
+
+
+def _usage_session_id():
+    if "_usage_session_id" not in st.session_state:
+        st.session_state["_usage_session_id"] = uuid.uuid4().hex
+    return st.session_state["_usage_session_id"]
+
+
+def _usage_employee_key():
+    employee_id = str(st.session_state.get("employee_id", "")).strip()
+    username = str(st.session_state.get("username", "")).strip()
+    employee_name = str(st.session_state.get("employee_name", "")).strip()
+    return employee_id or username or employee_name or _usage_session_id()
+
+
+def _cleanup_stale_usage_sessions(store, now_ts):
+    stale_ids = [
+        sid
+        for sid, info in store["sessions"].items()
+        if now_ts - info.get("last_seen", 0) > ACTIVE_WINDOW_SECONDS
+    ]
+    for sid in stale_ids:
+        store["sessions"].pop(sid, None)
+
+
+def track_usage(page_name, count_open=True):
+    """Mark this Streamlit session active and optionally count a real page change."""
+    store = get_usage_store()
+    now_ts = time.time()
+    sid = _usage_session_id()
+    employee_key = _usage_employee_key()
+
+    employee_name = (
+        st.session_state.get("employee_name")
+        or st.session_state.get("username")
+        or f"Employee {st.session_state.get('employee_id', '')}"
+    )
+
+    with store["lock"]:
+        _cleanup_stale_usage_sessions(store, now_ts)
+        store["sessions"][sid] = {
+            "session_id": sid,
+            "employee_key": employee_key,
+            "employee_id": st.session_state.get("employee_id", "-"),
+            "employee_name": str(employee_name),
+            "role": str(st.session_state.get("role", "viewer")).title(),
+            "page": page_name,
+            "last_seen": now_ts,
+        }
+
+        # Count only when the user actually changes page/report.
+        previous_page = st.session_state.get("_usage_last_page")
+        is_new_page = previous_page != page_name
+        should_count = count_open and is_new_page and page_name != "📊 Usage Analytics"
+
+        if should_count:
+            store["page_opens"][page_name] += 1
+            store["page_users"].setdefault(page_name, set()).add(employee_key)
+            store["events"].append({
+                "time": now_ts,
+                "employee_name": str(employee_name),
+                "employee_id": st.session_state.get("employee_id", "-"),
+                "page": page_name,
+            })
+            # Keep memory bounded.
+            if len(store["events"]) > 500:
+                del store["events"][:-500]
+
+    st.session_state["_usage_last_page"] = page_name
+
+
+def unregister_usage_session():
+    sid = st.session_state.get("_usage_session_id")
+    if not sid:
+        return
+    store = get_usage_store()
+    with store["lock"]:
+        store["sessions"].pop(sid, None)
+
+
+def _ago_text(seconds):
+    seconds = max(0, int(seconds))
+    if seconds < 15:
+        return "Just now"
+    if seconds < 60:
+        return f"{seconds} sec ago"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = minutes // 60
+    return f"{hours} hr ago"
+
+
+def get_usage_snapshot():
+    store = get_usage_store()
+    now_ts = time.time()
+
+    with store["lock"]:
+        _cleanup_stale_usage_sessions(store, now_ts)
+        sessions = [dict(v) for v in store["sessions"].values()]
+        page_opens = dict(store["page_opens"])
+        page_users = {k: len(v) for k, v in store["page_users"].items()}
+        events = [dict(e) for e in store["events"][-25:]]
+        started_at = store["started_at"]
+
+    # One row per employee, even if the same employee has multiple tabs/sessions.
+    active_by_employee = {}
+    for session in sessions:
+        key = session["employee_key"]
+        if key not in active_by_employee or session["last_seen"] > active_by_employee[key]["last_seen"]:
+            active_by_employee[key] = session
+
+    active_rows = []
+    for session in sorted(active_by_employee.values(), key=lambda x: x["last_seen"], reverse=True):
+        active_rows.append({
+            "Employee": session["employee_name"],
+            "Employee ID": session["employee_id"],
+            "Role": session["role"],
+            "Current Dashboard": session["page"],
+            "Last Active": _ago_text(now_ts - session["last_seen"]),
+        })
+
+    usage_rows = [
+        {
+            "Dashboard / Report": page,
+            "Opens": opens,
+            "Unique Users": page_users.get(page, 0),
+        }
+        for page, opens in sorted(page_opens.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+    recent_rows = []
+    for event in reversed(events):
+        event_dt = datetime.fromtimestamp(event["time"], APP_TZ)
+        recent_rows.append({
+            "Time": event_dt.strftime("%d %b %I:%M:%S %p"),
+            "Employee": event["employee_name"],
+            "Employee ID": event["employee_id"],
+            "Opened": event["page"],
+        })
+
+    return {
+        "active_users": len(active_by_employee),
+        "active_sessions": len(sessions),
+        "active_rows": active_rows,
+        "usage_rows": usage_rows,
+        "recent_rows": recent_rows,
+        "total_opens": sum(page_opens.values()),
+        "most_used": usage_rows[0]["Dashboard / Report"] if usage_rows else "-",
+        "most_used_opens": usage_rows[0]["Opens"] if usage_rows else 0,
+        "started_at": started_at,
+    }
+
+
+def _render_usage_live_panel():
+    # Keep the admin's own session active while this live panel refreshes.
+    track_usage("📊 Usage Analytics", count_open=False)
+    snapshot = get_usage_snapshot()
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🟢 Active Users Now", snapshot["active_users"])
+    c2.metric("🖥️ Active Sessions", snapshot["active_sessions"])
+    c3.metric(
+        "🏆 Most Used Dashboard",
+        snapshot["most_used"].replace("📄 Reports › ", "").replace("📊 ", ""),
+        f'{snapshot["most_used_opens"]} opens' if snapshot["most_used_opens"] else None,
+    )
+    c4.metric("📈 Total Page Opens", snapshot["total_opens"])
+
+    st.markdown("### Active Users")
+    if snapshot["active_rows"]:
+        st.dataframe(
+            snapshot["active_rows"],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No active users detected right now.")
+
+    left, right = st.columns([1.2, 1])
+
+    with left:
+        st.markdown("### Dashboard Usage")
+        if snapshot["usage_rows"]:
+            st.dataframe(
+                snapshot["usage_rows"],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("Usage will start appearing after users open dashboards.")
+
+    with right:
+        st.markdown("### Recent Activity")
+        if snapshot["recent_rows"]:
+            st.dataframe(
+                snapshot["recent_rows"],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("No activity has been recorded in this app process yet.")
+
+    st.caption(
+        "Live tracking uses application memory only — no database writes. "
+        f"Active means activity within the last {ACTIVE_WINDOW_SECONDS // 60} minutes. "
+        f"Tracking started {snapshot['started_at'].strftime('%d %b %Y %I:%M %p')} IST and resets after an app restart/redeploy."
+    )
+
+
+def show_usage_analytics():
+    st.markdown(
+        """
+        <style>
+        .usage-analytics-title {
+            margin-bottom: .15rem;
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: #0f2f63;
+        }
+        .usage-analytics-subtitle {
+            margin-bottom: 1rem;
+            color: #64748b;
+            font-size: .92rem;
+        }
+        </style>
+        <div class="usage-analytics-title">📊 Usage Analytics</div>
+        <div class="usage-analytics-subtitle">
+            Live user activity and dashboard popularity without changing your database.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Streamlit fragments provide a lightweight live refresh on newer versions.
+    # Fallback keeps the page fully usable on older Streamlit versions.
+    if hasattr(st, "fragment"):
+        @st.fragment(run_every="10s")
+        def _live_usage_fragment():
+            _render_usage_live_panel()
+
+        _live_usage_fragment()
+    else:
+        if st.button("↻ Refresh Live Data", key="usage_manual_refresh"):
+            st.rerun()
+        _render_usage_live_panel()
 
 
 def show_tariff_rate_dashboard():
@@ -54,13 +334,6 @@ def show_tariff_rate_dashboard():
         str(dashboard_file),
         run_name="tariff_rate_dashboard",
     )
-
-
-st.set_page_config(
-    page_title="Sugam Dashboard",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 
 # =========================
@@ -553,6 +826,7 @@ FULL_MENU_ITEMS = [
     "🚛 Service Analysis",
     "📦 Stock Operations",
     "📄 Reports",
+    "📊 Usage Analytics",
     "🛠️ User Management",
 ]
 
@@ -617,6 +891,15 @@ if "📦 Stock Operations" not in allowed_menu:
     stock_position = allowed_menu.index("🏠 Business Overview") + 1 \
         if "🏠 Business Overview" in allowed_menu else 0
     allowed_menu.insert(stock_position, "📦 Stock Operations")
+
+# Usage Analytics is a system/admin page and does not require a database permission row.
+if role.lower() == "admin" and "📊 Usage Analytics" not in allowed_menu:
+    analytics_position = allowed_menu.index("🛠️ User Management") \
+        if "🛠️ User Management" in allowed_menu else len(allowed_menu)
+    allowed_menu.insert(analytics_position, "📊 Usage Analytics")
+else:
+    # Defense-in-depth: never expose live employee usage to non-admin roles.
+    allowed_menu = [item for item in allowed_menu if item != "📊 Usage Analytics"]
 
 # Only keep report entries this role is allowed to see, in every department folder
 REPORTS_VISIBLE = {
@@ -902,6 +1185,7 @@ with st.sidebar:
 
     # Original logout behavior preserved.
     if st.button("🚪 Logout", use_container_width=True, key="sidebar_logout"):
+        unregister_usage_session()
         st.session_state.clear()
         st.rerun()
 
@@ -909,6 +1193,17 @@ with st.sidebar:
         '<div class="sugam-footer">Sugam Dashboard · v1.0</div>',
         unsafe_allow_html=True,
     )
+
+
+# ==========================================================
+# Live usage heartbeat / page-open tracking (memory only)
+# ==========================================================
+if menu == "📄 Reports" and st.session_state.get("selected_report"):
+    _current_usage_page = f"📄 Reports › {st.session_state.get('selected_report')}"
+else:
+    _current_usage_page = menu
+
+track_usage(_current_usage_page, count_open=True)
 
 
 if menu == "🏠 Business Overview":
@@ -940,6 +1235,12 @@ elif menu == "📅 Monthly Trend EDD":
 
 elif menu == "🚛 Service Analysis":
     show_service_level()
+
+elif menu == "📊 Usage Analytics":
+    if role.lower() == "admin":
+        show_usage_analytics()
+    else:
+        st.error("You do not have access to Usage Analytics.")
 
 elif menu == "🛠️ User Management":
     show_UserManagement()
