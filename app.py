@@ -703,6 +703,88 @@ with st.sidebar:
     # Existing reports search/folder logic is preserved exactly.
     if menu == "📄 Reports":
 
+        # Keep the sidebar fully expanded while the Reports section is selected.
+        # This prevents report search/folders/buttons from disappearing when the
+        # mouse moves away from the sidebar in hover mode.
+        st.markdown(
+            """
+            <style>
+            [data-testid="stSidebar"] {
+                width: 242px !important;
+                min-width: 242px !important;
+                max-width: 242px !important;
+                flex: 0 0 242px !important;
+                overflow: hidden !important;
+            }
+
+            [data-testid="stSidebar"] [data-testid="stSidebarContent"],
+            [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+                padding-left: 12px !important;
+                padding-right: 12px !important;
+            }
+
+            [data-testid="stSidebar"] .sugam-logo-wrap {
+                margin-left: -12px !important;
+                margin-right: -12px !important;
+                padding: 0 15px !important;
+                justify-content: flex-start !important;
+            }
+
+            [data-testid="stSidebar"] .sugam-logo-copy,
+            [data-testid="stSidebar"] .sugam-nav-label,
+            [data-testid="stSidebar"] [data-testid="stTextInput"],
+            [data-testid="stSidebar"] [data-testid="stExpander"],
+            [data-testid="stSidebar"] .sugam-sidebar-spacer,
+            [data-testid="stSidebar"] .sugam-refresh-card,
+            [data-testid="stSidebar"] .sugam-session-meta,
+            [data-testid="stSidebar"] .sugam-footer,
+            [data-testid="stSidebar"] .stButton {
+                display: block !important;
+            }
+
+            [data-testid="stSidebar"] .sugam-profile-card {
+                display: flex !important;
+            }
+
+            [data-testid="stSidebar"] div[role="radiogroup"] label {
+                width: 100% !important;
+                min-height: 39px !important;
+                margin: 0 !important;
+                padding: 8px 10px !important;
+                justify-content: flex-start !important;
+            }
+
+            [data-testid="stSidebar"] div[role="radiogroup"] label p {
+                width: auto !important;
+                max-width: none !important;
+                color: #d9e5f4 !important;
+                font-size: 12px !important;
+                line-height: 1.2 !important;
+                overflow: visible !important;
+            }
+
+            [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {
+                color: #ffffff !important;
+                font-weight: 700 !important;
+            }
+
+            [data-testid="stSidebar"] .stButton > button {
+                min-height: 34px !important;
+                width: 100% !important;
+                padding: 0 10px !important;
+                border-radius: 7px !important;
+                border: 1px solid rgba(255,255,255,.12) !important;
+                color: #dce8f7 !important;
+                background: rgba(255,255,255,.055) !important;
+                font-size: 10px !important;
+                font-weight: 600 !important;
+                box-shadow: none !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
         # ---------------------------------
         # SEARCH REPORT
         # ---------------------------------
