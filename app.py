@@ -59,7 +59,7 @@ def show_tariff_rate_dashboard():
 st.set_page_config(
     page_title="Sugam Dashboard",
     layout="wide",
-    initial_sidebar_state="auto"
+    initial_sidebar_state="expanded"
 )
 
 
@@ -85,31 +85,91 @@ st.markdown("""
    remain unchanged in the Python code below.
    ============================================================ */
 [data-testid="stSidebar"] {
-    width: 242px !important;
-    min-width: 242px !important;
     background: linear-gradient(180deg, #123568 0%, #0b2a58 58%, #08244d 100%);
     border-right: 1px solid rgba(7, 28, 63, .45);
     box-shadow: 5px 0 18px rgba(15, 42, 82, .12);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    transition: width .18s ease, min-width .18s ease, transform .18s ease !important;
 }
-[data-testid="stSidebar"] > div:first-child {
-    padding: 0 !important;
+
+/* Expanded sidebar width only while open. */
+[data-testid="stSidebar"][aria-expanded="true"] {
+    width: 242px !important;
+    min-width: 242px !important;
+    max-width: 242px !important;
+    flex: 0 0 242px !important;
 }
-[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
-    padding: 0 12px 12px !important;
+
+/* Fallback for Streamlit versions that omit aria-expanded while open. */
+[data-testid="stSidebar"]:not([aria-expanded="false"]) {
+    width: 242px;
+    min-width: 242px;
+    max-width: 242px;
+}
+
+/* Remove Streamlit's large top padding so SUGAM starts at the top. */
+[data-testid="stSidebar"] > div:first-child,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
+}
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    padding-bottom: 12px !important;
 }
 [data-testid="stSidebar"] * { box-sizing: border-box; }
 
+/* Native Streamlit collapse/expand, with true zero-width sidebar when closed. */
+[data-testid="stSidebar"][aria-expanded="false"] {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    flex: 0 0 0 !important;
+    border-right: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
 
-/* Sidebar open/close behavior is left to Streamlit.
-   Using initial_sidebar_state="auto" avoids custom hide/unhide CSS conflicts
-   and lets Streamlit adapt the sidebar to the available screen width. */
+/* Newer Streamlit builds expose a separate collapsed-control element. */
+[data-testid="stAppViewContainer"]:has([data-testid="stSidebarCollapsedControl"]) [data-testid="stSidebar"] {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    flex: 0 0 0 !important;
+    border-right: 0 !important;
+    box-shadow: none !important;
+}
+
+/* Dashboard takes the full viewport whenever sidebar is collapsed. */
+[data-testid="stAppViewContainer"] > .main,
+[data-testid="stAppViewContainer"] main,
+section.main {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin-left: 0 !important;
+}
+[data-testid="stAppViewContainer"] .main .block-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+/* Keep Streamlit's own arrow controls visible and simple. */
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapseButton"] {
+    z-index: 999999 !important;
+}
 
 /* Brand block matching the shared reference layout. */
 .sugam-logo-wrap {
-    min-height: 58px;
+    min-height: 56px;
     margin: 0 -12px 10px;
-    padding: 12px 15px 10px;
+    padding: 7px 15px 7px;
     display: flex;
     align-items: center;
     gap: 10px;
