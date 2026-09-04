@@ -174,7 +174,7 @@ CHARGES = {
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def load_rates(
+def load_rates_v2(
     active_on: date,
     origin_name: str,
     destination_name: str,
@@ -269,25 +269,36 @@ key = (active_date, origin_search, destination_search)
 if load:
     try:
         with st.spinner("Loading rates..."):
-            st.session_state.tariff_data = load_rates(
+            st.session_state.tariff_data_v2 = load_rates_v2(
                 active_date,
                 origin_search,
                 destination_search,
             )
-            st.session_state.tariff_key = key
+            st.session_state.tariff_key_v2 = key
     except Exception as exc:
         st.error("Rate data could not be loaded.")
         with st.expander("Technical details"):
             st.code(str(exc))
         st.stop()
 
-if st.session_state.get("tariff_key") != key:
+if st.session_state.get("tariff_key_v2") != key:
     st.info("Select the route and click **Load rates**.")
     st.stop()
 
-data = st.session_state.get("tariff_data", pd.DataFrame()).copy()
+data = st.session_state.get("tariff_data_v2", pd.DataFrame()).copy()
 if data.empty:
     st.warning("No active rates found.")
+    st.stop()
+
+# Defensive schema check: prevents crashes if Streamlit has an older cached dataframe.
+if "RATE_TYPE_GROUP" not in data.columns:
+    load_rates_v2.clear()
+    data = load_rates_v2(active_date, origin_search, destination_search)
+    st.session_state.tariff_data_v2 = data
+    st.session_state.tariff_key_v2 = key
+
+if "RATE_TYPE_GROUP" not in data.columns:
+    st.error("RATE_TYPE_GROUP is missing from the SQL result. Please verify the deployed QUERY includes the RATE_TYPE_GROUP CASE expression.")
     st.stop()
 
 for col in ("FROMDT", "TODT"):
