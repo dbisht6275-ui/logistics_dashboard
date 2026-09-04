@@ -864,7 +864,6 @@ with expiry_tab:
         },
     )
 
-
 with records_tab:
     display_records = filtered.copy()
     display_records["RATE_TYPE_GROUP"] = display_records["RATE_TYPE_GROUP"].map(_rate_type_display)
