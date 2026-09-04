@@ -48,8 +48,11 @@ DECLARE @DestinationName VARCHAR(100) = CAST(:destination_name AS VARCHAR(100));
 SELECT
     COALESCE(RT.CUSTCODE,RT.CNGECODE,RT.CNGRCODE) AS CUSTOMER_CODE,
     CASE
-        WHEN COALESCE(RT.CUSTCODE,RT.CNGECODE,RT.CNGRCODE)
-             IN ('0000007565','7565')
+        WHEN RT.CUSTCODE = '0000007565' THEN 'TARIFF RATE'
+        ELSE 'CONTRACTUAL RATE'
+    END AS RATE_TYPE_GROUP,
+    CASE
+        WHEN RT.CUSTCODE = '0000007565'
         THEN 'TARIFF RATE'
         ELSE COALESCE(C.CUSTNAME,E.NAME,R.NAME)
     END AS CUSTOMER_NAME,
@@ -219,8 +222,8 @@ def options(frame: pd.DataFrame, column: str) -> list[str]:
     return sorted(frame[column].dropna().astype(str).unique().tolist())
 
 
-st.title("Tariff Rate Dashboard")
-st.caption("Origin-to-destination tariff rates, weight slabs and additional charges")
+st.title("Rate Dashboard")
+st.caption("Tariff and contractual rates by route, weight slabs and additional charges")
 
 st.subheader("Search rates by route")
 date_col, origin_col, destination_col = st.columns([1, 1.5, 1.5])
@@ -256,7 +259,7 @@ destination_search = destination_col.selectbox(
 if destination_search == "All Destinations":
     destination_search = ""
 
-load = st.button("Load tariff rates", type="primary")
+load = st.button("Load rates", type="primary")
 
 if not origin_search:
     st.info("Select an **Origin**. Destination is optional.")
@@ -265,7 +268,7 @@ if not origin_search:
 key = (active_date, origin_search, destination_search)
 if load:
     try:
-        with st.spinner("Loading tariff rates..."):
+        with st.spinner("Loading rates..."):
             st.session_state.tariff_data = load_rates(
                 active_date,
                 origin_search,
@@ -273,24 +276,39 @@ if load:
             )
             st.session_state.tariff_key = key
     except Exception as exc:
-        st.error("Tariff data could not be loaded.")
+        st.error("Rate data could not be loaded.")
         with st.expander("Technical details"):
             st.code(str(exc))
         st.stop()
 
 if st.session_state.get("tariff_key") != key:
-    st.info("Select the route and click **Load tariff rates**.")
+    st.info("Select the route and click **Load rates**.")
     st.stop()
 
 data = st.session_state.get("tariff_data", pd.DataFrame()).copy()
 if data.empty:
-    st.warning("No active tariff rates found.")
+    st.warning("No active rates found.")
     st.stop()
 
 for col in ("FROMDT", "TODT"):
     data[col] = pd.to_datetime(data[col], errors="coerce")
 for col in ("SLAB1", "RATE1", "FROMWT", "TOWT", "MINCWEIGHT", "FLAT_AMOUNT"):
     data[col] = pd.to_numeric(data[col], errors="coerce")
+
+# Divide records into two categories:
+# 1) Tariff Rate      -> CUSTCODE = 0000007565
+# 2) Contractual Rate -> every other CUSTCODE
+rate_category = st.radio(
+    "Rate category",
+    ["Tariff Rate", "Contractual Rate"],
+    horizontal=True,
+)
+selected_group = rate_category.upper()
+data = data[data["RATE_TYPE_GROUP"] == selected_group].copy()
+
+if data.empty:
+    st.warning(f"No active {rate_category.lower()} records found for the selected route.")
+    st.stop()
 
 with st.expander("Refine loaded results", expanded=True):
     filter_row1 = st.columns(3)
@@ -368,7 +386,7 @@ with rate_analysis:
                         var_name="Rate", value_name="Value")
     st.plotly_chart(px.bar(chart, x="Value", y="DESTINATION", color="Rate",
                            barmode="group", orientation="h",
-                           title="Destination tariff comparison"),
+                           title=f"Destination {rate_category.lower()} comparison"),
                     use_container_width=True)
     st.dataframe(rates.sort_values("RATE1", ascending=False), use_container_width=True,
                  hide_index=True)
@@ -401,6 +419,6 @@ with records:
     st.download_button(
         "Download filtered rates (CSV)",
         filtered.to_csv(index=False).encode("utf-8-sig"),
-        file_name=f"tariff_rates_{date.today():%Y%m%d}.csv",
+        file_name=f"{rate_category.lower().replace(' ', '_')}_{date.today():%Y%m%d}.csv",
         mime="text/csv",
     )
