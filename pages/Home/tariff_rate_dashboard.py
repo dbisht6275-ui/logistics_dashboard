@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 
 import pandas as pd
-import plotly.express as px
 import streamlit as st
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
@@ -12,8 +11,8 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fi
 
 # =============================================================================
 # Tariff / Contractual Rate Dashboard
-# Filter behaviour follows the Business Overview pattern:
-#   View Type -> Zone -> Circle -> Branch -> Product -> Rate For -> Customer
+# Filter flow:
+#   View Type -> Rate Type -> Zone -> Circle -> Branch -> Rate For -> Customer
 #   Empty multiselect = All
 #   Child options are rebuilt from the rows allowed by parent selections
 #   Stale selections are pruned automatically
@@ -98,22 +97,7 @@ SELECT
     RT.SLAB1,
     RT.RATE1,
     RT.AMOUNT AS FLAT_AMOUNT,
-    RT.RATECATEGORY,
-    ISNULL(CHG.BOE, 0) AS BOE,
-    ISNULL(CHG.CNCHG, 0) AS CN_CHARGE,
-    ISNULL(CHG.COD, 0) AS COD_DOD,
-    ISNULL(CHG.DD, 0) AS DD,
-    ISNULL(CHG.FOV, 0) AS FOV,
-    ISNULL(CHG.FOD, 0) AS FOD,
-    ISNULL(CHG.FUEL, 0) AS FUEL_SUR,
-    ISNULL(CHG.HANDLING, 0) AS HANDLING,
-    ISNULL(CHG.MISC, 0) AS MISC,
-    ISNULL(CHG.ODA, 0) AS ODA,
-    ISNULL(CHG.PICKUP, 0) AS PICKUP,
-    ISNULL(CHG.ST, 0) AS ST,
-    ISNULL(CHG.SA, 0) AS SA_SF,
-    ISNULL(CHG.TPND, 0) AS TPND,
-    ISNULL(CHG.ICCNCC, 0) AS ICC_NCC
+    RT.RATECATEGORY
 FROM RATEMAST RT
 INNER JOIN VIEWSTATIONMAST ORG ON ORG.STNCODE = RT.ORGCODE
 INNER JOIN VIEWSTATIONMAST DEST ON DEST.STNCODE = RT.DESTCODE
@@ -124,45 +108,6 @@ LEFT JOIN VIEWGOODSMAST G ON G.ITEMCODE = RT.GOODSGROUPCODE
 LEFT JOIN CNGRCNGEMAST E ON E.CODE = RT.CNGECODE
 LEFT JOIN CNGRCNGEMAST R ON R.CODE = RT.CNGRCODE
 LEFT JOIN CUSTMAST C ON C.CUSTCODE = RT.CUSTCODE
-OUTER APPLY
-(
-    SELECT
-        MAX(CASE WHEN X.CHGCODE = 'A0098' THEN X.VAL END) AS BOE,
-        MAX(CASE WHEN X.CHGCODE = 'A0120' THEN X.VAL END) AS CNCHG,
-        MAX(CASE WHEN X.CHGCODE = 'A0106' THEN X.VAL END) AS COD,
-        MAX(CASE WHEN X.CHGCODE = 'A0123' THEN X.VAL END) AS DD,
-        MAX(CASE WHEN X.CHGCODE = 'A0107' THEN X.VAL END) AS FOV,
-        MAX(CASE WHEN X.CHGCODE = 'A0093' THEN X.VAL END) AS FOD,
-        MAX(CASE WHEN X.CHGCODE = 'A0113' THEN X.VAL END) AS FUEL,
-        MAX(CASE WHEN X.CHGCODE = 'A0103' THEN X.VAL END) AS HANDLING,
-        MAX(CASE WHEN X.CHGCODE = 'A0114' THEN X.VAL END) AS MISC,
-        MAX(CASE WHEN X.CHGCODE = 'A0105' THEN X.VAL END) AS ODA,
-        MAX(CASE WHEN X.CHGCODE = 'A0110' THEN X.VAL END) AS PICKUP,
-        MAX(CASE WHEN X.CHGCODE = 'A0108' THEN X.VAL END) AS ST,
-        MAX(CASE WHEN X.CHGCODE = 'A0121' THEN X.VAL END) AS SA,
-        MAX(CASE WHEN X.CHGCODE = 'A0104' THEN X.VAL END) AS TPND,
-        MAX(CASE WHEN X.CHGCODE = 'A0005' THEN X.VAL END) AS ICCNCC
-    FROM
-    (
-        SELECT
-            CC.CHGCODE,
-            CASE
-                WHEN V.CHGAMT_VALUE > 0 THEN V.CHGAMT_VALUE
-                ELSE V.CHGRATE_VALUE
-            END AS VAL
-        FROM CUSTCHRG CC
-        CROSS APPLY
-        (
-            SELECT
-                TRY_CONVERT(DECIMAL(18, 2), CC.CHGAMT) AS CHGAMT_VALUE,
-                TRY_CONVERT(DECIMAL(18, 2), CC.CHGRATE) AS CHGRATE_VALUE
-        ) V
-        WHERE CC.RATEDATAID = RT.RATEDATAID
-          AND CC.CHGCODE IN
-          ('A0098','A0120','A0106','A0123','A0107','A0093','A0113','A0103',
-           'A0114','A0105','A0110','A0108','A0121','A0104','A0005')
-    ) X
-) CHG
 WHERE RT.TODT > @AsOnDate
   AND
   (
@@ -199,27 +144,9 @@ ORDER BY RT.FROMDT, ORG.STNNAME, DEST.STNNAME;
 """
 
 
-CHARGES = {
-    "BOE": "B.O.E",
-    "CN_CHARGE": "C.N. Charge",
-    "COD_DOD": "COD/DOD",
-    "DD": "D/D",
-    "FOV": "F.O.V",
-    "FOD": "FOD",
-    "FUEL_SUR": "Fuel Surcharge",
-    "HANDLING": "Handling",
-    "MISC": "Misc",
-    "ODA": "O.D.A",
-    "PICKUP": "Pickup",
-    "ST": "S.T",
-    "SA_SF": "SA/SF",
-    "TPND": "T.P.N.D",
-    "ICC_NCC": "ICC/NCC",
-}
-
 
 @st.cache_data(ttl=900, show_spinner=False)
-def load_rates_overview_v1(active_on: date, scope_type: str, scope_value: str) -> pd.DataFrame:
+def load_rates_role_v2(active_on: date, scope_type: str, scope_value: str) -> pd.DataFrame:
     engine = get_engine()
     with engine.connect() as cn:
         return pd.read_sql_query(
@@ -240,7 +167,7 @@ def _canon(value) -> str:
 
 
 def _safe_options(source_df: pd.DataFrame, column: str) -> list[str]:
-    """Same idea as Overview: return clean, sorted values for the current parent scope."""
+    """Return clean, sorted values for the current parent scope."""
     if source_df is None or source_df.empty or column not in source_df.columns:
         return []
     values = source_df[column].dropna().astype(str).str.strip()
@@ -249,7 +176,7 @@ def _safe_options(source_df: pd.DataFrame, column: str) -> list[str]:
 
 
 def _apply_multi_filter(source_df: pd.DataFrame, column: str, selected: list[str]) -> pd.DataFrame:
-    """Overview behaviour: empty multiselect means All."""
+    """Empty multiselect means All."""
     if (
         source_df is None
         or source_df.empty
@@ -261,7 +188,7 @@ def _apply_multi_filter(source_df: pd.DataFrame, column: str, selected: list[str
 
 
 def _prune_multiselect_state(key: str, allowed_options: list[str]) -> None:
-    """Remove stale selections when a parent filter changes, exactly like Overview."""
+    """Remove stale selections when a parent filter changes."""
     if key in st.session_state:
         current = st.session_state.get(key, [])
         if isinstance(current, (list, tuple, set)):
@@ -309,14 +236,8 @@ def _apply_python_role_scope(frame: pd.DataFrame, scope_type: str, scope_value: 
     return frame[org_mask | dest_mask].copy()
 
 
-def _route_count(frame: pd.DataFrame) -> int:
-    if frame is None or frame.empty:
-        return 0
-    return int(frame[["ORIGIN", "DESTINATION"]].drop_duplicates().shape[0])
-
-
 def _inject_css():
-    """Compact controls inspired by the Overview page without copying its full stylesheet."""
+    """Compact controls for the rate dashboard."""
     st.markdown(
         """
         <style>
@@ -338,14 +259,6 @@ def _inject_css():
             background:linear-gradient(180deg,#f9fbfe 0%,#eef4fa 58%,#e4edf7 100%) !important;
             box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 2px 5px rgba(30,64,105,.08) !important;
         }
-        div[data-testid="stMetric"] {
-            padding:8px 10px;
-            border:1px solid #d5e1ee;
-            border-radius:10px;
-            background:#fbfdff;
-        }
-        div[data-testid="stMetricLabel"] {font-size:10px !important;}
-        div[data-testid="stMetricValue"] {font-size:19px !important;}
         div[data-testid="stDataFrame"] {border:1px solid #dbe4ef; border-radius:10px; overflow:hidden;}
         </style>
         """,
@@ -362,32 +275,6 @@ def _rate_type_display(value: str) -> str:
     return value.title()
 
 
-def _add_scope_direction(frame: pd.DataFrame, scope_type: str, scope_value: str) -> pd.DataFrame:
-    result = frame.copy()
-    result["SCOPE_DIRECTION"] = "Network"
-    if not scope_type or result.empty:
-        return result
-
-    org_mask, dest_mask = _scope_masks(result, scope_type, scope_value)
-    result.loc[org_mask & ~dest_mask, "SCOPE_DIRECTION"] = "Outbound"
-    result.loc[dest_mask & ~org_mask, "SCOPE_DIRECTION"] = "Inbound"
-    result.loc[org_mask & dest_mask, "SCOPE_DIRECTION"] = "Within Scope"
-    return result
-
-
-def _opposite_endpoint(frame: pd.DataFrame, scope_type: str, scope_value: str) -> pd.Series:
-    """For role-scoped users, return the opposite branch for connection insights."""
-    if frame.empty or not scope_type:
-        return pd.Series("", index=frame.index)
-
-    org_mask, dest_mask = _scope_masks(frame, scope_type, scope_value)
-    result = pd.Series("", index=frame.index, dtype="object")
-    result.loc[org_mask & ~dest_mask] = frame.loc[org_mask & ~dest_mask, "DESTINATION"].fillna("").astype(str)
-    result.loc[dest_mask & ~org_mask] = frame.loc[dest_mask & ~org_mask, "ORIGIN"].fillna("").astype(str)
-    result.loc[org_mask & dest_mask] = "Within Scope"
-    return result
-
-
 # =============================================================================
 # Page
 # =============================================================================
@@ -402,38 +289,38 @@ if scope_type:
         "Permitted rates include the assigned scope on either Origin or Destination side."
     )
 else:
-    st.caption("Full-network rate visibility. Filters follow the Business Overview cascading logic.")
+    st.caption("Full-network rate visibility. Use the cascading filters below to refine rates.")
 
 header_cols = st.columns([1.0, 1.0, 4.0])
 with header_cols[0]:
-    active_date = st.date_input("Active on", date.today(), key="rate_active_on_ov1")
+    active_date = st.date_input("Active on", date.today(), key="rate_active_on_v2")
 with header_cols[1]:
     st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
     load_clicked = st.button(
         "Load Dashboard",
         type="primary",
         use_container_width=True,
-        key="rate_load_ov1",
+        key="rate_load_v2",
     )
 
 load_key = (active_date, scope_type, scope_value)
 if load_clicked:
     try:
         with st.spinner("Loading rate data..."):
-            loaded = load_rates_overview_v1(active_date, scope_type, scope_value)
-            st.session_state["rate_data_ov1"] = loaded
-            st.session_state["rate_key_ov1"] = load_key
+            loaded = load_rates_role_v2(active_date, scope_type, scope_value)
+            st.session_state["rate_data_v2"] = loaded
+            st.session_state["rate_key_v2"] = load_key
     except Exception as exc:
         st.error("Rate data could not be loaded.")
         with st.expander("Technical details"):
             st.code(str(exc))
         st.stop()
 
-if st.session_state.get("rate_key_ov1") != load_key:
+if st.session_state.get("rate_key_v2") != load_key:
     st.info("Choose the active date and click **Load Dashboard**.")
     st.stop()
 
-data = st.session_state.get("rate_data_ov1", pd.DataFrame()).copy()
+data = st.session_state.get("rate_data_v2", pd.DataFrame()).copy()
 if data.empty:
     if scope_type:
         st.warning(f"No active rates found for your assigned {scope_type}: {scope_value}.")
@@ -448,7 +335,7 @@ required_columns = {
 }
 missing = sorted(required_columns.difference(data.columns))
 if missing:
-    load_rates_overview_v1.clear()
+    load_rates_role_v2.clear()
     st.error("SQL result is missing required columns: " + ", ".join(missing))
     st.stop()
 
@@ -472,19 +359,18 @@ if data.empty:
     st.warning("No records remain inside your assigned data scope.")
     st.stop()
 
-data = _add_scope_direction(data, scope_type, scope_value)
 
 
 # =============================================================================
-# OVERVIEW-STYLE FILTER ROW
+# FILTER ROW
 # =============================================================================
-filter_cols = st.columns(8, gap="small")
+filter_cols = st.columns(7, gap="small")
 
 with filter_cols[0]:
     view_type = st.selectbox(
         "⇄ View Type",
         ["Origin", "Destination"],
-        key="rate_view_type_ov1",
+        key="rate_view_type_v2",
         help="Changes which side Zone / Circle / Branch filters are based on.",
     )
 
@@ -492,14 +378,14 @@ with filter_cols[1]:
     rate_type = st.selectbox(
         "▥ Rate Type",
         ["All", "Tariff Rate", "Contractual Rate"],
-        key="rate_type_ov1",
+        key="rate_type_v2",
     )
 
 working = data.copy()
 if rate_type != "All":
     working = working[working["RATE_TYPE_GROUP"].eq(rate_type.upper())].copy()
 
-# One hierarchy, just like Overview. View Type chooses which route side supplies it.
+# View Type chooses which route side supplies Zone / Circle / Branch.
 if view_type == "Origin":
     zone_col, circle_col, branch_col = "ORG_ZONE", "ORG_CIRCLE", "ORIGIN"
 else:
@@ -509,12 +395,12 @@ filter_source_df = working.copy()
 
 # ZONE
 zone_options = _safe_options(filter_source_df, zone_col)
-_prune_multiselect_state("rate_zone_ov1", zone_options)
+_prune_multiselect_state("rate_zone_v2", zone_options)
 with filter_cols[2]:
     selected_zones = st.multiselect(
         "◉ Zone",
         zone_options,
-        key="rate_zone_ov1",
+        key="rate_zone_v2",
         placeholder="All zones",
         disabled=not zone_options,
     )
@@ -522,12 +408,12 @@ with filter_cols[2]:
 # CIRCLE follows Zone
 circle_scope = _apply_multi_filter(filter_source_df.copy(), zone_col, selected_zones)
 circle_options = _safe_options(circle_scope, circle_col)
-_prune_multiselect_state("rate_circle_ov1", circle_options)
+_prune_multiselect_state("rate_circle_v2", circle_options)
 with filter_cols[3]:
     selected_circles = st.multiselect(
         "◎ Circle",
         circle_options,
-        key="rate_circle_ov1",
+        key="rate_circle_v2",
         placeholder="All circles",
         disabled=not circle_options,
     )
@@ -535,38 +421,25 @@ with filter_cols[3]:
 # BRANCH follows Zone + Circle
 branch_scope = _apply_multi_filter(circle_scope.copy(), circle_col, selected_circles)
 branch_options = _safe_options(branch_scope, branch_col)
-_prune_multiselect_state("rate_branch_ov1", branch_options)
+_prune_multiselect_state("rate_branch_v2", branch_options)
 with filter_cols[4]:
     selected_branches = st.multiselect(
         "⌂ Branch",
         branch_options,
-        key="rate_branch_ov1",
+        key="rate_branch_v2",
         placeholder="All branches",
         disabled=not branch_options,
     )
 
-# PRODUCT follows the selected hierarchy
-product_scope = _apply_multi_filter(branch_scope.copy(), branch_col, selected_branches)
-product_options = _safe_options(product_scope, "PRODUCT_NAME")
-_prune_multiselect_state("rate_product_ov1", product_options)
-with filter_cols[5]:
-    selected_products = st.multiselect(
-        "▤ Product",
-        product_options,
-        key="rate_product_ov1",
-        placeholder="All products",
-        disabled=not product_options,
-    )
-
-# RATE FOR follows hierarchy + product
-ratefor_scope = _apply_multi_filter(product_scope.copy(), "PRODUCT_NAME", selected_products)
+# RATE FOR follows the selected hierarchy
+ratefor_scope = _apply_multi_filter(branch_scope.copy(), branch_col, selected_branches)
 ratefor_options = _safe_options(ratefor_scope, "RATEFOR")
-_prune_multiselect_state("rate_ratefor_ov1", ratefor_options)
-with filter_cols[6]:
+_prune_multiselect_state("rate_ratefor_v2", ratefor_options)
+with filter_cols[5]:
     selected_ratefor = st.multiselect(
         "◫ Rate For",
         ratefor_options,
-        key="rate_ratefor_ov1",
+        key="rate_ratefor_v2",
         placeholder="All",
         disabled=not ratefor_options,
     )
@@ -574,12 +447,12 @@ with filter_cols[6]:
 # CUSTOMER follows all filters above
 customer_scope = _apply_multi_filter(ratefor_scope.copy(), "RATEFOR", selected_ratefor)
 customer_options = _safe_options(customer_scope, "CUSTOMER_NAME")
-_prune_multiselect_state("rate_customer_ov1", customer_options)
-with filter_cols[7]:
+_prune_multiselect_state("rate_customer_v2", customer_options)
+with filter_cols[6]:
     selected_customers = st.multiselect(
         "♙ Customer",
         customer_options,
-        key="rate_customer_ov1",
+        key="rate_customer_v2",
         placeholder="All customers",
         disabled=not customer_options,
     )
@@ -590,7 +463,6 @@ for column, selected in (
     (zone_col, selected_zones),
     (circle_col, selected_circles),
     (branch_col, selected_branches),
-    ("PRODUCT_NAME", selected_products),
     ("RATEFOR", selected_ratefor),
     ("CUSTOMER_NAME", selected_customers),
 ):
@@ -602,231 +474,11 @@ if filtered.empty:
 
 
 # =============================================================================
-# KPI / INSIGHTS
+# RESULTS
 # =============================================================================
 as_on_ts = pd.Timestamp(active_date)
-expiry_end = as_on_ts + pd.Timedelta(days=30)
-expiring = filtered[
-    filtered["TODT"].notna()
-    & filtered["TODT"].between(as_on_ts, expiry_end)
-].copy()
 
-unique_routes = _route_count(filtered)
-tariff_routes = _route_count(filtered[filtered["RATE_TYPE_GROUP"].eq("TARIFF RATE")])
-contractual_routes = _route_count(filtered[filtered["RATE_TYPE_GROUP"].eq("CONTRACTUAL RATE")])
-contractual_customers = int(
-    filtered.loc[
-        filtered["RATE_TYPE_GROUP"].eq("CONTRACTUAL RATE"), "CUSTOMER_NAME"
-    ].replace("Not specified", pd.NA).dropna().nunique()
-)
-
-if scope_type:
-    org_scope_mask, dest_scope_mask = _scope_masks(filtered, scope_type, scope_value)
-    outbound_routes = _route_count(filtered[org_scope_mask])
-    inbound_routes = _route_count(filtered[dest_scope_mask])
-
-    metric_cols = st.columns(8, gap="small")
-    metric_cols[0].metric("Rate Records", f"{len(filtered):,}")
-    metric_cols[1].metric("Unique Routes", f"{unique_routes:,}")
-    metric_cols[2].metric("Tariff Routes", f"{tariff_routes:,}")
-    metric_cols[3].metric("Contractual Routes", f"{contractual_routes:,}")
-    metric_cols[4].metric("Outbound Routes", f"{outbound_routes:,}")
-    metric_cols[5].metric("Inbound Routes", f"{inbound_routes:,}")
-    metric_cols[6].metric("Customers", f"{contractual_customers:,}")
-    metric_cols[7].metric("Expiring ≤30d", f"{len(expiring):,}")
-else:
-    metric_cols = st.columns(8, gap="small")
-    metric_cols[0].metric("Rate Records", f"{len(filtered):,}")
-    metric_cols[1].metric("Unique Routes", f"{unique_routes:,}")
-    metric_cols[2].metric("Tariff Routes", f"{tariff_routes:,}")
-    metric_cols[3].metric("Contractual Routes", f"{contractual_routes:,}")
-    metric_cols[4].metric("Origin Branches", f"{filtered['ORIGIN'].nunique():,}")
-    metric_cols[5].metric("Destination Branches", f"{filtered['DESTINATION'].nunique():,}")
-    metric_cols[6].metric("Customers", f"{contractual_customers:,}")
-    metric_cols[7].metric("Expiring ≤30d", f"{len(expiring):,}")
-
-
-overview_tab, comparison_tab, charge_tab, expiry_tab, records_tab = st.tabs(
-    [
-        "Overview",
-        "Rate Comparison",
-        "Additional Charges",
-        "Expiry Watch",
-        "Rate Records",
-    ]
-)
-
-
-with overview_tab:
-    left, right = st.columns(2, gap="small")
-
-    with left:
-        type_summary = (
-            filtered[["RATE_TYPE_GROUP", "ORIGIN", "DESTINATION"]]
-            .drop_duplicates()
-            .groupby("RATE_TYPE_GROUP", dropna=False)
-            .size()
-            .reset_index(name="Unique Routes")
-        )
-        type_summary["Rate Type"] = type_summary["RATE_TYPE_GROUP"].map(_rate_type_display)
-        fig = px.bar(
-            type_summary,
-            x="Rate Type",
-            y="Unique Routes",
-            text_auto=True,
-            title="Route Coverage by Rate Type",
-        )
-        fig.update_layout(height=315, margin=dict(l=10, r=10, t=45, b=10))
-        st.plotly_chart(fig, use_container_width=True)
-
-    with right:
-        if scope_type:
-            connection_df = filtered[["ORIGIN", "DESTINATION"]].drop_duplicates().copy()
-            connection_df["Connected Branch"] = _opposite_endpoint(
-                connection_df, scope_type, scope_value
-            )
-            connection_df = connection_df[
-                connection_df["Connected Branch"].fillna("").astype(str).str.strip().ne("")
-            ]
-            connection_summary = (
-                connection_df["Connected Branch"]
-                .value_counts()
-                .head(15)
-                .sort_values()
-                .reset_index()
-            )
-            connection_summary.columns = ["Connected Branch", "Routes"]
-            fig = px.bar(
-                connection_summary,
-                x="Routes",
-                y="Connected Branch",
-                orientation="h",
-                text_auto=True,
-                title=f"Top Connections for {scope_value}",
-            )
-        else:
-            route_summary = (
-                filtered.assign(
-                    ROUTE=filtered["ORIGIN"].fillna("N/A").astype(str)
-                    + " → "
-                    + filtered["DESTINATION"].fillna("N/A").astype(str)
-                )["ROUTE"]
-                .value_counts()
-                .head(15)
-                .sort_values()
-                .reset_index()
-            )
-            route_summary.columns = ["Route", "Rate Records"]
-            fig = px.bar(
-                route_summary,
-                x="Rate Records",
-                y="Route",
-                orientation="h",
-                text_auto=True,
-                title="Top Routes by Rate Definitions",
-            )
-        fig.update_layout(height=315, margin=dict(l=10, r=10, t=45, b=10))
-        st.plotly_chart(fig, use_container_width=True)
-
-    matrix_df = (
-        filtered[["ORG_ZONE", "DEST_ZONE", "ORIGIN", "DESTINATION"]]
-        .drop_duplicates()
-        .groupby(["ORG_ZONE", "DEST_ZONE"], dropna=False)
-        .size()
-        .reset_index(name="Unique Routes")
-    )
-    if not matrix_df.empty:
-        st.markdown("#### Zone-to-Zone Route Coverage")
-        zone_matrix = matrix_df.pivot_table(
-            index="ORG_ZONE",
-            columns="DEST_ZONE",
-            values="Unique Routes",
-            aggfunc="sum",
-            fill_value=0,
-        )
-        st.dataframe(zone_matrix, use_container_width=True)
-
-
-with comparison_tab:
-    st.caption(
-        "Comparison is grouped by route, product, rate type and customer so different products/slabs are not mixed into one misleading average."
-    )
-
-    group_cols = [
-        "ORIGIN",
-        "DESTINATION",
-        "PRODUCT_NAME",
-        "RATE_TYPE_GROUP",
-        "CUSTOMER_NAME",
-        "RATEFOR",
-    ]
-    available_group_cols = [col for col in group_cols if col in filtered.columns]
-
-    rate_summary = (
-        filtered.groupby(available_group_cols, dropna=False)
-        .agg(
-            RATE_RECORDS=("RATEID", "size"),
-            MIN_FROM_WT=("FROMWT", "min"),
-            MAX_TO_WT=("TOWT", "max"),
-            MIN_RATE1=("RATE1", "min"),
-            MAX_RATE1=("RATE1", "max"),
-            MIN_SLAB1=("SLAB1", "min"),
-            MAX_SLAB1=("SLAB1", "max"),
-            MIN_FLAT_AMOUNT=("FLAT_AMOUNT", "min"),
-            MAX_FLAT_AMOUNT=("FLAT_AMOUNT", "max"),
-            VALID_FROM=("FROMDT", "min"),
-            VALID_TO=("TODT", "max"),
-        )
-        .reset_index()
-    )
-    rate_summary["RATE_TYPE_GROUP"] = rate_summary["RATE_TYPE_GROUP"].map(_rate_type_display)
-    st.dataframe(
-        rate_summary.sort_values(["ORIGIN", "DESTINATION", "PRODUCT_NAME"], na_position="last"),
-        use_container_width=True,
-        hide_index=True,
-        height=530,
-        column_config={
-            "VALID_FROM": st.column_config.DateColumn(format="DD-MM-YYYY"),
-            "VALID_TO": st.column_config.DateColumn(format="DD-MM-YYYY"),
-        },
-    )
-
-
-with charge_tab:
-    charge_cols = [col for col in CHARGES if col in filtered.columns]
-    if not charge_cols:
-        st.info("No additional-charge columns are available in the query result.")
-    else:
-        numeric = filtered[charge_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
-        charges = pd.DataFrame(
-            {
-                "Charge": [CHARGES[col] for col in charge_cols],
-                "Configured Records": [(numeric[col] != 0).sum() for col in charge_cols],
-                "Average Non-Zero": [
-                    numeric.loc[numeric[col] != 0, col].mean()
-                    if (numeric[col] != 0).any()
-                    else 0
-                    for col in charge_cols
-                ],
-                "Maximum Value": [numeric[col].max() for col in charge_cols],
-            }
-        )
-        chart_data = charges.sort_values("Configured Records")
-        fig = px.bar(
-            chart_data,
-            x="Configured Records",
-            y="Charge",
-            orientation="h",
-            text_auto=True,
-            title="Additional Charge Coverage",
-        )
-        fig.update_layout(height=380, margin=dict(l=10, r=10, t=45, b=10))
-        st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(
-            charges.sort_values("Configured Records", ascending=False),
-            use_container_width=True,
-            hide_index=True,
-        )
+expiry_tab, records_tab = st.tabs(["Expiry Watch", "Rate Records"])
 
 
 with expiry_tab:
@@ -837,7 +489,7 @@ with expiry_tab:
     expiry_window = st.selectbox(
         "Expiry Window",
         ["30 days", "60 days", "90 days", "All active"],
-        key="rate_expiry_window_ov1",
+        key="rate_expiry_window_v2",
     )
     day_limit = {"30 days": 30, "60 days": 60, "90 days": 90}.get(expiry_window)
     if day_limit is not None:
@@ -885,5 +537,5 @@ with records_tab:
         display_records.to_csv(index=False).encode("utf-8-sig"),
         file_name=f"rate_dashboard_{active_date:%Y%m%d}.csv",
         mime="text/csv",
-        key="rate_download_ov1",
+        key="rate_download_v2",
     )
