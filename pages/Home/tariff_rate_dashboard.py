@@ -827,7 +827,6 @@ with finder_tab:
                 "TODT": st.column_config.DateColumn(format="DD-MM-YYYY"),
             },
         )
-
         st.download_button(
             "Download rate finder result (CSV)",
             finder_results[finder_display_cols].to_csv(index=False).encode("utf-8-sig"),
