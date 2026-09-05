@@ -419,8 +419,14 @@ def _inject_css():
         .rate-dashboard-scope {
             margin:.08rem 0 0 0 !important;
             color:#607286;
-            font-size:.56rem !important;
-            line-height:1.0 !important;
+            font-size:.60rem !important;
+            line-height:1.05 !important;
+        }
+        .login-scope-value {
+            color:#0b3f75 !important;
+            font-weight:800 !important;
+            font-size:.76rem !important;
+            letter-spacing:.01em;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] {
             border-color:#c2cfdb !important;
@@ -697,7 +703,8 @@ with st.container(border=True):
         )
         if scope_type:
             st.markdown(
-                f'<div class="rate-dashboard-scope">Data access: {scope_type.title()} = {scope_value} · '
+                f'<div class="rate-dashboard-scope">Data access: {escape(scope_type.title())} = '
+                f'<span class="login-scope-value">{escape(str(scope_value))}</span> · '
                 'Origin or Destination permitted.</div>',
                 unsafe_allow_html=True,
             )
