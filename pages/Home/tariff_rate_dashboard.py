@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date
+from html import escape
 
 import pandas as pd
 import streamlit as st
@@ -508,10 +509,44 @@ def _inject_css():
             color:#ffffff !important;
         }
         .grid-summary {
-            font-size:.72rem;
+            font-size:.70rem;
             color:#52667a;
-            margin:.05rem 0 .25rem 0;
+            margin:.02rem 0 .18rem 0;
         }
+        .rate-grid-table tbody tr.tariff-row td {
+            background:#fff3cd !important;
+            color:#5f4300 !important;
+            font-weight:600 !important;
+        }
+        .rate-grid-table tbody tr.tariff-row:hover td {
+            background:#ffe69c !important;
+        }
+        .quick-finder-title {
+            font-size:1.05rem;
+            font-weight:700;
+            color:#123b66;
+            margin:.15rem 0 .05rem 0;
+        }
+        .quick-finder-note {
+            font-size:.72rem;
+            color:#6a7685;
+            margin:0 0 .28rem 0;
+        }
+        .quick-kpi-wrap {
+            display:grid;
+            grid-template-columns:repeat(4,minmax(120px,1fr));
+            gap:8px;
+            margin:.28rem 0 .35rem 0;
+        }
+        .quick-kpi {
+            border:1px solid #d5dfeb;
+            border-radius:8px;
+            background:#f8fbff;
+            padding:6px 10px;
+            min-height:48px;
+        }
+        .quick-kpi .kpi-label {font-size:.67rem;color:#52667a;margin-bottom:1px;}
+        .quick-kpi .kpi-value {font-size:1.18rem;font-weight:700;color:#123b66;line-height:1.1;}
         </style>
         """,
         unsafe_allow_html=True,
@@ -528,7 +563,7 @@ def _rate_type_display(value: str) -> str:
 
 
 def _render_rate_grid(frame: pd.DataFrame, height: int = 520) -> None:
-    """Render a compact scrollable HTML grid with reliable dark-blue sticky headers."""
+    """Render a compact scrollable grid; blanks for missing values and highlight Tariff rows."""
     if frame is None or frame.empty:
         st.info("No records to display.")
         return
@@ -539,13 +574,28 @@ def _render_rate_grid(frame: pd.DataFrame, height: int = 520) -> None:
             dt = pd.to_datetime(show[col], errors="coerce")
             show[col] = dt.dt.strftime("%d-%m-%Y").where(dt.notna(), "")
 
-    html = show.to_html(index=False, escape=True, border=0, classes="rate-grid-table")
+    # Display missing values as blank instead of NaN / NaT / <NA>.
+    show = show.astype(object).where(pd.notna(show), "")
+
+    headers = "".join(f"<th>{escape(str(col))}</th>" for col in show.columns)
+    body_rows = []
+    rate_idx = show.columns.get_loc("RATE_TYPE_GROUP") if "RATE_TYPE_GROUP" in show.columns else None
+    for row in show.itertuples(index=False, name=None):
+        is_tariff = False
+        if rate_idx is not None:
+            is_tariff = str(row[rate_idx]).strip().casefold() == "tariff rate"
+        row_class = ' class="tariff-row"' if is_tariff else ""
+        cells = "".join(f"<td>{escape(str(value)) if value != '' else ''}</td>" for value in row)
+        body_rows.append(f"<tr{row_class}>{cells}</tr>")
+
+    table_html = (
+        '<table class="rate-grid-table">'
+        f'<thead><tr>{headers}</tr></thead>'
+        f'<tbody>{"".join(body_rows)}</tbody>'
+        '</table>'
+    )
     st.markdown(
-        f"""
-        <div class="rate-grid-wrap" style="max-height:{int(height)}px;">
-            {html}
-        </div>
-        """,
+        f'<div class="rate-grid-wrap" style="max-height:{int(height)}px;">{table_html}</div>',
         unsafe_allow_html=True,
     )
 
@@ -891,10 +941,10 @@ elif view_mode == "Rate Records":
 
 
 else:
-    st.markdown("#### Quick Rate Finder")
-    st.caption(
-        "Find the active tariff or contractual rate for an Origin-Destination route. "
-        "Customer and weight can be used to narrow the result."
+    st.markdown('<div class="quick-finder-title">Quick Rate Finder</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="quick-finder-note">Select at least one route condition: Origin or Destination. Other fields are optional.</div>',
+        unsafe_allow_html=True,
     )
 
     finder_source = data
@@ -910,10 +960,9 @@ else:
             format_func=lambda x: "Select origin" if x == "" else x,
         )
 
-    destination_source = finder_source
-    if finder_origin:
-        destination_source = destination_source[destination_source["ORIGIN"].eq(finder_origin)]
-    destination_options = _safe_options(destination_source, "DESTINATION")
+    # Destination remains independently searchable so Origin-only, Destination-only,
+    # and Origin+Destination queries all work.
+    destination_options = _safe_options(finder_source, "DESTINATION")
     with finder_cols[1]:
         finder_destination = st.selectbox(
             "Destination",
@@ -930,7 +979,9 @@ else:
             key="rate_finder_type_v2",
         )
 
-    customer_source = destination_source
+    customer_source = finder_source
+    if finder_origin:
+        customer_source = customer_source[customer_source["ORIGIN"].eq(finder_origin)]
     if finder_destination:
         customer_source = customer_source[customer_source["DESTINATION"].eq(finder_destination)]
     if finder_rate_type != "All":
@@ -978,8 +1029,8 @@ else:
         )
         finder_results = finder_results[weight_mask]
 
-    if not finder_origin or not finder_destination:
-        st.info("Select both **Origin** and **Destination** to query the applicable rate.")
+    if not finder_origin and not finder_destination:
+        st.info("Select at least **Origin** or **Destination** to query the applicable rate.")
     elif finder_results.empty:
         st.warning("No active rate found for the selected route and criteria.")
     else:
@@ -989,22 +1040,22 @@ else:
         ).copy()
         finder_results["RATE_TYPE_GROUP"] = finder_results["RATE_TYPE_GROUP"].map(_rate_type_display)
 
-        summary_cols = st.columns(4)
-        summary_cols[0].metric("Matching Rates", f"{len(finder_results):,}")
-        summary_cols[1].metric(
-            "Tariff",
-            f"{finder_results['RATE_TYPE_GROUP'].eq('Tariff Rate').sum():,}",
-        )
-        summary_cols[2].metric(
-            "Contractual",
-            f"{finder_results['RATE_TYPE_GROUP'].eq('Contractual Rate').sum():,}",
-        )
+        tariff_count = int(finder_results["RATE_TYPE_GROUP"].eq("Tariff Rate").sum())
+        contractual_count = int(finder_results["RATE_TYPE_GROUP"].eq("Contractual Rate").sum())
         active_charge_count = sum(
             pd.to_numeric(finder_results[col], errors="coerce").fillna(0).ne(0).any()
             for col in charge_columns
             if col in finder_results.columns
         )
-        summary_cols[3].metric("Active Charge Types", f"{active_charge_count:,}")
+        kpi_html = f"""
+        <div class="quick-kpi-wrap">
+            <div class="quick-kpi"><div class="kpi-label">Matching Rates</div><div class="kpi-value">{len(finder_results):,}</div></div>
+            <div class="quick-kpi"><div class="kpi-label">Tariff</div><div class="kpi-value">{tariff_count:,}</div></div>
+            <div class="quick-kpi"><div class="kpi-label">Contractual</div><div class="kpi-value">{contractual_count:,}</div></div>
+            <div class="quick-kpi"><div class="kpi-label">Active Charge Types</div><div class="kpi-value">{active_charge_count:,}</div></div>
+        </div>
+        """
+        st.markdown(kpi_html, unsafe_allow_html=True)
 
         finder_display_cols = [
             "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
