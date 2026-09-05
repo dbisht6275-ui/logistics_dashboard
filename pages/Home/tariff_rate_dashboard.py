@@ -1,3 +1,4 @@
+# UPDATED UI BUILD: 2026-09-05 - dark blue grid headers, compact bordered header, branch scope preserved
 from __future__ import annotations
 
 from datetime import date
@@ -398,7 +399,76 @@ def _inject_css():
             background:linear-gradient(180deg,#f9fbfe 0%,#eef4fa 58%,#e4edf7 100%) !important;
             box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 2px 5px rgba(30,64,105,.08) !important;
         }
-        div[data-testid="stDataFrame"] {border:1px solid #dbe4ef; border-radius:10px; overflow:hidden;}
+        /* Compact bordered page header */
+        .rate-dashboard-title {
+            margin:0 !important;
+            padding:0 !important;
+            color:#17365d;
+            font-size:1.15rem !important;
+            line-height:1.25 !important;
+            font-weight:700 !important;
+        }
+        .rate-dashboard-scope {
+            margin:.18rem 0 0 0 !important;
+            color:#52667a;
+            font-size:.74rem !important;
+            line-height:1.25 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-color:#b7c9dc !important;
+            border-radius:10px !important;
+        }
+
+        /* Reliable HTML grid styling. Streamlit st.dataframe uses a canvas in
+           recent versions, so its header cannot be recolored reliably with CSS. */
+        .rate-grid-wrap {
+            width:100%;
+            overflow:auto;
+            border:1px solid #8ea8c2;
+            border-radius:8px;
+            background:#ffffff;
+        }
+        table.rate-grid-table {
+            width:max-content;
+            min-width:100%;
+            border-collapse:separate;
+            border-spacing:0;
+            font-size:12px;
+            color:#1f2937;
+        }
+        table.rate-grid-table thead th {
+            position:sticky;
+            top:0;
+            z-index:3;
+            background:#123b66 !important;
+            color:#ffffff !important;
+            font-weight:700 !important;
+            text-align:left;
+            white-space:nowrap;
+            padding:8px 10px;
+            border-right:1px solid #31597f;
+            border-bottom:1px solid #0b2d4e;
+        }
+        table.rate-grid-table tbody td {
+            white-space:nowrap;
+            padding:6px 10px;
+            border-right:1px solid #e3eaf1;
+            border-bottom:1px solid #e8eef4;
+            background:#ffffff;
+        }
+        table.rate-grid-table tbody tr:nth-child(even) td { background:#f7f9fc; }
+        table.rate-grid-table tbody tr:hover td { background:#edf4fb; }
+
+        /* Make the top header card visibly compact. */
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding-top:.35rem !important;
+            padding-bottom:.35rem !important;
+        }
+        div[data-testid="stButton"] button {
+            min-height:38px !important;
+            font-size:.82rem !important;
+            font-weight:600 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -414,6 +484,29 @@ def _rate_type_display(value: str) -> str:
     return value.title()
 
 
+def _render_rate_grid(frame: pd.DataFrame, height: int = 520) -> None:
+    """Render a compact scrollable HTML grid with reliable dark-blue sticky headers."""
+    if frame is None or frame.empty:
+        st.info("No records to display.")
+        return
+
+    show = frame.copy()
+    for col in ("FROMDT", "TODT"):
+        if col in show.columns:
+            dt = pd.to_datetime(show[col], errors="coerce")
+            show[col] = dt.dt.strftime("%d-%m-%Y").where(dt.notna(), "")
+
+    html = show.to_html(index=False, escape=True, border=0, classes="rate-grid-table")
+    st.markdown(
+        f"""
+        <div class="rate-grid-wrap" style="max-height:{int(height)}px;">
+            {html}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # =============================================================================
 # Page
 # =============================================================================
@@ -421,26 +514,44 @@ _inject_css()
 
 scope_type, scope_value = _get_login_scope()
 
-st.markdown("## Tariff & Contractual Rate Dashboard")
-if scope_type:
-    st.caption(
-        f"Data access: {scope_type.title()} = {scope_value}. "
-        "Permitted rates include the assigned scope on either Origin or Destination side."
-    )
-else:
-    st.caption("Full-network rate visibility. Use the cascading filters below to refine rates.")
+# Keep the dashboard title, active date and Load button together inside one compact border.
+with st.container(border=True):
+    header_cols = st.columns([4.8, 1.15, 1.15], gap="small")
 
-header_cols = st.columns([1.0, 1.0, 4.0])
-with header_cols[0]:
-    active_date = st.date_input("Active on", date.today(), key="rate_active_on_v2")
-with header_cols[1]:
-    st.markdown("<div style='height:25px'></div>", unsafe_allow_html=True)
-    load_clicked = st.button(
-        "Load Dashboard",
-        type="primary",
-        use_container_width=True,
-        key="rate_load_v2",
-    )
+    with header_cols[0]:
+        st.markdown(
+            '<div class="rate-dashboard-title">Tariff &amp; Contractual Rate Dashboard</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="rate-dashboard-scope">Rate Dashboard · Dynamic Charges · Rate Finder</div>', unsafe_allow_html=True)
+        if scope_type:
+            st.markdown(
+                f'<div class="rate-dashboard-scope">Data access: {scope_type.title()} = {scope_value}. '
+                'Permitted rates include the assigned scope on either Origin or Destination side.</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                '<div class="rate-dashboard-scope">Full-network rate visibility. '
+                'Use the cascading filters below to refine rates.</div>',
+                unsafe_allow_html=True,
+            )
+
+    with header_cols[1]:
+        active_date = st.date_input(
+            "Active on",
+            date.today(),
+            key="rate_active_on_v2",
+        )
+
+    with header_cols[2]:
+        st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+        load_clicked = st.button(
+            "Load Dashboard",
+            type="primary",
+            use_container_width=True,
+            key="rate_load_v2",
+        )
 
 load_key = (active_date, scope_type, scope_value)
 if load_clicked:
@@ -658,32 +769,14 @@ with expiry_tab:
     if "RATE_TYPE_GROUP" in display_expiry.columns:
         display_expiry["RATE_TYPE_GROUP"] = display_expiry["RATE_TYPE_GROUP"].map(_rate_type_display)
 
-    st.dataframe(
-        display_expiry,
-        use_container_width=True,
-        hide_index=True,
-        height=520,
-        column_config={
-            "FROMDT": st.column_config.DateColumn(format="DD-MM-YYYY"),
-            "TODT": st.column_config.DateColumn(format="DD-MM-YYYY"),
-        },
-    )
+    _render_rate_grid(display_expiry, height=520)
 
 
 with records_tab:
     display_records = filtered.copy()
     display_records["RATE_TYPE_GROUP"] = display_records["RATE_TYPE_GROUP"].map(_rate_type_display)
 
-    st.dataframe(
-        display_records,
-        use_container_width=True,
-        hide_index=True,
-        height=580,
-        column_config={
-            "FROMDT": st.column_config.DateColumn(format="DD-MM-YYYY"),
-            "TODT": st.column_config.DateColumn(format="DD-MM-YYYY"),
-        },
-    )
+    _render_rate_grid(display_records, height=580)
 
     st.download_button(
         "Download filtered rates (CSV)",
@@ -817,16 +910,8 @@ with finder_tab:
         ] + charge_columns
         finder_display_cols = [col for col in finder_display_cols if col in finder_results.columns]
 
-        st.dataframe(
-            finder_results[finder_display_cols],
-            use_container_width=True,
-            hide_index=True,
-            height=520,
-            column_config={
-                "FROMDT": st.column_config.DateColumn(format="DD-MM-YYYY"),
-                "TODT": st.column_config.DateColumn(format="DD-MM-YYYY"),
-            },
-        )
+        _render_rate_grid(finder_results[finder_display_cols], height=520)
+
         st.download_button(
             "Download rate finder result (CSV)",
             finder_results[finder_display_cols].to_csv(index=False).encode("utf-8-sig"),
