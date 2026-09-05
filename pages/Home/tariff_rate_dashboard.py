@@ -56,25 +56,144 @@ def get_engine():
 
 
 QUERY = r"""
+SET NOCOUNT ON;
+
 DECLARE @AsOnDate DATE = CAST(:active_on AS DATE);
 DECLARE @ScopeType VARCHAR(20) = LOWER(LTRIM(RTRIM(CAST(:scope_type AS VARCHAR(20)))));
 DECLARE @ScopeValue VARCHAR(100) = LTRIM(RTRIM(CAST(:scope_value AS VARCHAR(100))));
 
+DECLARE @cols NVARCHAR(MAX);
+DECLARE @select_cols NVARCHAR(MAX);
+DECLARE @sql NVARCHAR(MAX);
+
+SELECT
+    @cols = STRING_AGG(CAST(QUOTENAME(X.CHGNAME) AS NVARCHAR(MAX)), ','),
+    @select_cols = STRING_AGG(
+        CAST('ISNULL(CHG.' + QUOTENAME(X.CHGNAME) + ',0) AS ' + QUOTENAME(X.CHGNAME) AS NVARCHAR(MAX)),
+        ','
+    )
+FROM
+(
+    SELECT DISTINCT LTRIM(RTRIM(CM.CHGNAME)) AS CHGNAME
+    FROM CUSTCHRG CC WITH (NOLOCK)
+    INNER JOIN CNMTCHARGESMAST CM WITH (NOLOCK)
+        ON CM.CHGCODE = CC.CHGCODE
+    WHERE CM.CHGNAME IS NOT NULL
+      AND LTRIM(RTRIM(CM.CHGNAME)) <> ''
+) X;
+
+SET @sql = N'
+;WITH RATE_DATA AS
+(
+    SELECT
+        RT.RATEDATAID,
+        RT.CUSTCODE,
+        RT.CNGECODE,
+        RT.CNGRCODE,
+        RT.RATEFOR,
+        RT.RATEID,
+        RT.ORGCODE,
+        RT.DESTCODE,
+        RT.FROMDT,
+        RT.TODT,
+        RT.FROMWT,
+        RT.TOWT,
+        RT.PRODUCTCODE,
+        RT.GOODSGROUPCODE,
+        RT.VEHICLETYPECODE,
+        RT.MINCWEIGHT,
+        RT.RATETYPE,
+        RT.VIABORDERSTNCODE,
+        RT.PCKGRATE,
+        RT.SLAB1,
+        RT.RATE1,
+        RT.AMOUNT,
+        RT.RATECATEGORY
+    FROM RATEMAST RT WITH (NOLOCK)
+    INNER JOIN VIEWSTATIONMAST ORG WITH (NOLOCK)
+        ON ORG.STNCODE = RT.ORGCODE
+    INNER JOIN VIEWSTATIONMAST DEST WITH (NOLOCK)
+        ON DEST.STNCODE = RT.DESTCODE
+    WHERE RT.TODT > @P_AsOnDate
+      AND
+      (
+          @P_ScopeType = ''''
+          OR
+          (
+              @P_ScopeType = ''branch''
+              AND
+              (
+                  LOWER(LTRIM(RTRIM(ISNULL(ORG.STNNAME, '''')))) = LOWER(@P_ScopeValue)
+                  OR LOWER(LTRIM(RTRIM(ISNULL(DEST.STNNAME, '''')))) = LOWER(@P_ScopeValue)
+              )
+          )
+          OR
+          (
+              @P_ScopeType = ''circle''
+              AND
+              (
+                  LOWER(LTRIM(RTRIM(ISNULL(ORG.HUBNAME, '''')))) = LOWER(@P_ScopeValue)
+                  OR LOWER(LTRIM(RTRIM(ISNULL(DEST.HUBNAME, '''')))) = LOWER(@P_ScopeValue)
+              )
+          )
+          OR
+          (
+              @P_ScopeType = ''zone''
+              AND
+              (
+                  LOWER(LTRIM(RTRIM(ISNULL(ORG.ZONENAME, '''')))) = LOWER(@P_ScopeValue)
+                  OR LOWER(LTRIM(RTRIM(ISNULL(DEST.ZONENAME, '''')))) = LOWER(@P_ScopeValue)
+              )
+          )
+      )
+),
+CHARGE_SOURCE AS
+(
+    SELECT
+        CC.RATEDATAID,
+        LTRIM(RTRIM(CM.CHGNAME)) AS CHGNAME,
+        CASE
+            WHEN TRY_CONVERT(DECIMAL(18,2), CC.CHGAMT) > 0
+                THEN TRY_CONVERT(DECIMAL(18,2), CC.CHGAMT)
+            ELSE TRY_CONVERT(DECIMAL(18,2), CC.CHGRATE)
+        END AS VAL
+    FROM CUSTCHRG CC WITH (NOLOCK)
+    INNER JOIN RATE_DATA RD
+        ON RD.RATEDATAID = CC.RATEDATAID
+    INNER JOIN CNMTCHARGESMAST CM WITH (NOLOCK)
+        ON CM.CHGCODE = CC.CHGCODE
+    WHERE CM.CHGNAME IS NOT NULL
+      AND LTRIM(RTRIM(CM.CHGNAME)) <> ''''
+),
+CHARGE_PIVOT AS
+(
+    SELECT RATEDATAID, ' + @cols + '
+    FROM
+    (
+        SELECT RATEDATAID, CHGNAME, VAL
+        FROM CHARGE_SOURCE
+    ) SRC
+    PIVOT
+    (
+        MAX(VAL)
+        FOR CHGNAME IN (' + @cols + ')
+    ) PVT
+)
 SELECT
     COALESCE(RT.CUSTCODE, RT.CNGECODE, RT.CNGRCODE) AS CUSTOMER_CODE,
     CASE
-        WHEN RT.CUSTCODE = '0000007565' THEN 'TARIFF RATE'
-        ELSE 'CONTRACTUAL RATE'
+        WHEN RT.CUSTCODE = ''0000007565'' THEN ''TARIFF RATE''
+        ELSE ''CONTRACTUAL RATE''
     END AS RATE_TYPE_GROUP,
     CASE
-        WHEN RT.CUSTCODE = '0000007565' THEN 'TARIFF RATE'
+        WHEN RT.CUSTCODE = ''0000007565'' THEN ''TARIFF RATE''
         ELSE COALESCE(C.CUSTNAME, E.NAME, R.NAME)
     END AS CUSTOMER_NAME,
     CASE RT.RATEFOR
-        WHEN 'E' THEN 'CONSIGNEE'
-        WHEN 'R' THEN 'CONSIGNOR'
-        WHEN 'C' THEN 'CREDIT CUSTOMER'
-        ELSE 'N/A'
+        WHEN ''E'' THEN ''CONSIGNEE''
+        WHEN ''R'' THEN ''CONSIGNOR''
+        WHEN ''C'' THEN ''CREDIT CUSTOMER''
+        ELSE ''N/A''
     END AS RATEFOR,
     RT.RATEID,
     ORG.ZONENAME AS ORG_ZONE,
@@ -97,52 +216,68 @@ SELECT
     RT.SLAB1,
     RT.RATE1,
     RT.AMOUNT AS FLAT_AMOUNT,
-    RT.RATECATEGORY
-FROM RATEMAST RT
-INNER JOIN VIEWSTATIONMAST ORG ON ORG.STNCODE = RT.ORGCODE
-INNER JOIN VIEWSTATIONMAST DEST ON DEST.STNCODE = RT.DESTCODE
-LEFT JOIN VEHICLETYPEMAST VM ON VM.TYPECODE = RT.VEHICLETYPECODE
-LEFT JOIN PRODUCTMAST PR ON PR.PRODCODE = RT.PRODUCTCODE
-LEFT JOIN STATIONMAST VIA ON VIA.STNCODE = RT.VIABORDERSTNCODE
-LEFT JOIN VIEWGOODSMAST G ON G.ITEMCODE = RT.GOODSGROUPCODE
-LEFT JOIN CNGRCNGEMAST E ON E.CODE = RT.CNGECODE
-LEFT JOIN CNGRCNGEMAST R ON R.CODE = RT.CNGRCODE
-LEFT JOIN CUSTMAST C ON C.CUSTCODE = RT.CUSTCODE
-WHERE RT.TODT > @AsOnDate
-  AND
-  (
-      @ScopeType = ''
-      OR
-      (
-          @ScopeType = 'branch'
-          AND
-          (
-              LOWER(LTRIM(RTRIM(ISNULL(ORG.STNNAME, '')))) = LOWER(@ScopeValue)
-              OR LOWER(LTRIM(RTRIM(ISNULL(DEST.STNNAME, '')))) = LOWER(@ScopeValue)
-          )
-      )
-      OR
-      (
-          @ScopeType = 'circle'
-          AND
-          (
-              LOWER(LTRIM(RTRIM(ISNULL(ORG.HUBNAME, '')))) = LOWER(@ScopeValue)
-              OR LOWER(LTRIM(RTRIM(ISNULL(DEST.HUBNAME, '')))) = LOWER(@ScopeValue)
-          )
-      )
-      OR
-      (
-          @ScopeType = 'zone'
-          AND
-          (
-              LOWER(LTRIM(RTRIM(ISNULL(ORG.ZONENAME, '')))) = LOWER(@ScopeValue)
-              OR LOWER(LTRIM(RTRIM(ISNULL(DEST.ZONENAME, '')))) = LOWER(@ScopeValue)
-          )
-      )
-  )
+    RT.RATECATEGORY,
+    ' + @select_cols + '
+FROM RATE_DATA RT
+INNER JOIN VIEWSTATIONMAST ORG WITH (NOLOCK)
+    ON ORG.STNCODE = RT.ORGCODE
+INNER JOIN VIEWSTATIONMAST DEST WITH (NOLOCK)
+    ON DEST.STNCODE = RT.DESTCODE
+LEFT JOIN VEHICLETYPEMAST VM WITH (NOLOCK)
+    ON VM.TYPECODE = RT.VEHICLETYPECODE
+LEFT JOIN PRODUCTMAST PR WITH (NOLOCK)
+    ON PR.PRODCODE = RT.PRODUCTCODE
+LEFT JOIN STATIONMAST VIA WITH (NOLOCK)
+    ON VIA.STNCODE = RT.VIABORDERSTNCODE
+LEFT JOIN VIEWGOODSMAST G WITH (NOLOCK)
+    ON G.ITEMCODE = RT.GOODSGROUPCODE
+LEFT JOIN CNGRCNGEMAST E WITH (NOLOCK)
+    ON E.CODE = RT.CNGECODE
+LEFT JOIN CNGRCNGEMAST R WITH (NOLOCK)
+    ON R.CODE = RT.CNGRCODE
+LEFT JOIN CUSTMAST C WITH (NOLOCK)
+    ON C.CUSTCODE = RT.CUSTCODE
+LEFT JOIN CHARGE_PIVOT CHG
+    ON CHG.RATEDATAID = RT.RATEDATAID
 ORDER BY RT.FROMDT, ORG.STNNAME, DEST.STNNAME;
-"""
+';
 
+IF @cols IS NULL
+BEGIN
+    SELECT TOP (0)
+        CAST(NULL AS VARCHAR(20)) AS CUSTOMER_CODE,
+        CAST(NULL AS VARCHAR(20)) AS RATE_TYPE_GROUP,
+        CAST(NULL AS VARCHAR(200)) AS CUSTOMER_NAME,
+        CAST(NULL AS VARCHAR(30)) AS RATEFOR,
+        RT.RATEID,
+        ORG.ZONENAME AS ORG_ZONE,
+        ORG.HUBNAME AS ORG_CIRCLE,
+        ORG.STNNAME AS ORIGIN,
+        DEST.ZONENAME AS DEST_ZONE,
+        DEST.HUBNAME AS DEST_CIRCLE,
+        DEST.STNNAME AS DESTINATION,
+        RT.FROMDT, RT.TODT, RT.FROMWT, RT.TOWT,
+        CAST(NULL AS VARCHAR(200)) AS PRODUCT_NAME,
+        CAST(NULL AS VARCHAR(200)) AS GOODS,
+        CAST(NULL AS VARCHAR(200)) AS VEHICLE_TYPE,
+        RT.MINCWEIGHT, RT.RATETYPE,
+        CAST(NULL AS VARCHAR(200)) AS VIA_BORDER,
+        RT.PCKGRATE, RT.SLAB1, RT.RATE1,
+        RT.AMOUNT AS FLAT_AMOUNT, RT.RATECATEGORY
+    FROM RATEMAST RT
+    INNER JOIN VIEWSTATIONMAST ORG ON ORG.STNCODE = RT.ORGCODE
+    INNER JOIN VIEWSTATIONMAST DEST ON DEST.STNCODE = RT.DESTCODE;
+END
+ELSE
+BEGIN
+    EXEC sys.sp_executesql
+        @sql,
+        N'@P_AsOnDate DATE, @P_ScopeType VARCHAR(20), @P_ScopeValue VARCHAR(100)',
+        @P_AsOnDate = @AsOnDate,
+        @P_ScopeType = @ScopeType,
+        @P_ScopeValue = @ScopeValue;
+END;
+"""
 
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -245,6 +380,8 @@ def _inject_css():
         div[data-testid="stHorizontalBlock"] {gap:.45rem !important; align-items:flex-start !important;}
         div[data-testid="stSelectbox"] > label,
         div[data-testid="stMultiSelect"] > label,
+        div[data-testid="stTextInput"] > label,
+        div[data-testid="stNumberInput"] > label,
         div[data-testid="stDateInput"] > label {
             color:#243b53 !important;
             font-size:10px !important;
@@ -252,6 +389,8 @@ def _inject_css():
         }
         div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
         div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
+        div[data-testid="stTextInput"] input,
+        div[data-testid="stNumberInput"] input,
         div[data-testid="stDateInput"] input {
             min-height:38px !important;
             border:1px solid #a9bfd8 !important;
@@ -478,7 +617,21 @@ if filtered.empty:
 # =============================================================================
 as_on_ts = pd.Timestamp(active_date)
 
-expiry_tab, records_tab = st.tabs(["Expiry Watch", "Rate Records"])
+# Columns not in the fixed rate schema are dynamic charge-name columns.
+base_rate_columns = {
+    "CUSTOMER_CODE", "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
+    "ORG_ZONE", "ORG_CIRCLE", "ORIGIN", "DEST_ZONE", "DEST_CIRCLE", "DESTINATION",
+    "FROMDT", "TODT", "FROMWT", "TOWT", "PRODUCT_NAME", "GOODS", "VEHICLE_TYPE",
+    "MINCWEIGHT", "RATETYPE", "VIA_BORDER", "PCKGRATE", "SLAB1", "RATE1",
+    "FLAT_AMOUNT", "RATECATEGORY",
+}
+charge_columns = [col for col in data.columns if col not in base_rate_columns]
+for col in charge_columns:
+    data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
+    if col in filtered.columns:
+        filtered[col] = pd.to_numeric(filtered[col], errors="coerce").fillna(0)
+
+expiry_tab, records_tab, finder_tab = st.tabs(["Expiry Watch", "Rate Records", "Rate Finder"])
 
 
 with expiry_tab:
@@ -539,3 +692,147 @@ with records_tab:
         mime="text/csv",
         key="rate_download_v2",
     )
+with finder_tab:
+    st.markdown("### Query Rate Finder")
+    st.caption(
+        "Find the active tariff or contractual rate for an Origin-Destination route. "
+        "Customer and weight can be used to narrow the result."
+    )
+
+    finder_source = data.copy()
+    finder_cols = st.columns([1.25, 1.25, 1.0, 1.6, 0.9], gap="small")
+
+    origin_options = _safe_options(finder_source, "ORIGIN")
+    with finder_cols[0]:
+        finder_origin = st.selectbox(
+            "Origin",
+            [""] + origin_options,
+            index=0,
+            key="rate_finder_origin_v2",
+            format_func=lambda x: "Select origin" if x == "" else x,
+        )
+
+    destination_source = finder_source
+    if finder_origin:
+        destination_source = destination_source[destination_source["ORIGIN"].eq(finder_origin)].copy()
+    destination_options = _safe_options(destination_source, "DESTINATION")
+    with finder_cols[1]:
+        finder_destination = st.selectbox(
+            "Destination",
+            [""] + destination_options,
+            index=0,
+            key="rate_finder_destination_v2",
+            format_func=lambda x: "Select destination" if x == "" else x,
+        )
+
+    with finder_cols[2]:
+        finder_rate_type = st.selectbox(
+            "Rate Type",
+            ["All", "Tariff Rate", "Contractual Rate"],
+            key="rate_finder_type_v2",
+        )
+
+    customer_source = destination_source
+    if finder_destination:
+        customer_source = customer_source[customer_source["DESTINATION"].eq(finder_destination)].copy()
+    if finder_rate_type != "All":
+        customer_source = customer_source[
+            customer_source["RATE_TYPE_GROUP"].eq(finder_rate_type.upper())
+        ].copy()
+    customer_options = _safe_options(customer_source, "CUSTOMER_NAME")
+    with finder_cols[3]:
+        finder_customer = st.selectbox(
+            "Customer (optional)",
+            [""] + customer_options,
+            index=0,
+            key="rate_finder_customer_v2",
+            format_func=lambda x: "All customers" if x == "" else x,
+        )
+
+    with finder_cols[4]:
+        finder_weight = st.number_input(
+            "Weight (optional)",
+            min_value=0.0,
+            value=0.0,
+            step=1.0,
+            key="rate_finder_weight_v2",
+            help="If entered, only rate slabs covering this weight are shown.",
+        )
+
+    finder_results = finder_source.copy()
+    if finder_origin:
+        finder_results = finder_results[finder_results["ORIGIN"].eq(finder_origin)].copy()
+    if finder_destination:
+        finder_results = finder_results[finder_results["DESTINATION"].eq(finder_destination)].copy()
+    if finder_rate_type != "All":
+        finder_results = finder_results[
+            finder_results["RATE_TYPE_GROUP"].eq(finder_rate_type.upper())
+        ].copy()
+    if finder_customer:
+        finder_results = finder_results[finder_results["CUSTOMER_NAME"].eq(finder_customer)].copy()
+
+    if finder_weight > 0 and not finder_results.empty:
+        from_wt = pd.to_numeric(finder_results["FROMWT"], errors="coerce")
+        to_wt = pd.to_numeric(finder_results["TOWT"], errors="coerce")
+        weight_mask = (
+            (from_wt.isna() | from_wt.le(finder_weight))
+            & (to_wt.isna() | to_wt.eq(0) | to_wt.ge(finder_weight))
+        )
+        finder_results = finder_results[weight_mask].copy()
+
+    if not finder_origin or not finder_destination:
+        st.info("Select both **Origin** and **Destination** to query the applicable rate.")
+    elif finder_results.empty:
+        st.warning("No active rate found for the selected route and criteria.")
+    else:
+        finder_results = finder_results.sort_values(
+            ["RATE_TYPE_GROUP", "CUSTOMER_NAME", "FROMWT", "TOWT", "FROMDT"],
+            na_position="last",
+        ).copy()
+        finder_results["RATE_TYPE_GROUP"] = finder_results["RATE_TYPE_GROUP"].map(_rate_type_display)
+
+        summary_cols = st.columns(4)
+        summary_cols[0].metric("Matching Rates", f"{len(finder_results):,}")
+        summary_cols[1].metric(
+            "Tariff",
+            f"{finder_results['RATE_TYPE_GROUP'].eq('Tariff Rate').sum():,}",
+        )
+        summary_cols[2].metric(
+            "Contractual",
+            f"{finder_results['RATE_TYPE_GROUP'].eq('Contractual Rate').sum():,}",
+        )
+        active_charge_count = sum(
+            finder_results[col].fillna(0).ne(0).any()
+            for col in charge_columns
+            if col in finder_results.columns
+        )
+        summary_cols[3].metric("Active Charge Types", f"{active_charge_count:,}")
+
+        finder_display_cols = [
+            "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
+            "ORIGIN", "DESTINATION", "FROMDT", "TODT",
+            "FROMWT", "TOWT", "MINCWEIGHT", "RATETYPE",
+            "PRODUCT_NAME", "GOODS", "VEHICLE_TYPE", "VIA_BORDER",
+            "PCKGRATE", "SLAB1", "RATE1", "FLAT_AMOUNT", "RATECATEGORY",
+        ] + charge_columns
+        finder_display_cols = [col for col in finder_display_cols if col in finder_results.columns]
+
+        st.dataframe(
+            finder_results[finder_display_cols],
+            use_container_width=True,
+            hide_index=True,
+            height=520,
+            column_config={
+                "FROMDT": st.column_config.DateColumn(format="DD-MM-YYYY"),
+                "TODT": st.column_config.DateColumn(format="DD-MM-YYYY"),
+            },
+        )
+
+        st.download_button(
+            "Download rate finder result (CSV)",
+            finder_results[finder_display_cols].to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"rate_finder_{active_date:%Y%m%d}.csv",
+            mime="text/csv",
+            key="rate_finder_download_v2",
+        )
+
