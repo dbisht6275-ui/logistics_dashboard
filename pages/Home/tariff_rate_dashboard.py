@@ -503,6 +503,10 @@ def _inject_css():
             color:#ffffff !important;
             border-color:#0b2d4e !important;
         }
+        /* Streamlit applies its own text color to nested elements; force selected button text white. */
+        div[role="radiogroup"] label:has(input:checked) * {
+            color:#ffffff !important;
+        }
         .grid-summary {
             font-size:.72rem;
             color:#52667a;
@@ -823,10 +827,10 @@ charge_columns = [col for col in data.columns if col not in base_rate_columns]
 
 view_mode = st.radio(
     "Result view",
-    ["Expiry Watch", "Rate Records", "Rate Finder"],
+    ["Expiry Watch", "Rate Records", "Quick Rate Finder"],
     horizontal=True,
     label_visibility="collapsed",
-    key="rate_result_view_v3",
+    key="rate_result_view_v4",
 )
 
 
@@ -886,7 +890,7 @@ elif view_mode == "Rate Records":
 
 
 else:
-    st.markdown("#### Query Rate Finder")
+    st.markdown("#### Quick Rate Finder")
     st.caption(
         "Find the active tariff or contractual rate for an Origin-Destination route. "
         "Customer and weight can be used to narrow the result."
