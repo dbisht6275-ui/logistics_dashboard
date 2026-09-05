@@ -841,17 +841,17 @@ if view_mode == "Expiry Watch":
 
     expiry_window = st.selectbox(
         "Expiry Window",
-        ["30 days", "60 days", "90 days", "All active"],
+        ["7 days", "15 days", "30 days", "60 days", "90 days", "All active"],
         key="rate_expiry_window_v2",
     )
-    day_limit = {"30 days": 30, "60 days": 60, "90 days": 90}.get(expiry_window)
+    day_limit = {"7 days": 7, "15 days": 15, "30 days": 30, "60 days": 60, "90 days": 90}.get(expiry_window)
     if day_limit is not None:
         expiry = expiry[expiry["DAYS_TO_EXPIRY"].between(0, day_limit)]
 
     expiry_cols = [
         "RATE_TYPE_GROUP", "CUSTOMER_NAME", "ORIGIN", "DESTINATION",
-        "PRODUCT_NAME", "FROMDT", "TODT", "DAYS_TO_EXPIRY",
-        "FROMWT", "TOWT", "SLAB1", "RATE1", "FLAT_AMOUNT",
+        "FROMDT", "TODT", "DAYS_TO_EXPIRY",
+        "FROMWT", "TOWT", "RATE1", "FLAT_AMOUNT",
     ]
     expiry_cols = [col for col in expiry_cols if col in expiry.columns]
     display_expiry = expiry[expiry_cols].copy()
@@ -865,6 +865,7 @@ if view_mode == "Expiry Watch":
 elif view_mode == "Rate Records":
     # Important: render only one page. Rendering the complete HTML table was the main browser-freeze cause.
     display_records = filtered.copy()
+    display_records = display_records.drop(columns=[c for c in ["SLAB1", "PRODUCT_NAME"] if c in display_records.columns])
     display_records["RATE_TYPE_GROUP"] = display_records["RATE_TYPE_GROUP"].map(_rate_type_display)
 
     page_records = _paged_frame(display_records, "records_grid", default_size=100)
@@ -1009,8 +1010,8 @@ else:
             "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
             "ORIGIN", "DESTINATION", "FROMDT", "TODT",
             "FROMWT", "TOWT", "MINCWEIGHT", "RATETYPE",
-            "PRODUCT_NAME", "GOODS", "VEHICLE_TYPE", "VIA_BORDER",
-            "PCKGRATE", "SLAB1", "RATE1", "FLAT_AMOUNT", "RATECATEGORY",
+            "GOODS", "VEHICLE_TYPE", "VIA_BORDER",
+            "PCKGRATE", "RATE1", "FLAT_AMOUNT", "RATECATEGORY",
         ] + charge_columns
         finder_display_cols = [col for col in finder_display_cols if col in finder_results.columns]
 
@@ -1034,3 +1035,4 @@ else:
                 mime="text/csv",
                 key="rate_finder_download_v3",
             )
+
