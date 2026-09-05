@@ -1,4 +1,4 @@
-# UPDATED UI BUILD V5: compact header, paged grids, lazy download, branch scope preserved
+# UPDATED UI BUILD V9: ultra-compact header/filter bar, paged grids, branch scope preserved
 from __future__ import annotations
 
 from datetime import date
@@ -378,25 +378,32 @@ def _inject_css():
     st.markdown(
         """
         <style>
-        .block-container {max-width:100%; padding:.28rem .60rem .70rem !important;}
-        div[data-testid="stHorizontalBlock"] {gap:.35rem !important; align-items:flex-start !important;}
+        .block-container {max-width:100%; padding:.12rem .42rem .55rem !important;}
+        div[data-testid="stHorizontalBlock"] {gap:.22rem !important; align-items:flex-start !important;}
+        div[data-testid="stWidgetLabel"] {min-height:12px !important; margin-bottom:0 !important;}
+        div[data-testid="stWidgetLabel"] p {line-height:1.0 !important; margin:0 !important;}
+        div[data-testid="stSelectbox"],
+        div[data-testid="stMultiSelect"],
+        div[data-testid="stDateInput"] {margin-bottom:0 !important;}
         div[data-testid="stSelectbox"] > label,
         div[data-testid="stMultiSelect"] > label,
         div[data-testid="stTextInput"] > label,
         div[data-testid="stNumberInput"] > label,
         div[data-testid="stDateInput"] > label {
             color:#243b53 !important;
-            font-size:10px !important;
-            font-weight:500 !important;
+            font-size:9px !important;
+            line-height:1 !important;
+            font-weight:600 !important;
         }
         div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
         div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
         div[data-testid="stTextInput"] input,
         div[data-testid="stNumberInput"] input,
         div[data-testid="stDateInput"] input {
-            min-height:32px !important;
-            border:1px solid #a9bfd8 !important;
-            border-radius:9px !important;
+            min-height:28px !important;
+            height:28px !important;
+            border:1px solid #b6c6d7 !important;
+            border-radius:7px !important;
             background:linear-gradient(180deg,#f9fbfe 0%,#eef4fa 58%,#e4edf7 100%) !important;
             box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 2px 5px rgba(30,64,105,.08) !important;
         }
@@ -405,19 +412,47 @@ def _inject_css():
             margin:0 !important;
             padding:0 !important;
             color:#17365d;
-            font-size:1.02rem !important;
-            line-height:1.15 !important;
+            font-size:.88rem !important;
+            line-height:1.05 !important;
             font-weight:700 !important;
         }
         .rate-dashboard-scope {
-            margin:.18rem 0 0 0 !important;
-            color:#52667a;
-            font-size:.68rem !important;
-            line-height:1.15 !important;
+            margin:.08rem 0 0 0 !important;
+            color:#607286;
+            font-size:.56rem !important;
+            line-height:1.0 !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            border-color:#b7c9dc !important;
-            border-radius:10px !important;
+            border-color:#c2cfdb !important;
+            border-radius:8px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding:.28rem .48rem !important;
+        }
+        .active-on-label {
+            font-size:9px !important;
+            font-weight:700 !important;
+            color:#243b53 !important;
+            line-height:28px !important;
+            white-space:nowrap !important;
+            text-align:right !important;
+        }
+        div[data-testid="stDateInput"] {max-width:138px !important;}
+        div[data-testid="stDateInput"] input {
+            font-size:10px !important;
+            padding:.15rem .45rem !important;
+        }
+        div[data-testid="stButton"] button {
+            min-height:28px !important;
+            height:28px !important;
+            padding:.15rem .55rem !important;
+            border-radius:7px !important;
+            font-size:10px !important;
+            line-height:1 !important;
+        }
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"] span {
+            font-size:10px !important;
         }
 
         /* Reliable HTML grid styling. Streamlit st.dataframe uses a canvas in
@@ -460,22 +495,21 @@ def _inject_css():
         table.rate-grid-table tbody tr:nth-child(even) td { background:#f7f9fc; }
         table.rate-grid-table tbody tr:hover td { background:#edf4fb; }
 
-        /* Make the top header card visibly compact. */
+        /* Ultra-compact top header card. */
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding-top:.18rem !important;
-            padding-bottom:.18rem !important;
+            padding-top:.10rem !important;
+            padding-bottom:.10rem !important;
         }
         div[data-testid="stButton"] button {
-            min-height:32px !important;
-            height:32px !important;
-            padding-top:.15rem !important;
-            padding-bottom:.15rem !important;
-            font-size:.78rem !important;
+            min-height:28px !important;
+            height:28px !important;
+            padding:.10rem .45rem !important;
+            font-size:.66rem !important;
             font-weight:700 !important;
             background:#123b66 !important;
             color:#ffffff !important;
             border:1px solid #0b2d4e !important;
-            box-shadow:0 1px 3px rgba(18,59,102,.22) !important;
+            box-shadow:0 1px 2px rgba(18,59,102,.18) !important;
         }
         div[data-testid="stButton"] button:hover {
             background:#0b2d4e !important;
@@ -483,11 +517,13 @@ def _inject_css():
             border-color:#081f36 !important;
         }
         .active-on-label {
-            font-size:.72rem !important;
-            font-weight:600 !important;
+            font-size:.56rem !important;
+            font-weight:700 !important;
             color:#243b53 !important;
-            white-space:nowrap;
-            padding-top:.36rem;
+            white-space:nowrap !important;
+            line-height:28px !important;
+            padding-top:0 !important;
+            text-align:right !important;
         }
 
         /* Compact view selector used instead of st.tabs so only one heavy grid renders. */
@@ -652,7 +688,7 @@ scope_type, scope_value = _get_login_scope()
 
 # Keep title, date and load action in one compact single-row header.
 with st.container(border=True):
-    header_cols = st.columns([6.0, 0.62, 1.05, 1.25], gap="small")
+    header_cols = st.columns([7.2, 0.48, 0.92, 1.08], gap="small")
 
     with header_cols[0]:
         st.markdown(
