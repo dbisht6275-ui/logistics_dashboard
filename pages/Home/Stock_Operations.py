@@ -214,10 +214,12 @@ def _inject_css():
 
         /* HTML tables */
         .stock-table-wrap{width:100%;max-width:100%;max-height:355px;overflow:auto;border:1px solid #e0e8f0;border-radius:7px;background:#fff}
-        table.stock-table{width:100%;min-width:100%;border-collapse:collapse;table-layout:auto;font:650 8.8px/1.22 "Segoe UI",Arial,sans-serif;color:#2e4761}
+        table.stock-table{width:100%;min-width:100%;border-collapse:separate;border-spacing:0;table-layout:auto;font:650 8.8px/1.22 "Segoe UI",Arial,sans-serif;color:#2e4761}
         table.stock-table th{
-            background:#eef5fb;color:#38516c;padding:7px 7px;text-align:left;border-right:1px solid #dfe8f0;
-            border-bottom:1px solid #d9e4ee;font-weight:800;white-space:nowrap
+            position:sticky;top:0;z-index:20;
+            background:#eef5fb!important;color:#38516c;padding:7px 7px;text-align:left;border-right:1px solid #dfe8f0;
+            border-bottom:1px solid #d9e4ee;font-weight:800;white-space:nowrap;
+            box-shadow:0 1px 0 #d9e4ee
         }
         table.stock-table td{
             padding:7px 7px;border-right:1px solid #e7edf3;border-bottom:1px solid #e7edf3;
@@ -226,6 +228,7 @@ def _inject_css():
         table.stock-table tbody tr:nth-child(even) td{background:#fbfdff}
         table.stock-table th:last-child,table.stock-table td:last-child{border-right:0}
         table.stock-table tbody tr:last-child td{border-bottom:0}
+        table.stock-table thead{position:sticky;top:0;z-index:19;background:#eef5fb}
         .pill-red{display:inline-block;background:#ffe3e5;color:#d73440;border-radius:5px;padding:2px 5px;font-weight:800}
         .pill-blue{display:inline-block;background:#e7f2ff;color:#176bc0;border-radius:5px;padding:2px 5px;font-weight:800}
         .pill-green{display:inline-block;background:#e8f7ee;color:#22854c;border-radius:5px;padding:2px 5px;font-weight:800}
@@ -235,6 +238,23 @@ def _inject_css():
         .stock-table-wrap::-webkit-scrollbar-track{background:#eef4f9}
         .stock-table-wrap::-webkit-scrollbar{width:8px;height:8px}
         .stock-table-wrap::-webkit-scrollbar-thumb{background:#b9cadc;border-radius:999px}
+        /* compact CSV export controls in panel headings */
+        .st-key-insights_download div[data-testid="stDownloadButton"] button,
+        .st-key-action_download div[data-testid="stDownloadButton"] button,
+        .st-key-branch_pending_download div[data-testid="stDownloadButton"] button,
+        .st-key-routes_download div[data-testid="stDownloadButton"] button,
+        .st-key-priority_download div[data-testid="stDownloadButton"] button{
+            min-height:21px!important;height:21px!important;
+            padding:0 7px!important;margin-top:1px!important;
+            border:1px solid #c9d9ea!important;border-radius:5px!important;
+            background:#f7fbff!important;color:#1769b6!important;
+            font:800 7px/1 "Segoe UI",Arial,sans-serif!important;
+            box-shadow:none!important;white-space:nowrap!important;
+        }
+        .st-key-insights_download, .st-key-action_download, .st-key-branch_pending_download,
+        .st-key-routes_download, .st-key-priority_download{
+            min-height:22px!important;height:22px!important;
+        }
         .st-key-stock_page [data-testid="stSegmentedControl"]{width:100%!important;overflow:visible!important}
         .st-key-stock_page [data-testid="stSegmentedControl"] > div,
         .st-key-stock_page [data-testid="stSegmentedControl"] [role="radiogroup"]{display:flex!important;flex-wrap:nowrap!important;width:100%!important}
@@ -715,7 +735,7 @@ def _render_insights(df):
     insights = _operational_insights(df)
     insight_df = _insights_table(df)
 
-    title_col, note_col, download_col = st.columns([5.6, 2.8, .55], gap="small")
+    title_col, note_col, download_col = st.columns([6.0, 3.0, .42], gap="small")
     with title_col:
         st.markdown(
             '<div class="stock-insights" style="padding:8px 10px">'
@@ -731,7 +751,7 @@ def _render_insights(df):
         )
     with download_col:
         st.download_button(
-            "⇩",
+            "CSV",
             data=insight_df.to_csv(index=False).encode("utf-8-sig"),
             file_name="operational_insights.csv",
             mime="text/csv",
@@ -771,7 +791,7 @@ def _insights_table(df):
 
 def _render_download_heading(title, icon, df, file_name, download_key, note=None):
     """Render a panel heading with a CSV download arrow on the right."""
-    left_col, note_col, download_col = st.columns([6.0, 2.6, .55], gap="small")
+    left_col, note_col, download_col = st.columns([6.3, 2.8, .42], gap="small")
     with left_col:
         st.markdown(
             f'<div class="stock-panel-head" style="margin-bottom:0;padding-top:3px">'
@@ -787,7 +807,7 @@ def _render_download_heading(title, icon, df, file_name, download_key, note=None
             )
     with download_col:
         st.download_button(
-            "⇩",
+            "CSV",
             data=df.to_csv(index=False).encode("utf-8-sig"),
             file_name=file_name,
             mime="text/csv",
