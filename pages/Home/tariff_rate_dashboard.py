@@ -503,12 +503,25 @@ def _inject_css():
 
         /* Ultra-compact top header + filter card. */
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding:.12rem .45rem .20rem !important;
+            padding:.10rem .42rem .16rem !important;
         }
         .top-filter-divider {
             height:1px;
             background:#d8e2ec;
-            margin:.12rem 0 .18rem 0;
+            margin:.10rem 0 .12rem 0;
+        }
+        .top-filter-heading {
+            font-size:.68rem !important;
+            font-weight:700 !important;
+            color:#17365d !important;
+            margin:0 0 .12rem 0 !important;
+            letter-spacing:.01em;
+        }
+        .top-filter-note {
+            font-size:.58rem !important;
+            color:#607286 !important;
+            margin:0 0 .10rem 0 !important;
+            line-height:1.1 !important;
         }
         div[data-testid="stButton"] button {
             min-height:28px !important;
@@ -798,10 +811,12 @@ if data.empty:
 
 
 # =============================================================================
-# FILTER ROW - rendered inside the same top header card
+# FILTER ROW - rendered at the top inside the same heading card
 # =============================================================================
 with top_panel:
     st.markdown('<div class="top-filter-divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="top-filter-heading">Filters</div>', unsafe_allow_html=True)
+    st.markdown('<div class="top-filter-note">View Type, Rate Type, Zone, Circle, Branch, Rate For and Customer filters are shown at the top for quick access.</div>', unsafe_allow_html=True)
     filter_cols = st.columns(7, gap="small")
 
 with filter_cols[0]:
