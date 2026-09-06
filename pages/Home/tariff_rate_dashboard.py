@@ -445,7 +445,13 @@ def _inject_css():
         }
         div[data-testid="stDateInput"] {
             width:100% !important;
+            min-width:100% !important;
             max-width:none !important;
+            margin:0 !important;
+        }
+        div[data-testid="stDateInput"] > div {
+            width:100% !important;
+            min-width:100% !important;
         }
         div[data-testid="stDateInput"] input {
             font-size:10px !important;
@@ -526,7 +532,8 @@ def _inject_css():
         .top-filter-divider {
             height:1px;
             background:#d8e2ec;
-            margin:.02rem 0 .06rem 0;
+            /* Pull filters closer to the title/date row. */
+            margin:-.82rem 0 .04rem 0;
         }
         div[data-testid="stButton"] button {
             min-height:30px !important;
@@ -717,7 +724,7 @@ scope_type, scope_value = _get_login_scope()
 # Keep title, date, load action and dashboard filters inside one compact top card.
 top_panel = st.container(border=True)
 with top_panel:
-    header_cols = st.columns([7.62, 0.42, 1.08, 1.08], gap="small")
+    header_cols = st.columns([7.48, 0.42, 1.12, 0.10, 1.12], gap="small")
 
     with header_cols[0]:
         st.markdown(
@@ -749,7 +756,8 @@ with top_panel:
             label_visibility="collapsed",
         )
 
-    with header_cols[3]:
+    # header_cols[3] is an intentional spacer so date and button never touch.
+    with header_cols[4]:
         load_clicked = st.button(
             "Load Dashboard",
             type="primary",
