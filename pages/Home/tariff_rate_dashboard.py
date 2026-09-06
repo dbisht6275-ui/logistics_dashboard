@@ -557,9 +557,10 @@ def _inject_css():
             border-color:#9eb8d2 !important;
         }
         .top-filter-divider {
-            height:1px;
-            background:#dbe5ef;
-            margin:-1.20rem 0 .05rem 0;
+            height:0;
+            border-top:1px solid #dbe5ef;
+            background:transparent;
+            margin:-1.55rem 0 -.62rem 0;
         }
         div[data-testid="stButton"] button {
             min-height:30px !important;
@@ -631,7 +632,7 @@ def _inject_css():
         }
         .quick-kpi-wrap {
             display:grid;
-            grid-template-columns:repeat(4,minmax(120px,1fr));
+            grid-template-columns:repeat(3,minmax(150px,1fr));
             gap:8px;
             margin:.28rem 0 .35rem 0;
         }
@@ -1198,20 +1199,13 @@ else:
 
         tariff_count = int(finder_results["RATE_TYPE_GROUP"].eq("Tariff Rate").sum())
         contractual_count = int(finder_results["RATE_TYPE_GROUP"].eq("Contractual Rate").sum())
-        active_charge_count = sum(
-            pd.to_numeric(finder_results[col], errors="coerce").fillna(0).ne(0).any()
-            for col in charge_columns
-            if col in finder_results.columns
-        )
         kpi_html = f"""
         <div class="quick-kpi-wrap">
             <div class="quick-kpi"><div class="kpi-label">Matching Rates</div><div class="kpi-value">{len(finder_results):,}</div></div>
             <div class="quick-kpi"><div class="kpi-label">Tariff</div><div class="kpi-value">{tariff_count:,}</div></div>
             <div class="quick-kpi"><div class="kpi-label">Contractual</div><div class="kpi-value">{contractual_count:,}</div></div>
-            <div class="quick-kpi"><div class="kpi-label">Active Charge Types</div><div class="kpi-value">{active_charge_count:,}</div></div>
         </div>
         """
-        st.markdown(kpi_html, unsafe_allow_html=True)
 
         finder_display_cols = [
             "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
@@ -1227,6 +1221,8 @@ else:
             "finder_grid",
             default_size=100,
         )
+        # Keep the paging controls first, then show the KPI summary immediately below.
+        st.markdown(kpi_html, unsafe_allow_html=True)
         _render_rate_grid(finder_page, height=500)
 
         prepare_finder_download = st.checkbox(
