@@ -953,33 +953,61 @@ def _html_table(df, widths=None):
 
 
 def _ageing_chart(filtered):
-    order = ["0-7 Days", "8-14 Days", "15+ Days"]
+    # Build ageing buckets directly from stock_days so 15+ can be split further.
+    src = filtered[["gr_no", "stock_days"]].copy()
+    src["stock_days"] = pd.to_numeric(src["stock_days"], errors="coerce").fillna(0).clip(lower=0)
+
+    def _bucket(days):
+        if days <= 7:
+            return "0-7 Days"
+        if days <= 14:
+            return "8-14 Days"
+        if days <= 21:
+            return "15-21 Days"
+        return "21+ Days"
+
+    src["Ageing Bucket"] = src["stock_days"].map(_bucket)
+    order = ["0-7 Days", "8-14 Days", "15-21 Days", "21+ Days"]
+
     summary = (
-        filtered.groupby("age_band", observed=True)["gr_no"]
+        src.groupby("Ageing Bucket", observed=True)["gr_no"]
         .nunique()
         .reindex(order, fill_value=0)
         .reset_index(name="GR Count")
     )
+
     fig = px.bar(
         summary,
         x="GR Count",
-        y="age_band",
+        y="Ageing Bucket",
         orientation="h",
-        color="age_band",
+        color="Ageing Bucket",
         color_discrete_map={
             "0-7 Days": "#38b86a",
             "8-14 Days": "#f0a629",
-            "15+ Days": "#e4474f",
+            "15-21 Days": "#f46d43",
+            "21+ Days": "#d73027",
         },
         text="GR Count",
     )
-    fig.update_traces(texttemplate="%{x:,.0f}", textposition="outside", textfont=dict(size=8), cliponaxis=False)
-    _base_chart(fig, 155, dict(l=6, r=36, t=0, b=22))
+    fig.update_traces(
+        texttemplate="%{x:,.0f}",
+        textposition="outside",
+        textfont=dict(size=9, color="#29445f"),
+        cliponaxis=False,
+        hovertemplate="<b>%{y}</b><br>%{x:,} GR<extra></extra>",
+    )
+    _base_chart(fig, 205, dict(l=8, r=48, t=0, b=24))
     fig.update_layout(
         showlegend=False,
-        xaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=7)),
-        yaxis=dict(title=None, tickfont=dict(size=8), categoryorder="array", categoryarray=order[::-1]),
-        bargap=.34,
+        xaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=8)),
+        yaxis=dict(
+            title=None,
+            tickfont=dict(size=9),
+            categoryorder="array",
+            categoryarray=order[::-1],
+        ),
+        bargap=.28,
     )
     return fig
 
