@@ -443,10 +443,10 @@ def _inject_css():
             white-space:nowrap !important;
             text-align:right !important;
         }
-        div[data-testid="stDateInput"] {max-width:138px !important;}
+        div[data-testid="stDateInput"] {max-width:118px !important;}
         div[data-testid="stDateInput"] input {
             font-size:10px !important;
-            padding:.15rem .45rem !important;
+            padding:.10rem .32rem !important;
         }
         div[data-testid="stButton"] button {
             min-height:28px !important;
@@ -501,10 +501,14 @@ def _inject_css():
         table.rate-grid-table tbody tr:nth-child(even) td { background:#f7f9fc; }
         table.rate-grid-table tbody tr:hover td { background:#edf4fb; }
 
-        /* Ultra-compact top header card. */
+        /* Ultra-compact top header + filter card. */
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding-top:.10rem !important;
-            padding-bottom:.10rem !important;
+            padding:.12rem .45rem .20rem !important;
+        }
+        .top-filter-divider {
+            height:1px;
+            background:#d8e2ec;
+            margin:.12rem 0 .18rem 0;
         }
         div[data-testid="stButton"] button {
             min-height:28px !important;
@@ -692,9 +696,10 @@ _inject_css()
 
 scope_type, scope_value = _get_login_scope()
 
-# Keep title, date and load action in one compact single-row header.
-with st.container(border=True):
-    header_cols = st.columns([7.2, 0.48, 0.92, 1.08], gap="small")
+# Keep title, date, load action and dashboard filters inside one compact top card.
+top_panel = st.container(border=True)
+with top_panel:
+    header_cols = st.columns([7.55, 0.42, 0.84, 1.19], gap="small")
 
     with header_cols[0]:
         st.markdown(
@@ -722,6 +727,7 @@ with st.container(border=True):
             "Active on",
             date.today(),
             key="rate_active_on_v2",
+            format="DD/MM/YYYY",
             label_visibility="collapsed",
         )
 
@@ -792,9 +798,11 @@ if data.empty:
 
 
 # =============================================================================
-# FILTER ROW
+# FILTER ROW - rendered inside the same top header card
 # =============================================================================
-filter_cols = st.columns(7, gap="small")
+with top_panel:
+    st.markdown('<div class="top-filter-divider"></div>', unsafe_allow_html=True)
+    filter_cols = st.columns(7, gap="small")
 
 with filter_cols[0]:
     view_type = st.selectbox(
@@ -920,10 +928,10 @@ charge_columns = [col for col in data.columns if col not in base_rate_columns]
 
 view_mode = st.radio(
     "Result view",
-    ["Expiry Watch", "Rate Records", "Quick Rate Finder"],
+    ["Quick Rate Finder", "Expiry Watch", "Rate Records"],
     horizontal=True,
     label_visibility="collapsed",
-    key="rate_result_view_v4",
+    key="rate_result_view_v5",
 )
 
 
