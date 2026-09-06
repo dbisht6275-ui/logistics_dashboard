@@ -11,6 +11,7 @@ from datetime import date, datetime
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from services.stock_branch_mast import load_stock_branch_mast
@@ -37,6 +38,23 @@ STOCK_ORDER = [
     "IN-TRANSIT STOCK",
     "TRANSIT STOCK",
     "DELIVERY STOCK",
+]
+
+
+ZONE_COLOURS = {
+    "NORTH EAST ZONE": "#2477df",
+    "EAST ZONE": "#11a8ae",
+    "NEPAL ZONE": "#7b55df",
+    "NORTH ZONE": "#2caf67",
+    "WEST ZONE": "#f08a22",
+    "SOUTH ZONE": "#df3f4a",
+    "CENTRAL ZONE": "#8a613d",
+    "UNMAPPED": "#64748b",
+}
+
+ZONE_FALLBACK = [
+    "#2477df", "#11a8ae", "#7b55df", "#2caf67",
+    "#f08a22", "#df3f4a", "#8a613d", "#64748b",
 ]
 
 
@@ -83,11 +101,17 @@ def _inject_css():
         .st-key-stock_topbar div[data-testid="stTextInput"]{margin-top:5px}
         .st-key-stock_topbar div[data-testid="stTextInput"] input{
             min-height:31px!important;height:31px!important;
-            background:rgba(255,255,255,.08)!important;
-            border:1px solid rgba(255,255,255,.27)!important;
-            color:#fff!important;border-radius:8px!important;font-size:8.5px!important
+            background:#ffffff!important;
+            border:1px solid #c9d7e6!important;
+            color:#111827!important;border-radius:8px!important;
+            font-size:9px!important;font-weight:800!important;
+            -webkit-text-fill-color:#111827!important;
+            caret-color:#111827!important;
         }
-        .st-key-stock_topbar div[data-testid="stTextInput"] input::placeholder{color:#d7e6f6!important;opacity:.92}
+        .st-key-stock_topbar div[data-testid="stTextInput"] input::placeholder{
+            color:#6b7280!important;opacity:1!important;font-weight:600!important;
+            -webkit-text-fill-color:#6b7280!important;
+        }
 
         /* filter row */
         .st-key-stock_filters{
@@ -143,7 +167,7 @@ def _inject_css():
         .stock-panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 5px 0}
         .stock-panel-name{display:flex;align-items:center;gap:6px;font:800 10.5px "Segoe UI",Arial,sans-serif;color:#173c68}
         .stock-panel-name .ico{font-size:12px;color:#1a70ce}
-        .stock-panel-meta{font:600 7px "Segoe UI",Arial,sans-serif;color:#71849a}
+        .stock-panel-meta{font:900 7.4px "Segoe UI",Arial,sans-serif;color:#173c68;letter-spacing:.05px}
         .stock-view{color:#1c78dd;font-weight:700}
 
         /* insight strip */
@@ -423,7 +447,18 @@ def _zone_bar(df, column, title):
     )
     grouped[column] = grouped[column].fillna("Unmapped").astype(str).str.strip()
     grouped.loc[grouped[column].eq(""), column] = "Unmapped"
-    grouped = grouped.sort_values("GR Count", ascending=False).head(6)
+    grouped = grouped.sort_values("GR Count", ascending=False).head(8)
+
+    # Keep the same colour for the same zone in both Current and Destination charts.
+    dynamic_map = {}
+    fallback_index = 0
+    for zone in grouped[column].tolist():
+        key = str(zone).strip().upper()
+        if key in ZONE_COLOURS:
+            dynamic_map[zone] = ZONE_COLOURS[key]
+        else:
+            dynamic_map[zone] = ZONE_FALLBACK[fallback_index % len(ZONE_FALLBACK)]
+            fallback_index += 1
 
     fig = px.bar(
         grouped,
@@ -431,21 +466,32 @@ def _zone_bar(df, column, title):
         y=column,
         orientation="h",
         text="GR Count",
-        color_discrete_sequence=[PALETTE["blue"]],
+        color=column,
+        color_discrete_map=dynamic_map,
     )
     fig.update_traces(
-        texttemplate="%{x:,.0f}",
+        texttemplate="<b>%{x:,.0f}</b>",
         textposition="outside",
-        textfont=dict(size=8, color="#29445f"),
+        textfont=dict(size=8, color="#173c68", family="Arial Black, Segoe UI, Arial"),
         marker=dict(line=dict(width=0)),
         cliponaxis=False,
-        hovertemplate="%{y}<br>%{x:,} GR<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>%{x:,} GR<extra></extra>",
     )
-    _base_chart(fig, 185, dict(l=8, r=44, t=8, b=22))
+    _base_chart(fig, 185, dict(l=8, r=46, t=8, b=22))
     fig.update_layout(
         showlegend=False,
-        xaxis=dict(title=None, showgrid=True, gridcolor="#edf2f7", tickfont=dict(size=7)),
-        yaxis=dict(title=None, tickfont=dict(size=8), autorange="reversed", automargin=True),
+        xaxis=dict(
+            title=None,
+            showgrid=True,
+            gridcolor="#edf2f7",
+            tickfont=dict(size=7, color="#64748b"),
+        ),
+        yaxis=dict(
+            title=None,
+            tickfont=dict(size=8, color="#334155", family="Arial Black, Segoe UI, Arial"),
+            autorange="reversed",
+            automargin=True,
+        ),
         bargap=.34,
     )
     return fig
@@ -461,37 +507,66 @@ def _donut(df):
     grouped["load_type"] = grouped["load_type"].fillna("Unknown").astype(str).str.strip()
     grouped.loc[grouped["load_type"].eq(""), "load_type"] = "Unknown"
 
-    colour_map = {"PTL": PALETTE["blue_dark"], "FTL": PALETTE["cyan"]}
-    fig = px.pie(
-        grouped,
-        names="load_type",
-        values="GR Count",
-        hole=.62,
-        color="load_type",
-        color_discrete_map=colour_map,
-        color_discrete_sequence=[PALETTE["blue_dark"], PALETTE["cyan"], PALETTE["orange"]],
+    total = int(grouped["GR Count"].sum())
+    grouped["Share"] = grouped["GR Count"] / max(total, 1) * 100
+    grouped["Legend"] = grouped.apply(
+        lambda r: f"{r['load_type']}  {int(r['GR Count']):,} GR ({r['Share']:.1f}%)",
+        axis=1,
     )
-    fig.update_traces(
-        textinfo="percent",
-        textfont_size=9,
-        marker=dict(line=dict(color="white", width=1)),
-        hovertemplate="%{label}<br>%{value:,} GR (%{percent})<extra></extra>",
+
+    # Approved-image palette: main service type in deep blue, FTL in teal.
+    colours = []
+    fallback = [PALETTE["blue_dark"], PALETTE["cyan"], PALETTE["purple"], PALETTE["orange"]]
+    fallback_index = 0
+    for value in grouped["load_type"]:
+        key = str(value).strip().upper()
+        if key == "FTL":
+            colours.append(PALETTE["cyan"])
+        elif key in {"PTL", "LTL"}:
+            colours.append(PALETTE["blue_dark"])
+        else:
+            colours.append(fallback[fallback_index % len(fallback)])
+            fallback_index += 1
+
+    fig = go.Figure(
+        data=[
+            go.Pie(
+                labels=grouped["Legend"],
+                values=grouped["GR Count"],
+                customdata=grouped[["load_type", "GR Count", "Share"]].to_numpy(),
+                hole=.62,
+                domain=dict(x=[0.00, 0.64], y=[0.02, 0.98]),
+                sort=False,
+                direction="clockwise",
+                marker=dict(colors=colours, line=dict(color="white", width=1.5)),
+                textinfo="percent",
+                texttemplate="<b>%{percent:.1%}</b>",
+                textfont=dict(size=9, color="white", family="Arial Black, Segoe UI, Arial"),
+                hovertemplate="<b>%{customdata[0]}</b><br>%{customdata[1]:,} GR<br>%{customdata[2]:.1f}% of total<extra></extra>",
+            )
+        ]
     )
     fig.add_annotation(
-        text=f"<b>{df['gr_no'].nunique():,}</b><br><span style='font-size:7px'>Total GR</span>",
+        text=(
+            f"<b>{df['gr_no'].nunique():,}</b>"
+            "<br><span style='font-size:8px'><b>Total GR</b></span>"
+        ),
         showarrow=False,
-        font=dict(size=12, color="#153a66"),
+        font=dict(size=13, color="#153a66", family="Arial Black, Segoe UI, Arial"),
     )
-    _base_chart(fig, 185, dict(l=2, r=2, t=5, b=5))
+    _base_chart(fig, 185, dict(l=2, r=8, t=5, b=5))
     fig.update_layout(
+        showlegend=True,
         legend=dict(
-            font=dict(size=8),
+            font=dict(size=8, color="#334155", family="Segoe UI, Arial"),
             orientation="v",
-            x=.82,
+            x=.69,
             xanchor="left",
             y=.54,
             yanchor="middle",
-        )
+            itemsizing="constant",
+            traceorder="normal",
+        ),
     )
     return fig
 
