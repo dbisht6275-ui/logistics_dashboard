@@ -522,29 +522,40 @@ def _inject_css():
         table.rate-grid-table tbody tr:nth-child(even) td { background:#f7f9fc; }
         table.rate-grid-table tbody tr:hover td { background:#edf4fb; }
 
-        /* Ultra-compact top header + filter card.  The :has() selector keeps
-           these tighter rules limited to the dashboard's top panel only. */
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) > div {
-            padding:.04rem .38rem .10rem !important;
+        /* Header card and filter card are deliberately separate. */
+        .header-panel-marker, .filter-panel-marker {
+            height:0 !important;
+            margin:0 !important;
+            padding:0 !important;
+            overflow:hidden !important;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) > div > div[data-testid="stVerticalBlock"] {
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) > div {
+            padding:.08rem .42rem .10rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) > div > div[data-testid="stVerticalBlock"] {
             gap:0 !important;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stHorizontalBlock"] {
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) > div {
+            padding:.06rem .38rem .10rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) > div > div[data-testid="stVerticalBlock"] {
+            gap:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stHorizontalBlock"] {
             gap:.18rem !important;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stWidgetLabel"] {
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stWidgetLabel"] {
             min-height:12px !important;
             margin-bottom:2px !important;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stWidgetLabel"] p {
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stWidgetLabel"] p {
             font-size:9.5px !important;
             line-height:1 !important;
             font-weight:650 !important;
             color:#24425f !important;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
             min-height:31px !important;
             height:31px !important;
             border:1px solid #d4dfeb !important;
@@ -552,15 +563,9 @@ def _inject_css():
             background:#ffffff !important;
             box-shadow:0 1px 2px rgba(16,42,67,.04) !important;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div:hover {
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div:hover {
             border-color:#9eb8d2 !important;
-        }
-        .top-filter-divider {
-            height:0;
-            border-top:1px solid #dbe5ef;
-            background:transparent;
-            margin:-1.55rem 0 -.62rem 0;
         }
         div[data-testid="stButton"] button {
             min-height:30px !important;
@@ -816,9 +821,10 @@ _inject_css()
 
 scope_type, scope_value = _get_login_scope()
 
-# Keep title, date, load action and dashboard filters inside one compact top card.
-top_panel = st.container(border=True)
-with top_panel:
+# Compact heading/date/load card. Filters render in their own separate card below.
+header_panel = st.container(border=True)
+with header_panel:
+    st.markdown('<div class="header-panel-marker"></div>', unsafe_allow_html=True)
     header_cols = st.columns([7.48, 0.42, 1.12, 0.10, 1.12], gap="small")
 
     with header_cols[0]:
@@ -919,10 +925,11 @@ if data.empty:
 
 
 # =============================================================================
-# FILTER ROW - rendered at the top inside the same heading card
+# FILTER ROW - separate compact card below the heading card
 # =============================================================================
-with top_panel:
-    st.markdown('<div class="top-filter-divider"></div>', unsafe_allow_html=True)
+filter_panel = st.container(border=True)
+with filter_panel:
+    st.markdown('<div class="filter-panel-marker"></div>', unsafe_allow_html=True)
     filter_cols = st.columns([0.95, 1.0, 1.0, 1.0, 1.0, 1.0, 1.15], gap="small")
 
 with filter_cols[0]:
