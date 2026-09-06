@@ -650,6 +650,94 @@ def _inject_css():
         }
         .quick-kpi .kpi-label {font-size:.67rem;color:#52667a;margin-bottom:1px;}
         .quick-kpi .kpi-value {font-size:1.18rem;font-weight:700;color:#123b66;line-height:1.1;}
+
+        /* V10: ultra-compact header and filter cards to preserve vertical space. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) {
+            margin-bottom:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) > div {
+            padding:.02rem .34rem .03rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) > div > div[data-testid="stVerticalBlock"] {
+            gap:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stHorizontalBlock"] {
+            min-height:34px !important;
+            align-items:center !important;
+            gap:.18rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) .rate-dashboard-title {
+            font-size:.80rem !important;
+            line-height:1 !important;
+            margin:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) .rate-dashboard-scope {
+            font-size:.52rem !important;
+            line-height:1 !important;
+            margin:.02rem 0 0 0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) .active-on-label {
+            font-size:.52rem !important;
+            line-height:26px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stDateInput"] div[data-baseweb="input"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stDateInput"] input {
+            min-height:26px !important;
+            height:26px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stDateInput"] input {
+            font-size:9px !important;
+            padding:.05rem .22rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stButton"] button {
+            min-height:26px !important;
+            height:26px !important;
+            font-size:.61rem !important;
+            padding:.05rem .38rem !important;
+        }
+
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) {
+            margin-top:-.48rem !important;
+            margin-bottom:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) > div {
+            padding:.01rem .28rem .04rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) > div > div[data-testid="stVerticalBlock"] {
+            gap:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stHorizontalBlock"] {
+            gap:.14rem !important;
+            align-items:flex-start !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stWidgetLabel"] {
+            min-height:9px !important;
+            height:9px !important;
+            margin:0 0 1px 0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stWidgetLabel"] p {
+            font-size:8.7px !important;
+            line-height:9px !important;
+            font-weight:600 !important;
+            margin:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stSelectbox"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stMultiSelect"] {
+            margin:0 !important;
+            padding:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+            min-height:27px !important;
+            height:27px !important;
+            border-radius:6px !important;
+            padding-top:0 !important;
+            padding-bottom:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-baseweb="select"] span {
+            font-size:9px !important;
+            line-height:1 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
