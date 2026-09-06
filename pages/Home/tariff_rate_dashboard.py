@@ -525,7 +525,7 @@ def _inject_css():
         /* Ultra-compact top header + filter card.  The :has() selector keeps
            these tighter rules limited to the dashboard's top panel only. */
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) > div {
-            padding:.04rem .38rem .07rem !important;
+            padding:.04rem .38rem .10rem !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) > div > div[data-testid="stVerticalBlock"] {
             gap:0 !important;
@@ -534,23 +534,32 @@ def _inject_css():
             gap:.18rem !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stWidgetLabel"] {
-            min-height:10px !important;
-            margin-bottom:-1px !important;
+            min-height:12px !important;
+            margin-bottom:2px !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stWidgetLabel"] p {
-            font-size:8.5px !important;
+            font-size:9.5px !important;
             line-height:1 !important;
+            font-weight:650 !important;
+            color:#24425f !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
-            min-height:27px !important;
-            height:27px !important;
+            min-height:31px !important;
+            height:31px !important;
+            border:1px solid #d4dfeb !important;
+            border-radius:8px !important;
+            background:#ffffff !important;
+            box-shadow:0 1px 2px rgba(16,42,67,.04) !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div:hover {
+            border-color:#9eb8d2 !important;
         }
         .top-filter-divider {
             height:1px;
-            background:#d8e2ec;
-            /* Pull the filter row materially closer to the header row. */
-            margin:-1.35rem 0 -.06rem 0;
+            background:#dbe5ef;
+            margin:-1.20rem 0 .05rem 0;
         }
         div[data-testid="stButton"] button {
             min-height:30px !important;
@@ -913,11 +922,11 @@ if data.empty:
 # =============================================================================
 with top_panel:
     st.markdown('<div class="top-filter-divider"></div>', unsafe_allow_html=True)
-    filter_cols = st.columns(7, gap="small")
+    filter_cols = st.columns([0.95, 1.0, 1.0, 1.0, 1.0, 1.0, 1.15], gap="small")
 
 with filter_cols[0]:
     view_type = st.selectbox(
-        "⇄ View Type",
+        "View Type",
         ["Origin", "Destination"],
         key="rate_view_type_v2",
         help="Changes which side Zone / Circle / Branch filters are based on.",
@@ -925,7 +934,7 @@ with filter_cols[0]:
 
 with filter_cols[1]:
     rate_type = st.selectbox(
-        "▥ Rate Type",
+        "Rate Type",
         ["All", "Tariff Rate", "Contractual Rate"],
         key="rate_type_v2",
     )
@@ -947,7 +956,7 @@ zone_options = _safe_options(filter_source_df, zone_col)
 _prune_multiselect_state("rate_zone_v2", zone_options)
 with filter_cols[2]:
     selected_zones = st.multiselect(
-        "◉ Zone",
+        "Zone",
         zone_options,
         key="rate_zone_v2",
         placeholder="All zones",
@@ -960,7 +969,7 @@ circle_options = _safe_options(circle_scope, circle_col)
 _prune_multiselect_state("rate_circle_v2", circle_options)
 with filter_cols[3]:
     selected_circles = st.multiselect(
-        "◎ Circle",
+        "Circle",
         circle_options,
         key="rate_circle_v2",
         placeholder="All circles",
@@ -973,7 +982,7 @@ branch_options = _safe_options(branch_scope, branch_col)
 _prune_multiselect_state("rate_branch_v2", branch_options)
 with filter_cols[4]:
     selected_branches = st.multiselect(
-        "⌂ Branch",
+        "Branch",
         branch_options,
         key="rate_branch_v2",
         placeholder="All branches",
@@ -986,7 +995,7 @@ ratefor_options = _safe_options(ratefor_scope, "RATEFOR")
 _prune_multiselect_state("rate_ratefor_v2", ratefor_options)
 with filter_cols[5]:
     selected_ratefor = st.multiselect(
-        "◫ Rate For",
+        "Rate For",
         ratefor_options,
         key="rate_ratefor_v2",
         placeholder="All",
@@ -999,7 +1008,7 @@ customer_options = _safe_options(customer_scope, "CUSTOMER_NAME")
 _prune_multiselect_state("rate_customer_v2", customer_options)
 with filter_cols[6]:
     selected_customers = st.multiselect(
-        "♙ Customer",
+        "Customer",
         customer_options,
         key="rate_customer_v2",
         placeholder="All customers",
@@ -1094,12 +1103,6 @@ elif view_mode == "Rate Records":
 
 
 else:
-    st.markdown('<div class="quick-finder-title">Quick Rate Finder</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="quick-finder-note">Select at least one route condition: Origin or Destination. Other fields are optional.</div>',
-        unsafe_allow_html=True,
-    )
-
     finder_source = data
     finder_cols = st.columns([1.25, 1.25, 1.0, 1.6, 0.9], gap="small")
 
