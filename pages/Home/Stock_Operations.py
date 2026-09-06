@@ -125,7 +125,7 @@ def _inject_css():
         .stock-kpi-row{display:flex;align-items:center;gap:8px}
         .stock-kpi-icon{
             width:31px;height:31px;min-width:31px;border-radius:9px;display:flex;align-items:center;justify-content:center;
-            background:var(--soft);color:var(--tone);font:900 15px "Segoe UI Symbol","Segoe UI",Arial,sans-serif
+            background:var(--soft);color:var(--tone);font-size:16px;font-weight:900;line-height:1
         }
         .stock-kpi-label{font:700 8.2px/1.12 "Segoe UI",Arial,sans-serif;color:#29445f;white-space:nowrap}
         .stock-kpi-value{font:850 18px/1.03 "Segoe UI",Arial,sans-serif;color:#153a66;margin-top:4px;letter-spacing:-.25px}
@@ -164,19 +164,19 @@ def _inject_css():
             background:var(--soft);color:var(--accent);font:900 12px "Segoe UI Symbol","Segoe UI",Arial,sans-serif
         }
         .stock-insight-label{font:700 7.7px/1.1 "Segoe UI",Arial,sans-serif;color:#344d67}
-        .stock-insight-value{font:850 13px/1.12 "Segoe UI",Arial,sans-serif;color:var(--accent);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .stock-insight-value{font:850 13px/1.12 "Segoe UI",Arial,sans-serif;color:var(--accent);margin-top:3px;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
         .stock-insight-sub{grid-column:2;font:600 6.8px/1.15 "Segoe UI",Arial,sans-serif;color:#798a9d;margin-top:-5px}
 
         /* HTML tables */
-        .stock-table-wrap{width:100%;overflow:hidden;border:1px solid #e0e8f0;border-radius:7px;background:#fff}
-        table.stock-table{width:100%;border-collapse:collapse;table-layout:fixed;font:600 7.7px/1.15 "Segoe UI",Arial,sans-serif;color:#2e4761}
+        .stock-table-wrap{width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;border:1px solid #e0e8f0;border-radius:7px;background:#fff}
+        table.stock-table{width:100%;min-width:100%;border-collapse:collapse;table-layout:auto;font:600 7.4px/1.15 "Segoe UI",Arial,sans-serif;color:#2e4761}
         table.stock-table th{
             background:#eef5fb;color:#38516c;padding:6px 6px;text-align:left;border-right:1px solid #dfe8f0;
-            border-bottom:1px solid #d9e4ee;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+            border-bottom:1px solid #d9e4ee;font-weight:800;white-space:nowrap
         }
         table.stock-table td{
             padding:5.5px 6px;border-right:1px solid #e7edf3;border-bottom:1px solid #e7edf3;
-            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#fff
+            white-space:nowrap;background:#fff
         }
         table.stock-table tbody tr:nth-child(even) td{background:#fbfdff}
         table.stock-table th:last-child,table.stock-table td:last-child{border-right:0}
@@ -185,6 +185,9 @@ def _inject_css():
         .pill-blue{display:inline-block;background:#e7f2ff;color:#176bc0;border-radius:5px;padding:2px 5px;font-weight:800}
         .pill-green{display:inline-block;background:#e8f7ee;color:#22854c;border-radius:5px;padding:2px 5px;font-weight:800}
         .pill-orange{display:inline-block;background:#fff0df;color:#cc6a13;border-radius:5px;padding:2px 5px;font-weight:800}
+        .stock-table-wrap::-webkit-scrollbar{height:7px}
+        .stock-table-wrap::-webkit-scrollbar-thumb{background:#c8d6e5;border-radius:999px}
+        .stock-table-wrap::-webkit-scrollbar-track{background:#eef4f9}
 
         /* bottom charts */
         .stock-mini-note{font:600 6.8px "Segoe UI",Arial,sans-serif;color:#7d8ea1}
@@ -195,9 +198,12 @@ def _inject_css():
         }
         .st-key-stock_page div[data-testid="stExpander"] summary{font-size:8px!important;font-weight:700!important;color:#526a82!important}
 
-        @media(max-width:1200px){
+        @media(max-width:1350px){
             .stock-insight-grid{grid-template-columns:repeat(3,1fr)}
             .stock-kpi-label{white-space:normal}
+        }
+        @media(max-width:1180px){
+            .stock-table-wrap{overflow-x:auto}
         }
         </style>
         """,
@@ -892,12 +898,12 @@ def show_stock_operations():
         transit_note = f"Avg dwell {transit_age:.1f} d" if pd.notna(transit_age) else "Avg dwell -"
 
         kpis = [
-            ("Booking Stock", f"{type_counts['BOOKING STOCK']:,}", f"{_fmt_money(_sum_where(filtered, 'BOOKING STOCK', 'stock_topay'))} exposure", "◆", PALETTE["blue"], False),
-            ("In-Transit", f"{type_counts['IN-TRANSIT STOCK']:,}", f"{_fmt_number(_sum_where(filtered, 'IN-TRANSIT STOCK', 'balance_packages'))} packages", "▣", PALETTE["cyan"], False),
-            ("Transit Stock", f"{type_counts['TRANSIT STOCK']:,}", transit_note, "⇆", PALETTE["purple"], False),
-            ("Delivery Stock", f"{type_counts['DELIVERY STOCK']:,}", f"{_fmt_number(_sum_where(filtered, 'DELIVERY STOCK', 'balance_packages'))} packages", "✓", PALETTE["green"], False),
-            ("Critical 15+ Days", f"{critical:,}", f"{critical / total_gr * 100:.1f}% of GR", "!", PALETTE["red"], True),
-            ("Balance Packages", _fmt_number(filtered["balance_packages"].fillna(0).sum()), f"{_fmt_number(filtered['balance_charge_weight'].fillna(0).sum())} kg", "▣", PALETTE["orange"], False),
+            ("Booking Stock", f"{type_counts['BOOKING STOCK']:,}", f"{_fmt_money(_sum_where(filtered, 'BOOKING STOCK', 'stock_topay'))} exposure", "📦", PALETTE["blue"], False),
+            ("In-Transit", f"{type_counts['IN-TRANSIT STOCK']:,}", f"{_fmt_number(_sum_where(filtered, 'IN-TRANSIT STOCK', 'balance_packages'))} packages", "🚚", PALETTE["cyan"], False),
+            ("Transit Stock", f"{type_counts['TRANSIT STOCK']:,}", transit_note, "↔️", PALETTE["purple"], False),
+            ("Delivery Stock", f"{type_counts['DELIVERY STOCK']:,}", f"{_fmt_number(_sum_where(filtered, 'DELIVERY STOCK', 'balance_packages'))} packages", "✅", PALETTE["green"], False),
+            ("Critical 15+ Days", f"{critical:,}", f"{critical / total_gr * 100:.1f}% of GR", "⚠️", PALETTE["red"], True),
+            ("Balance Packages", _fmt_number(filtered["balance_packages"].fillna(0).sum()), f"{_fmt_number(filtered['balance_charge_weight'].fillna(0).sum())} kg", "📦", PALETTE["orange"], False),
             ("Stock To-Pay", _fmt_money(filtered["stock_topay"].fillna(0).sum()), "Collection exposure", "₹", PALETTE["blue"], False),
         ]
         kpi_cols = st.columns(7, gap="small")
@@ -941,7 +947,7 @@ def show_stock_operations():
                 )
 
         # BOTTOM 4-CARD ROW
-        b1, b2, b3, b4 = st.columns([1.05, 1.05, .9, 1.15], gap="small")
+        b1, b2, b3, b4 = st.columns([1.0, 1.0, 1.05, 1.2], gap="small")
         with b1:
             with st.container(border=True):
                 st.markdown(_panel_header("Ageing – Stock", "⌛", ""), unsafe_allow_html=True)
@@ -953,11 +959,11 @@ def show_stock_operations():
         with b3:
             with st.container(border=True):
                 st.markdown(_panel_header("Routes by Active Stock", "↗", ""), unsafe_allow_html=True)
-                st.markdown(_html_table(_prepare_routes(filtered), ["12%","61%","27%"]), unsafe_allow_html=True)
+                st.markdown(_html_table(_prepare_routes(filtered), ["12%","58%","30%"]), unsafe_allow_html=True)
         with b4:
             with st.container(border=True):
                 st.markdown(_panel_header("Priority Stock Details", "★", ""), unsafe_allow_html=True)
-                st.markdown(_html_table(_prepare_priority(filtered), ["20%","15%","20%","15%","18%","12%"]), unsafe_allow_html=True)
+                st.markdown(_html_table(_prepare_priority(filtered), ["18%","16%","22%","14%","18%","12%"]), unsafe_allow_html=True)
 
         # Keep mapping exceptions accessible without changing the approved visible layout.
         unmapped_mask = (
