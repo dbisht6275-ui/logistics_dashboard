@@ -697,7 +697,7 @@ def _inject_css():
         }
 
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) {
-            margin-top:-.48rem !important;
+            margin-top:-.10rem !important;
             margin-bottom:0 !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) > div {
@@ -737,6 +737,81 @@ def _inject_css():
         div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-baseweb="select"] span {
             font-size:9px !important;
             line-height:1 !important;
+        }
+
+
+        /* V11: remove Streamlit container's own extra vertical padding/min-height. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker),
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) {
+            min-height:0 !important;
+            height:auto !important;
+            padding-top:.18rem !important;
+            padding-bottom:.18rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) {
+            padding-left:.45rem !important;
+            padding-right:.45rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) {
+            padding-left:.45rem !important;
+            padding-right:.45rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) > div {
+            min-height:0 !important;
+            height:auto !important;
+            padding:0 !important;
+            margin:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stVerticalBlock"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stVerticalBlock"] {
+            min-height:0 !important;
+            height:auto !important;
+            gap:0 !important;
+            padding:0 !important;
+            margin:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stElementContainer"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stElementContainer"] {
+            margin-top:0 !important;
+            margin-bottom:0 !important;
+            padding-top:0 !important;
+            padding-bottom:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stHorizontalBlock"] {
+            min-height:30px !important;
+            height:auto !important;
+            margin:0 !important;
+            padding:0 !important;
+            align-items:center !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stHorizontalBlock"] {
+            min-height:0 !important;
+            height:auto !important;
+            margin:0 !important;
+            padding:0 !important;
+            align-items:flex-end !important;
+        }
+        /* Marker elements must occupy absolutely no row height. */
+        div[data-testid="stElementContainer"]:has(.header-panel-marker),
+        div[data-testid="stElementContainer"]:has(.filter-panel-marker) {
+            display:none !important;
+            height:0 !important;
+            min-height:0 !important;
+            margin:0 !important;
+            padding:0 !important;
+        }
+        /* Tight filter labels + controls. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stWidgetLabel"] {
+            min-height:10px !important;
+            height:auto !important;
+            margin:0 0 2px 0 !important;
+            padding:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+            min-height:28px !important;
+            height:28px !important;
         }
         </style>
         """,
