@@ -212,6 +212,27 @@ def _inject_css():
         .stock-insight-value{font:850 13px/1.12 "Segoe UI",Arial,sans-serif;color:var(--accent);margin-top:3px;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
         .stock-insight-sub{grid-column:2;font:600 6.8px/1.15 "Segoe UI",Arial,sans-serif;color:#798a9d;margin-top:-5px}
 
+        .deep-insights-head{
+            display:flex;align-items:center;justify-content:space-between;
+            padding:7px 9px 5px;margin-top:1px
+        }
+        .deep-insights-title{font:850 10.8px/1.2 "Segoe UI",Arial,sans-serif;color:#173c68}
+        .deep-insights-note{font:650 7px/1.2 "Segoe UI",Arial,sans-serif;color:#7d8da0}
+        .deep-card{
+            min-height:76px;background:#fff;border:1px solid #dfe8f1;border-radius:9px;
+            padding:8px 9px;box-shadow:0 2px 8px rgba(20,40,65,.035);position:relative;overflow:hidden
+        }
+        .deep-card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
+        .deep-card-top{display:flex;align-items:center;gap:7px}
+        .deep-card-icon{
+            width:27px;height:27px;min-width:27px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+            background:var(--soft);color:var(--accent);font:900 12px/1 "Segoe UI Symbol","Segoe UI",Arial,sans-serif
+        }
+        .deep-card-label{font:750 7.8px/1.15 "Segoe UI",Arial,sans-serif;color:#50657b;text-transform:uppercase;letter-spacing:.15px}
+        .deep-card-value{font:900 15px/1.1 "Segoe UI",Arial,sans-serif;color:#173c68;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .deep-card-note{font:650 7px/1.25 "Segoe UI",Arial,sans-serif;color:#7b8b9d;margin-top:6px}
+        .deep-card-note b{color:#405873}
+
         /* HTML tables */
         .stock-table-wrap{width:100%;max-width:100%;max-height:355px;overflow:auto;border:1px solid #e0e8f0;border-radius:7px;background:#fff}
         table.stock-table{width:100%;min-width:100%;border-collapse:separate;border-spacing:0;table-layout:auto;font:650 8.8px/1.22 "Segoe UI",Arial,sans-serif;color:#2e4761}
@@ -818,6 +839,412 @@ def _render_download_heading(title, icon, df, file_name, download_key, note=None
 
 
 
+def _truthy_mask(series):
+    """Return a robust boolean mask for bool/Y/N/1/0 style source columns."""
+    if series is None:
+        return pd.Series(dtype=bool)
+    if pd.api.types.is_bool_dtype(series):
+        return series.fillna(False)
+    return (
+        series.fillna("")
+        .astype(str)
+        .str.strip()
+        .str.casefold()
+        .isin({"true", "1", "y", "yes", "delivered"})
+    )
+
+
+def _clean_category(series, fallback="Unknown"):
+    values = series.fillna(fallback).astype(str).str.strip()
+    values = values.mask(values.str.casefold().isin(["", "nan", "none", "null"]), fallback)
+    return values
+
+
+def _deep_stock_summary(df):
+    total_gr = max(int(df["gr_no"].nunique()), 1)
+
+    # Reason-category coverage and top actionable reason.
+    if "reason_category" in df.columns:
+        reason = _clean_category(df["reason_category"])
+        known_reason_mask = ~reason.str.casefold().eq("unknown")
+        known_reason_gr = int(df.loc[known_reason_mask, "gr_no"].nunique())
+        unknown_reason_gr = int(df.loc[~known_reason_mask, "gr_no"].nunique())
+        reason_counts = (
+            df.assign(_reason=reason)
+            .loc[known_reason_mask]
+            .groupby("_reason")["gr_no"]
+            .nunique()
+            .sort_values(ascending=False)
+        )
+        top_reason = str(reason_counts.index[0]) if not reason_counts.empty else "Not classified"
+        top_reason_gr = int(reason_counts.iloc[0]) if not reason_counts.empty else 0
+    else:
+        known_reason_gr = 0
+        unknown_reason_gr = total_gr
+        top_reason = "Column unavailable"
+        top_reason_gr = 0
+
+    # Stock-category exception coverage.
+    if "stock_category" in df.columns:
+        stock_cat = _clean_category(df["stock_category"])
+        tagged_mask = ~stock_cat.str.casefold().eq("unknown")
+        tagged_gr = int(df.loc[tagged_mask, "gr_no"].nunique())
+        cat_counts = (
+            df.assign(_stock_cat=stock_cat)
+            .loc[tagged_mask]
+            .groupby("_stock_cat")["gr_no"]
+            .nunique()
+            .sort_values(ascending=False)
+        )
+        cat_note = " · ".join(f"{k}: {int(v):,}" for k, v in cat_counts.head(3).items()) if not cat_counts.empty else "No tagged exception stock"
+    else:
+        tagged_gr = 0
+        cat_note = "Column unavailable"
+
+    # Consignee concentration / risk.
+    if "consignee" in df.columns:
+        source = df.copy()
+        source["_consignee"] = _clean_category(source["consignee"], "Not recorded")
+        critical_mask = _truthy_mask(source.get("is_critical", pd.Series(False, index=source.index)))
+        critical_by_consignee = (
+            source.loc[critical_mask]
+            .groupby("_consignee")["gr_no"]
+            .nunique()
+            .sort_values(ascending=False)
+        )
+        if not critical_by_consignee.empty:
+            top_consignee = str(critical_by_consignee.index[0])
+            top_consignee_critical = int(critical_by_consignee.iloc[0])
+            top_rows = source[source["_consignee"].eq(top_consignee)]
+            top_consignee_age = float(top_rows["stock_days"].mean()) if "stock_days" in top_rows else 0
+        else:
+            active_by_consignee = source.groupby("_consignee")["gr_no"].nunique().sort_values(ascending=False)
+            top_consignee = str(active_by_consignee.index[0]) if not active_by_consignee.empty else "-"
+            top_consignee_critical = 0
+            top_rows = source[source["_consignee"].eq(top_consignee)]
+            top_consignee_age = float(top_rows["stock_days"].mean()) if "stock_days" in top_rows and not top_rows.empty else 0
+    else:
+        top_consignee = "Column unavailable"
+        top_consignee_critical = 0
+        top_consignee_age = 0
+
+    # Delivered flag still appearing in stock.
+    if "is_delivered" in df.columns:
+        delivered_mask = _truthy_mask(df["is_delivered"])
+        delivered_gr = int(df.loc[delivered_mask, "gr_no"].nunique())
+        delivered_types = (
+            df.loc[delivered_mask]
+            .groupby("stock_type")["gr_no"]
+            .nunique()
+            .sort_values(ascending=False)
+        ) if "stock_type" in df.columns else pd.Series(dtype="int64")
+        delivered_note = " · ".join(f"{str(k).title()}: {int(v):,}" for k, v in delivered_types.head(2).items()) if not delivered_types.empty else "No delivered GR in stock"
+    else:
+        delivered_gr = 0
+        delivered_note = "Column unavailable"
+
+    return {
+        "total_gr": total_gr,
+        "known_reason_gr": known_reason_gr,
+        "unknown_reason_gr": unknown_reason_gr,
+        "reason_coverage": known_reason_gr / total_gr * 100,
+        "top_reason": top_reason,
+        "top_reason_gr": top_reason_gr,
+        "tagged_gr": tagged_gr,
+        "tagged_pct": tagged_gr / total_gr * 100,
+        "stock_category_note": cat_note,
+        "top_consignee": top_consignee,
+        "top_consignee_critical": top_consignee_critical,
+        "top_consignee_age": top_consignee_age,
+        "delivered_gr": delivered_gr,
+        "delivered_pct": delivered_gr / total_gr * 100,
+        "delivered_note": delivered_note,
+    }
+
+
+def _reason_category_chart(df):
+    if "reason_category" not in df.columns:
+        return None
+    src = df[["gr_no", "reason_category"]].copy()
+    src["Reason Category"] = _clean_category(src["reason_category"])
+    grouped = (
+        src.groupby("Reason Category")["gr_no"]
+        .nunique()
+        .reset_index(name="GR Count")
+        .sort_values("GR Count", ascending=True)
+    )
+    total = max(int(df["gr_no"].nunique()), 1)
+    grouped["Share"] = grouped["GR Count"] / total * 100
+    colour_map = {
+        "Unknown": "#94a3b8",
+        "Customer Controllable": PALETTE["orange"],
+        "Ops Controllable": PALETTE["red"],
+        "Uncontrollable": PALETTE["blue"],
+        "Deps": PALETTE["purple"],
+        "Undelivered": "#8a613d",
+    }
+    fig = px.bar(
+        grouped,
+        x="GR Count",
+        y="Reason Category",
+        orientation="h",
+        color="Reason Category",
+        color_discrete_map=colour_map,
+        text="GR Count",
+        custom_data=["Share"],
+    )
+    fig.update_traces(
+        texttemplate="<b>%{x:,.0f}</b>",
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate="<b>%{y}</b><br>%{x:,} GR<br>%{customdata[0]:.1f}% of stock<extra></extra>",
+    )
+    _base_chart(fig, 245, dict(l=8, r=50, t=8, b=24))
+    fig.update_layout(
+        showlegend=False,
+        xaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=7)),
+        yaxis=dict(title=None, tickfont=dict(size=8, family="Arial Black, Segoe UI, Arial"), automargin=True),
+        bargap=.28,
+    )
+    return fig
+
+
+def _consignee_risk_chart(df, limit=10):
+    if "consignee" not in df.columns:
+        return None
+    src = df.copy()
+    src["Consignee"] = _clean_category(src["consignee"], "Not recorded")
+    critical_mask = _truthy_mask(src.get("is_critical", pd.Series(False, index=src.index)))
+    src["_critical_gr"] = critical_mask.astype(int)
+    if "balance_charge_weight" not in src.columns:
+        src["balance_charge_weight"] = 0
+    if "stock_days" not in src.columns:
+        src["stock_days"] = 0
+
+    active = src.groupby("Consignee").agg(
+        Active_GR=("gr_no", "nunique"),
+        Weight=("balance_charge_weight", "sum"),
+        Avg_Age=("stock_days", "mean"),
+    )
+    critical = src.loc[critical_mask].groupby("Consignee")["gr_no"].nunique().rename("Critical_GR")
+    grouped = active.join(critical, how="left").fillna({"Critical_GR": 0}).reset_index()
+    grouped["Critical_GR"] = grouped["Critical_GR"].astype(int)
+    grouped = grouped.sort_values(["Critical_GR", "Active_GR"], ascending=False).head(limit).sort_values("Critical_GR", ascending=True)
+
+    fig = px.bar(
+        grouped,
+        x="Critical_GR",
+        y="Consignee",
+        orientation="h",
+        text="Critical_GR",
+        custom_data=["Active_GR", "Weight", "Avg_Age"],
+        color_discrete_sequence=[PALETTE["red"]],
+    )
+    fig.update_traces(
+        texttemplate="<b>%{x:,.0f}</b>",
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate=(
+            "<b>%{y}</b><br>Critical: %{x:,} GR"
+            "<br>Active: %{customdata[0]:,} GR"
+            "<br>Weight: %{customdata[1]:,.0f} kg"
+            "<br>Avg age: %{customdata[2]:.1f} d<extra></extra>"
+        ),
+    )
+    _base_chart(fig, 245, dict(l=8, r=50, t=8, b=24))
+    fig.update_layout(
+        showlegend=False,
+        xaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=7)),
+        yaxis=dict(title=None, tickfont=dict(size=7.5, family="Arial Black, Segoe UI, Arial"), automargin=True),
+        bargap=.25,
+    )
+    return fig
+
+
+def _stock_category_table(df):
+    columns = ["Category", "GR", "15d+", "Avg Age", "Weight", "To-Pay"]
+    if "stock_category" not in df.columns:
+        return pd.DataFrame(columns=columns)
+    src = df.copy()
+    src["Category"] = _clean_category(src["stock_category"])
+    src = src[~src["Category"].str.casefold().eq("unknown")]
+    if src.empty:
+        return pd.DataFrame(columns=columns)
+    critical_mask = _truthy_mask(src.get("is_critical", pd.Series(False, index=src.index)))
+    if "balance_charge_weight" not in src.columns:
+        src["balance_charge_weight"] = 0
+    if "stock_topay" not in src.columns:
+        src["stock_topay"] = 0
+    if "stock_days" not in src.columns:
+        src["stock_days"] = 0
+    base = src.groupby("Category").agg(
+        GR=("gr_no", "nunique"),
+        Avg_Age=("stock_days", "mean"),
+        Weight=("balance_charge_weight", "sum"),
+        To_Pay=("stock_topay", "sum"),
+    )
+    crit = src.loc[critical_mask].groupby("Category")["gr_no"].nunique().rename("Critical")
+    out = base.join(crit, how="left").fillna({"Critical": 0}).reset_index()
+    out["Critical"] = out["Critical"].astype(int)
+    out = out.sort_values(["Critical", "Avg_Age"], ascending=False)
+    return out.rename(columns={"Critical": "15d+", "Avg_Age": "Avg Age", "To_Pay": "To-Pay"})[columns]
+
+
+def _delivered_stock_table(df):
+    columns = ["Stock Type", "Delivered GR", "Weight", "Avg Age", "To-Pay"]
+    if "is_delivered" not in df.columns:
+        return pd.DataFrame(columns=columns)
+    mask = _truthy_mask(df["is_delivered"])
+    src = df.loc[mask].copy()
+    if src.empty:
+        return pd.DataFrame(columns=columns)
+    for col in ["balance_charge_weight", "stock_days", "stock_topay"]:
+        if col not in src.columns:
+            src[col] = 0
+    out = src.groupby("stock_type", dropna=False).agg(
+        Delivered_GR=("gr_no", "nunique"),
+        Weight=("balance_charge_weight", "sum"),
+        Avg_Age=("stock_days", "mean"),
+        To_Pay=("stock_topay", "sum"),
+    ).reset_index().sort_values("Delivered_GR", ascending=False)
+    return out.rename(columns={
+        "stock_type": "Stock Type",
+        "Delivered_GR": "Delivered GR",
+        "Avg_Age": "Avg Age",
+        "To_Pay": "To-Pay",
+    })[columns]
+
+
+def _deep_card(label, value, note, icon, accent):
+    return f"""
+    <div class="deep-card" style="--accent:{accent};--soft:{accent}18">
+      <div class="deep-card-top">
+        <div class="deep-card-icon">{html.escape(str(icon))}</div>
+        <div style="min-width:0">
+          <div class="deep-card-label">{html.escape(str(label))}</div>
+          <div class="deep-card-value" title="{html.escape(str(value))}">{html.escape(str(value))}</div>
+        </div>
+      </div>
+      <div class="deep-card-note">{note}</div>
+    </div>
+    """
+
+
+def _render_deep_stock_insights(df, as_on_date):
+    summary = _deep_stock_summary(df)
+
+    st.markdown(
+        '<div class="deep-insights-head">'
+        '<div class="deep-insights-title">🔎 Deep Stock Insights</div>'
+        '<div class="deep-insights-note">Reason ownership · exception stock · consignee concentration · delivery closure</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    cards = [
+        (
+            "Reason Classified",
+            f"{summary['reason_coverage']:.1f}%",
+            f"<b>{summary['unknown_reason_gr']:,} GR</b> still Unknown · Top: {html.escape(summary['top_reason'])} ({summary['top_reason_gr']:,})",
+            "◎",
+            PALETTE["orange"] if summary["reason_coverage"] < 50 else PALETTE["green"],
+        ),
+        (
+            "Stock Category Exceptions",
+            f"{summary['tagged_gr']:,} GR",
+            f"{html.escape(summary['stock_category_note'])} · Tagged {summary['tagged_pct']:.2f}% of stock",
+            "▦",
+            PALETTE["purple"],
+        ),
+        (
+            "Top Consignee Risk",
+            summary["top_consignee"],
+            f"<b>{summary['top_consignee_critical']:,} critical GR</b> · Avg age {summary['top_consignee_age']:.1f} d",
+            "♟",
+            PALETTE["red"],
+        ),
+        (
+            "Delivered Still in Stock",
+            f"{summary['delivered_gr']:,} GR",
+            f"{html.escape(summary['delivered_note'])} · {summary['delivered_pct']:.2f}% of active stock",
+            "✓",
+            PALETTE["red"] if summary["delivered_gr"] else PALETTE["green"],
+        ),
+    ]
+    cols = st.columns(4, gap="small")
+    for col, card in zip(cols, cards):
+        with col:
+            st.markdown(_deep_card(*card), unsafe_allow_html=True)
+
+    chart_left, chart_right = st.columns(2, gap="small")
+    with chart_left:
+        with st.container(border=True):
+            st.markdown(
+                _panel_header(
+                    "Reason Category Ownership",
+                    "◎",
+                    f"Classified {summary['reason_coverage']:.1f}%",
+                ),
+                unsafe_allow_html=True,
+            )
+            fig = _reason_category_chart(df)
+            if fig is None:
+                st.info("reason_category column is not available.")
+            else:
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    with chart_right:
+        with st.container(border=True):
+            st.markdown(
+                _panel_header("Consignee-wise Critical Stock", "♟", "Top 10 by critical GR"),
+                unsafe_allow_html=True,
+            )
+            fig = _consignee_risk_chart(df)
+            if fig is None:
+                st.info("consignee column is not available.")
+            else:
+                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+    table_left, table_right = st.columns(2, gap="small")
+    with table_left:
+        with st.container(border=True):
+            stock_cat_table = _stock_category_table(df)
+            _render_download_heading(
+                "Stock Category Exceptions",
+                "▦",
+                stock_cat_table,
+                f"stock_category_exceptions_{as_on_date:%d-%m-%Y}.csv",
+                "stock_category_exceptions_download",
+                note="Non-Unknown categories",
+            )
+            if stock_cat_table.empty:
+                st.info("No tagged stock-category exceptions in the selected filters.")
+            else:
+                st.markdown(
+                    _html_table(stock_cat_table, ["25%", "12%", "12%", "15%", "18%", "18%"]),
+                    unsafe_allow_html=True,
+                )
+
+    with table_right:
+        with st.container(border=True):
+            delivered_table = _delivered_stock_table(df)
+            _render_download_heading(
+                "Delivered Flag Reconciliation",
+                "✓",
+                delivered_table,
+                f"delivered_in_stock_{as_on_date:%d-%m-%Y}.csv",
+                "delivered_stock_download",
+                note="is_delivered = Y but present in stock",
+            )
+            if delivered_table.empty:
+                st.success("No delivered GR is currently appearing in stock for the selected filters.")
+            else:
+                st.markdown(
+                    _html_table(delivered_table, ["30%", "16%", "18%", "16%", "20%"]),
+                    unsafe_allow_html=True,
+                )
+
+
 def _prepare_action_required(filtered, limit=10):
     sort_cols = [c for c in ["stock_days", "balance_charge_weight"] if c in filtered.columns]
     action_df = filtered.sort_values(sort_cols, ascending=False).copy() if sort_cols else filtered.copy()
@@ -912,7 +1339,7 @@ def _cell(value, column):
             return "-" if pd.isna(dt) else dt.strftime("%d-%m-%Y")
         except Exception:
             return html.escape(str(value))
-    if column == "Avg Dwell":
+    if column in {"Avg Dwell", "Avg Age"}:
         return f"{float(value):.1f} d"
     if column == "Weight":
         return f"{float(value):,.0f} kg"
@@ -1251,6 +1678,9 @@ def show_stock_operations():
 
         # OPERATIONAL INSIGHTS
         _render_insights(filtered)
+
+        # DEEP STOCK INSIGHTS - reason, stock category, consignee and delivery closure
+        _render_deep_stock_insights(filtered, as_on_date)
 
         # ACTION + BRANCH TABLES - full result in a fixed-height scrollable table.
         left, right = st.columns(2, gap="small")
