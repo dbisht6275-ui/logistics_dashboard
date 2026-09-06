@@ -213,7 +213,7 @@ def _inject_css():
         .stock-insight-sub{grid-column:2;font:600 6.8px/1.15 "Segoe UI",Arial,sans-serif;color:#798a9d;margin-top:-5px}
 
         /* HTML tables */
-        .stock-table-wrap{width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;border:1px solid #e0e8f0;border-radius:7px;background:#fff}
+        .stock-table-wrap{width:100%;max-width:100%;max-height:355px;overflow:auto;border:1px solid #e0e8f0;border-radius:7px;background:#fff}
         table.stock-table{width:100%;min-width:100%;border-collapse:collapse;table-layout:auto;font:650 8.8px/1.22 "Segoe UI",Arial,sans-serif;color:#2e4761}
         table.stock-table th{
             background:#eef5fb;color:#38516c;padding:7px 7px;text-align:left;border-right:1px solid #dfe8f0;
@@ -233,6 +233,12 @@ def _inject_css():
         .stock-table-wrap::-webkit-scrollbar{height:7px}
         .stock-table-wrap::-webkit-scrollbar-thumb{background:#c8d6e5;border-radius:999px}
         .stock-table-wrap::-webkit-scrollbar-track{background:#eef4f9}
+        .stock-table-wrap::-webkit-scrollbar{width:8px;height:8px}
+        .stock-table-wrap::-webkit-scrollbar-thumb{background:#b9cadc;border-radius:999px}
+        .st-key-stock_page [data-testid="stSegmentedControl"]{width:100%!important;overflow:visible!important}
+        .st-key-stock_page [data-testid="stSegmentedControl"] > div,
+        .st-key-stock_page [data-testid="stSegmentedControl"] [role="radiogroup"]{display:flex!important;flex-wrap:nowrap!important;width:100%!important}
+        .st-key-stock_page [data-testid="stSegmentedControl"] button{flex:1 1 0!important;min-width:38px!important;white-space:nowrap!important}
 
         /* bottom charts */
         .stock-mini-note{font:600 6.8px "Segoe UI",Arial,sans-serif;color:#7d8ea1}
@@ -707,24 +713,32 @@ def _operational_insights(df):
 
 def _render_insights(df):
     insights = _operational_insights(df)
+    insight_df = _insights_table(df)
 
-    with st.container():
-        title_col, note_col, action_col = st.columns([5.6, 2.7, .8], gap="small")
-        with title_col:
-            st.markdown(
-                '<div class="stock-insights" style="padding:8px 10px">'
-                '<div class="stock-insights-title" style="padding-top:2px">💡 Operational Insights</div>'
-                '</div>',
-                unsafe_allow_html=True,
-            )
-        with note_col:
-            st.markdown(
-                '<div style="padding-top:11px;text-align:right;font:650 7px Segoe UI,Arial,sans-serif;color:#7d8da0">'
-                'Key exception highlights requiring attention</div>',
-                unsafe_allow_html=True,
-            )
-        with action_col:
-            expanded = _view_all_toggle("stock_insights_expanded", "insights_view_all")
+    title_col, note_col, download_col = st.columns([5.6, 2.8, .55], gap="small")
+    with title_col:
+        st.markdown(
+            '<div class="stock-insights" style="padding:8px 10px">'
+            '<div class="stock-insights-title" style="padding-top:2px">💡 Operational Insights</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+    with note_col:
+        st.markdown(
+            '<div style="padding-top:11px;text-align:right;font:650 7px Segoe UI,Arial,sans-serif;color:#7d8da0">'
+            'Key exception highlights requiring attention</div>',
+            unsafe_allow_html=True,
+        )
+    with download_col:
+        st.download_button(
+            "⇩",
+            data=insight_df.to_csv(index=False).encode("utf-8-sig"),
+            file_name="operational_insights.csv",
+            mime="text/csv",
+            key="insights_download",
+            help="Download Operational Insights",
+            use_container_width=True,
+        )
 
     cols = st.columns(6, gap="small")
     for col, (icon, label, value, note, accent) in zip(cols, insights):
@@ -743,12 +757,6 @@ def _render_insights(df):
                 unsafe_allow_html=True,
             )
 
-    if expanded:
-        st.markdown(
-            _html_table(_insights_table(df), ["28%", "24%", "48%"]),
-            unsafe_allow_html=True,
-        )
-
 
 def _insights_table(df):
     rows = []
@@ -761,21 +769,12 @@ def _insights_table(df):
     return pd.DataFrame(rows)
 
 
-def _view_all_toggle(state_key, button_key):
-    expanded = bool(st.session_state.get(state_key, False))
-    label = "Show Less ↑" if expanded else "View All →"
-    if st.button(label, key=button_key):
-        st.session_state[state_key] = not expanded
-        st.rerun()
-    return expanded
-
-
-def _render_dynamic_heading(title, icon, state_key, button_key, note=None):
-    """Render a panel heading with a working View All / Show Less control."""
-    left_col, note_col, button_col = st.columns([5.8, 2.2, 1.0], gap="small")
+def _render_download_heading(title, icon, df, file_name, download_key, note=None):
+    """Render a panel heading with a CSV download arrow on the right."""
+    left_col, note_col, download_col = st.columns([6.0, 2.6, .55], gap="small")
     with left_col:
         st.markdown(
-            f'<div class="stock-panel-head" style="margin-bottom:0">'
+            f'<div class="stock-panel-head" style="margin-bottom:0;padding-top:3px">'
             f'<div class="stock-panel-name"><span class="ico">{icon}</span>{html.escape(str(title))}</div>'
             f'</div>',
             unsafe_allow_html=True,
@@ -783,12 +782,20 @@ def _render_dynamic_heading(title, icon, state_key, button_key, note=None):
     with note_col:
         if note:
             st.markdown(
-                f'<div style="padding-top:7px;text-align:right;font:650 7px Segoe UI,Arial,sans-serif;color:#7d8da0">{html.escape(str(note))}</div>',
+                f'<div style="padding-top:8px;text-align:right;font:650 7px Segoe UI,Arial,sans-serif;color:#7d8da0">{html.escape(str(note))}</div>',
                 unsafe_allow_html=True,
             )
-    with button_col:
-        expanded = _view_all_toggle(state_key, button_key)
-    return expanded
+    with download_col:
+        st.download_button(
+            "⇩",
+            data=df.to_csv(index=False).encode("utf-8-sig"),
+            file_name=file_name,
+            mime="text/csv",
+            key=download_key,
+            help=f"Download {title} as CSV",
+            use_container_width=True,
+        )
+
 
 
 def _prepare_action_required(filtered, limit=10):
@@ -1197,32 +1204,34 @@ def show_stock_operations():
         # OPERATIONAL INSIGHTS
         _render_insights(filtered)
 
-        # ACTION + BRANCH TABLES - default 10 rows; View All expands to full results.
+        # ACTION + BRANCH TABLES - full result in a fixed-height scrollable table.
         left, right = st.columns(2, gap="small")
         with left:
             with st.container(border=True):
-                action_expanded = _render_dynamic_heading(
-                    "Action Required", "◎",
-                    "stock_action_expanded", "action_view_all"
+                action_table = _prepare_action_required(filtered, None)
+                _render_download_heading(
+                    "Action Required", "◎", action_table,
+                    f"action_required_{as_on_date:%d-%m-%Y}.csv",
+                    "action_download"
                 )
-                action_limit = None if action_expanded else 10
                 st.markdown(
                     _html_table(
-                        _prepare_action_required(filtered, action_limit),
+                        action_table,
                         ["14%","12%","11%","13%","19%","18%","13%"],
                     ),
                     unsafe_allow_html=True,
                 )
         with right:
             with st.container(border=True):
-                branch_expanded = _render_dynamic_heading(
-                    "Branch / Location Pending", "▦",
-                    "stock_branch_expanded", "branch_view_all"
+                branch_table = _prepare_branch_pending(filtered, None)
+                _render_download_heading(
+                    "Branch / Location Pending", "▦", branch_table,
+                    f"branch_location_pending_{as_on_date:%d-%m-%Y}.csv",
+                    "branch_pending_download"
                 )
-                branch_limit = None if branch_expanded else 10
                 st.markdown(
                     _html_table(
-                        _prepare_branch_pending(filtered, branch_limit),
+                        branch_table,
                         ["20%","11%","13%","14%","10%","16%","16%"],
                     ),
                     unsafe_allow_html=True,
@@ -1236,7 +1245,7 @@ def show_stock_operations():
                 st.plotly_chart(_ageing_chart(filtered), use_container_width=True, config={"displayModeBar": False})
         with b2:
             with st.container(border=True):
-                title_col, period_col = st.columns([4.2, 1.8], gap="small")
+                title_col, period_col = st.columns([3.45, 2.55], gap="small")
                 with title_col:
                     st.markdown(_panel_header("Stock Date Distribution", "▥", ""), unsafe_allow_html=True)
                 with period_col:
@@ -1253,32 +1262,34 @@ def show_stock_operations():
                     config={"displayModeBar": False},
                 )
 
-        # Bottom row 2: Routes + Priority Details
+        # Bottom row 2: Routes + Priority Details - full result with scroll + download.
         b3, b4 = st.columns(2, gap="small")
         with b3:
             with st.container(border=True):
-                routes_expanded = _render_dynamic_heading(
-                    "Routes by Active Stock", "↗",
-                    "stock_routes_expanded", "routes_view_all"
+                routes_table = _prepare_routes(filtered, None)
+                _render_download_heading(
+                    "Routes by Active Stock", "↗", routes_table,
+                    f"routes_by_active_stock_{as_on_date:%d-%m-%Y}.csv",
+                    "routes_download"
                 )
-                routes_limit = None if routes_expanded else 10
                 st.markdown(
                     _html_table(
-                        _prepare_routes(filtered, routes_limit),
+                        routes_table,
                         ["9%", "51%", "18%", "22%"],
                     ),
                     unsafe_allow_html=True,
                 )
         with b4:
             with st.container(border=True):
-                priority_expanded = _render_dynamic_heading(
-                    "Priority Stock Details", "★",
-                    "stock_priority_expanded", "priority_view_all"
+                priority_table = _prepare_priority(filtered, None)
+                _render_download_heading(
+                    "Priority Stock Details", "★", priority_table,
+                    f"priority_stock_details_{as_on_date:%d-%m-%Y}.csv",
+                    "priority_download"
                 )
-                priority_limit = None if priority_expanded else 10
                 st.markdown(
                     _html_table(
-                        _prepare_priority(filtered, priority_limit),
+                        priority_table,
                         ["18%","16%","22%","14%","18%","12%"],
                     ),
                     unsafe_allow_html=True,
