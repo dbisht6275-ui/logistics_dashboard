@@ -58,6 +58,14 @@ ZONE_FALLBACK = [
 ]
 
 
+LOAD_COLOURS = {
+    "PTL": "#145fb3",
+    "LTL": "#145fb3",
+    "FTL": "#18b7bd",
+    "UNKNOWN": "#94a3b8",
+}
+
+
 def _inject_css():
     """Apply styles only inside the Stock Operations page."""
     st.markdown(
@@ -108,6 +116,7 @@ def _inject_css():
             -webkit-text-fill-color:#111827!important;
             caret-color:#111827!important;
         }
+        .st-key-stock_topbar input, .st-key-stock_topbar textarea{color:#111827!important;font-weight:800!important;-webkit-text-fill-color:#111827!important;}
         .st-key-stock_topbar div[data-testid="stTextInput"] input::placeholder{
             color:#6b7280!important;opacity:1!important;font-weight:600!important;
             -webkit-text-fill-color:#6b7280!important;
@@ -212,6 +221,13 @@ def _inject_css():
         .stock-table-wrap::-webkit-scrollbar{height:7px}
         .stock-table-wrap::-webkit-scrollbar-thumb{background:#c8d6e5;border-radius:999px}
         .stock-table-wrap::-webkit-scrollbar-track{background:#eef4f9}
+
+        .donut-legend-wrap{display:flex;flex-direction:column;justify-content:center;height:100%;padding:0 4px 0 0}
+        .donut-legend-item{display:flex;align-items:flex-start;gap:10px;margin:10px 0}
+        .donut-legend-dot{width:18px;height:18px;min-width:18px;border-radius:50%;margin-top:2px;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+        .donut-legend-copy{line-height:1.15}
+        .donut-legend-title{font:800 10px/1.1 "Segoe UI",Arial,sans-serif;color:#173c68}
+        .donut-legend-value{font:700 9px/1.2 "Segoe UI",Arial,sans-serif;color:#173c68;margin-top:4px}
 
         /* bottom charts */
         .stock-mini-note{font:600 6.8px "Segoe UI",Arial,sans-serif;color:#7d8ea1}
@@ -497,78 +513,77 @@ def _zone_bar(df, column, title):
     return fig
 
 
-def _donut(df):
+def _prepare_load_mix(df):
     grouped = (
         df.groupby("load_type", dropna=False)["gr_no"]
         .nunique()
         .reset_index(name="GR Count")
-        .sort_values("GR Count", ascending=False)
     )
-    grouped["load_type"] = grouped["load_type"].fillna("Unknown").astype(str).str.strip()
-    grouped.loc[grouped["load_type"].eq(""), "load_type"] = "Unknown"
-
+    grouped["load_type"] = grouped["load_type"].fillna("Unknown").astype(str).str.strip().str.upper()
+    grouped.loc[grouped["load_type"].isin(["", "UNKNOWN", "NAN", "NONE"]), "load_type"] = "UNKNOWN"
+    grouped["Display"] = grouped["load_type"].replace({"LTL": "PTL"})
+    grouped = grouped.groupby("Display", as_index=False)["GR Count"].sum().sort_values("GR Count", ascending=False)
     total = int(grouped["GR Count"].sum())
     grouped["Share"] = grouped["GR Count"] / max(total, 1) * 100
-    grouped["Legend"] = grouped.apply(
-        lambda r: f"{r['load_type']}  {int(r['GR Count']):,} GR ({r['Share']:.1f}%)",
-        axis=1,
-    )
+    grouped["Colour"] = grouped["Display"].map(lambda x: LOAD_COLOURS.get(str(x).upper(), LOAD_COLOURS["UNKNOWN"]))
+    return grouped, total
 
-    # Approved-image palette: main service type in deep blue, FTL in teal.
-    colours = []
-    fallback = [PALETTE["blue_dark"], PALETTE["cyan"], PALETTE["purple"], PALETTE["orange"]]
-    fallback_index = 0
-    for value in grouped["load_type"]:
-        key = str(value).strip().upper()
-        if key == "FTL":
-            colours.append(PALETTE["cyan"])
-        elif key in {"PTL", "LTL"}:
-            colours.append(PALETTE["blue_dark"])
-        else:
-            colours.append(fallback[fallback_index % len(fallback)])
-            fallback_index += 1
 
+def _donut(df):
+    grouped, total = _prepare_load_mix(df)
     fig = go.Figure(
         data=[
             go.Pie(
-                labels=grouped["Legend"],
+                labels=grouped["Display"],
                 values=grouped["GR Count"],
-                customdata=grouped[["load_type", "GR Count", "Share"]].to_numpy(),
                 hole=.62,
-                domain=dict(x=[0.00, 0.64], y=[0.02, 0.98]),
                 sort=False,
                 direction="clockwise",
-                marker=dict(colors=colours, line=dict(color="white", width=1.5)),
-                textinfo="percent",
-                texttemplate="<b>%{percent:.1%}</b>",
-                textfont=dict(size=9, color="white", family="Arial Black, Segoe UI, Arial"),
-                hovertemplate="<b>%{customdata[0]}</b><br>%{customdata[1]:,} GR<br>%{customdata[2]:.1f}% of total<extra></extra>",
+                marker=dict(colors=grouped["Colour"].tolist(), line=dict(color="white", width=2)),
+                text=grouped["Share"].map(lambda x: f"{x:.0f}%"),
+                textinfo="text",
+                textposition="inside",
+                insidetextorientation="auto",
+                textfont=dict(size=11, color="white", family="Arial Black, Segoe UI, Arial"),
+                hovertemplate="<b>%{label}</b><br>%{value:,} GR<br>%{percent}<extra></extra>",
+                showlegend=False,
             )
         ]
     )
     fig.add_annotation(
         text=(
-            f"<b>{df['gr_no'].nunique():,}</b>"
-            "<br><span style='font-size:8px'><b>Total GR</b></span>"
+            f"<b>{total:,}</b>"
+            "<br><span style='font-size:11px'><b>Total GR</b></span>"
         ),
+        x=0.50, y=0.50,
         showarrow=False,
-        font=dict(size=13, color="#153a66", family="Arial Black, Segoe UI, Arial"),
+        font=dict(size=18, color="#153a66", family="Arial Black, Segoe UI, Arial"),
     )
-    _base_chart(fig, 185, dict(l=2, r=8, t=5, b=5))
-    fig.update_layout(
-        showlegend=True,
-        legend=dict(
-            font=dict(size=8, color="#334155", family="Segoe UI, Arial"),
-            orientation="v",
-            x=.69,
-            xanchor="left",
-            y=.54,
-            yanchor="middle",
-            itemsizing="constant",
-            traceorder="normal",
-        ),
-    )
+    _base_chart(fig, 215, dict(l=0, r=0, t=0, b=0))
+    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor="white", plot_bgcolor="white")
     return fig
+
+
+def _donut_legend(df):
+    grouped, total = _prepare_load_mix(df)
+    items = []
+    for _, row in grouped.iterrows():
+        label = str(row["Display"]).upper()
+        colour = str(row["Colour"])
+        value = int(row["GR Count"])
+        share = float(row["Share"])
+        items.append(
+            f"""
+            <div class="donut-legend-item">
+              <span class="donut-legend-dot" style="background:{colour}"></span>
+              <div class="donut-legend-copy">
+                <div class="donut-legend-title">{html.escape(label)}</div>
+                <div class="donut-legend-value">{value:,} GR ({share:.0f}%)</div>
+              </div>
+            </div>
+            """
+        )
+    return f'<div class="donut-legend-wrap">{"".join(items)}</div>'
 
 
 def _panel_header(title, icon, meta=""):
@@ -999,7 +1014,11 @@ def show_stock_operations():
         with c3:
             with st.container(border=True):
                 st.markdown(_panel_header("PTL / FTL Overview", "◉", ""), unsafe_allow_html=True)
-                st.plotly_chart(_donut(filtered), use_container_width=True, config={"displayModeBar": False})
+                donut_col, legend_col = st.columns([1.15, .85], gap="small")
+                with donut_col:
+                    st.plotly_chart(_donut(filtered), use_container_width=True, config={"displayModeBar": False})
+                with legend_col:
+                    st.markdown(_donut_legend(filtered), unsafe_allow_html=True)
 
         # OPERATIONAL INSIGHTS
         _render_insights(filtered)
