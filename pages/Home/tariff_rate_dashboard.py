@@ -1,4 +1,4 @@
-# UPDATED UI BUILD V9: ultra-compact header/filter bar, paged grids, branch scope preserved
+# UPDATED UI BUILD V10: professional SaaS styling, card filters, polished rate finder, branch scope preserved
 from __future__ import annotations
 
 from datetime import date
@@ -374,101 +374,254 @@ def _apply_python_role_scope(frame: pd.DataFrame, scope_type: str, scope_value: 
 
 
 def _inject_css():
-    """Compact controls for the rate dashboard."""
+    """Professional enterprise styling for the tariff/rate dashboard."""
     st.markdown(
         """
         <style>
-        .block-container {max-width:100%; padding:.12rem .42rem .55rem !important;}
-        div[data-testid="stHorizontalBlock"] {gap:.22rem !important; align-items:flex-start !important;}
-        div[data-testid="stWidgetLabel"] {min-height:12px !important; margin-bottom:0 !important;}
-        div[data-testid="stWidgetLabel"] p {line-height:1.0 !important; margin:0 !important;}
+        :root {
+            --brand:#0b63ce;
+            --brand-dark:#084b9d;
+            --brand-soft:#eaf3ff;
+            --navy:#0f2d52;
+            --text:#17324d;
+            --muted:#6b7f93;
+            --line:#dbe5f0;
+            --panel:#ffffff;
+            --page:#f4f8fc;
+        }
+
+        .stApp {background:var(--page);}
+        .block-container {
+            max-width:100% !important;
+            padding:1.10rem 1.20rem 1.60rem !important;
+        }
+        header[data-testid="stHeader"] {background:transparent !important;}
+        div[data-testid="stHorizontalBlock"] {gap:.70rem !important; align-items:flex-end !important;}
+
+        /* Premium card treatment */
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            background:var(--panel) !important;
+            border:1px solid var(--line) !important;
+            border-radius:14px !important;
+            box-shadow:0 7px 24px rgba(20,55,90,.065) !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding:1.05rem 1.15rem !important;
+        }
+
+        /* Header */
+        .rate-dashboard-head {
+            display:flex;
+            align-items:center;
+            gap:14px;
+            min-height:58px;
+        }
+        .rate-dashboard-icon {
+            width:52px;
+            height:52px;
+            flex:0 0 52px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            border-radius:12px;
+            background:linear-gradient(145deg,#eef6ff,#d9ebff);
+            color:var(--brand);
+            font-size:1.55rem;
+            font-weight:800;
+            box-shadow:inset 0 0 0 1px rgba(11,99,206,.06);
+        }
+        .rate-dashboard-title {
+            margin:0 !important;
+            color:#102a4d;
+            font-size:1.52rem !important;
+            line-height:1.12 !important;
+            font-weight:800 !important;
+            letter-spacing:-.02em;
+        }
+        .rate-dashboard-scope {
+            margin:.28rem 0 0 0 !important;
+            color:var(--muted);
+            font-size:.83rem !important;
+            line-height:1.25 !important;
+        }
+        .login-scope-value {color:var(--brand-dark) !important; font-weight:800 !important;}
+        .active-on-label {
+            color:#38546f !important;
+            font-size:.78rem !important;
+            font-weight:700 !important;
+            white-space:nowrap !important;
+            line-height:42px !important;
+            text-align:right !important;
+        }
+
+        /* Section headings */
+        .section-heading {
+            display:flex;
+            align-items:center;
+            gap:9px;
+            color:#102a4d;
+            font-size:1.08rem;
+            font-weight:800;
+            margin:0 0 .90rem 0;
+            padding:0 0 .72rem 0;
+            border-bottom:1px solid #e8eef5;
+        }
+        .section-heading .section-icon {color:var(--brand); font-size:1.15rem;}
+        .quick-finder-title {
+            display:flex;
+            align-items:center;
+            gap:9px;
+            font-size:1.12rem;
+            font-weight:800;
+            color:#102a4d;
+            margin:0 0 .18rem 0;
+        }
+        .quick-finder-title .qf-icon {color:var(--brand); font-size:1.20rem;}
+        .quick-finder-note {font-size:.79rem; color:var(--muted); margin:0 0 .95rem 0;}
+
+        /* Widget labels */
+        div[data-testid="stWidgetLabel"] {min-height:auto !important; margin-bottom:.34rem !important;}
+        div[data-testid="stWidgetLabel"] p {
+            color:#294867 !important;
+            font-size:.78rem !important;
+            line-height:1.15 !important;
+            font-weight:700 !important;
+            margin:0 !important;
+        }
         div[data-testid="stSelectbox"],
         div[data-testid="stMultiSelect"],
-        div[data-testid="stDateInput"] {margin-bottom:0 !important;}
-        div[data-testid="stSelectbox"] > label,
-        div[data-testid="stMultiSelect"] > label,
-        div[data-testid="stTextInput"] > label,
-        div[data-testid="stNumberInput"] > label,
-        div[data-testid="stDateInput"] > label {
-            color:#243b53 !important;
-            font-size:9px !important;
-            line-height:1 !important;
-            font-weight:600 !important;
-        }
+        div[data-testid="stDateInput"],
+        div[data-testid="stNumberInput"] {margin-bottom:.12rem !important;}
+
+        /* Inputs */
         div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
         div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
         div[data-testid="stTextInput"] input,
         div[data-testid="stNumberInput"] input,
         div[data-testid="stDateInput"] input {
-            min-height:28px !important;
-            height:28px !important;
-            border:1px solid #b6c6d7 !important;
-            border-radius:7px !important;
-            background:linear-gradient(180deg,#f9fbfe 0%,#eef4fa 58%,#e4edf7 100%) !important;
-            box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 2px 5px rgba(30,64,105,.08) !important;
+            min-height:42px !important;
+            height:42px !important;
+            border:1px solid #cfdae7 !important;
+            border-radius:9px !important;
+            background:#fbfdff !important;
+            color:#17324d !important;
+            box-shadow:0 1px 2px rgba(16,42,77,.025) !important;
+            transition:border-color .15s ease, box-shadow .15s ease !important;
         }
-        /* Compact bordered page header */
-        .rate-dashboard-title {
-            margin:0 !important;
-            padding:0 !important;
-            color:#17365d;
-            font-size:.88rem !important;
-            line-height:1.05 !important;
-            font-weight:700 !important;
-        }
-        .rate-dashboard-scope {
-            margin:.08rem 0 0 0 !important;
-            color:#607286;
-            font-size:.60rem !important;
-            line-height:1.05 !important;
-        }
-        .login-scope-value {
-            color:#0b3f75 !important;
-            font-weight:800 !important;
-            font-size:.76rem !important;
-            letter-spacing:.01em;
-        }
-        div[data-testid="stVerticalBlockBorderWrapper"] {
-            border-color:#c2cfdb !important;
-            border-radius:8px !important;
-        }
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding:.28rem .48rem !important;
-        }
-        .active-on-label {
-            font-size:9px !important;
-            font-weight:700 !important;
-            color:#243b53 !important;
-            line-height:28px !important;
-            white-space:nowrap !important;
-            text-align:right !important;
-        }
-        div[data-testid="stDateInput"] {max-width:138px !important;}
-        div[data-testid="stDateInput"] input {
-            font-size:10px !important;
-            padding:.15rem .45rem !important;
-        }
-        div[data-testid="stButton"] button {
-            min-height:28px !important;
-            height:28px !important;
-            padding:.15rem .55rem !important;
-            border-radius:7px !important;
-            font-size:10px !important;
-            line-height:1 !important;
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div:hover,
+        div[data-testid="stTextInput"] input:hover,
+        div[data-testid="stNumberInput"] input:hover,
+        div[data-testid="stDateInput"] input:hover {border-color:#9fb8d2 !important;}
+
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:focus-within,
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div:focus-within,
+        div[data-testid="stTextInput"] input:focus,
+        div[data-testid="stNumberInput"] input:focus,
+        div[data-testid="stDateInput"] input:focus {
+            border-color:var(--brand) !important;
+            box-shadow:0 0 0 3px rgba(11,99,206,.10) !important;
         }
         div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
-        div[data-testid="stMultiSelect"] div[data-baseweb="select"] span {
-            font-size:10px !important;
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"] span,
+        div[data-testid="stDateInput"] input,
+        div[data-testid="stNumberInput"] input {font-size:.82rem !important;}
+        div[data-testid="stDateInput"] {max-width:190px !important;}
+
+        /* Buttons */
+        div[data-testid="stButton"] button {
+            min-height:42px !important;
+            height:42px !important;
+            padding:.35rem .95rem !important;
+            border-radius:9px !important;
+            font-size:.82rem !important;
+            font-weight:800 !important;
+            transition:all .16s ease !important;
+        }
+        div[data-testid="stButton"] button[kind="primary"] {
+            background:linear-gradient(180deg,#0d6fe6 0%,#0b5fc7 100%) !important;
+            color:#ffffff !important;
+            border:1px solid #0a58b7 !important;
+            box-shadow:0 5px 12px rgba(11,99,206,.18) !important;
+        }
+        div[data-testid="stButton"] button[kind="primary"]:hover {
+            background:linear-gradient(180deg,#0b65d2 0%,#0954af 100%) !important;
+            transform:translateY(-1px);
         }
 
-        /* Reliable HTML grid styling. Streamlit st.dataframe uses a canvas in
-           recent versions, so its header cannot be recolored reliably with CSS. */
+        /* Tab-like result selector */
+        div[role="radiogroup"] {gap:.55rem !important; margin:.80rem 0 1rem 0 !important;}
+        div[role="radiogroup"] label {
+            background:#ffffff !important;
+            border:1px solid #cfdae7 !important;
+            border-radius:9px !important;
+            padding:.52rem 1rem !important;
+            min-height:44px !important;
+            box-shadow:0 2px 8px rgba(20,55,90,.035) !important;
+        }
+        div[role="radiogroup"] label:has(input:checked) {
+            background:linear-gradient(180deg,#0d6fe6 0%,#0b5fc7 100%) !important;
+            color:#ffffff !important;
+            border-color:#0a58b7 !important;
+            box-shadow:0 5px 12px rgba(11,99,206,.16) !important;
+        }
+        div[role="radiogroup"] label:has(input:checked) * {color:#ffffff !important;}
+
+        /* Empty state */
+        .rate-empty-state {
+            min-height:190px;
+            border:1px solid #cfe3fb;
+            border-radius:11px;
+            background:linear-gradient(180deg,#f8fbff 0%,#eef6ff 100%);
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            text-align:center;
+            padding:28px;
+            margin-top:.45rem;
+        }
+        .rate-empty-state .empty-icon {
+            width:64px;
+            height:64px;
+            border-radius:50%;
+            margin:0 auto 12px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            background:#dcecff;
+            color:var(--brand);
+            font-size:1.85rem;
+        }
+        .rate-empty-state .empty-title {color:#0a4f9e; font-size:.93rem; font-weight:800; margin-bottom:5px;}
+        .rate-empty-state .empty-sub {color:#75879a; font-size:.78rem;}
+
+        /* KPI cards */
+        .quick-kpi-wrap {
+            display:grid;
+            grid-template-columns:repeat(4,minmax(140px,1fr));
+            gap:12px;
+            margin:.65rem 0 .85rem 0;
+        }
+        .quick-kpi {
+            border:1px solid #dbe5f0;
+            border-radius:11px;
+            background:#ffffff;
+            box-shadow:0 4px 14px rgba(20,55,90,.045);
+            padding:12px 14px;
+            min-height:68px;
+        }
+        .quick-kpi .kpi-label {font-size:.72rem;color:#6d8296;margin-bottom:4px;font-weight:700;}
+        .quick-kpi .kpi-value {font-size:1.45rem;font-weight:800;color:#103e70;line-height:1.05;}
+
+        /* Data grid */
+        .grid-summary {font-size:.74rem; color:#65798e; margin:.30rem 0 .35rem 0;}
         .rate-grid-wrap {
             width:100%;
             overflow:auto;
-            border:1px solid #8ea8c2;
-            border-radius:8px;
+            border:1px solid #d2deea;
+            border-radius:11px;
             background:#ffffff;
+            box-shadow:0 4px 14px rgba(20,55,90,.035);
         }
         table.rate-grid-table {
             width:max-content;
@@ -476,119 +629,44 @@ def _inject_css():
             border-collapse:separate;
             border-spacing:0;
             font-size:12px;
-            color:#1f2937;
+            color:#263f58;
         }
         table.rate-grid-table thead th {
             position:sticky;
             top:0;
             z-index:3;
-            background:#123b66 !important;
+            background:#123e6d !important;
             color:#ffffff !important;
-            font-weight:700 !important;
+            font-weight:800 !important;
             text-align:left;
             white-space:nowrap;
-            padding:8px 10px;
-            border-right:1px solid #31597f;
-            border-bottom:1px solid #0b2d4e;
+            padding:10px 12px;
+            border-right:1px solid #315d87;
+            border-bottom:1px solid #0b2f55;
         }
         table.rate-grid-table tbody td {
             white-space:nowrap;
-            padding:6px 10px;
-            border-right:1px solid #e3eaf1;
-            border-bottom:1px solid #e8eef4;
+            padding:8px 12px;
+            border-right:1px solid #e8eef4;
+            border-bottom:1px solid #edf2f7;
             background:#ffffff;
         }
-        table.rate-grid-table tbody tr:nth-child(even) td { background:#f7f9fc; }
-        table.rate-grid-table tbody tr:hover td { background:#edf4fb; }
-
-        /* Ultra-compact top header card. */
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding-top:.10rem !important;
-            padding-bottom:.10rem !important;
-        }
-        div[data-testid="stButton"] button {
-            min-height:28px !important;
-            height:28px !important;
-            padding:.10rem .45rem !important;
-            font-size:.66rem !important;
-            font-weight:700 !important;
-            background:#123b66 !important;
-            color:#ffffff !important;
-            border:1px solid #0b2d4e !important;
-            box-shadow:0 1px 2px rgba(18,59,102,.18) !important;
-        }
-        div[data-testid="stButton"] button:hover {
-            background:#0b2d4e !important;
-            color:#ffffff !important;
-            border-color:#081f36 !important;
-        }
-        .active-on-label {
-            font-size:.56rem !important;
-            font-weight:700 !important;
-            color:#243b53 !important;
-            white-space:nowrap !important;
-            line-height:28px !important;
-            padding-top:0 !important;
-            text-align:right !important;
-        }
-
-        /* Compact view selector used instead of st.tabs so only one heavy grid renders. */
-        div[role="radiogroup"] {gap:.25rem !important;}
-        div[role="radiogroup"] label {
-            background:#eef3f8 !important;
-            border:1px solid #c4d2df !important;
-            border-radius:6px !important;
-            padding:.20rem .55rem !important;
-            min-height:30px !important;
-        }
-        div[role="radiogroup"] label:has(input:checked) {
-            background:#123b66 !important;
-            color:#ffffff !important;
-            border-color:#0b2d4e !important;
-        }
-        /* Streamlit applies its own text color to nested elements; force selected button text white. */
-        div[role="radiogroup"] label:has(input:checked) * {
-            color:#ffffff !important;
-        }
-        .grid-summary {
-            font-size:.70rem;
-            color:#52667a;
-            margin:.02rem 0 .18rem 0;
-        }
+        table.rate-grid-table tbody tr:nth-child(even) td {background:#f8fbfe;}
+        table.rate-grid-table tbody tr:hover td {background:#eef6ff;}
         .rate-grid-table tbody tr.tariff-row td {
-            background:#fff3cd !important;
-            color:#5f4300 !important;
-            font-weight:600 !important;
+            background:#fff7dc !important;
+            color:#624a00 !important;
+            font-weight:700 !important;
         }
-        .rate-grid-table tbody tr.tariff-row:hover td {
-            background:#ffe69c !important;
+        .rate-grid-table tbody tr.tariff-row:hover td {background:#ffefb7 !important;}
+
+        div[data-testid="stAlert"] {border-radius:10px !important; border-width:1px !important;}
+
+        @media (max-width:1100px) {
+            .rate-dashboard-title {font-size:1.22rem !important;}
+            .quick-kpi-wrap {grid-template-columns:repeat(2,minmax(140px,1fr));}
+            .block-container {padding:.75rem !important;}
         }
-        .quick-finder-title {
-            font-size:1.05rem;
-            font-weight:700;
-            color:#123b66;
-            margin:.15rem 0 .05rem 0;
-        }
-        .quick-finder-note {
-            font-size:.72rem;
-            color:#6a7685;
-            margin:0 0 .28rem 0;
-        }
-        .quick-kpi-wrap {
-            display:grid;
-            grid-template-columns:repeat(4,minmax(120px,1fr));
-            gap:8px;
-            margin:.28rem 0 .35rem 0;
-        }
-        .quick-kpi {
-            border:1px solid #d5dfeb;
-            border-radius:8px;
-            background:#f8fbff;
-            padding:6px 10px;
-            min-height:48px;
-        }
-        .quick-kpi .kpi-label {font-size:.67rem;color:#52667a;margin-bottom:1px;}
-        .quick-kpi .kpi-value {font-size:1.18rem;font-weight:700;color:#123b66;line-height:1.1;}
         </style>
         """,
         unsafe_allow_html=True,
@@ -694,25 +772,28 @@ scope_type, scope_value = _get_login_scope()
 
 # Keep title, date and load action in one compact single-row header.
 with st.container(border=True):
-    header_cols = st.columns([7.2, 0.48, 0.92, 1.08], gap="small")
+    header_cols = st.columns([7.1, 0.55, 1.25, 1.55], gap="small")
 
     with header_cols[0]:
-        st.markdown(
-            '<div class="rate-dashboard-title">Tariff &amp; Contractual Rate Dashboard</div>',
-            unsafe_allow_html=True,
-        )
         if scope_type:
-            st.markdown(
-                f'<div class="rate-dashboard-scope">Data access: {escape(scope_type.title())} = '
+            scope_html = (
+                f'Data access: {escape(scope_type.title())} = '
                 f'<span class="login-scope-value">{escape(str(scope_value))}</span> · '
-                'Origin or Destination permitted.</div>',
-                unsafe_allow_html=True,
+                'Origin or Destination permitted.'
             )
         else:
-            st.markdown(
-                '<div class="rate-dashboard-scope">Full-network visibility · use filters to refine rates.</div>',
-                unsafe_allow_html=True,
-            )
+            scope_html = 'Full-network visibility · use filters to refine rates.'
+
+        st.markdown(
+            f'''<div class="rate-dashboard-head">
+                    <div class="rate-dashboard-icon">▥</div>
+                    <div>
+                        <div class="rate-dashboard-title">Tariff &amp; Contractual Rate Dashboard</div>
+                        <div class="rate-dashboard-scope">{scope_html}</div>
+                    </div>
+                </div>''',
+            unsafe_allow_html=True,
+        )
 
     with header_cols[1]:
         st.markdown('<div class="active-on-label">Active on</div>', unsafe_allow_html=True)
@@ -794,98 +875,103 @@ if data.empty:
 # =============================================================================
 # FILTER ROW
 # =============================================================================
-filter_cols = st.columns(7, gap="small")
-
-with filter_cols[0]:
-    view_type = st.selectbox(
-        "⇄ View Type",
-        ["Origin", "Destination"],
-        key="rate_view_type_v2",
-        help="Changes which side Zone / Circle / Branch filters are based on.",
+with st.container(border=True):
+    st.markdown(
+        '<div class="section-heading"><span class="section-icon">⌁</span><span>Filters</span></div>',
+        unsafe_allow_html=True,
     )
+    filter_cols = st.columns(7, gap="small")
 
-with filter_cols[1]:
-    rate_type = st.selectbox(
-        "▥ Rate Type",
-        ["All", "Tariff Rate", "Contractual Rate"],
-        key="rate_type_v2",
-    )
+    with filter_cols[0]:
+        view_type = st.selectbox(
+            "⇄ View Type",
+            ["Origin", "Destination"],
+            key="rate_view_type_v2",
+            help="Changes which side Zone / Circle / Branch filters are based on.",
+        )
 
-working = data.copy()
-if rate_type != "All":
-    working = working[working["RATE_TYPE_GROUP"].eq(rate_type.upper())].copy()
+    with filter_cols[1]:
+        rate_type = st.selectbox(
+            "▥ Rate Type",
+            ["All", "Tariff Rate", "Contractual Rate"],
+            key="rate_type_v2",
+        )
 
-# View Type chooses which route side supplies Zone / Circle / Branch.
-if view_type == "Origin":
-    zone_col, circle_col, branch_col = "ORG_ZONE", "ORG_CIRCLE", "ORIGIN"
-else:
-    zone_col, circle_col, branch_col = "DEST_ZONE", "DEST_CIRCLE", "DESTINATION"
+    working = data.copy()
+    if rate_type != "All":
+        working = working[working["RATE_TYPE_GROUP"].eq(rate_type.upper())].copy()
 
-filter_source_df = working.copy()
+    # View Type chooses which route side supplies Zone / Circle / Branch.
+    if view_type == "Origin":
+        zone_col, circle_col, branch_col = "ORG_ZONE", "ORG_CIRCLE", "ORIGIN"
+    else:
+        zone_col, circle_col, branch_col = "DEST_ZONE", "DEST_CIRCLE", "DESTINATION"
 
-# ZONE
-zone_options = _safe_options(filter_source_df, zone_col)
-_prune_multiselect_state("rate_zone_v2", zone_options)
-with filter_cols[2]:
-    selected_zones = st.multiselect(
-        "◉ Zone",
-        zone_options,
-        key="rate_zone_v2",
-        placeholder="All zones",
-        disabled=not zone_options,
-    )
+    filter_source_df = working.copy()
 
-# CIRCLE follows Zone
-circle_scope = _apply_multi_filter(filter_source_df.copy(), zone_col, selected_zones)
-circle_options = _safe_options(circle_scope, circle_col)
-_prune_multiselect_state("rate_circle_v2", circle_options)
-with filter_cols[3]:
-    selected_circles = st.multiselect(
-        "◎ Circle",
-        circle_options,
-        key="rate_circle_v2",
-        placeholder="All circles",
-        disabled=not circle_options,
-    )
+    # ZONE
+    zone_options = _safe_options(filter_source_df, zone_col)
+    _prune_multiselect_state("rate_zone_v2", zone_options)
+    with filter_cols[2]:
+        selected_zones = st.multiselect(
+            "◉ Zone",
+            zone_options,
+            key="rate_zone_v2",
+            placeholder="All zones",
+            disabled=not zone_options,
+        )
 
-# BRANCH follows Zone + Circle
-branch_scope = _apply_multi_filter(circle_scope.copy(), circle_col, selected_circles)
-branch_options = _safe_options(branch_scope, branch_col)
-_prune_multiselect_state("rate_branch_v2", branch_options)
-with filter_cols[4]:
-    selected_branches = st.multiselect(
-        "⌂ Branch",
-        branch_options,
-        key="rate_branch_v2",
-        placeholder="All branches",
-        disabled=not branch_options,
-    )
+    # CIRCLE follows Zone
+    circle_scope = _apply_multi_filter(filter_source_df.copy(), zone_col, selected_zones)
+    circle_options = _safe_options(circle_scope, circle_col)
+    _prune_multiselect_state("rate_circle_v2", circle_options)
+    with filter_cols[3]:
+        selected_circles = st.multiselect(
+            "◎ Circle",
+            circle_options,
+            key="rate_circle_v2",
+            placeholder="All circles",
+            disabled=not circle_options,
+        )
 
-# RATE FOR follows the selected hierarchy
-ratefor_scope = _apply_multi_filter(branch_scope.copy(), branch_col, selected_branches)
-ratefor_options = _safe_options(ratefor_scope, "RATEFOR")
-_prune_multiselect_state("rate_ratefor_v2", ratefor_options)
-with filter_cols[5]:
-    selected_ratefor = st.multiselect(
-        "◫ Rate For",
-        ratefor_options,
-        key="rate_ratefor_v2",
-        placeholder="All",
-        disabled=not ratefor_options,
-    )
+    # BRANCH follows Zone + Circle
+    branch_scope = _apply_multi_filter(circle_scope.copy(), circle_col, selected_circles)
+    branch_options = _safe_options(branch_scope, branch_col)
+    _prune_multiselect_state("rate_branch_v2", branch_options)
+    with filter_cols[4]:
+        selected_branches = st.multiselect(
+            "⌂ Branch",
+            branch_options,
+            key="rate_branch_v2",
+            placeholder="All branches",
+            disabled=not branch_options,
+        )
 
-# CUSTOMER follows all filters above
-customer_scope = _apply_multi_filter(ratefor_scope.copy(), "RATEFOR", selected_ratefor)
-customer_options = _safe_options(customer_scope, "CUSTOMER_NAME")
-_prune_multiselect_state("rate_customer_v2", customer_options)
-with filter_cols[6]:
-    selected_customers = st.multiselect(
-        "♙ Customer",
-        customer_options,
-        key="rate_customer_v2",
-        placeholder="All customers",
-        disabled=not customer_options,
-    )
+    # RATE FOR follows the selected hierarchy
+    ratefor_scope = _apply_multi_filter(branch_scope.copy(), branch_col, selected_branches)
+    ratefor_options = _safe_options(ratefor_scope, "RATEFOR")
+    _prune_multiselect_state("rate_ratefor_v2", ratefor_options)
+    with filter_cols[5]:
+        selected_ratefor = st.multiselect(
+            "◫ Rate For",
+            ratefor_options,
+            key="rate_ratefor_v2",
+            placeholder="All",
+            disabled=not ratefor_options,
+        )
+
+    # CUSTOMER follows all filters above
+    customer_scope = _apply_multi_filter(ratefor_scope.copy(), "RATEFOR", selected_ratefor)
+    customer_options = _safe_options(customer_scope, "CUSTOMER_NAME")
+    _prune_multiselect_state("rate_customer_v2", customer_options)
+    with filter_cols[6]:
+        selected_customers = st.multiselect(
+            "♙ Customer",
+            customer_options,
+            key="rate_customer_v2",
+            placeholder="All customers",
+            disabled=not customer_options,
+        )
 
 # Apply active filters to final dataframe.
 filtered = working.copy()
@@ -924,6 +1010,11 @@ view_mode = st.radio(
     horizontal=True,
     label_visibility="collapsed",
     key="rate_result_view_v4",
+    format_func=lambda x: {
+        "Expiry Watch": "◷  Expiry Watch",
+        "Rate Records": "▤  Rate Records",
+        "Quick Rate Finder": "⌕  Quick Rate Finder",
+    }[x],
 )
 
 
@@ -984,149 +1075,159 @@ elif view_mode == "Rate Records":
 
 
 else:
-    st.markdown('<div class="quick-finder-title">Quick Rate Finder</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="quick-finder-note">Select at least one route condition: Origin or Destination. Other fields are optional.</div>',
-        unsafe_allow_html=True,
-    )
-
-    finder_source = data
-    finder_cols = st.columns([1.25, 1.25, 1.0, 1.6, 0.9], gap="small")
-
-    origin_options = _safe_options(finder_source, "ORIGIN")
-    with finder_cols[0]:
-        finder_origin = st.selectbox(
-            "Origin",
-            [""] + origin_options,
-            index=0,
-            key="rate_finder_origin_v2",
-            format_func=lambda x: "Select origin" if x == "" else x,
+    with st.container(border=True):
+        st.markdown('<div class="quick-finder-title"><span class="qf-icon">⌕</span><span>Quick Rate Finder</span></div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="quick-finder-note">Select at least one route condition: Origin or Destination. Other fields are optional.</div>',
+            unsafe_allow_html=True,
         )
 
-    # Destination remains independently searchable so Origin-only, Destination-only,
-    # and Origin+Destination queries all work.
-    destination_options = _safe_options(finder_source, "DESTINATION")
-    with finder_cols[1]:
-        finder_destination = st.selectbox(
-            "Destination",
-            [""] + destination_options,
-            index=0,
-            key="rate_finder_destination_v2",
-            format_func=lambda x: "Select destination" if x == "" else x,
-        )
+        finder_source = data
+        finder_cols = st.columns([1.25, 1.25, 1.0, 1.6, 0.9], gap="small")
 
-    with finder_cols[2]:
-        finder_rate_type = st.selectbox(
-            "Rate Type",
-            ["All", "Tariff Rate", "Contractual Rate"],
-            key="rate_finder_type_v2",
-        )
-
-    customer_source = finder_source
-    if finder_origin:
-        customer_source = customer_source[customer_source["ORIGIN"].eq(finder_origin)]
-    if finder_destination:
-        customer_source = customer_source[customer_source["DESTINATION"].eq(finder_destination)]
-    if finder_rate_type != "All":
-        customer_source = customer_source[
-            customer_source["RATE_TYPE_GROUP"].eq(finder_rate_type.upper())
-        ]
-    customer_options = _safe_options(customer_source, "CUSTOMER_NAME")
-    with finder_cols[3]:
-        finder_customer = st.selectbox(
-            "Customer (optional)",
-            [""] + customer_options,
-            index=0,
-            key="rate_finder_customer_v2",
-            format_func=lambda x: "All customers" if x == "" else x,
-        )
-
-    with finder_cols[4]:
-        finder_weight = st.number_input(
-            "Weight (optional)",
-            min_value=0.0,
-            value=0.0,
-            step=1.0,
-            key="rate_finder_weight_v2",
-            help="If entered, only rate slabs covering this weight are shown.",
-        )
-
-    finder_results = finder_source
-    if finder_origin:
-        finder_results = finder_results[finder_results["ORIGIN"].eq(finder_origin)]
-    if finder_destination:
-        finder_results = finder_results[finder_results["DESTINATION"].eq(finder_destination)]
-    if finder_rate_type != "All":
-        finder_results = finder_results[
-            finder_results["RATE_TYPE_GROUP"].eq(finder_rate_type.upper())
-        ]
-    if finder_customer:
-        finder_results = finder_results[finder_results["CUSTOMER_NAME"].eq(finder_customer)]
-
-    if finder_weight > 0 and not finder_results.empty:
-        from_wt = pd.to_numeric(finder_results["FROMWT"], errors="coerce")
-        to_wt = pd.to_numeric(finder_results["TOWT"], errors="coerce")
-        weight_mask = (
-            (from_wt.isna() | from_wt.le(finder_weight))
-            & (to_wt.isna() | to_wt.eq(0) | to_wt.ge(finder_weight))
-        )
-        finder_results = finder_results[weight_mask]
-
-    if not finder_origin and not finder_destination:
-        st.info("Select at least **Origin** or **Destination** to query the applicable rate.")
-    elif finder_results.empty:
-        st.warning("No active rate found for the selected route and criteria.")
-    else:
-        finder_results = finder_results.sort_values(
-            ["RATE_TYPE_GROUP", "CUSTOMER_NAME", "FROMWT", "TOWT", "FROMDT"],
-            na_position="last",
-        ).copy()
-        finder_results["RATE_TYPE_GROUP"] = finder_results["RATE_TYPE_GROUP"].map(_rate_type_display)
-
-        tariff_count = int(finder_results["RATE_TYPE_GROUP"].eq("Tariff Rate").sum())
-        contractual_count = int(finder_results["RATE_TYPE_GROUP"].eq("Contractual Rate").sum())
-        active_charge_count = sum(
-            pd.to_numeric(finder_results[col], errors="coerce").fillna(0).ne(0).any()
-            for col in charge_columns
-            if col in finder_results.columns
-        )
-        kpi_html = f"""
-        <div class="quick-kpi-wrap">
-            <div class="quick-kpi"><div class="kpi-label">Matching Rates</div><div class="kpi-value">{len(finder_results):,}</div></div>
-            <div class="quick-kpi"><div class="kpi-label">Tariff</div><div class="kpi-value">{tariff_count:,}</div></div>
-            <div class="quick-kpi"><div class="kpi-label">Contractual</div><div class="kpi-value">{contractual_count:,}</div></div>
-            <div class="quick-kpi"><div class="kpi-label">Active Charge Types</div><div class="kpi-value">{active_charge_count:,}</div></div>
-        </div>
-        """
-        st.markdown(kpi_html, unsafe_allow_html=True)
-
-        finder_display_cols = [
-            "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
-            "ORIGIN", "DESTINATION", "FROMDT", "TODT",
-            "FROMWT", "TOWT", "MINCWEIGHT", "RATETYPE",
-            "GOODS", "VEHICLE_TYPE", "VIA_BORDER",
-            "PCKGRATE", "RATE1", "FLAT_AMOUNT", "RATECATEGORY",
-        ] + charge_columns
-        finder_display_cols = [col for col in finder_display_cols if col in finder_results.columns]
-
-        finder_page = _paged_frame(
-            finder_results[finder_display_cols],
-            "finder_grid",
-            default_size=100,
-        )
-        _render_rate_grid(finder_page, height=500)
-
-        prepare_finder_download = st.checkbox(
-            "Prepare rate finder CSV download",
-            value=False,
-            key="rate_finder_prepare_download_v3",
-        )
-        if prepare_finder_download:
-            st.download_button(
-                "Download complete rate finder result (CSV)",
-                finder_results[finder_display_cols].to_csv(index=False).encode("utf-8-sig"),
-                file_name=f"rate_finder_{active_date:%Y%m%d}.csv",
-                mime="text/csv",
-                key="rate_finder_download_v3",
+        origin_options = _safe_options(finder_source, "ORIGIN")
+        with finder_cols[0]:
+            finder_origin = st.selectbox(
+                "Origin",
+                [""] + origin_options,
+                index=0,
+                key="rate_finder_origin_v2",
+                format_func=lambda x: "Select origin" if x == "" else x,
             )
+
+        # Destination remains independently searchable so Origin-only, Destination-only,
+        # and Origin+Destination queries all work.
+        destination_options = _safe_options(finder_source, "DESTINATION")
+        with finder_cols[1]:
+            finder_destination = st.selectbox(
+                "Destination",
+                [""] + destination_options,
+                index=0,
+                key="rate_finder_destination_v2",
+                format_func=lambda x: "Select destination" if x == "" else x,
+            )
+
+        with finder_cols[2]:
+            finder_rate_type = st.selectbox(
+                "Rate Type",
+                ["All", "Tariff Rate", "Contractual Rate"],
+                key="rate_finder_type_v2",
+            )
+
+        customer_source = finder_source
+        if finder_origin:
+            customer_source = customer_source[customer_source["ORIGIN"].eq(finder_origin)]
+        if finder_destination:
+            customer_source = customer_source[customer_source["DESTINATION"].eq(finder_destination)]
+        if finder_rate_type != "All":
+            customer_source = customer_source[
+                customer_source["RATE_TYPE_GROUP"].eq(finder_rate_type.upper())
+            ]
+        customer_options = _safe_options(customer_source, "CUSTOMER_NAME")
+        with finder_cols[3]:
+            finder_customer = st.selectbox(
+                "Customer (optional)",
+                [""] + customer_options,
+                index=0,
+                key="rate_finder_customer_v2",
+                format_func=lambda x: "All customers" if x == "" else x,
+            )
+
+        with finder_cols[4]:
+            finder_weight = st.number_input(
+                "Weight (optional)",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+                key="rate_finder_weight_v2",
+                help="If entered, only rate slabs covering this weight are shown.",
+            )
+
+        finder_results = finder_source
+        if finder_origin:
+            finder_results = finder_results[finder_results["ORIGIN"].eq(finder_origin)]
+        if finder_destination:
+            finder_results = finder_results[finder_results["DESTINATION"].eq(finder_destination)]
+        if finder_rate_type != "All":
+            finder_results = finder_results[
+                finder_results["RATE_TYPE_GROUP"].eq(finder_rate_type.upper())
+            ]
+        if finder_customer:
+            finder_results = finder_results[finder_results["CUSTOMER_NAME"].eq(finder_customer)]
+
+        if finder_weight > 0 and not finder_results.empty:
+            from_wt = pd.to_numeric(finder_results["FROMWT"], errors="coerce")
+            to_wt = pd.to_numeric(finder_results["TOWT"], errors="coerce")
+            weight_mask = (
+                (from_wt.isna() | from_wt.le(finder_weight))
+                & (to_wt.isna() | to_wt.eq(0) | to_wt.ge(finder_weight))
+            )
+            finder_results = finder_results[weight_mask]
+
+        if not finder_origin and not finder_destination:
+            st.markdown(
+                """<div class="rate-empty-state">
+                        <div>
+                            <div class="empty-icon">⌕</div>
+                            <div class="empty-title">Select at least Origin or Destination to query the applicable rate.</div>
+                            <div class="empty-sub">Use the filters above to narrow your search and find the best rate.</div>
+                        </div>
+                    </div>""",
+                unsafe_allow_html=True,
+            )
+        elif finder_results.empty:
+            st.warning("No active rate found for the selected route and criteria.")
+        else:
+            finder_results = finder_results.sort_values(
+                ["RATE_TYPE_GROUP", "CUSTOMER_NAME", "FROMWT", "TOWT", "FROMDT"],
+                na_position="last",
+            ).copy()
+            finder_results["RATE_TYPE_GROUP"] = finder_results["RATE_TYPE_GROUP"].map(_rate_type_display)
+
+            tariff_count = int(finder_results["RATE_TYPE_GROUP"].eq("Tariff Rate").sum())
+            contractual_count = int(finder_results["RATE_TYPE_GROUP"].eq("Contractual Rate").sum())
+            active_charge_count = sum(
+                pd.to_numeric(finder_results[col], errors="coerce").fillna(0).ne(0).any()
+                for col in charge_columns
+                if col in finder_results.columns
+            )
+            kpi_html = f"""
+            <div class="quick-kpi-wrap">
+                <div class="quick-kpi"><div class="kpi-label">Matching Rates</div><div class="kpi-value">{len(finder_results):,}</div></div>
+                <div class="quick-kpi"><div class="kpi-label">Tariff</div><div class="kpi-value">{tariff_count:,}</div></div>
+                <div class="quick-kpi"><div class="kpi-label">Contractual</div><div class="kpi-value">{contractual_count:,}</div></div>
+                <div class="quick-kpi"><div class="kpi-label">Active Charge Types</div><div class="kpi-value">{active_charge_count:,}</div></div>
+            </div>
+            """
+            st.markdown(kpi_html, unsafe_allow_html=True)
+
+            finder_display_cols = [
+                "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
+                "ORIGIN", "DESTINATION", "FROMDT", "TODT",
+                "FROMWT", "TOWT", "MINCWEIGHT", "RATETYPE",
+                "GOODS", "VEHICLE_TYPE", "VIA_BORDER",
+                "PCKGRATE", "RATE1", "FLAT_AMOUNT", "RATECATEGORY",
+            ] + charge_columns
+            finder_display_cols = [col for col in finder_display_cols if col in finder_results.columns]
+
+            finder_page = _paged_frame(
+                finder_results[finder_display_cols],
+                "finder_grid",
+                default_size=100,
+            )
+            _render_rate_grid(finder_page, height=500)
+
+            prepare_finder_download = st.checkbox(
+                "Prepare rate finder CSV download",
+                value=False,
+                key="rate_finder_prepare_download_v3",
+            )
+            if prepare_finder_download:
+                st.download_button(
+                    "Download complete rate finder result (CSV)",
+                    finder_results[finder_display_cols].to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"rate_finder_{active_date:%Y%m%d}.csv",
+                    mime="text/csv",
+                    key="rate_finder_download_v3",
+                )
 
