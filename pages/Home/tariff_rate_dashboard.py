@@ -417,10 +417,10 @@ def _inject_css():
             font-weight:700 !important;
         }
         .rate-dashboard-scope {
-            margin:.04rem 0 0 0 !important;
+            margin:.01rem 0 0 0 !important;
             color:#607286;
-            font-size:.60rem !important;
-            line-height:1.05 !important;
+            font-size:.57rem !important;
+            line-height:1 !important;
         }
         .login-scope-value {
             color:#0b3f75 !important;
@@ -522,18 +522,35 @@ def _inject_css():
         table.rate-grid-table tbody tr:nth-child(even) td { background:#f7f9fc; }
         table.rate-grid-table tbody tr:hover td { background:#edf4fb; }
 
-        /* Ultra-compact top header + filter card. */
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding:.08rem .42rem .12rem !important;
+        /* Ultra-compact top header + filter card.  The :has() selector keeps
+           these tighter rules limited to the dashboard's top panel only. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) > div {
+            padding:.04rem .38rem .07rem !important;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"] > div > div[data-testid="stVerticalBlock"] {
-            gap:.16rem !important;
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) > div > div[data-testid="stVerticalBlock"] {
+            gap:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stHorizontalBlock"] {
+            gap:.18rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stWidgetLabel"] {
+            min-height:10px !important;
+            margin-bottom:-1px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stWidgetLabel"] p {
+            font-size:8.5px !important;
+            line-height:1 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.top-filter-divider) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+            min-height:27px !important;
+            height:27px !important;
         }
         .top-filter-divider {
             height:1px;
             background:#d8e2ec;
-            /* Pull filters closer to the title/date row. */
-            margin:-.82rem 0 .04rem 0;
+            /* Pull the filter row materially closer to the header row. */
+            margin:-1.35rem 0 -.06rem 0;
         }
         div[data-testid="stButton"] button {
             min-height:30px !important;
@@ -712,6 +729,74 @@ def _paged_frame(frame: pd.DataFrame, key: str, default_size: int = 100) -> pd.D
             unsafe_allow_html=True,
         )
     return frame.iloc[start:stop].copy()
+
+
+
+def _paged_expiry_frame(frame: pd.DataFrame, key: str, default_size: int = 100) -> pd.DataFrame:
+    """Expiry grid controls on one compact row: Rows/page -> Page -> Expiry Window."""
+    size_options = [50, 100, 250, 500]
+    default_index = size_options.index(default_size) if default_size in size_options else 1
+
+    # Visual order is fixed by columns. We render the expiry widget first in code
+    # so its value can filter the frame before page-count calculation.
+    ctl = st.columns([1.05, 0.85, 1.20, 4.9], gap="small")
+
+    with ctl[2]:
+        expiry_window = st.selectbox(
+            "Expiry Window",
+            ["7 days", "15 days", "30 days", "60 days", "90 days", "All active"],
+            key="rate_expiry_window_v2",
+        )
+
+    filtered_frame = frame.copy() if frame is not None else pd.DataFrame()
+    day_limit = {
+        "7 days": 7,
+        "15 days": 15,
+        "30 days": 30,
+        "60 days": 60,
+        "90 days": 90,
+    }.get(expiry_window)
+    if day_limit is not None and not filtered_frame.empty and "DAYS_TO_EXPIRY" in filtered_frame.columns:
+        filtered_frame = filtered_frame[
+            filtered_frame["DAYS_TO_EXPIRY"].between(0, day_limit)
+        ].copy()
+
+    with ctl[0]:
+        page_size = st.selectbox(
+            "Rows per page",
+            size_options,
+            index=default_index,
+            key=f"{key}_page_size",
+        )
+
+    total = len(filtered_frame)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    current = int(st.session_state.get(f"{key}_page", 1) or 1)
+    current = max(1, min(current, total_pages))
+
+    with ctl[1]:
+        page = st.number_input(
+            "Page",
+            min_value=1,
+            max_value=total_pages,
+            value=current,
+            step=1,
+            key=f"{key}_page_input",
+        )
+    st.session_state[f"{key}_page"] = int(page)
+
+    if total:
+        start = (int(page) - 1) * page_size
+        stop = min(start + page_size, total)
+        summary = f"Showing {start + 1:,}-{stop:,} of {total:,} records · Page {int(page):,} of {total_pages:,}"
+    else:
+        start = stop = 0
+        summary = "No records in the selected expiry window"
+
+    with ctl[3]:
+        st.markdown(f'<div class="grid-summary">{summary}</div>', unsafe_allow_html=True)
+
+    return filtered_frame.iloc[start:stop].copy()
 
 
 # =============================================================================
@@ -966,15 +1051,6 @@ if view_mode == "Expiry Watch":
     expiry["DAYS_TO_EXPIRY"] = (expiry["TODT"].dt.normalize() - as_on_ts.normalize()).dt.days
     expiry = expiry.sort_values(["DAYS_TO_EXPIRY", "ORIGIN", "DESTINATION"])
 
-    expiry_window = st.selectbox(
-        "Expiry Window",
-        ["7 days", "15 days", "30 days", "60 days", "90 days", "All active"],
-        key="rate_expiry_window_v2",
-    )
-    day_limit = {"7 days": 7, "15 days": 15, "30 days": 30, "60 days": 60, "90 days": 90}.get(expiry_window)
-    if day_limit is not None:
-        expiry = expiry[expiry["DAYS_TO_EXPIRY"].between(0, day_limit)]
-
     expiry_cols = [
         "RATE_TYPE_GROUP", "CUSTOMER_NAME", "ORIGIN", "DESTINATION",
         "FROMDT", "TODT", "DAYS_TO_EXPIRY",
@@ -985,7 +1061,7 @@ if view_mode == "Expiry Watch":
     if "RATE_TYPE_GROUP" in display_expiry.columns:
         display_expiry["RATE_TYPE_GROUP"] = display_expiry["RATE_TYPE_GROUP"].map(_rate_type_display)
 
-    page_expiry = _paged_frame(display_expiry, "expiry_grid", default_size=100)
+    page_expiry = _paged_expiry_frame(display_expiry, "expiry_grid", default_size=100)
     _render_rate_grid(page_expiry, height=500)
 
 
