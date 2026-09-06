@@ -178,6 +178,18 @@ def _inject_css():
         .stock-panel-name .ico{font-size:12px;color:#1a70ce}
         .stock-panel-meta{font:900 7.4px "Segoe UI",Arial,sans-serif;color:#173c68;letter-spacing:.05px}
         .stock-view{color:#1c78dd;font-weight:700}
+        .st-key-insights_view_all button,
+        .st-key-action_view_all button,
+        .st-key-branch_view_all button{
+            min-height:24px!important;height:24px!important;padding:0 7px!important;
+            background:transparent!important;border:0!important;box-shadow:none!important;
+            color:#1c78dd!important;font-size:7.4px!important;font-weight:800!important;
+        }
+        .st-key-insights_view_all button:hover,
+        .st-key-action_view_all button:hover,
+        .st-key-branch_view_all button:hover{
+            background:#edf6ff!important;color:#0b5aa7!important;border-radius:6px!important;
+        }
 
         /* insight strip */
         .stock-insights{
@@ -221,13 +233,6 @@ def _inject_css():
         .stock-table-wrap::-webkit-scrollbar{height:7px}
         .stock-table-wrap::-webkit-scrollbar-thumb{background:#c8d6e5;border-radius:999px}
         .stock-table-wrap::-webkit-scrollbar-track{background:#eef4f9}
-
-        .donut-legend-wrap{display:flex;flex-direction:column;justify-content:center;height:100%;padding:0 4px 0 0}
-        .donut-legend-item{display:flex;align-items:flex-start;gap:10px;margin:10px 0}
-        .donut-legend-dot{width:18px;height:18px;min-width:18px;border-radius:50%;margin-top:2px;box-shadow:0 1px 3px rgba(0,0,0,.12)}
-        .donut-legend-copy{line-height:1.15}
-        .donut-legend-title{font:800 10px/1.1 "Segoe UI",Arial,sans-serif;color:#173c68}
-        .donut-legend-value{font:700 9px/1.2 "Segoe UI",Arial,sans-serif;color:#173c68;margin-top:4px}
 
         /* bottom charts */
         .stock-mini-note{font:600 6.8px "Segoe UI",Arial,sans-serif;color:#7d8ea1}
@@ -531,59 +536,91 @@ def _prepare_load_mix(df):
 
 def _donut(df):
     grouped, total = _prepare_load_mix(df)
+
     fig = go.Figure(
         data=[
             go.Pie(
                 labels=grouped["Display"],
                 values=grouped["GR Count"],
                 hole=.62,
+                domain=dict(x=[0.00, 0.62], y=[0.02, 0.98]),
                 sort=False,
                 direction="clockwise",
-                marker=dict(colors=grouped["Colour"].tolist(), line=dict(color="white", width=2)),
+                marker=dict(
+                    colors=grouped["Colour"].tolist(),
+                    line=dict(color="white", width=2),
+                ),
                 text=grouped["Share"].map(lambda x: f"{x:.0f}%"),
                 textinfo="text",
                 textposition="inside",
                 insidetextorientation="auto",
-                textfont=dict(size=11, color="white", family="Arial Black, Segoe UI, Arial"),
-                hovertemplate="<b>%{label}</b><br>%{value:,} GR<br>%{percent}<extra></extra>",
+                textfont=dict(
+                    size=10,
+                    color="white",
+                    family="Arial Black, Segoe UI, Arial",
+                ),
+                hovertemplate=(
+                    "<b>%{label}</b><br>"
+                    "%{value:,} GR<br>"
+                    "%{percent}<extra></extra>"
+                ),
                 showlegend=False,
             )
         ]
     )
+
+    # Center total - aligned to the donut domain, not the full chart.
     fig.add_annotation(
-        text=(
-            f"<b>{total:,}</b>"
-            "<br><span style='font-size:11px'><b>Total GR</b></span>"
-        ),
-        x=0.50, y=0.50,
+        x=.31,
+        y=.50,
+        xref="paper",
+        yref="paper",
+        text=f"<b>{total:,}</b><br><span style='font-size:9px'>Total GR</span>",
         showarrow=False,
-        font=dict(size=18, color="#153a66", family="Arial Black, Segoe UI, Arial"),
+        align="center",
+        font=dict(
+            size=14,
+            color="#153a66",
+            family="Arial Black, Segoe UI, Arial",
+        ),
     )
-    _base_chart(fig, 215, dict(l=0, r=0, t=0, b=0))
-    fig.update_layout(margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor="white", plot_bgcolor="white")
-    return fig
 
-
-def _donut_legend(df):
-    grouped, total = _prepare_load_mix(df)
-    items = []
-    for _, row in grouped.iterrows():
+    # Reference-style legend built inside Plotly, avoiding Streamlit HTML rendering issues.
+    legend_y = .63
+    row_gap = .24
+    for idx, row in grouped.reset_index(drop=True).iterrows():
+        y = legend_y - idx * row_gap
         label = str(row["Display"]).upper()
         colour = str(row["Colour"])
         value = int(row["GR Count"])
         share = float(row["Share"])
-        items.append(
-            f"""
-            <div class="donut-legend-item">
-              <span class="donut-legend-dot" style="background:{colour}"></span>
-              <div class="donut-legend-copy">
-                <div class="donut-legend-title">{html.escape(label)}</div>
-                <div class="donut-legend-value">{value:,} GR ({share:.0f}%)</div>
-              </div>
-            </div>
-            """
+
+        fig.add_annotation(
+            x=.69, y=y, xref="paper", yref="paper",
+            text="●", showarrow=False, xanchor="center", yanchor="middle",
+            font=dict(size=19, color=colour, family="Arial"),
         )
-    return f'<div class="donut-legend-wrap">{"".join(items)}</div>'
+        fig.add_annotation(
+            x=.735, y=y, xref="paper", yref="paper",
+            text=(
+                f"<b>{label}</b><br>"
+                f"<span style='font-size:9px'>{value:,} GR ({share:.0f}%)</span>"
+            ),
+            showarrow=False,
+            xanchor="left",
+            yanchor="middle",
+            align="left",
+            font=dict(size=10, color="#173c68", family="Segoe UI, Arial"),
+        )
+
+    _base_chart(fig, 185, dict(l=0, r=2, t=0, b=0))
+    fig.update_layout(
+        showlegend=False,
+        margin=dict(l=0, r=2, t=0, b=0),
+        paper_bgcolor="white",
+        plot_bgcolor="white",
+    )
+    return fig
 
 
 def _panel_header(title, icon, meta=""):
@@ -651,17 +688,22 @@ def _operational_insights(df):
 
 def _render_insights(df):
     insights = _operational_insights(df)
-    st.markdown(
-        """
-        <div class="stock-insights">
-          <div class="stock-insights-head">
-            <div class="stock-insights-title">💡 Operational Insights</div>
-            <div class="stock-insights-note">Key exception highlights requiring attention &nbsp; <span class="stock-view">View All →</span></div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    head_left, head_right = st.columns([8.5, 1.5], gap="small")
+    with head_left:
+        st.markdown(
+            """
+            <div class="stock-insights">
+              <div class="stock-insights-head">
+                <div class="stock-insights-title">💡 Operational Insights</div>
+                <div class="stock-insights-note">Key exception highlights requiring attention</div>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with head_right:
+        expanded = _view_all_toggle("stock_insights_expanded", "insights_view_all")
+
     cols = st.columns(6, gap="small")
     for col, (icon, label, value, note, accent) in zip(cols, insights):
         with col:
@@ -678,6 +720,32 @@ def _render_insights(df):
                 """,
                 unsafe_allow_html=True,
             )
+
+    if expanded:
+        st.markdown(
+            _html_table(_insights_table(df), ["25%", "24%", "51%"]),
+            unsafe_allow_html=True,
+        )
+
+
+def _insights_table(df):
+    rows = []
+    for _icon, label, value, note, _accent in _operational_insights(df):
+        rows.append({
+            "Exception": label,
+            "Current Position": value,
+            "Action / Meaning": note,
+        })
+    return pd.DataFrame(rows)
+
+
+def _view_all_toggle(state_key, button_key):
+    expanded = bool(st.session_state.get(state_key, False))
+    label = "Show Less ↑" if expanded else "View All →"
+    if st.button(label, key=button_key):
+        st.session_state[state_key] = not expanded
+        st.rerun()
+    return expanded
 
 
 def _prepare_action_required(filtered, limit=5):
@@ -698,7 +766,7 @@ def _prepare_action_required(filtered, limit=5):
 
     display = action_df[["gr_no", "origin", "destination", "branch", "Issue", "stock_days"]].copy()
     display.columns = ["GR Number", "Origin", "Destination", "Current Location", "Issue", "Ageing"]
-    return display.head(limit)
+    return display if limit is None else display.head(limit)
 
 
 def _prepare_branch_pending(filtered, limit=5):
@@ -714,8 +782,8 @@ def _prepare_branch_pending(filtered, limit=5):
                 "Avg Dwell": group["stock_days"].mean(),
             }
         )
-    result = pd.DataFrame(rows).sort_values("Active", ascending=False).head(limit)
-    return result
+    result = pd.DataFrame(rows).sort_values("Active", ascending=False)
+    return result if limit is None else result.head(limit)
 
 
 def _prepare_routes(filtered, limit=5):
@@ -1014,11 +1082,7 @@ def show_stock_operations():
         with c3:
             with st.container(border=True):
                 st.markdown(_panel_header("PTL / FTL Overview", "◉", ""), unsafe_allow_html=True)
-                donut_col, legend_col = st.columns([1.15, .85], gap="small")
-                with donut_col:
-                    st.plotly_chart(_donut(filtered), use_container_width=True, config={"displayModeBar": False})
-                with legend_col:
-                    st.markdown(_donut_legend(filtered), unsafe_allow_html=True)
+                st.plotly_chart(_donut(filtered), use_container_width=True, config={"displayModeBar": False})
 
         # OPERATIONAL INSIGHTS
         _render_insights(filtered)
@@ -1027,18 +1091,51 @@ def show_stock_operations():
         left, right = st.columns(2, gap="small")
         with left:
             with st.container(border=True):
-                st.markdown(_panel_header("Action Required", "◎", "View All →"), unsafe_allow_html=True)
-                st.markdown(
-                    _html_table(_prepare_action_required(filtered), ["16%","12%","14%","21%","21%","16%"]),
-                    unsafe_allow_html=True,
-                )
+                h1, h2 = st.columns([8.6, 1.4], gap="small")
+                with h1:
+                    st.markdown(_panel_header("Action Required", "◎", ""), unsafe_allow_html=True)
+                with h2:
+                    action_expanded = _view_all_toggle("stock_action_expanded", "action_view_all")
+                if action_expanded:
+                    st.dataframe(
+                        _prepare_action_required(filtered, None),
+                        use_container_width=True,
+                        hide_index=True,
+                        height=360,
+                    )
+                else:
+                    st.markdown(
+                        _html_table(
+                            _prepare_action_required(filtered, 5),
+                            ["16%","12%","14%","21%","21%","16%"],
+                        ),
+                        unsafe_allow_html=True,
+                    )
         with right:
             with st.container(border=True):
-                st.markdown(_panel_header("Branch / Location Pending", "▦", "View All →"), unsafe_allow_html=True)
-                st.markdown(
-                    _html_table(_prepare_branch_pending(filtered), ["24%","13%","16%","17%","12%","18%"]),
-                    unsafe_allow_html=True,
-                )
+                h1, h2 = st.columns([8.6, 1.4], gap="small")
+                with h1:
+                    st.markdown(_panel_header("Branch / Location Pending", "▦", ""), unsafe_allow_html=True)
+                with h2:
+                    branch_expanded = _view_all_toggle("stock_branch_expanded", "branch_view_all")
+                if branch_expanded:
+                    branch_all = _prepare_branch_pending(filtered, None).copy()
+                    if "Avg Dwell" in branch_all.columns:
+                        branch_all["Avg Dwell"] = branch_all["Avg Dwell"].map(lambda x: f"{x:.1f} d")
+                    st.dataframe(
+                        branch_all,
+                        use_container_width=True,
+                        hide_index=True,
+                        height=360,
+                    )
+                else:
+                    st.markdown(
+                        _html_table(
+                            _prepare_branch_pending(filtered, 5),
+                            ["24%","13%","16%","17%","12%","18%"],
+                        ),
+                        unsafe_allow_html=True,
+                    )
 
         # BOTTOM 4-CARD ROW
         b1, b2, b3, b4 = st.columns([1.0, 1.0, 1.05, 1.2], gap="small")
