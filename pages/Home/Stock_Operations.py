@@ -45,6 +45,8 @@ def _inject_css():
     st.markdown(
         """
         <style>
+        /* use full page width for this page only */
+        .main .block-container, [data-testid="stAppViewBlockContainer"], [data-testid="stMainBlockContainer"]{max-width:100%!important;width:100%!important;padding-left:.65rem!important;padding-right:.65rem!important;padding-top:.2rem!important;}
         /* IMPORTANT: everything below is scoped to this page only. */
         .st-key-stock_page{
             background:#f4f8fc;
@@ -152,10 +154,10 @@ def _inject_css():
         .stock-insights-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
         .stock-insights-title{font:800 10.5px "Segoe UI",Arial,sans-serif;color:#173c68}
         .stock-insights-note{font:600 7px "Segoe UI",Arial,sans-serif;color:#7d8da0}
-        .stock-insight-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}
+        .stock-insight-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;width:100%}
         .stock-insight{
             min-height:65px;background:#fff;border:1px solid #e0e8f1;border-radius:8px;padding:7px 8px;
-            display:grid;grid-template-columns:28px 1fr;column-gap:7px;align-items:center
+            display:grid;grid-template-columns:28px 1fr;column-gap:7px;align-items:center;overflow:hidden
         }
         .stock-insight-icon{
             width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
@@ -552,32 +554,34 @@ def _operational_insights(df):
 
 
 def _render_insights(df):
-    cards = []
-    for icon, label, value, note, accent in _operational_insights(df):
-        cards.append(
-            f"""
-            <div class="stock-insight" style="--accent:{accent};--soft:{accent}18">
-              <div class="stock-insight-icon">{html.escape(icon)}</div>
-              <div>
-                <div class="stock-insight-label">{html.escape(label)}</div>
-                <div class="stock-insight-value" title="{html.escape(str(value))}">{html.escape(str(value))}</div>
-              </div>
-              <div class="stock-insight-sub">{html.escape(note)}</div>
-            </div>
-            """
-        )
+    insights = _operational_insights(df)
     st.markdown(
-        f"""
+        """
         <div class="stock-insights">
           <div class="stock-insights-head">
             <div class="stock-insights-title">💡 Operational Insights</div>
             <div class="stock-insights-note">Key exception highlights requiring attention &nbsp; <span class="stock-view">View All →</span></div>
           </div>
-          <div class="stock-insight-grid">{''.join(cards)}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    cols = st.columns(6, gap="small")
+    for col, (icon, label, value, note, accent) in zip(cols, insights):
+        with col:
+            st.markdown(
+                f"""
+                <div class="stock-insight" style="--accent:{accent};--soft:{accent}18">
+                  <div class="stock-insight-icon">{html.escape(str(icon))}</div>
+                  <div>
+                    <div class="stock-insight-label">{html.escape(str(label))}</div>
+                    <div class="stock-insight-value" title="{html.escape(str(value))}">{html.escape(str(value))}</div>
+                  </div>
+                  <div class="stock-insight-sub">{html.escape(str(note))}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 def _prepare_action_required(filtered, limit=5):
