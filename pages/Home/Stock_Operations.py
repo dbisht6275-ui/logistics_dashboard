@@ -1,4 +1,8 @@
-"""Professional Stock Operations Control Tower for Sugam Dashboard."""
+"""Stock Operations Control Tower - page-only UI for Sugam Dashboard.
+
+This module intentionally styles only the Stock Operations page container.
+It does not modify the application's sidebar, navigation, or global menu.
+"""
 
 from __future__ import annotations
 
@@ -8,26 +12,24 @@ from datetime import date, datetime
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from st_aggrid import AgGrid, GridOptionsBuilder
 
 from services.stock_branch_mast import load_stock_branch_mast
 from services.stock_data_loader import load_stock_data
 
 
 PALETTE = {
-    "blue": "#2f73d8",
-    "blue_dark": "#1456a0",
-    "orange": "#ed8b25",
-    "cyan": "#1e91a0",
-    "purple": "#7953c6",
-    "green": "#269b54",
-    "red": "#d63f48",
-    "brown": "#8a613d",
+    "blue": "#2477df",
+    "blue_dark": "#0b5aa7",
     "navy": "#0b3158",
-    "text": "#172238",
+    "cyan": "#11a8ae",
+    "orange": "#f08a22",
+    "purple": "#7b55df",
+    "green": "#2caf67",
+    "red": "#df3f4a",
+    "text": "#17324f",
     "muted": "#718096",
-    "border": "#dce5ef",
-    "page": "#f4f7fb",
+    "border": "#dce6f0",
+    "page": "#f4f8fc",
 }
 
 STOCK_ORDER = [
@@ -39,196 +41,161 @@ STOCK_ORDER = [
 
 
 def _inject_css():
-    """Enterprise control-tower styling matching the approved mock-up."""
+    """Apply styles only inside the Stock Operations page."""
     st.markdown(
         """
         <style>
-        :root{
-            --navy:#0b3158;
-            --blue:#2f73d8;
-            --cyan:#1e91a0;
-            --orange:#ed8b25;
-            --purple:#7953c6;
-            --green:#269b54;
-            --red:#d63f48;
-            --text:#172238;
-            --muted:#718096;
-            --border:#dce5ef;
-            --page:#f4f7fb;
+        /* IMPORTANT: everything below is scoped to this page only. */
+        .st-key-stock_page{
+            background:#f4f8fc;
+            border-radius:12px;
+            padding:0 7px 8px 7px;
         }
+        .st-key-stock_page [data-testid="stVerticalBlock"]{gap:.42rem!important}
+        .st-key-stock_page [data-testid="stHorizontalBlock"]{gap:.52rem!important;align-items:stretch!important}
 
-        html, body, [class*="css"] {font-family: Inter, "Segoe UI", Arial, sans-serif;}
-        [data-testid="stHeader"]{height:0!important;background:transparent!important;}
-        [data-testid="stAppViewContainer"]{background:var(--page)!important;}
-        [data-testid="stMainBlockContainer"], .main .block-container, .block-container{
-            padding-top:.45rem!important;
-            padding-left:.8rem!important;
-            padding-right:.8rem!important;
-            padding-bottom:1rem!important;
-            width:100%!important;
-            max-width:100%!important;
+        /* dark page header */
+        .st-key-stock_topbar{
+            background:linear-gradient(90deg,#0a315a 0%,#0d4e82 58%,#0b3158 100%);
+            border-radius:0 0 10px 10px;
+            padding:10px 13px 8px 13px;
+            box-shadow:0 5px 16px rgba(8,45,82,.15);
+            margin-bottom:2px;
         }
-        [data-testid="stVerticalBlock"]{gap:.38rem!important;}
-        [data-testid="stHorizontalBlock"]{gap:.55rem!important;align-items:stretch!important;}
-
-        /* Sidebar polish only; navigation itself stays controlled by the main app */
-        [data-testid="stSidebar"]{
-            background:#ffffff!important;
-            border-right:1px solid #e5ebf2!important;
+        .stock-title-wrap{display:flex;align-items:center;gap:12px;height:44px}
+        .stock-title-mark{
+            width:7px;height:36px;border-radius:7px;
+            background:linear-gradient(180deg,#34a9ff,#60d7ff);
+            box-shadow:0 0 0 3px rgba(255,255,255,.08)
         }
-        [data-testid="stSidebar"] .block-container{padding-top:.7rem!important;}
-
-        /* Top control tower header */
-        .st-key-stock_header{
-            background:linear-gradient(108deg,#082b57 0%,#0d4b83 52%,#0d6d9a 100%);
-            border-radius:13px;
-            padding:10px 12px 9px;
-            box-shadow:0 8px 24px rgba(8,43,87,.18);
-            margin-bottom:3px;
-        }
-        .stock-brand-row{display:flex;align-items:center;gap:14px;min-height:45px;}
-        .stock-brand-mark{
-            display:flex;align-items:center;gap:8px;padding-right:14px;
-            border-right:1px solid rgba(255,255,255,.22);
-        }
-        .stock-brand-symbol{
-            width:27px;height:27px;border-radius:8px;
-            background:linear-gradient(145deg,#ff6c2c 0 44%,#49b4f5 45% 100%);
-            box-shadow:inset 0 0 0 3px rgba(255,255,255,.12);
-            transform:rotate(8deg);
-        }
-        .stock-brand-name{font:900 15px/1 Inter,sans-serif;color:#fff;letter-spacing:.7px;}
-        .stock-brand-tag{font:600 5.8px/1.2 Inter,sans-serif;color:#d4e8fb;margin-top:2px;}
-        .stock-heading{min-width:0;}
-        .stock-title{font:850 18px/1.1 Inter,sans-serif;color:#fff;margin:0 0 3px;letter-spacing:-.2px;}
-        .stock-sub{font:550 8px/1.2 Inter,sans-serif;color:#d8e9f9;margin:0;}
-        .stock-header-meta{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
+        .stock-title{font:800 19px/1.08 "Segoe UI",Arial,sans-serif;color:#fff;letter-spacing:-.25px}
+        .stock-subtitle{font:500 8.5px/1.2 "Segoe UI",Arial,sans-serif;color:#d8e9f8;margin-top:3px}
+        .stock-live-wrap{height:44px;display:flex;align-items:center;justify-content:flex-end;gap:8px}
         .stock-live{
-            display:inline-flex;align-items:center;gap:6px;border-radius:999px;
-            background:#2abf68;color:white;padding:5px 9px;
-            font:800 7px Inter,sans-serif;letter-spacing:.35px;
+            display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;
+            background:#2fbf69;color:#fff;font:800 7.5px "Segoe UI",Arial,sans-serif;letter-spacing:.3px
         }
-        .stock-live:before{content:"";width:6px;height:6px;border-radius:50%;background:#d9ffe8;}
-        .stock-updated{font:600 7px Inter,sans-serif;color:#d9eaff;white-space:nowrap;}
+        .stock-live:before{content:"";width:6px;height:6px;border-radius:50%;background:#d8ffe8}
+        .stock-updated{font:600 7.5px "Segoe UI",Arial,sans-serif;color:#d5e6f7;white-space:nowrap}
 
-        .st-key-stock_header label,
-        .st-key-stock_header label p{color:#eaf4ff!important;font-weight:750!important;}
-        .st-key-stock_header div[data-testid="stDateInput"] input{
-            background:#fff!important;color:#16314f!important;
+        .st-key-stock_topbar div[data-testid="stTextInput"]{margin-top:5px}
+        .st-key-stock_topbar div[data-testid="stTextInput"] input{
+            min-height:31px!important;height:31px!important;
+            background:rgba(255,255,255,.08)!important;
+            border:1px solid rgba(255,255,255,.27)!important;
+            color:#fff!important;border-radius:8px!important;font-size:8.5px!important
         }
-        .st-key-stock_header div[data-testid="stButton"] button{
-            background:#2680e8!important;color:#fff!important;border:1px solid rgba(255,255,255,.2)!important;
-        }
-        .st-key-stock_header div[data-testid="stDownloadButton"] button{
-            background:#fff!important;color:#175ca8!important;border:1px solid #b9d2ec!important;
-        }
+        .st-key-stock_topbar div[data-testid="stTextInput"] input::placeholder{color:#d7e6f6!important;opacity:.92}
 
-        /* Inputs */
-        div[data-testid="stDateInput"] label,
-        div[data-testid="stSelectbox"] label,
-        div[data-testid="stMultiSelect"] label,
-        div[data-testid="stTextInput"] label{
-            font-size:8px!important;font-weight:750!important;color:#40556f!important;margin-bottom:1px!important;
+        /* filter row */
+        .st-key-stock_filters{
+            background:#fff;border:1px solid #dfe8f1;border-radius:10px;
+            padding:6px 8px 7px 8px;box-shadow:0 2px 8px rgba(20,40,65,.04)
         }
-        div[data-testid="stDateInput"] input,
-        div[data-testid="stTextInput"] input,
-        div[data-baseweb="select"]>div{
-            min-height:31px!important;height:31px!important;font-size:8.5px!important;
-            border-radius:7px!important;border-color:#d7e1ec!important;background:#fff!important;
+        .st-key-stock_filters label,
+        .st-key-stock_filters label p{
+            font:700 7.4px/1.1 "Segoe UI",Arial,sans-serif!important;color:#4d6680!important;
+            margin-bottom:2px!important
         }
-        div[data-testid="stButton"] button,
-        div[data-testid="stDownloadButton"] button{
+        .st-key-stock_filters div[data-testid="stDateInput"] input,
+        .st-key-stock_filters div[data-baseweb="select"]>div{
             min-height:31px!important;height:31px!important;border-radius:7px!important;
-            padding:0 .65rem!important;font-size:8.5px!important;font-weight:800!important;
+            border-color:#d7e2ee!important;background:#fff!important;font-size:8px!important
         }
-        div[data-testid="stSegmentedControl"]{justify-content:flex-end!important;}
-        div[data-testid="stSegmentedControl"] button{
-            min-height:25px!important;height:25px!important;min-width:35px!important;
-            font-size:8px!important;font-weight:800!important;
+        .st-key-stock_filters div[data-testid="stButton"] button{
+            min-height:31px!important;height:31px!important;margin-top:15px!important;
+            background:#2477df!important;border:0!important;border-radius:7px!important;color:white!important;
+            font-size:8px!important;font-weight:800!important;box-shadow:0 4px 9px rgba(36,119,223,.18)!important
+        }
+        .st-key-stock_filters div[data-testid="stDownloadButton"] button{
+            min-height:31px!important;height:31px!important;margin-top:15px!important;
+            background:#fff!important;border:1px solid #b9d2ec!important;border-radius:7px!important;
+            color:#165da9!important;font-size:8px!important;font-weight:800!important
         }
 
-        /* Filter surface */
-        .stock-filter-shell{
-            background:#fff;border:1px solid #e0e7ef;border-radius:10px;
-            padding:7px 9px 4px;box-shadow:0 2px 8px rgba(20,40,65,.035);
-        }
-        .stock-filter-title{
-            display:flex;align-items:center;justify-content:space-between;
-            font:800 9px Inter,sans-serif;color:#24415f;margin-bottom:4px;
-        }
-        .stock-filter-hint{font:600 7px Inter,sans-serif;color:#8b98a8;}
-        div[data-testid="stExpander"]{
-            border:1px solid #e3e9f0!important;border-radius:8px!important;background:#fbfcfe!important;
-        }
-        div[data-testid="stExpander"] summary{min-height:28px!important;font-size:8px!important;font-weight:750!important;color:#40556f!important;}
-
-        /* KPI cards */
+        /* KPI row */
         .stock-kpi{
-            position:relative;overflow:hidden;min-height:83px;
-            background:#fff;border:1px solid #dfe7f0;border-radius:10px;
-            padding:10px 10px 8px;box-shadow:0 4px 13px rgba(20,40,65,.055);
+            position:relative;min-height:78px;background:#fff;border:1px solid #dfe7f0;border-radius:10px;
+            padding:9px 9px 7px 9px;box-shadow:0 3px 10px rgba(20,40,65,.045);overflow:hidden
         }
-        .stock-kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tone);}
-        .stock-kpi.critical{border-color:#efc8cc;background:linear-gradient(145deg,#fff,#fff5f5);}
-        .stock-kpi-top{display:flex;align-items:center;gap:8px;}
+        .stock-kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tone)}
+        .stock-kpi.critical{background:#fff7f7;border-color:#f2c8cc}
+        .stock-kpi-row{display:flex;align-items:center;gap:8px}
         .stock-kpi-icon{
-            width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;
-            font-size:15px;font-weight:900;background:var(--tone-soft);color:var(--tone);
+            width:31px;height:31px;min-width:31px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+            background:var(--soft);color:var(--tone);font:900 15px "Segoe UI Symbol","Segoe UI",Arial,sans-serif
         }
-        .stock-kpi-label{font:800 8px/1.1 Inter,sans-serif;color:#354b65;white-space:nowrap;}
-        .stock-kpi-value{font:900 19px/1.05 Inter,sans-serif;color:#153251;margin-top:4px;letter-spacing:-.3px;}
-        .stock-kpi-note{font:600 7px/1.25 Inter,sans-serif;color:#748399;margin-top:4px;}
+        .stock-kpi-label{font:700 8.2px/1.12 "Segoe UI",Arial,sans-serif;color:#29445f;white-space:nowrap}
+        .stock-kpi-value{font:850 18px/1.03 "Segoe UI",Arial,sans-serif;color:#153a66;margin-top:4px;letter-spacing:-.25px}
+        .stock-kpi-note{font:600 7.1px/1.2 "Segoe UI",Arial,sans-serif;color:#74869a;margin-top:5px;padding-left:39px}
+        .stock-kpi.critical .stock-kpi-value,.stock-kpi.critical .stock-kpi-note{color:#d9333f}
 
-        /* Generic white panels */
-        div[data-testid="stVerticalBlockBorderWrapper"]{
-            background:#fff!important;border:1px solid #dce5ef!important;border-radius:10px!important;
-            box-shadow:0 3px 12px rgba(20,40,65,.045)!important;
+        /* cards */
+        .st-key-stock_page div[data-testid="stVerticalBlockBorderWrapper"]{
+            background:#fff!important;border:1px solid #dce6f0!important;border-radius:10px!important;
+            box-shadow:0 3px 10px rgba(20,40,65,.035)!important
         }
-        div[data-testid="stVerticalBlockBorderWrapper"]>div{padding:.45rem .62rem!important;}
-        .stock-panel-title{
-            display:flex;align-items:center;justify-content:space-between;gap:12px;
-            font:850 10.5px Inter,sans-serif;color:#1f3a59;margin:0 0 5px;
-        }
-        .stock-panel-title span{font:650 7px Inter,sans-serif;color:#8492a4;}
-        .stock-panel-title.alert{color:#b72d36;}
+        .st-key-stock_page div[data-testid="stVerticalBlockBorderWrapper"]>div{padding:.34rem .52rem!important}
+        .st-key-stock_page .stPlotlyChart{margin:-4px 0 -8px!important}
 
-        /* Operational insights row */
-        .stock-insights-wrap{
-            background:#fff;border:1px solid #dce5ef;border-radius:10px;
-            padding:8px 9px 9px;box-shadow:0 3px 12px rgba(20,40,65,.04);
+        .stock-panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 5px 0}
+        .stock-panel-name{display:flex;align-items:center;gap:6px;font:800 10.5px "Segoe UI",Arial,sans-serif;color:#173c68}
+        .stock-panel-name .ico{font-size:12px;color:#1a70ce}
+        .stock-panel-meta{font:600 7px "Segoe UI",Arial,sans-serif;color:#71849a}
+        .stock-view{color:#1c78dd;font-weight:700}
+
+        /* insight strip */
+        .stock-insights{
+            background:#fff;border:1px solid #dce6f0;border-radius:10px;padding:7px 8px 8px;
+            box-shadow:0 3px 10px rgba(20,40,65,.035)
         }
-        .stock-insights-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;}
-        .stock-insights-title{font:850 10.5px Inter,sans-serif;color:#1f3a59;}
-        .stock-insights-sub{font:650 7px Inter,sans-serif;color:#8795a6;}
-        .stock-insight-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;}
+        .stock-insights-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+        .stock-insights-title{font:800 10.5px "Segoe UI",Arial,sans-serif;color:#173c68}
+        .stock-insights-note{font:600 7px "Segoe UI",Arial,sans-serif;color:#7d8da0}
+        .stock-insight-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px}
         .stock-insight{
-            border:1px solid #e3e9f0;border-radius:8px;padding:8px 9px;background:#fff;min-height:72px;
-            position:relative;overflow:hidden;
+            min-height:65px;background:#fff;border:1px solid #e0e8f1;border-radius:8px;padding:7px 8px;
+            display:grid;grid-template-columns:28px 1fr;column-gap:7px;align-items:center
         }
-        .stock-insight:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent);}
-        .stock-insight-label{font:800 7.5px/1.15 Inter,sans-serif;color:#40556f;}
-        .stock-insight-value{font:900 15px/1.1 Inter,sans-serif;color:var(--accent);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .stock-insight-note{font:600 6.8px/1.25 Inter,sans-serif;color:#8190a2;margin-top:4px;}
-
-        /* Plotly */
-        .stPlotlyChart{margin:-3px 0 -8px!important;}
-
-        /* AG Grid */
-        .stock-grid-toolbar{display:flex;justify-content:flex-end;margin-top:-1px;}
-        .ag-theme-streamlit{--ag-font-size:9px;--ag-row-height:30px;}
-
-        .stock-footer{
-            display:flex;align-items:center;justify-content:space-between;gap:16px;
-            color:#7d8b9c;font:600 7px Inter,sans-serif;padding:5px 3px 2px;
+        .stock-insight-icon{
+            width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+            background:var(--soft);color:var(--accent);font:900 12px "Segoe UI Symbol","Segoe UI",Arial,sans-serif
         }
+        .stock-insight-label{font:700 7.7px/1.1 "Segoe UI",Arial,sans-serif;color:#344d67}
+        .stock-insight-value{font:850 13px/1.12 "Segoe UI",Arial,sans-serif;color:var(--accent);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .stock-insight-sub{grid-column:2;font:600 6.8px/1.15 "Segoe UI",Arial,sans-serif;color:#798a9d;margin-top:-5px}
+
+        /* HTML tables */
+        .stock-table-wrap{width:100%;overflow:hidden;border:1px solid #e0e8f0;border-radius:7px;background:#fff}
+        table.stock-table{width:100%;border-collapse:collapse;table-layout:fixed;font:600 7.7px/1.15 "Segoe UI",Arial,sans-serif;color:#2e4761}
+        table.stock-table th{
+            background:#eef5fb;color:#38516c;padding:6px 6px;text-align:left;border-right:1px solid #dfe8f0;
+            border-bottom:1px solid #d9e4ee;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+        }
+        table.stock-table td{
+            padding:5.5px 6px;border-right:1px solid #e7edf3;border-bottom:1px solid #e7edf3;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#fff
+        }
+        table.stock-table tbody tr:nth-child(even) td{background:#fbfdff}
+        table.stock-table th:last-child,table.stock-table td:last-child{border-right:0}
+        table.stock-table tbody tr:last-child td{border-bottom:0}
+        .pill-red{display:inline-block;background:#ffe3e5;color:#d73440;border-radius:5px;padding:2px 5px;font-weight:800}
+        .pill-blue{display:inline-block;background:#e7f2ff;color:#176bc0;border-radius:5px;padding:2px 5px;font-weight:800}
+        .pill-green{display:inline-block;background:#e8f7ee;color:#22854c;border-radius:5px;padding:2px 5px;font-weight:800}
+        .pill-orange{display:inline-block;background:#fff0df;color:#cc6a13;border-radius:5px;padding:2px 5px;font-weight:800}
+
+        /* bottom charts */
+        .stock-mini-note{font:600 6.8px "Segoe UI",Arial,sans-serif;color:#7d8ea1}
+        .stock-footer{display:flex;justify-content:space-between;align-items:center;padding:3px 5px 0;color:#7f8fa1;font:600 6.8px "Segoe UI",Arial,sans-serif}
+
+        .st-key-stock_page div[data-testid="stExpander"]{
+            border:1px solid #e0e8f0!important;border-radius:8px!important;background:#fff!important
+        }
+        .st-key-stock_page div[data-testid="stExpander"] summary{font-size:8px!important;font-weight:700!important;color:#526a82!important}
 
         @media(max-width:1200px){
-            .stock-insight-grid{grid-template-columns:repeat(3,1fr);}
-            .stock-kpi-label{white-space:normal;}
-        }
-        @media(max-width:900px){
-            .stock-insight-grid{grid-template-columns:repeat(2,1fr);}
-            .stock-brand-mark{display:none;}
+            .stock-insight-grid{grid-template-columns:repeat(3,1fr)}
+            .stock-kpi-label{white-space:normal}
         }
         </style>
         """,
@@ -403,8 +370,6 @@ def _apply_locked_scope(df, locked_zone, locked_circle, locked_branch):
 
 
 def _count_type(df, stock_type):
-    if "stock_type" not in df.columns or "gr_no" not in df.columns:
-        return 0
     return int(df.loc[df["stock_type"].eq(stock_type), "gr_no"].nunique())
 
 
@@ -417,9 +382,9 @@ def _sum_where(df, stock_type, column):
 def _kpi_card(label, value, note, icon, tone, critical=False):
     klass = "stock-kpi critical" if critical else "stock-kpi"
     return f"""
-    <div class="{klass}" style="--tone:{tone};--tone-soft:{tone}18">
-      <div class="stock-kpi-top">
-        <div class="stock-kpi-icon">{icon}</div>
+    <div class="{klass}" style="--tone:{tone};--soft:{tone}18">
+      <div class="stock-kpi-row">
+        <div class="stock-kpi-icon">{html.escape(str(icon))}</div>
         <div style="min-width:0">
           <div class="stock-kpi-label">{html.escape(str(label))}</div>
           <div class="stock-kpi-value">{html.escape(str(value))}</div>
@@ -430,34 +395,27 @@ def _kpi_card(label, value, note, icon, tone, critical=False):
     """
 
 
-def _base_plot_layout(fig, height=245, margin=None):
+def _base_chart(fig, height, margins):
     fig.update_layout(
         height=height,
-        margin=margin or dict(l=10, r=12, t=36, b=22),
+        margin=margins,
         paper_bgcolor="white",
         plot_bgcolor="white",
-        font=dict(family="Inter, Segoe UI, Arial", size=9, color="#42556d"),
-        hoverlabel=dict(font_size=10),
+        font=dict(family="Segoe UI, Arial", size=8, color="#405873"),
+        hoverlabel=dict(font_size=9),
     )
-    fig.update_xaxes(showgrid=False, zeroline=False)
-    fig.update_yaxes(gridcolor="#edf2f7", zeroline=False)
     return fig
 
 
 def _zone_bar(df, column, title):
-    if column not in df.columns:
-        st.info(f"{title}: data unavailable")
-        return
-
     grouped = (
         df.groupby(column, dropna=False)["gr_no"]
         .nunique()
         .reset_index(name="GR Count")
-        .sort_values("GR Count", ascending=True)
     )
     grouped[column] = grouped[column].fillna("Unmapped").astype(str).str.strip()
     grouped.loc[grouped[column].eq(""), column] = "Unmapped"
-    grouped = grouped.tail(7)
+    grouped = grouped.sort_values("GR Count", ascending=False).head(6)
 
     fig = px.bar(
         grouped,
@@ -468,161 +426,85 @@ def _zone_bar(df, column, title):
         color_discrete_sequence=[PALETTE["blue"]],
     )
     fig.update_traces(
-        marker_line_width=0,
         texttemplate="%{x:,.0f}",
         textposition="outside",
-        textfont=dict(size=9, color="#28425f"),
+        textfont=dict(size=8, color="#29445f"),
+        marker=dict(line=dict(width=0)),
         cliponaxis=False,
         hovertemplate="%{y}<br>%{x:,} GR<extra></extra>",
     )
-    _base_plot_layout(fig, height=245, margin=dict(l=8, r=52, t=34, b=18))
+    _base_chart(fig, 185, dict(l=8, r=44, t=8, b=22))
     fig.update_layout(
-        title=dict(text=title, font=dict(size=11, color="#1f3a59"), x=.01),
         showlegend=False,
-        xaxis=dict(title=None, showgrid=True, gridcolor="#edf2f7", tickfont=dict(size=8)),
-        yaxis=dict(title=None, tickfont=dict(size=9, color="#29445f"), automargin=True),
-        bargap=.33,
+        xaxis=dict(title=None, showgrid=True, gridcolor="#edf2f7", tickfont=dict(size=7)),
+        yaxis=dict(title=None, tickfont=dict(size=8), autorange="reversed", automargin=True),
+        bargap=.34,
     )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    return fig
 
 
-def _donut(df, column, title):
-    if column not in df.columns:
-        st.info(f"{title}: data unavailable")
-        return
-
+def _donut(df):
     grouped = (
-        df.groupby(column, dropna=False)["gr_no"]
+        df.groupby("load_type", dropna=False)["gr_no"]
         .nunique()
         .reset_index(name="GR Count")
         .sort_values("GR Count", ascending=False)
     )
-    grouped[column] = grouped[column].fillna("Unknown").astype(str).str.strip()
-    grouped.loc[grouped[column].eq(""), column] = "Unknown"
+    grouped["load_type"] = grouped["load_type"].fillna("Unknown").astype(str).str.strip()
+    grouped.loc[grouped["load_type"].eq(""), "load_type"] = "Unknown"
 
-    # Keep PTL and FTL visually consistent when available.
-    colour_map = {"PTL": PALETTE["blue_dark"], "FTL": "#11a8ae"}
+    colour_map = {"PTL": PALETTE["blue_dark"], "FTL": PALETTE["cyan"]}
     fig = px.pie(
         grouped,
-        names=column,
+        names="load_type",
         values="GR Count",
         hole=.62,
-        color=column,
+        color="load_type",
         color_discrete_map=colour_map,
-        color_discrete_sequence=[PALETTE["blue_dark"], "#11a8ae", PALETTE["orange"], PALETTE["purple"]],
+        color_discrete_sequence=[PALETTE["blue_dark"], PALETTE["cyan"], PALETTE["orange"]],
     )
     fig.update_traces(
         textinfo="percent",
-        textfont_size=10,
+        textfont_size=9,
         marker=dict(line=dict(color="white", width=1)),
         hovertemplate="%{label}<br>%{value:,} GR (%{percent})<extra></extra>",
     )
     fig.add_annotation(
-        text=f"<b>{df['gr_no'].nunique():,}</b><br><span style='font-size:8px'>Total GR</span>",
+        text=f"<b>{df['gr_no'].nunique():,}</b><br><span style='font-size:7px'>Total GR</span>",
         showarrow=False,
-        font=dict(color="#153251", size=13),
+        font=dict(size=12, color="#153a66"),
     )
-    _base_plot_layout(fig, height=245, margin=dict(l=5, r=5, t=34, b=20))
+    _base_chart(fig, 185, dict(l=2, r=2, t=5, b=5))
     fig.update_layout(
-        title=dict(text=title, font=dict(size=11, color="#1f3a59"), x=.01),
         legend=dict(
             font=dict(size=8),
             orientation="v",
             x=.82,
             xanchor="left",
-            y=.55,
+            y=.54,
             yanchor="middle",
-        ),
-    )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-
-def _render_table(df, height=250, key="stock_grid"):
-    """Compact enterprise grid with download control."""
-    if df is None or df.empty:
-        st.caption("No records available for the selected filters.")
-        return
-
-    _, download_col = st.columns([16, 1])
-    with download_col:
-        st.download_button(
-            "↓",
-            data=df.to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"{key}.csv",
-            mime="text/csv",
-            use_container_width=True,
-            help="Download table as CSV",
-            key=f"{key}_download",
         )
+    )
+    return fig
 
-    builder = GridOptionsBuilder.from_dataframe(df)
-    builder.configure_default_column(
-        sortable=True,
-        filter=True,
-        resizable=True,
-        suppressMovable=False,
-    )
-    builder.configure_grid_options(
-        headerHeight=30,
-        rowHeight=29,
-        suppressRowClickSelection=True,
-        pagination=False,
-    )
 
-    AgGrid(
-        df,
-        gridOptions=builder.build(),
-        height=height,
-        theme="streamlit",
-        fit_columns_on_grid_load=True,
-        allow_unsafe_jscode=False,
-        custom_css={
-            ".ag-root-wrapper": {
-                "border": "1px solid #e0e7ef !important",
-                "border-radius": "8px !important",
-                "overflow": "hidden !important",
-            },
-            ".ag-header": {
-                "background-color": "#edf4fb !important",
-                "border-bottom": "1px solid #dbe6f0 !important",
-            },
-            ".ag-header-cell": {
-                "background-color": "#edf4fb !important",
-                "color": "#28425f !important",
-                "font-weight": "700 !important",
-                "font-size": "9px !important",
-                "border-right": "1px solid #e0e8f1 !important",
-            },
-            ".ag-header-cell-text": {
-                "color": "#28425f !important",
-                "font-weight": "700 !important",
-            },
-            ".ag-icon": {"color": "#58718c !important"},
-            ".ag-row-even": {"background-color": "#fbfdff !important"},
-            ".ag-row-hover": {"background-color": "#eef6ff !important"},
-            ".ag-cell": {
-                "font-size": "9px !important",
-                "color": "#32485f !important",
-                "border-right": "1px solid #edf1f5 !important",
-            },
-        },
-        key=key,
-    )
+def _panel_header(title, icon, meta=""):
+    meta_html = f'<div class="stock-panel-meta">{html.escape(str(meta))}</div>' if meta else ""
+    return f"""
+    <div class="stock-panel-head">
+      <div class="stock-panel-name"><span class="ico">{icon}</span>{html.escape(str(title))}</div>
+      {meta_html}
+    </div>
+    """
 
 
 def _operational_insights(df):
     critical_mask = df.get("is_critical", pd.Series(False, index=df.index)).fillna(False).astype(bool)
     overdue_mask = df.get("is_edd_overdue", pd.Series(False, index=df.index)).fillna(False).astype(bool)
+
     overdue_gr = int(df.loc[overdue_mask, "gr_no"].nunique())
-
-    if "edd" in df.columns:
-        missing_edd_gr = int(df.loc[df["edd"].isna(), "gr_no"].nunique())
-    else:
-        missing_edd_gr = 0
-
-    critical_delivery = int(
-        df.loc[critical_mask & df["stock_type"].eq("DELIVERY STOCK"), "gr_no"].nunique()
-    )
+    missing_edd_gr = int(df.loc[df["edd"].isna(), "gr_no"].nunique()) if "edd" in df.columns else 0
+    critical_delivery = int(df.loc[critical_mask & df["stock_type"].eq("DELIVERY STOCK"), "gr_no"].nunique())
     critical_transit = int(
         df.loc[
             critical_mask & df["stock_type"].isin(["IN-TRANSIT STOCK", "TRANSIT STOCK"]),
@@ -649,11 +531,7 @@ def _operational_insights(df):
                 ["", "unknown", "none", "nan"]
             )
         ]
-        reason_counts = (
-            reason_source.groupby("reason_category")["gr_no"]
-            .nunique()
-            .sort_values(ascending=False)
-        )
+        reason_counts = reason_source.groupby("reason_category")["gr_no"].nunique().sort_values(ascending=False)
     else:
         reason_counts = pd.Series(dtype="int64")
 
@@ -664,34 +542,36 @@ def _operational_insights(df):
         top_reason_gr = int(reason_counts.iloc[0])
 
     return [
-        ("EDD Overdue", f"{overdue_gr:,} GR", "Past committed delivery date", PALETTE["red"]),
-        ("Missing EDD", f"{missing_edd_gr:,} GR", "EDD needs update", PALETTE["orange"]),
-        ("Critical Delivery", f"{critical_delivery:,} GR", "Delivery stock aged 15+ days", PALETTE["red"]),
-        ("Critical Transit", f"{critical_transit:,} GR", "Transit stock aged 15+ days", PALETTE["purple"]),
-        ("Highest-Risk Route", risk_route, f"{risk_route_gr:,} critical GR", PALETTE["blue"]),
-        ("Top Delay Reason", top_reason, f"{top_reason_gr:,} affected GR", PALETTE["orange"]),
+        ("◷", "EDD Overdue", f"{overdue_gr:,} GR", "Past committed delivery date", PALETTE["red"]),
+        ("▤", "Missing EDD", f"{missing_edd_gr:,} GR", "EDD needs update", PALETTE["orange"]),
+        ("!", "Critical Delivery", f"{critical_delivery:,} GR", "Delivery stock aged 15+ days", PALETTE["red"]),
+        ("⇆", "Critical Transit", f"{critical_transit:,} GR", "Transit stock aged 15+ days", PALETTE["purple"]),
+        ("⌖", "Highest-Risk Route", risk_route, f"{risk_route_gr:,} critical GR", PALETTE["blue"]),
+        ("!", "Top Delay Reason", top_reason, f"{top_reason_gr:,} affected GR", PALETTE["orange"]),
     ]
 
 
-def _render_operational_insights(df):
+def _render_insights(df):
     cards = []
-    for label, value, note, accent in _operational_insights(df):
+    for icon, label, value, note, accent in _operational_insights(df):
         cards.append(
             f"""
-            <div class="stock-insight" style="--accent:{accent}">
-              <div class="stock-insight-label">{html.escape(str(label))}</div>
-              <div class="stock-insight-value" title="{html.escape(str(value))}">{html.escape(str(value))}</div>
-              <div class="stock-insight-note">{html.escape(str(note))}</div>
+            <div class="stock-insight" style="--accent:{accent};--soft:{accent}18">
+              <div class="stock-insight-icon">{html.escape(icon)}</div>
+              <div>
+                <div class="stock-insight-label">{html.escape(label)}</div>
+                <div class="stock-insight-value" title="{html.escape(str(value))}">{html.escape(str(value))}</div>
+              </div>
+              <div class="stock-insight-sub">{html.escape(note)}</div>
             </div>
             """
         )
-
     st.markdown(
         f"""
-        <div class="stock-insights-wrap">
+        <div class="stock-insights">
           <div class="stock-insights-head">
             <div class="stock-insights-title">💡 Operational Insights</div>
-            <div class="stock-insights-sub">Key exception highlights requiring attention</div>
+            <div class="stock-insights-note">Key exception highlights requiring attention &nbsp; <span class="stock-view">View All →</span></div>
           </div>
           <div class="stock-insight-grid">{''.join(cards)}</div>
         </div>
@@ -700,15 +580,125 @@ def _render_operational_insights(df):
     )
 
 
+def _prepare_action_required(filtered, limit=5):
+    sort_cols = [c for c in ["stock_days", "balance_charge_weight"] if c in filtered.columns]
+    action_df = filtered.sort_values(sort_cols, ascending=False).copy() if sort_cols else filtered.copy()
+    action_df["Issue"] = action_df["stock_type"].map(
+        {
+            "IN-TRANSIT STOCK": "In Transit (15+)",
+            "TRANSIT STOCK": "Transit Pending",
+            "DELIVERY STOCK": "Delivery Pending",
+            "BOOKING STOCK": "Booking Pending",
+        }
+    ).fillna("Ageing Stock")
+    if "is_edd_overdue" in action_df.columns:
+        action_df.loc[action_df["is_edd_overdue"].fillna(False), "Issue"] = "EDD Overdue"
+    if "edd" in action_df.columns:
+        action_df.loc[action_df["edd"].isna(), "Issue"] = "Missing EDD"
+
+    display = action_df[["gr_no", "origin", "destination", "branch", "Issue", "stock_days"]].copy()
+    display.columns = ["GR Number", "Origin", "Destination", "Current Location", "Issue", "Ageing"]
+    return display.head(limit)
+
+
+def _prepare_branch_pending(filtered, limit=5):
+    rows = []
+    for branch, group in filtered.groupby("branch", dropna=False):
+        rows.append(
+            {
+                "Location": branch,
+                "Active": group["gr_no"].nunique(),
+                "In-Transit": group.loc[group["stock_type"].eq("IN-TRANSIT STOCK"), "gr_no"].nunique(),
+                "Transit Stock": group.loc[group["stock_type"].eq("TRANSIT STOCK"), "gr_no"].nunique(),
+                "15d+": group.loc[group.get("is_critical", False).fillna(False) if isinstance(group.get("is_critical", False), pd.Series) else pd.Series(False, index=group.index), "gr_no"].nunique(),
+                "Avg Dwell": group["stock_days"].mean(),
+            }
+        )
+    result = pd.DataFrame(rows).sort_values("Active", ascending=False).head(limit)
+    return result
+
+
+def _prepare_routes(filtered, limit=5):
+    routes = (
+        filtered.groupby(["origin", "destination"])["gr_no"]
+        .nunique()
+        .reset_index(name="Active GR")
+        .sort_values("Active GR", ascending=False)
+        .head(limit)
+    )
+    routes["Route"] = routes["origin"].astype(str) + " → " + routes["destination"].astype(str)
+    routes.insert(0, "#", range(1, len(routes) + 1))
+    return routes[["#", "Route", "Active GR"]]
+
+
+def _prepare_priority(filtered, limit=5):
+    details = filtered.sort_values(["stock_days", "stock_topay"], ascending=False).copy()
+    details["Weight"] = details["balance_charge_weight"].fillna(0)
+    details["To-Pay"] = details["stock_topay"].fillna(0)
+    details["Age"] = details["stock_days"].fillna(0)
+    return details[["gr_no", "branch", "stock_type", "Weight", "To-Pay", "Age"]].head(limit).rename(
+        columns={"gr_no": "GR", "branch": "Branch", "stock_type": "Status"}
+    )
+
+
+def _cell(value, column):
+    if pd.isna(value):
+        return "-"
+    if column == "Ageing":
+        try:
+            return f'<span class="pill-red">{float(value):.0f} Days</span>'
+        except Exception:
+            return html.escape(str(value))
+    if column == "Avg Dwell":
+        return f"{float(value):.1f} d"
+    if column == "Weight":
+        return f"{float(value):,.0f} kg"
+    if column == "To-Pay":
+        return _fmt_money(value)
+    if column == "Age":
+        return f'<span class="pill-red">{float(value):.0f} d</span>'
+    if column == "Status":
+        text = str(value)
+        key = text.strip().upper()
+        if "DELIVERY" in key:
+            klass = "pill-green"
+        elif "TRANSIT" in key:
+            klass = "pill-blue"
+        elif "BOOKING" in key or "HOLD" in key:
+            klass = "pill-orange"
+        else:
+            klass = "pill-blue"
+        return f'<span class="{klass}">{html.escape(text.title())}</span>'
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"{value:,.0f}"
+    return html.escape(str(value))
+
+
+def _html_table(df, widths=None):
+    if df is None or df.empty:
+        return '<div class="stock-mini-note">No data available for selected filters.</div>'
+    widths = widths or []
+    head = []
+    for i, col in enumerate(df.columns):
+        style = f' style="width:{widths[i]}"' if i < len(widths) and widths[i] else ""
+        head.append(f"<th{style}>{html.escape(str(col))}</th>")
+    body = []
+    for _, row in df.iterrows():
+        cells = [f"<td>{_cell(row[col], col)}</td>" for col in df.columns]
+        body.append(f"<tr>{''.join(cells)}</tr>")
+    return f'<div class="stock-table-wrap"><table class="stock-table"><thead><tr>{"".join(head)}</tr></thead><tbody>{"".join(body)}</tbody></table></div>'
+
+
 def _ageing_chart(filtered):
-    age_summary = (
+    order = ["0-7 Days", "8-14 Days", "15+ Days"]
+    summary = (
         filtered.groupby("age_band", observed=True)["gr_no"]
         .nunique()
-        .reindex(["0-7 Days", "8-14 Days", "15+ Days"], fill_value=0)
+        .reindex(order, fill_value=0)
         .reset_index(name="GR Count")
     )
     fig = px.bar(
-        age_summary,
+        summary,
         x="GR Count",
         y="age_band",
         orientation="h",
@@ -720,592 +710,276 @@ def _ageing_chart(filtered):
         },
         text="GR Count",
     )
-    fig.update_traces(
-        texttemplate="%{x:,.0f}",
-        textposition="outside",
-        textfont=dict(size=9, color="#29445f"),
-        cliponaxis=False,
-    )
-    _base_plot_layout(fig, height=235, margin=dict(l=8, r=38, t=34, b=18))
+    fig.update_traces(texttemplate="%{x:,.0f}", textposition="outside", textfont=dict(size=8), cliponaxis=False)
+    _base_chart(fig, 155, dict(l=6, r=36, t=0, b=22))
     fig.update_layout(
-        title=dict(text="Ageing – Stock", font=dict(size=11, color="#1f3a59"), x=.01),
         showlegend=False,
-        xaxis=dict(title=None, gridcolor="#edf2f7"),
-        yaxis=dict(title=None, tickfont=dict(size=9), automargin=True),
-        bargap=.35,
+        xaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=7)),
+        yaxis=dict(title=None, tickfont=dict(size=8), categoryorder="array", categoryarray=order[::-1]),
+        bargap=.34,
     )
     return fig
 
 
-def _stock_date_distribution(filtered, as_on_date, view):
-    trend_source = filtered[["gr_no", "stock_days"]].copy()
-    trend_source["stock_days"] = trend_source["stock_days"].fillna(0).clip(lower=0)
-    trend_source["Stock Date"] = pd.Timestamp(as_on_date) - pd.to_timedelta(
-        trend_source["stock_days"], unit="D"
-    )
+def _stock_date_chart(filtered, as_on_date):
+    src = filtered[["gr_no", "stock_days"]].copy()
+    src["stock_days"] = src["stock_days"].fillna(0).clip(lower=0)
+    src["Stock Date"] = pd.Timestamp(as_on_date) - pd.to_timedelta(src["stock_days"], unit="D")
+    src["Period Key"] = src["Stock Date"].dt.to_period("M").dt.start_time
+    src["Period"] = src["Stock Date"].dt.strftime("%b")
+    trend = src.groupby(["Period Key", "Period"])["gr_no"].nunique().reset_index(name="GR Count").sort_values("Period Key").tail(7)
 
-    if view == "D":
-        trend_source["Period Key"] = trend_source["Stock Date"].dt.floor("D")
-        trend_source["Period"] = trend_source["Stock Date"].dt.strftime("%d %b")
-    elif view == "M":
-        trend_source["Period Key"] = trend_source["Stock Date"].dt.to_period("M").dt.start_time
-        trend_source["Period"] = trend_source["Stock Date"].dt.strftime("%b %Y")
-    elif view == "Q":
-        trend_source["Period Key"] = trend_source["Stock Date"].dt.to_period("Q").dt.start_time
-        trend_source["Period"] = (
-            "Q" + trend_source["Stock Date"].dt.quarter.astype(str)
-            + " " + trend_source["Stock Date"].dt.year.astype(str)
-        )
-    else:
-        trend_source["Period Key"] = pd.to_datetime(
-            trend_source["Stock Date"].dt.year.astype(str) + "-01-01"
-        )
-        trend_source["Period"] = trend_source["Stock Date"].dt.strftime("%Y")
-
-    trend = (
-        trend_source.groupby(["Period Key", "Period"])["gr_no"]
-        .nunique()
-        .reset_index(name="GR Count")
-        .sort_values("Period Key")
-    )
-
-    # Keep the lower panel readable instead of rendering hundreds of day bars.
-    max_points = 14 if view == "D" else 18
-    if len(trend) > max_points:
-        trend = trend.tail(max_points)
-
-    fig = px.bar(
-        trend,
-        x="Period",
-        y="GR Count",
-        text="GR Count",
-        color_discrete_sequence=[PALETTE["blue"]],
-    )
-    fig.update_traces(
-        texttemplate="%{y:,.0f}",
-        textposition="outside",
-        textfont=dict(size=8, color="#29445f"),
-        cliponaxis=False,
-    )
-    _base_plot_layout(fig, height=225, margin=dict(l=8, r=8, t=34, b=34))
+    fig = px.bar(trend, x="Period", y="GR Count", text="GR Count", color_discrete_sequence=[PALETTE["blue"]])
+    fig.update_traces(texttemplate="%{y:,.0f}", textposition="outside", textfont=dict(size=8), cliponaxis=False)
+    _base_chart(fig, 155, dict(l=6, r=6, t=0, b=22))
     fig.update_layout(
-        title=dict(text="Stock Date Distribution", font=dict(size=11, color="#1f3a59"), x=.01),
-        xaxis_title=None,
-        yaxis_title=None,
-        xaxis=dict(tickangle=-35 if view == "D" else 0, tickfont=dict(size=8)),
-        yaxis=dict(gridcolor="#edf2f7", tickfont=dict(size=8)),
-        bargap=.28,
+        xaxis=dict(title=None, tickfont=dict(size=7)),
+        yaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=7)),
+        bargap=.25,
     )
     return fig
 
 
-def _prepare_action_required(filtered, limit=12):
-    action_df = filtered.sort_values(
-        ["stock_days", "balance_charge_weight"], ascending=False
-    ).copy()
-    action_df["Issue"] = action_df["stock_type"].map(
-        {
-            "IN-TRANSIT STOCK": "In Transit (15+)",
-            "TRANSIT STOCK": "Transit Pending",
-            "DELIVERY STOCK": "Delivery Pending",
-            "BOOKING STOCK": "Booking Pending",
-        }
-    ).fillna("Ageing Stock")
-
-    if "is_edd_overdue" in action_df.columns:
-        action_df.loc[action_df["is_edd_overdue"].fillna(False), "Issue"] = "EDD Overdue"
-    if "edd" in action_df.columns:
-        action_df.loc[action_df["edd"].isna(), "Issue"] = "Missing EDD"
-
-    display = action_df[
-        ["gr_no", "origin", "destination", "branch", "Issue", "stock_days"]
-    ].rename(
-        columns={
-            "gr_no": "GR Number",
-            "origin": "Origin",
-            "destination": "Destination",
-            "branch": "Current Location",
-            "stock_days": "Ageing",
-        }
-    )
-    display["Ageing"] = display["Ageing"].map(lambda value: f"{value:.0f} Days")
-    return display.head(limit)
-
-
-def _prepare_branch_pending(filtered, limit=12):
-    branch_summary = (
-        filtered.groupby("branch")
-        .agg(
-            Active=("gr_no", "nunique"),
-            In_Transit=("stock_type", lambda s: int((s == "IN-TRANSIT STOCK").sum())),
-            Transit_Stock=("stock_type", lambda s: int((s == "TRANSIT STOCK").sum())),
-            Critical_15d=("is_critical", "sum"),
-            Avg_Dwell=("stock_days", "mean"),
-        )
-        .sort_values("Active", ascending=False)
-        .reset_index()
-        .head(limit)
-    )
-    branch_summary["Avg_Dwell"] = branch_summary["Avg_Dwell"].map(lambda v: f"{v:.1f} d")
-    return branch_summary.rename(
-        columns={
-            "branch": "Location",
-            "In_Transit": "In-Transit",
-            "Transit_Stock": "Transit Stock",
-            "Critical_15d": "15d+",
-            "Avg_Dwell": "Avg Dwell",
-        }
-    )
-
-
-def _prepare_routes(filtered, limit=10):
-    routes = (
-        filtered.groupby(["origin", "destination"])
-        .agg(
-            Active_GR=("gr_no", "nunique"),
-            Critical=("is_critical", "sum"),
-            Avg_Age=("stock_days", "mean"),
-        )
-        .sort_values("Active_GR", ascending=False)
-        .reset_index()
-        .head(limit)
-    )
-    routes["Route"] = routes["origin"].astype(str) + " → " + routes["destination"].astype(str)
-    routes["Avg_Age"] = routes["Avg_Age"].map(lambda x: f"{x:.1f} d")
-    return routes[["Route", "Active_GR", "Critical", "Avg_Age"]].rename(
-        columns={"Active_GR": "Active GR", "Avg_Age": "Avg Age"}
-    )
-
-
-def _prepare_priority_details(filtered, limit=10):
-    details = filtered.sort_values(["stock_days", "stock_topay"], ascending=False).copy()
-    details["Weight"] = details["balance_charge_weight"].fillna(0).map(lambda x: f"{x:,.0f} kg")
-    details["To-Pay"] = details["stock_topay"].fillna(0).map(_fmt_money)
-    details["Age"] = details["stock_days"].fillna(0).map(lambda x: f"{x:.0f} d")
-    return (
-        details[["gr_no", "branch", "stock_type", "Weight", "To-Pay", "Age"]]
-        .rename(columns={"gr_no": "GR", "branch": "Branch", "stock_type": "Status"})
-        .head(limit)
-    )
+def _apply_search(df, search_text):
+    search = (search_text or "").strip()
+    if not search:
+        return df
+    target = search.casefold()
+    columns = [c for c in ["gr_no", "branch", "origin", "destination", "zone", "destination_zone"] if c in df.columns]
+    mask = pd.Series(False, index=df.index)
+    for col in columns:
+        mask = mask | df[col].fillna("").astype(str).str.casefold().str.contains(target, regex=False)
+    return df[mask]
 
 
 def show_stock_operations():
-    """Render the professional stock control-tower dashboard."""
+    """Render the Stock Operations page without altering the app sidebar."""
     _inject_css()
 
     today = date.today()
     month_start = today.replace(day=1)
 
-    # Header + date controls
-    with st.container(key="stock_header"):
-        top_left, top_meta = st.columns([3.8, 1.15], gap="small")
-        with top_left:
-            st.markdown(
-                """
-                <div class="stock-brand-row">
-                  <div class="stock-brand-mark">
-                    <div class="stock-brand-symbol"></div>
-                    <div>
-                      <div class="stock-brand-name">SUGAM</div>
-                      <div class="stock-brand-tag">Connects Possibilities</div>
+    with st.container(key="stock_page"):
+        # PAGE HEADER - no sidebar/navigation code here.
+        with st.container(key="stock_topbar"):
+            title_col, live_col, search_col = st.columns([3.5, 1.15, 1.7], gap="small")
+            with title_col:
+                st.markdown(
+                    """
+                    <div class="stock-title-wrap">
+                      <div class="stock-title-mark"></div>
+                      <div>
+                        <div class="stock-title">Stock Operations Control Tower</div>
+                        <div class="stock-subtitle">Branch stock · ageing exposure · operational action queue</div>
+                      </div>
                     </div>
-                  </div>
-                  <div class="stock-heading">
-                    <div class="stock-title">Stock Operations Control Tower</div>
-                    <div class="stock-sub">Branch stock · ageing exposure · operational action queue</div>
-                  </div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-        with top_meta:
-            st.markdown(
-                f"""
-                <div class="stock-header-meta">
-                  <div class="stock-live">LIVE</div>
-                  <div class="stock-updated">Data updated {today:%d %b %Y}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        date_cols = st.columns([.8, .8, .8, .7, .78], gap="small")
-        with date_cols[0]:
-            start_date = st.date_input(
-                "From Date",
-                value=month_start,
-                max_value=today,
-                format="DD/MM/YYYY",
-                key="stock_dashboard_from_date",
-            )
-        with date_cols[1]:
-            end_date = st.date_input(
-                "To Date",
-                value=today,
-                max_value=today,
-                format="DD/MM/YYYY",
-                key="stock_dashboard_to_date",
-            )
-        with date_cols[2]:
-            as_on_date = st.date_input(
-                "As-on Date",
-                value=end_date,
-                max_value=today,
-                format="DD/MM/YYYY",
-                key="stock_dashboard_as_on_date",
-            )
-        with date_cols[3]:
-            run_report = st.button(
-                "🔎 Run Report",
-                type="primary",
-                use_container_width=True,
-                key="stock_dashboard_run_report",
-            )
-        with date_cols[4]:
-            download_placeholder = st.empty()
-
-    report_signature = (start_date.isoformat(), end_date.isoformat(), as_on_date.isoformat())
-    if run_report:
-        st.session_state["stock_dashboard_last_run"] = report_signature
-
-    # First open should render automatically; later date changes require Run Report.
-    if "stock_dashboard_last_run" not in st.session_state:
-        st.session_state["stock_dashboard_last_run"] = report_signature
-
-    if st.session_state.get("stock_dashboard_last_run") != report_signature:
-        st.info("Date filters changed. Click Run Report to refresh the dashboard.")
-        return
-
-    if start_date > end_date:
-        st.error("From Date cannot be after To Date.")
-        return
-    if as_on_date < start_date:
-        st.error("As-on Date cannot be before From Date.")
-        return
-
-    try:
-        with st.spinner("Loading live stock data from ERP..."):
-            stock_df = _attach_stock_hierarchy(
-                load_stock_data(
-                    start_date=start_date,
-                    end_date=end_date,
-                    as_on_date=as_on_date,
+                    """,
+                    unsafe_allow_html=True,
                 )
-            )
-            locked_zone, locked_circle, locked_branch = _derive_role_scope(stock_df)
-            stock_df = _apply_locked_scope(
-                stock_df,
-                locked_zone,
-                locked_circle,
-                locked_branch,
-            )
-    except Exception as exc:
-        st.error(f"Stock dashboard data could not be loaded: {exc}")
-        return
-
-    if stock_df.empty:
-        st.warning("No stock data is available for your assigned scope.")
-        return
-
-    # Top compact operational filters
-    st.markdown(
-        '<div class="stock-filter-title">STOCK FILTERS <span class="stock-filter-hint">Use filters to drill down without reloading ERP data</span></div>',
-        unsafe_allow_html=True,
-    )
-    primary_filters = st.columns(6, gap="small")
-    working_df = stock_df
-
-    with primary_filters[0]:
-        if locked_zone:
-            selected_zones = st.multiselect(
-                "Zone", [locked_zone], default=[locked_zone], disabled=True, key="stock_zone_locked"
-            )
-        else:
-            selected_zones = st.multiselect(
-                "Zone", _safe_options(working_df, "zone"), placeholder="All", key="stock_zone_filter"
-            )
-    if selected_zones:
-        working_df = working_df[_match_scope_values(working_df["zone"], selected_zones)]
-
-    with primary_filters[1]:
-        if locked_circle:
-            selected_circles = st.multiselect(
-                "Circle", [locked_circle], default=[locked_circle], disabled=True, key="stock_circle_locked"
-            )
-        else:
-            selected_circles = st.multiselect(
-                "Circle", _safe_options(working_df, "circle"), placeholder="All", key="stock_circle_filter"
-            )
-    if selected_circles:
-        working_df = working_df[_match_scope_values(working_df["circle"], selected_circles)]
-
-    with primary_filters[2]:
-        branch_options = _safe_options(working_df, "branch")
-        if locked_branch:
-            branches = st.multiselect(
-                "Current Stock Branch",
-                branch_options,
-                default=branch_options,
-                disabled=True,
-                key="stock_branch_locked",
-            )
-        else:
-            branches = st.multiselect(
-                "Current Stock Branch", branch_options, placeholder="All", key="stock_branch_filter"
-            )
-    branch_df = working_df[_match_scope_values(working_df["branch"], branches)] if branches else working_df
-
-    with primary_filters[3]:
-        stock_types = st.multiselect(
-            "Stock Type", _safe_options(branch_df, "stock_type"), placeholder="All", key="stock_type_filter"
-        )
-    type_df = branch_df[_match_scope_values(branch_df["stock_type"], stock_types)] if stock_types else branch_df
-
-    with primary_filters[4]:
-        age_bands = st.multiselect(
-            "Ageing Bucket", _safe_options(type_df, "age_band"), placeholder="All", key="stock_age_filter"
-        )
-    age_df = type_df[_match_scope_values(type_df["age_band"], age_bands)] if age_bands else type_df
-
-    with primary_filters[5]:
-        load_types = st.multiselect(
-            "Load Type", _safe_options(age_df, "load_type"), placeholder="PTL & FTL", key="stock_load_filter"
-        )
-    load_df = age_df[_match_scope_values(age_df["load_type"], load_types)] if load_types else age_df
-
-    with st.expander("Advanced Route Filters", expanded=False):
-        route_filters = st.columns(3, gap="small")
-        with route_filters[0]:
-            origins = st.multiselect("GR Origin", _safe_options(load_df, "origin"), placeholder="All origins")
-        origin_df = load_df[load_df["origin"].isin(origins)] if origins else load_df
-
-        with route_filters[1]:
-            destinations = st.multiselect(
-                "GR Destination", _safe_options(origin_df, "destination"), placeholder="All destinations"
-            )
-        destination_df = origin_df[origin_df["destination"].isin(destinations)] if destinations else origin_df
-
-        with route_filters[2]:
-            destination_zones = st.multiselect(
-                "Destination Zone",
-                _safe_options(destination_df, "destination_zone"),
-                placeholder="All zones",
-            )
-        filtered = (
-            destination_df[destination_df["destination_zone"].isin(destination_zones)]
-            if destination_zones
-            else destination_df
-        )
-
-    if filtered.empty:
-        st.warning("No records match the selected filters.")
-        return
-
-    download_placeholder.download_button(
-        "⇩ Download CSV",
-        data=filtered.to_csv(index=False).encode("utf-8-sig"),
-        file_name=f"stock_operations_{as_on_date:%d-%m-%Y}.csv",
-        mime="text/csv",
-        use_container_width=True,
-        key="stock_dashboard_download_csv",
-    )
-
-    # KPI row
-    type_counts = {stock_type: _count_type(filtered, stock_type) for stock_type in STOCK_ORDER}
-    critical = int(filtered.get("is_critical", pd.Series(False, index=filtered.index)).fillna(False).sum())
-    total_gr = max(int(filtered["gr_no"].nunique()), 1)
-
-    transit_age = filtered.loc[
-        filtered["stock_type"].eq("TRANSIT STOCK"), "stock_days"
-    ].mean()
-    transit_age_note = f"Avg dwell {transit_age:.1f} d" if pd.notna(transit_age) else "Avg dwell -"
-
-    kpis = [
-        (
-            "Booking Stock",
-            f"{type_counts['BOOKING STOCK']:,}",
-            f"{_fmt_money(_sum_where(filtered, 'BOOKING STOCK', 'stock_topay'))} exposure",
-            "◆",
-            PALETTE["blue"],
-            False,
-        ),
-        (
-            "In-Transit",
-            f"{type_counts['IN-TRANSIT STOCK']:,}",
-            f"{_fmt_number(_sum_where(filtered, 'IN-TRANSIT STOCK', 'balance_packages'))} packages",
-            "🚚",
-            PALETTE["cyan"],
-            False,
-        ),
-        (
-            "Transit Stock",
-            f"{type_counts['TRANSIT STOCK']:,}",
-            transit_age_note,
-            "↔",
-            PALETTE["purple"],
-            False,
-        ),
-        (
-            "Delivery Stock",
-            f"{type_counts['DELIVERY STOCK']:,}",
-            f"{_fmt_number(_sum_where(filtered, 'DELIVERY STOCK', 'balance_packages'))} packages",
-            "✓",
-            PALETTE["green"],
-            False,
-        ),
-        (
-            "Critical 15+ Days",
-            f"{critical:,}",
-            f"{critical / total_gr * 100:.1f}% of GR",
-            "!",
-            PALETTE["red"],
-            True,
-        ),
-        (
-            "Balance Packages",
-            _fmt_number(filtered["balance_packages"].fillna(0).sum()),
-            f"{_fmt_number(filtered['balance_charge_weight'].fillna(0).sum())} kg",
-            "▣",
-            PALETTE["orange"],
-            False,
-        ),
-        (
-            "Stock To-Pay",
-            _fmt_money(filtered["stock_topay"].fillna(0).sum()),
-            "Collection exposure",
-            "₹",
-            PALETTE["blue"],
-            False,
-        ),
-    ]
-
-    kpi_cols = st.columns(7, gap="small")
-    for column, values in zip(kpi_cols, kpis):
-        with column:
-            st.markdown(_kpi_card(*values), unsafe_allow_html=True)
-
-    # Primary visual row
-    current_zone_col, destination_zone_col, load_col = st.columns([1.05, 1.05, 1], gap="small")
-    with current_zone_col:
-        with st.container(border=True):
-            _zone_bar(filtered, "zone", "Stock by Current Zone")
-    with destination_zone_col:
-        with st.container(border=True):
-            _zone_bar(filtered, "destination_zone", "Stock by Destination Zone")
-    with load_col:
-        with st.container(border=True):
-            _donut(filtered, "load_type", "PTL / FTL Overview")
-
-    # Operational insight cards (not a table)
-    _render_operational_insights(filtered)
-
-    # Action + branch pending
-    action_col, branch_col = st.columns(2, gap="small")
-    with action_col:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="stock-panel-title alert"><span style="font-size:10.5px;color:#b72d36">🎯 Action Required</span><span>Highest ageing first</span></div>',
-                unsafe_allow_html=True,
-            )
-            _render_table(
-                _prepare_action_required(filtered),
-                height=255,
-                key="action_required_grid",
-            )
-
-    with branch_col:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="stock-panel-title"><span style="font-size:10.5px;color:#1f3a59">▦ Branch / Location Pending</span><span>All active locations</span></div>',
-                unsafe_allow_html=True,
-            )
-            _render_table(
-                _prepare_branch_pending(filtered),
-                height=255,
-                key="branch_pending_grid",
-            )
-
-    # Four lower panels like the approved mock-up
-    lower1, lower2, lower3, lower4 = st.columns([1.05, 1.05, .85, 1.1], gap="small")
-
-    with lower1:
-        with st.container(border=True):
-            fig = _ageing_chart(filtered)
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    with lower2:
-        with st.container(border=True):
-            view = st.segmented_control(
-                "Distribution period",
-                options=["D", "M", "Q", "Y"],
-                default="M",
-                key="stock_age_distribution_period",
-                label_visibility="collapsed",
-            )
-            fig = _stock_date_distribution(filtered, as_on_date, view)
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-    with lower3:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="stock-panel-title"><span style="font-size:10.5px;color:#1f3a59">↗ Routes by Active Stock</span><span>Top routes</span></div>',
-                unsafe_allow_html=True,
-            )
-            _render_table(_prepare_routes(filtered, limit=8), height=245, key="routes_grid")
-
-    with lower4:
-        with st.container(border=True):
-            st.markdown(
-                '<div class="stock-panel-title"><span style="font-size:10.5px;color:#1f3a59">★ Priority Stock Details</span><span>Critical first</span></div>',
-                unsafe_allow_html=True,
-            )
-            _render_table(
-                _prepare_priority_details(filtered, limit=8),
-                height=245,
-                key="priority_details_grid",
-            )
-
-    # Keep mapping exceptions available without cluttering the control tower.
-    unmapped_mask = (
-        filtered["zone"].isna()
-        | filtered["zone"].astype(str).str.strip().str.casefold().isin(
-            ["", "unmapped", "unknown", "none", "nan"]
-        )
-    )
-    unmapped_rows = filtered.loc[unmapped_mask].copy()
-    if not unmapped_rows.empty:
-        unmapped_gr = int(unmapped_rows["gr_no"].nunique())
-        with st.expander(f"Data Quality: Unmapped Current-Zone Branches — {unmapped_gr:,} GR"):
-            unmapped_summary = (
-                unmapped_rows[["gr_no", "branchcode_key", "branch", "origin", "destination"]]
-                .drop_duplicates()
-                .sort_values(["branch", "gr_no"], ascending=[True, True])
-                .rename(
-                    columns={
-                        "gr_no": "GR Number",
-                        "branchcode_key": "Branch Code",
-                        "branch": "Current Stock Branch",
-                        "origin": "Origin",
-                        "destination": "Destination",
-                    }
+            with live_col:
+                st.markdown(
+                    f'<div class="stock-live-wrap"><span class="stock-live">LIVE</span><span class="stock-updated">As-on {today:%d %b %Y}</span></div>',
+                    unsafe_allow_html=True,
                 )
-            )
-            _render_table(unmapped_summary, height=220, key="unmapped_current_zone_branches_grid")
+            with search_col:
+                search_text = st.text_input(
+                    "Search",
+                    placeholder="Search GR / Branch / Route...",
+                    label_visibility="collapsed",
+                    key="stock_page_search",
+                )
 
-    st.markdown(
-        f"""
-        <div class="stock-footer">
-          <div>© {today:%Y} Sugam Logistics · Stock Operations</div>
-          <div>Data is operational and confidential · As-on {as_on_date:%d %b %Y}</div>
-          <div>Built for faster action.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+        # FILTER BAR. Date inputs are rendered first because ERP data depends on them.
+        with st.container(key="stock_filters"):
+            cols = st.columns([.88,.88,.88,.72,.72,1.02,.78,.86,.72,.78,.86], gap="small")
+            with cols[0]:
+                start_date = st.date_input("From Date", value=month_start, max_value=today, format="DD/MM/YYYY", key="stock_dashboard_from_date")
+            with cols[1]:
+                end_date = st.date_input("To Date", value=today, max_value=today, format="DD/MM/YYYY", key="stock_dashboard_to_date")
+            with cols[2]:
+                as_on_date = st.date_input("As-on Date", value=end_date, max_value=today, format="DD/MM/YYYY", key="stock_dashboard_as_on_date")
+
+            if start_date > end_date:
+                st.error("From Date cannot be after To Date.")
+                return
+            if as_on_date < start_date:
+                st.error("As-on Date cannot be before From Date.")
+                return
+
+            try:
+                stock_df = _attach_stock_hierarchy(
+                    load_stock_data(start_date=start_date, end_date=end_date, as_on_date=as_on_date)
+                )
+                locked_zone, locked_circle, locked_branch = _derive_role_scope(stock_df)
+                stock_df = _apply_locked_scope(stock_df, locked_zone, locked_circle, locked_branch)
+            except Exception as exc:
+                st.error(f"Stock dashboard data could not be loaded: {exc}")
+                return
+
+            if stock_df.empty:
+                st.warning("No stock data is available for your assigned scope.")
+                return
+
+            working = stock_df
+            with cols[3]:
+                if locked_zone:
+                    selected_zones = st.multiselect("Zone", [locked_zone], default=[locked_zone], disabled=True, key="stock_zone_locked")
+                else:
+                    selected_zones = st.multiselect("Zone", _safe_options(working, "zone"), placeholder="All", key="stock_zone_filter")
+            if selected_zones:
+                working = working[_match_scope_values(working["zone"], selected_zones)]
+
+            with cols[4]:
+                if locked_circle:
+                    selected_circles = st.multiselect("Circle", [locked_circle], default=[locked_circle], disabled=True, key="stock_circle_locked")
+                else:
+                    selected_circles = st.multiselect("Circle", _safe_options(working, "circle"), placeholder="All", key="stock_circle_filter")
+            if selected_circles:
+                working = working[_match_scope_values(working["circle"], selected_circles)]
+
+            with cols[5]:
+                branch_options = _safe_options(working, "branch")
+                if locked_branch:
+                    branches = st.multiselect("Current Stock Branch", branch_options, default=branch_options, disabled=True, key="stock_branch_locked")
+                else:
+                    branches = st.multiselect("Current Stock Branch", branch_options, placeholder="All", key="stock_branch_filter")
+            if branches:
+                working = working[_match_scope_values(working["branch"], branches)]
+
+            with cols[6]:
+                stock_types = st.multiselect("Stock Type", _safe_options(working, "stock_type"), placeholder="All", key="stock_type_filter")
+            if stock_types:
+                working = working[_match_scope_values(working["stock_type"], stock_types)]
+
+            with cols[7]:
+                age_bands = st.multiselect("Ageing Bucket", _safe_options(working, "age_band"), placeholder="All", key="stock_age_filter")
+            if age_bands:
+                working = working[_match_scope_values(working["age_band"], age_bands)]
+
+            with cols[8]:
+                load_types = st.multiselect("Load Type", _safe_options(working, "load_type"), placeholder="All", key="stock_load_filter")
+            if load_types:
+                working = working[_match_scope_values(working["load_type"], load_types)]
+
+            filtered = _apply_search(working, search_text)
+
+            with cols[9]:
+                st.button("⌕ Run Report", type="primary", use_container_width=True, key="stock_dashboard_run_report")
+            with cols[10]:
+                st.download_button(
+                    "⇩ Download CSV",
+                    data=filtered.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"stock_operations_{as_on_date:%d-%m-%Y}.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                    key="stock_dashboard_download_csv",
+                )
+
+        if filtered.empty:
+            st.warning("No records match the selected filters/search.")
+            return
+
+        # KPI ROW
+        type_counts = {stock_type: _count_type(filtered, stock_type) for stock_type in STOCK_ORDER}
+        critical_mask = filtered.get("is_critical", pd.Series(False, index=filtered.index)).fillna(False).astype(bool)
+        critical = int(filtered.loc[critical_mask, "gr_no"].nunique())
+        total_gr = max(int(filtered["gr_no"].nunique()), 1)
+        transit_age = filtered.loc[filtered["stock_type"].eq("TRANSIT STOCK"), "stock_days"].mean()
+        transit_note = f"Avg dwell {transit_age:.1f} d" if pd.notna(transit_age) else "Avg dwell -"
+
+        kpis = [
+            ("Booking Stock", f"{type_counts['BOOKING STOCK']:,}", f"{_fmt_money(_sum_where(filtered, 'BOOKING STOCK', 'stock_topay'))} exposure", "◆", PALETTE["blue"], False),
+            ("In-Transit", f"{type_counts['IN-TRANSIT STOCK']:,}", f"{_fmt_number(_sum_where(filtered, 'IN-TRANSIT STOCK', 'balance_packages'))} packages", "▣", PALETTE["cyan"], False),
+            ("Transit Stock", f"{type_counts['TRANSIT STOCK']:,}", transit_note, "⇆", PALETTE["purple"], False),
+            ("Delivery Stock", f"{type_counts['DELIVERY STOCK']:,}", f"{_fmt_number(_sum_where(filtered, 'DELIVERY STOCK', 'balance_packages'))} packages", "✓", PALETTE["green"], False),
+            ("Critical 15+ Days", f"{critical:,}", f"{critical / total_gr * 100:.1f}% of GR", "!", PALETTE["red"], True),
+            ("Balance Packages", _fmt_number(filtered["balance_packages"].fillna(0).sum()), f"{_fmt_number(filtered['balance_charge_weight'].fillna(0).sum())} kg", "▣", PALETTE["orange"], False),
+            ("Stock To-Pay", _fmt_money(filtered["stock_topay"].fillna(0).sum()), "Collection exposure", "₹", PALETTE["blue"], False),
+        ]
+        kpi_cols = st.columns(7, gap="small")
+        for column, card in zip(kpi_cols, kpis):
+            with column:
+                st.markdown(_kpi_card(*card), unsafe_allow_html=True)
+
+        # PRIMARY CHART ROW
+        c1, c2, c3 = st.columns([1.03, 1.03, 1], gap="small")
+        with c1:
+            with st.container(border=True):
+                st.markdown(_panel_header("Stock by Current Zone", "◆", f"Total {total_gr:,} GR"), unsafe_allow_html=True)
+                st.plotly_chart(_zone_bar(filtered, "zone", ""), use_container_width=True, config={"displayModeBar": False})
+        with c2:
+            with st.container(border=True):
+                st.markdown(_panel_header("Stock by Destination Zone", "⇆", f"Total {total_gr:,} GR"), unsafe_allow_html=True)
+                st.plotly_chart(_zone_bar(filtered, "destination_zone", ""), use_container_width=True, config={"displayModeBar": False})
+        with c3:
+            with st.container(border=True):
+                st.markdown(_panel_header("PTL / FTL Overview", "◉", ""), unsafe_allow_html=True)
+                st.plotly_chart(_donut(filtered), use_container_width=True, config={"displayModeBar": False})
+
+        # OPERATIONAL INSIGHTS
+        _render_insights(filtered)
+
+        # ACTION + BRANCH TABLES
+        left, right = st.columns(2, gap="small")
+        with left:
+            with st.container(border=True):
+                st.markdown(_panel_header("Action Required", "◎", "View All →"), unsafe_allow_html=True)
+                st.markdown(
+                    _html_table(_prepare_action_required(filtered), ["16%","12%","14%","21%","21%","16%"]),
+                    unsafe_allow_html=True,
+                )
+        with right:
+            with st.container(border=True):
+                st.markdown(_panel_header("Branch / Location Pending", "▦", "View All →"), unsafe_allow_html=True)
+                st.markdown(
+                    _html_table(_prepare_branch_pending(filtered), ["24%","13%","16%","17%","12%","18%"]),
+                    unsafe_allow_html=True,
+                )
+
+        # BOTTOM 4-CARD ROW
+        b1, b2, b3, b4 = st.columns([1.05, 1.05, .9, 1.15], gap="small")
+        with b1:
+            with st.container(border=True):
+                st.markdown(_panel_header("Ageing – Stock", "⌛", ""), unsafe_allow_html=True)
+                st.plotly_chart(_ageing_chart(filtered), use_container_width=True, config={"displayModeBar": False})
+        with b2:
+            with st.container(border=True):
+                st.markdown(_panel_header("Stock Date Distribution", "▥", ""), unsafe_allow_html=True)
+                st.plotly_chart(_stock_date_chart(filtered, as_on_date), use_container_width=True, config={"displayModeBar": False})
+        with b3:
+            with st.container(border=True):
+                st.markdown(_panel_header("Routes by Active Stock", "↗", ""), unsafe_allow_html=True)
+                st.markdown(_html_table(_prepare_routes(filtered), ["12%","61%","27%"]), unsafe_allow_html=True)
+        with b4:
+            with st.container(border=True):
+                st.markdown(_panel_header("Priority Stock Details", "★", ""), unsafe_allow_html=True)
+                st.markdown(_html_table(_prepare_priority(filtered), ["20%","15%","20%","15%","18%","12%"]), unsafe_allow_html=True)
+
+        # Keep mapping exceptions accessible without changing the approved visible layout.
+        unmapped_mask = (
+            filtered["zone"].isna()
+            | filtered["zone"].astype(str).str.strip().str.casefold().isin(["", "unmapped", "unknown", "none", "nan"])
+        )
+        unmapped_rows = filtered.loc[unmapped_mask].copy()
+        if not unmapped_rows.empty:
+            with st.expander(f"Data Quality · Unmapped Current-Zone Branches ({unmapped_rows['gr_no'].nunique():,} GR)", expanded=False):
+                cols_show = [c for c in ["gr_no", "branchcode_key", "branch", "origin", "destination"] if c in unmapped_rows.columns]
+                st.dataframe(unmapped_rows[cols_show].drop_duplicates().head(100), use_container_width=True, hide_index=True)
+
+        st.markdown(
+            f"""
+            <div class="stock-footer">
+              <span>© {today:%Y} Sugam Logistics</span>
+              <span>Data is operational and confidential &nbsp; | &nbsp; As-on {as_on_date:%d %b %Y}</span>
+              <span>Built for faster operational action.</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
-# Compatibility with routers that expect show().
 def show():
+    """Compatibility entry point used by routers."""
     show_stock_operations()
 
 
