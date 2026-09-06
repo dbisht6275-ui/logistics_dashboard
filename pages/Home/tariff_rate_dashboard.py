@@ -443,10 +443,24 @@ def _inject_css():
             white-space:nowrap !important;
             text-align:right !important;
         }
-        div[data-testid="stDateInput"] {max-width:118px !important;}
+        div[data-testid="stDateInput"] {
+            width:112px !important;
+            max-width:112px !important;
+        }
         div[data-testid="stDateInput"] input {
             font-size:10px !important;
-            padding:.10rem .32rem !important;
+            padding:.10rem .26rem !important;
+            background:#ffffff !important;
+            border-color:#d7e0ea !important;
+            box-shadow:none !important;
+        }
+        div[data-testid="stDateInput"] div[data-baseweb="input"] {
+            min-height:28px !important;
+            height:28px !important;
+            background:#ffffff !important;
+            border:1px solid #d7e0ea !important;
+            border-radius:6px !important;
+            box-shadow:0 1px 2px rgba(18,59,102,.05) !important;
         }
         div[data-testid="stButton"] button {
             min-height:28px !important;
@@ -510,19 +524,6 @@ def _inject_css():
             background:#d8e2ec;
             margin:.10rem 0 .12rem 0;
         }
-        .top-filter-heading {
-            font-size:.68rem !important;
-            font-weight:700 !important;
-            color:#17365d !important;
-            margin:0 0 .12rem 0 !important;
-            letter-spacing:.01em;
-        }
-        .top-filter-note {
-            font-size:.58rem !important;
-            color:#607286 !important;
-            margin:0 0 .10rem 0 !important;
-            line-height:1.1 !important;
-        }
         div[data-testid="stButton"] button {
             min-height:28px !important;
             height:28px !important;
@@ -541,8 +542,8 @@ def _inject_css():
         }
         .active-on-label {
             font-size:.56rem !important;
-            font-weight:700 !important;
-            color:#243b53 !important;
+            font-weight:600 !important;
+            color:#41566d !important;
             white-space:nowrap !important;
             line-height:28px !important;
             padding-top:0 !important;
@@ -712,7 +713,7 @@ scope_type, scope_value = _get_login_scope()
 # Keep title, date, load action and dashboard filters inside one compact top card.
 top_panel = st.container(border=True)
 with top_panel:
-    header_cols = st.columns([7.55, 0.42, 0.84, 1.19], gap="small")
+    header_cols = st.columns([8.05, 0.42, 0.76, 1.12], gap="small")
 
     with header_cols[0]:
         st.markdown(
@@ -740,7 +741,7 @@ with top_panel:
             "Active on",
             date.today(),
             key="rate_active_on_v2",
-            format="DD/MM/YYYY",
+            format="YYYY/MM/DD",
             label_visibility="collapsed",
         )
 
@@ -815,8 +816,6 @@ if data.empty:
 # =============================================================================
 with top_panel:
     st.markdown('<div class="top-filter-divider"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="top-filter-heading">Filters</div>', unsafe_allow_html=True)
-    st.markdown('<div class="top-filter-note">View Type, Rate Type, Zone, Circle, Branch, Rate For and Customer filters are shown at the top for quick access.</div>', unsafe_allow_html=True)
     filter_cols = st.columns(7, gap="small")
 
 with filter_cols[0]:
