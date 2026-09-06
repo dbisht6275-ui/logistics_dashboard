@@ -807,21 +807,31 @@ def _prepare_action_required(filtered, limit=10):
     if "edd" in action_df.columns:
         action_df.loc[action_df["edd"].isna(), "Issue"] = "Missing EDD"
 
-    display = action_df[["gr_no", "origin", "destination", "branch", "Issue", "stock_days"]].copy()
-    display.columns = ["GR Number", "Origin", "Destination", "Current Location", "Issue", "Ageing"]
+    grdt_col = _find_column(
+        action_df,
+        ["grdt", "gr_dt", "gr date", "gr_date", "grdate", "booking_date", "booking date"],
+    )
+    action_df["GR Date"] = action_df[grdt_col] if grdt_col else pd.NaT
+
+    display = action_df[["gr_no", "GR Date", "origin", "destination", "branch", "Issue", "stock_days"]].copy()
+    display.columns = ["GR Number", "GR Date", "Origin", "Destination", "Current Location", "Issue", "Ageing"]
     return display if limit is None else display.head(limit)
 
 
 def _prepare_branch_pending(filtered, limit=10):
     rows = []
     for branch, group in filtered.groupby("branch", dropna=False):
+        critical_series = group.get("is_critical", pd.Series(False, index=group.index))
+        if not isinstance(critical_series, pd.Series):
+            critical_series = pd.Series(False, index=group.index)
         rows.append(
             {
                 "Location": branch,
                 "Active": group["gr_no"].nunique(),
                 "In-Transit": group.loc[group["stock_type"].eq("IN-TRANSIT STOCK"), "gr_no"].nunique(),
                 "Transit Stock": group.loc[group["stock_type"].eq("TRANSIT STOCK"), "gr_no"].nunique(),
-                "15d+": group.loc[group.get("is_critical", False).fillna(False) if isinstance(group.get("is_critical", False), pd.Series) else pd.Series(False, index=group.index), "gr_no"].nunique(),
+                "15d+": group.loc[critical_series.fillna(False).astype(bool), "gr_no"].nunique(),
+                "Weight": group.get("balance_charge_weight", pd.Series(0, index=group.index)).fillna(0).sum(),
                 "Avg Dwell": group["stock_days"].mean(),
             }
         )
@@ -829,27 +839,36 @@ def _prepare_branch_pending(filtered, limit=10):
     return result if limit is None else result.head(limit)
 
 
-def _prepare_routes(filtered, limit=5):
+def _prepare_routes(filtered, limit=10):
+    route_source = filtered.copy()
+    if "balance_charge_weight" not in route_source.columns:
+        route_source["balance_charge_weight"] = 0
+
     routes = (
-        filtered.groupby(["origin", "destination"])["gr_no"]
-        .nunique()
-        .reset_index(name="Active GR")
-        .sort_values("Active GR", ascending=False)
-        .head(limit)
+        route_source.groupby(["origin", "destination"], dropna=False)
+        .agg(
+            Active_GR=("gr_no", "nunique"),
+            Weight=("balance_charge_weight", "sum"),
+        )
+        .reset_index()
+        .sort_values(["Active_GR", "Weight"], ascending=[False, False])
     )
+    if limit is not None:
+        routes = routes.head(limit)
     routes["Route"] = routes["origin"].astype(str) + " → " + routes["destination"].astype(str)
     routes.insert(0, "#", range(1, len(routes) + 1))
-    return routes[["#", "Route", "Active GR"]]
+    return routes[["#", "Route", "Active_GR", "Weight"]].rename(columns={"Active_GR": "Active GR"})
 
 
-def _prepare_priority(filtered, limit=5):
+def _prepare_priority(filtered, limit=10):
     details = filtered.sort_values(["stock_days", "stock_topay"], ascending=False).copy()
     details["Weight"] = details["balance_charge_weight"].fillna(0)
     details["To-Pay"] = details["stock_topay"].fillna(0)
     details["Age"] = details["stock_days"].fillna(0)
-    return details[["gr_no", "branch", "stock_type", "Weight", "To-Pay", "Age"]].head(limit).rename(
+    result = details[["gr_no", "branch", "stock_type", "Weight", "To-Pay", "Age"]].rename(
         columns={"gr_no": "GR", "branch": "Branch", "stock_type": "Status"}
     )
+    return result if limit is None else result.head(limit)
 
 
 def _cell(value, column):
@@ -858,6 +877,12 @@ def _cell(value, column):
     if column == "Ageing":
         try:
             return f'<span class="pill-red">{float(value):.0f} Days</span>'
+        except Exception:
+            return html.escape(str(value))
+    if column == "GR Date":
+        try:
+            dt = pd.to_datetime(value, errors="coerce")
+            return "-" if pd.isna(dt) else dt.strftime("%d-%m-%Y")
         except Exception:
             return html.escape(str(value))
     if column == "Avg Dwell":
@@ -932,21 +957,63 @@ def _ageing_chart(filtered):
     return fig
 
 
-def _stock_date_chart(filtered, as_on_date):
+def _stock_date_chart(filtered, as_on_date, period="M"):
     src = filtered[["gr_no", "stock_days"]].copy()
     src["stock_days"] = src["stock_days"].fillna(0).clip(lower=0)
     src["Stock Date"] = pd.Timestamp(as_on_date) - pd.to_timedelta(src["stock_days"], unit="D")
-    src["Period Key"] = src["Stock Date"].dt.to_period("M").dt.start_time
-    src["Period"] = src["Stock Date"].dt.strftime("%b")
-    trend = src.groupby(["Period Key", "Period"])["gr_no"].nunique().reset_index(name="GR Count").sort_values("Period Key").tail(7)
 
-    fig = px.bar(trend, x="Period", y="GR Count", text="GR Count", color_discrete_sequence=[PALETTE["blue"]])
-    fig.update_traces(texttemplate="%{y:,.0f}", textposition="outside", textfont=dict(size=8), cliponaxis=False)
-    _base_chart(fig, 155, dict(l=6, r=6, t=0, b=22))
+    period = (period or "M").upper()
+    if period == "D":
+        src["Period Key"] = src["Stock Date"].dt.floor("D")
+        src["Period"] = src["Stock Date"].dt.strftime("%d %b")
+        tail_n = 14
+    elif period == "W":
+        src["Period Key"] = src["Stock Date"].dt.to_period("W-SUN").dt.start_time
+        src["Period"] = src["Period Key"].dt.strftime("%d %b")
+        tail_n = 12
+    elif period == "Q":
+        src["Period Key"] = src["Stock Date"].dt.to_period("Q").dt.start_time
+        q = src["Stock Date"].dt.quarter.astype(str)
+        y = src["Stock Date"].dt.year.astype(str)
+        src["Period"] = "Q" + q + " " + y
+        tail_n = 8
+    elif period == "Y":
+        src["Period Key"] = pd.to_datetime(src["Stock Date"].dt.year.astype(str) + "-01-01")
+        src["Period"] = src["Stock Date"].dt.strftime("%Y")
+        tail_n = 6
+    else:  # M
+        src["Period Key"] = src["Stock Date"].dt.to_period("M").dt.start_time
+        src["Period"] = src["Stock Date"].dt.strftime("%b %Y")
+        tail_n = 12
+
+    trend = (
+        src.groupby(["Period Key", "Period"])["gr_no"]
+        .nunique()
+        .reset_index(name="GR Count")
+        .sort_values("Period Key")
+        .tail(tail_n)
+    )
+
+    fig = px.bar(
+        trend,
+        x="Period",
+        y="GR Count",
+        text="GR Count",
+        color_discrete_sequence=[PALETTE["blue"]],
+    )
+    fig.update_traces(
+        texttemplate="%{y:,.0f}",
+        textposition="outside",
+        textfont=dict(size=8, color="#173c68"),
+        cliponaxis=False,
+        hovertemplate="%{x}<br>%{y:,} GR<extra></extra>",
+    )
+    _base_chart(fig, 220, dict(l=8, r=8, t=8, b=35))
     fig.update_layout(
-        xaxis=dict(title=None, tickfont=dict(size=7)),
-        yaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=7)),
+        xaxis=dict(title=None, tickfont=dict(size=8), tickangle=-30 if period in {"D", "W"} else 0),
+        yaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=8)),
         bargap=.25,
+        showlegend=False,
     )
     return fig
 
@@ -1142,7 +1209,7 @@ def show_stock_operations():
                 st.markdown(
                     _html_table(
                         _prepare_action_required(filtered, action_limit),
-                        ["16%","12%","14%","21%","21%","16%"],
+                        ["14%","12%","11%","13%","19%","18%","13%"],
                     ),
                     unsafe_allow_html=True,
                 )
@@ -1156,7 +1223,7 @@ def show_stock_operations():
                 st.markdown(
                     _html_table(
                         _prepare_branch_pending(filtered, branch_limit),
-                        ["24%","13%","16%","17%","12%","18%"],
+                        ["20%","11%","13%","14%","10%","16%","16%"],
                     ),
                     unsafe_allow_html=True,
                 )
@@ -1169,19 +1236,53 @@ def show_stock_operations():
                 st.plotly_chart(_ageing_chart(filtered), use_container_width=True, config={"displayModeBar": False})
         with b2:
             with st.container(border=True):
-                st.markdown(_panel_header("Stock Date Distribution", "▥", ""), unsafe_allow_html=True)
-                st.plotly_chart(_stock_date_chart(filtered, as_on_date), use_container_width=True, config={"displayModeBar": False})
+                title_col, period_col = st.columns([4.2, 1.8], gap="small")
+                with title_col:
+                    st.markdown(_panel_header("Stock Date Distribution", "▥", ""), unsafe_allow_html=True)
+                with period_col:
+                    stock_period = st.segmented_control(
+                        "Stock Date Period",
+                        options=["D", "M", "W", "Q", "Y"],
+                        default="M",
+                        key="stock_date_distribution_period",
+                        label_visibility="collapsed",
+                    )
+                st.plotly_chart(
+                    _stock_date_chart(filtered, as_on_date, stock_period),
+                    use_container_width=True,
+                    config={"displayModeBar": False},
+                )
 
         # Bottom row 2: Routes + Priority Details
         b3, b4 = st.columns(2, gap="small")
         with b3:
             with st.container(border=True):
-                st.markdown(_panel_header("Routes by Active Stock", "↗", ""), unsafe_allow_html=True)
-                st.markdown(_html_table(_prepare_routes(filtered, 10), ["12%","58%","30%"]), unsafe_allow_html=True)
+                routes_expanded = _render_dynamic_heading(
+                    "Routes by Active Stock", "↗",
+                    "stock_routes_expanded", "routes_view_all"
+                )
+                routes_limit = None if routes_expanded else 10
+                st.markdown(
+                    _html_table(
+                        _prepare_routes(filtered, routes_limit),
+                        ["9%", "51%", "18%", "22%"],
+                    ),
+                    unsafe_allow_html=True,
+                )
         with b4:
             with st.container(border=True):
-                st.markdown(_panel_header("Priority Stock Details", "★", ""), unsafe_allow_html=True)
-                st.markdown(_html_table(_prepare_priority(filtered, 10), ["18%","16%","22%","14%","18%","12%"]), unsafe_allow_html=True)
+                priority_expanded = _render_dynamic_heading(
+                    "Priority Stock Details", "★",
+                    "stock_priority_expanded", "priority_view_all"
+                )
+                priority_limit = None if priority_expanded else 10
+                st.markdown(
+                    _html_table(
+                        _prepare_priority(filtered, priority_limit),
+                        ["18%","16%","22%","14%","18%","12%"],
+                    ),
+                    unsafe_allow_html=True,
+                )
 
         # Keep mapping exceptions accessible without changing the approved visible layout.
         unmapped_mask = (
