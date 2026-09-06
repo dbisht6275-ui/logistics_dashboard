@@ -170,10 +170,10 @@ def _inject_css():
             background:#fff!important;border:1px solid #dce6f0!important;border-radius:10px!important;
             box-shadow:0 3px 10px rgba(20,40,65,.035)!important
         }
-        .st-key-stock_page div[data-testid="stVerticalBlockBorderWrapper"]>div{padding:.34rem .52rem!important}
+        .st-key-stock_page div[data-testid="stVerticalBlockBorderWrapper"]>div{padding:.52rem .62rem .58rem!important}
         .st-key-stock_page .stPlotlyChart{margin:-4px 0 -8px!important}
 
-        .stock-panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 5px 0}
+        .stock-panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 7px 0;padding:3px 2px 2px;min-height:26px}
         .stock-panel-name{display:flex;align-items:center;gap:6px;font:800 11.5px "Segoe UI",Arial,sans-serif;color:#173c68}
         .stock-panel-name .ico{font-size:12px;color:#1a70ce}
         .stock-panel-meta{font:900 8.4px "Segoe UI",Arial,sans-serif;color:#173c68;letter-spacing:.05px}
@@ -193,22 +193,22 @@ def _inject_css():
 
         /* insight strip */
         .stock-insights{
-            background:#fff;border:1px solid #dce6f0;border-radius:10px;padding:7px 8px 8px;
+            background:#fff;border:1px solid #dce6f0;border-radius:10px;padding:10px 10px 9px;
             box-shadow:0 3px 10px rgba(20,40,65,.035)
         }
-        .stock-insights-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+        .stock-insights-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;padding:2px 1px 1px;min-height:25px}
         .stock-insights-title{font:800 10.5px "Segoe UI",Arial,sans-serif;color:#173c68}
         .stock-insights-note{font:600 7px "Segoe UI",Arial,sans-serif;color:#7d8da0}
         .stock-insight-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;width:100%}
         .stock-insight{
-            min-height:65px;background:#fff;border:1px solid #e0e8f1;border-radius:8px;padding:7px 8px;
+            min-height:70px;background:#fff;border:1px solid #e0e8f1;border-radius:8px;padding:9px 9px 8px;
             display:grid;grid-template-columns:28px 1fr;column-gap:7px;align-items:center;overflow:hidden
         }
         .stock-insight-icon{
             width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
             background:var(--soft);color:var(--accent);font:900 12px "Segoe UI Symbol","Segoe UI",Arial,sans-serif
         }
-        .stock-insight-label{font:700 7.7px/1.1 "Segoe UI",Arial,sans-serif;color:#344d67}
+        .stock-insight-label{font:750 8.1px/1.18 "Segoe UI",Arial,sans-serif;color:#344d67;margin-bottom:1px}
         .stock-insight-value{font:850 13px/1.12 "Segoe UI",Arial,sans-serif;color:var(--accent);margin-top:3px;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
         .stock-insight-sub{grid-column:2;font:600 6.8px/1.15 "Segoe UI",Arial,sans-serif;color:#798a9d;margin-top:-5px}
 
@@ -707,17 +707,24 @@ def _operational_insights(df):
 
 def _render_insights(df):
     insights = _operational_insights(df)
-    st.markdown(
-        """
-        <div class="stock-insights">
-          <div class="stock-insights-head">
-            <div class="stock-insights-title">💡 Operational Insights</div>
-            <div class="stock-insights-note">Key exception highlights requiring attention &nbsp; <span class="stock-view">View All →</span></div>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+
+    with st.container():
+        title_col, note_col, action_col = st.columns([5.6, 2.7, .8], gap="small")
+        with title_col:
+            st.markdown(
+                '<div class="stock-insights" style="padding:8px 10px">'
+                '<div class="stock-insights-title" style="padding-top:2px">💡 Operational Insights</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        with note_col:
+            st.markdown(
+                '<div style="padding-top:11px;text-align:right;font:650 7px Segoe UI,Arial,sans-serif;color:#7d8da0">'
+                'Key exception highlights requiring attention</div>',
+                unsafe_allow_html=True,
+            )
+        with action_col:
+            expanded = _view_all_toggle("stock_insights_expanded", "insights_view_all")
 
     cols = st.columns(6, gap="small")
     for col, (icon, label, value, note, accent) in zip(cols, insights):
@@ -735,6 +742,12 @@ def _render_insights(df):
                 """,
                 unsafe_allow_html=True,
             )
+
+    if expanded:
+        st.markdown(
+            _html_table(_insights_table(df), ["28%", "24%", "48%"]),
+            unsafe_allow_html=True,
+        )
 
 
 def _insights_table(df):
@@ -754,6 +767,27 @@ def _view_all_toggle(state_key, button_key):
     if st.button(label, key=button_key):
         st.session_state[state_key] = not expanded
         st.rerun()
+    return expanded
+
+
+def _render_dynamic_heading(title, icon, state_key, button_key, note=None):
+    """Render a panel heading with a working View All / Show Less control."""
+    left_col, note_col, button_col = st.columns([5.8, 2.2, 1.0], gap="small")
+    with left_col:
+        st.markdown(
+            f'<div class="stock-panel-head" style="margin-bottom:0">'
+            f'<div class="stock-panel-name"><span class="ico">{icon}</span>{html.escape(str(title))}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    with note_col:
+        if note:
+            st.markdown(
+                f'<div style="padding-top:7px;text-align:right;font:650 7px Segoe UI,Arial,sans-serif;color:#7d8da0">{html.escape(str(note))}</div>',
+                unsafe_allow_html=True,
+            )
+    with button_col:
+        expanded = _view_all_toggle(state_key, button_key)
     return expanded
 
 
@@ -1096,24 +1130,32 @@ def show_stock_operations():
         # OPERATIONAL INSIGHTS
         _render_insights(filtered)
 
-        # ACTION + BRANCH TABLES - always show top 10; View All is display-only.
+        # ACTION + BRANCH TABLES - default 10 rows; View All expands to full results.
         left, right = st.columns(2, gap="small")
         with left:
             with st.container(border=True):
-                st.markdown(_panel_header("Action Required", "◎", "View All →"), unsafe_allow_html=True)
+                action_expanded = _render_dynamic_heading(
+                    "Action Required", "◎",
+                    "stock_action_expanded", "action_view_all"
+                )
+                action_limit = None if action_expanded else 10
                 st.markdown(
                     _html_table(
-                        _prepare_action_required(filtered, 10),
+                        _prepare_action_required(filtered, action_limit),
                         ["16%","12%","14%","21%","21%","16%"],
                     ),
                     unsafe_allow_html=True,
                 )
         with right:
             with st.container(border=True):
-                st.markdown(_panel_header("Branch / Location Pending", "▦", "View All →"), unsafe_allow_html=True)
+                branch_expanded = _render_dynamic_heading(
+                    "Branch / Location Pending", "▦",
+                    "stock_branch_expanded", "branch_view_all"
+                )
+                branch_limit = None if branch_expanded else 10
                 st.markdown(
                     _html_table(
-                        _prepare_branch_pending(filtered, 10),
+                        _prepare_branch_pending(filtered, branch_limit),
                         ["24%","13%","16%","17%","12%","18%"],
                     ),
                     unsafe_allow_html=True,
