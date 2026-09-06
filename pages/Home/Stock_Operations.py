@@ -174,9 +174,9 @@ def _inject_css():
         .st-key-stock_page .stPlotlyChart{margin:-4px 0 -8px!important}
 
         .stock-panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 5px 0}
-        .stock-panel-name{display:flex;align-items:center;gap:6px;font:800 10.5px "Segoe UI",Arial,sans-serif;color:#173c68}
+        .stock-panel-name{display:flex;align-items:center;gap:6px;font:800 11.5px "Segoe UI",Arial,sans-serif;color:#173c68}
         .stock-panel-name .ico{font-size:12px;color:#1a70ce}
-        .stock-panel-meta{font:900 7.4px "Segoe UI",Arial,sans-serif;color:#173c68;letter-spacing:.05px}
+        .stock-panel-meta{font:900 8.4px "Segoe UI",Arial,sans-serif;color:#173c68;letter-spacing:.05px}
         .stock-view{color:#1c78dd;font-weight:700}
         .st-key-insights_view_all button,
         .st-key-action_view_all button,
@@ -214,13 +214,13 @@ def _inject_css():
 
         /* HTML tables */
         .stock-table-wrap{width:100%;max-width:100%;overflow-x:auto;overflow-y:hidden;border:1px solid #e0e8f0;border-radius:7px;background:#fff}
-        table.stock-table{width:100%;min-width:100%;border-collapse:collapse;table-layout:auto;font:600 7.4px/1.15 "Segoe UI",Arial,sans-serif;color:#2e4761}
+        table.stock-table{width:100%;min-width:100%;border-collapse:collapse;table-layout:auto;font:650 8.8px/1.22 "Segoe UI",Arial,sans-serif;color:#2e4761}
         table.stock-table th{
-            background:#eef5fb;color:#38516c;padding:6px 6px;text-align:left;border-right:1px solid #dfe8f0;
+            background:#eef5fb;color:#38516c;padding:7px 7px;text-align:left;border-right:1px solid #dfe8f0;
             border-bottom:1px solid #d9e4ee;font-weight:800;white-space:nowrap
         }
         table.stock-table td{
-            padding:5.5px 6px;border-right:1px solid #e7edf3;border-bottom:1px solid #e7edf3;
+            padding:7px 7px;border-right:1px solid #e7edf3;border-bottom:1px solid #e7edf3;
             white-space:nowrap;background:#fff
         }
         table.stock-table tbody tr:nth-child(even) td{background:#fbfdff}
@@ -569,17 +569,36 @@ def _donut(df):
         ]
     )
 
-    # Center total - aligned to the donut domain, not the full chart.
+    # Center total exactly inside the donut hole.
+    center_x = (0.00 + 0.62) / 2
     fig.add_annotation(
-        x=.31,
-        y=.50,
+        x=center_x,
+        y=.535,
         xref="paper",
         yref="paper",
-        text=f"<b>{total:,}</b><br><span style='font-size:9px'>Total GR</span>",
+        text=f"<b>{total:,}</b>",
         showarrow=False,
+        xanchor="center",
+        yanchor="middle",
         align="center",
         font=dict(
-            size=14,
+            size=18,
+            color="#153a66",
+            family="Arial Black, Segoe UI, Arial",
+        ),
+    )
+    fig.add_annotation(
+        x=center_x,
+        y=.425,
+        xref="paper",
+        yref="paper",
+        text="<b>Total GR</b>",
+        showarrow=False,
+        xanchor="center",
+        yanchor="middle",
+        align="center",
+        font=dict(
+            size=10,
             color="#153a66",
             family="Arial Black, Segoe UI, Arial",
         ),
@@ -688,21 +707,17 @@ def _operational_insights(df):
 
 def _render_insights(df):
     insights = _operational_insights(df)
-    head_left, head_right = st.columns([8.5, 1.5], gap="small")
-    with head_left:
-        st.markdown(
-            """
-            <div class="stock-insights">
-              <div class="stock-insights-head">
-                <div class="stock-insights-title">💡 Operational Insights</div>
-                <div class="stock-insights-note">Key exception highlights requiring attention</div>
-              </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with head_right:
-        expanded = _view_all_toggle("stock_insights_expanded", "insights_view_all")
+    st.markdown(
+        """
+        <div class="stock-insights">
+          <div class="stock-insights-head">
+            <div class="stock-insights-title">💡 Operational Insights</div>
+            <div class="stock-insights-note">Key exception highlights requiring attention &nbsp; <span class="stock-view">View All →</span></div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     cols = st.columns(6, gap="small")
     for col, (icon, label, value, note, accent) in zip(cols, insights):
@@ -720,12 +735,6 @@ def _render_insights(df):
                 """,
                 unsafe_allow_html=True,
             )
-
-    if expanded:
-        st.markdown(
-            _html_table(_insights_table(df), ["25%", "24%", "51%"]),
-            unsafe_allow_html=True,
-        )
 
 
 def _insights_table(df):
@@ -748,7 +757,7 @@ def _view_all_toggle(state_key, button_key):
     return expanded
 
 
-def _prepare_action_required(filtered, limit=5):
+def _prepare_action_required(filtered, limit=10):
     sort_cols = [c for c in ["stock_days", "balance_charge_weight"] if c in filtered.columns]
     action_df = filtered.sort_values(sort_cols, ascending=False).copy() if sort_cols else filtered.copy()
     action_df["Issue"] = action_df["stock_type"].map(
@@ -769,7 +778,7 @@ def _prepare_action_required(filtered, limit=5):
     return display if limit is None else display.head(limit)
 
 
-def _prepare_branch_pending(filtered, limit=5):
+def _prepare_branch_pending(filtered, limit=10):
     rows = []
     for branch, group in filtered.groupby("branch", dropna=False):
         rows.append(
@@ -1087,58 +1096,31 @@ def show_stock_operations():
         # OPERATIONAL INSIGHTS
         _render_insights(filtered)
 
-        # ACTION + BRANCH TABLES
+        # ACTION + BRANCH TABLES - always show top 10; View All is display-only.
         left, right = st.columns(2, gap="small")
         with left:
             with st.container(border=True):
-                h1, h2 = st.columns([8.6, 1.4], gap="small")
-                with h1:
-                    st.markdown(_panel_header("Action Required", "◎", ""), unsafe_allow_html=True)
-                with h2:
-                    action_expanded = _view_all_toggle("stock_action_expanded", "action_view_all")
-                if action_expanded:
-                    st.dataframe(
-                        _prepare_action_required(filtered, None),
-                        use_container_width=True,
-                        hide_index=True,
-                        height=360,
-                    )
-                else:
-                    st.markdown(
-                        _html_table(
-                            _prepare_action_required(filtered, 5),
-                            ["16%","12%","14%","21%","21%","16%"],
-                        ),
-                        unsafe_allow_html=True,
-                    )
+                st.markdown(_panel_header("Action Required", "◎", "View All →"), unsafe_allow_html=True)
+                st.markdown(
+                    _html_table(
+                        _prepare_action_required(filtered, 10),
+                        ["16%","12%","14%","21%","21%","16%"],
+                    ),
+                    unsafe_allow_html=True,
+                )
         with right:
             with st.container(border=True):
-                h1, h2 = st.columns([8.6, 1.4], gap="small")
-                with h1:
-                    st.markdown(_panel_header("Branch / Location Pending", "▦", ""), unsafe_allow_html=True)
-                with h2:
-                    branch_expanded = _view_all_toggle("stock_branch_expanded", "branch_view_all")
-                if branch_expanded:
-                    branch_all = _prepare_branch_pending(filtered, None).copy()
-                    if "Avg Dwell" in branch_all.columns:
-                        branch_all["Avg Dwell"] = branch_all["Avg Dwell"].map(lambda x: f"{x:.1f} d")
-                    st.dataframe(
-                        branch_all,
-                        use_container_width=True,
-                        hide_index=True,
-                        height=360,
-                    )
-                else:
-                    st.markdown(
-                        _html_table(
-                            _prepare_branch_pending(filtered, 5),
-                            ["24%","13%","16%","17%","12%","18%"],
-                        ),
-                        unsafe_allow_html=True,
-                    )
+                st.markdown(_panel_header("Branch / Location Pending", "▦", "View All →"), unsafe_allow_html=True)
+                st.markdown(
+                    _html_table(
+                        _prepare_branch_pending(filtered, 10),
+                        ["24%","13%","16%","17%","12%","18%"],
+                    ),
+                    unsafe_allow_html=True,
+                )
 
-        # BOTTOM 4-CARD ROW
-        b1, b2, b3, b4 = st.columns([1.0, 1.0, 1.05, 1.2], gap="small")
+        # Bottom row 1: only Ageing + Stock Date Distribution
+        b1, b2 = st.columns(2, gap="small")
         with b1:
             with st.container(border=True):
                 st.markdown(_panel_header("Ageing – Stock", "⌛", ""), unsafe_allow_html=True)
@@ -1147,14 +1129,17 @@ def show_stock_operations():
             with st.container(border=True):
                 st.markdown(_panel_header("Stock Date Distribution", "▥", ""), unsafe_allow_html=True)
                 st.plotly_chart(_stock_date_chart(filtered, as_on_date), use_container_width=True, config={"displayModeBar": False})
+
+        # Bottom row 2: Routes + Priority Details
+        b3, b4 = st.columns(2, gap="small")
         with b3:
             with st.container(border=True):
                 st.markdown(_panel_header("Routes by Active Stock", "↗", ""), unsafe_allow_html=True)
-                st.markdown(_html_table(_prepare_routes(filtered), ["12%","58%","30%"]), unsafe_allow_html=True)
+                st.markdown(_html_table(_prepare_routes(filtered, 10), ["12%","58%","30%"]), unsafe_allow_html=True)
         with b4:
             with st.container(border=True):
                 st.markdown(_panel_header("Priority Stock Details", "★", ""), unsafe_allow_html=True)
-                st.markdown(_html_table(_prepare_priority(filtered), ["18%","16%","22%","14%","18%","12%"]), unsafe_allow_html=True)
+                st.markdown(_html_table(_prepare_priority(filtered, 10), ["18%","16%","22%","14%","18%","12%"]), unsafe_allow_html=True)
 
         # Keep mapping exceptions accessible without changing the approved visible layout.
         unmapped_mask = (
