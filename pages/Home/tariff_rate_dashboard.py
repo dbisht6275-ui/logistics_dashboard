@@ -417,7 +417,7 @@ def _inject_css():
             font-weight:700 !important;
         }
         .rate-dashboard-scope {
-            margin:.08rem 0 0 0 !important;
+            margin:.04rem 0 0 0 !important;
             color:#607286;
             font-size:.60rem !important;
             line-height:1.05 !important;
@@ -439,13 +439,13 @@ def _inject_css():
             font-size:9px !important;
             font-weight:700 !important;
             color:#243b53 !important;
-            line-height:28px !important;
+            line-height:30px !important;
             white-space:nowrap !important;
             text-align:right !important;
         }
         div[data-testid="stDateInput"] {
-            width:112px !important;
-            max-width:112px !important;
+            width:100% !important;
+            max-width:none !important;
         }
         div[data-testid="stDateInput"] input {
             font-size:10px !important;
@@ -455,16 +455,17 @@ def _inject_css():
             box-shadow:none !important;
         }
         div[data-testid="stDateInput"] div[data-baseweb="input"] {
-            min-height:28px !important;
-            height:28px !important;
+            width:100% !important;
+            min-height:30px !important;
+            height:30px !important;
             background:#ffffff !important;
             border:1px solid #d7e0ea !important;
-            border-radius:6px !important;
+            border-radius:7px !important;
             box-shadow:0 1px 2px rgba(18,59,102,.05) !important;
         }
         div[data-testid="stButton"] button {
-            min-height:28px !important;
-            height:28px !important;
+            min-height:30px !important;
+            height:30px !important;
             padding:.15rem .55rem !important;
             border-radius:7px !important;
             font-size:10px !important;
@@ -517,16 +518,19 @@ def _inject_css():
 
         /* Ultra-compact top header + filter card. */
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding:.10rem .42rem .16rem !important;
+            padding:.08rem .42rem .12rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div > div[data-testid="stVerticalBlock"] {
+            gap:.16rem !important;
         }
         .top-filter-divider {
             height:1px;
             background:#d8e2ec;
-            margin:.10rem 0 .12rem 0;
+            margin:.02rem 0 .06rem 0;
         }
         div[data-testid="stButton"] button {
-            min-height:28px !important;
-            height:28px !important;
+            min-height:30px !important;
+            height:30px !important;
             padding:.10rem .45rem !important;
             font-size:.66rem !important;
             font-weight:700 !important;
@@ -545,7 +549,7 @@ def _inject_css():
             font-weight:600 !important;
             color:#41566d !important;
             white-space:nowrap !important;
-            line-height:28px !important;
+            line-height:30px !important;
             padding-top:0 !important;
             text-align:right !important;
         }
@@ -713,7 +717,7 @@ scope_type, scope_value = _get_login_scope()
 # Keep title, date, load action and dashboard filters inside one compact top card.
 top_panel = st.container(border=True)
 with top_panel:
-    header_cols = st.columns([8.05, 0.42, 0.76, 1.12], gap="small")
+    header_cols = st.columns([7.62, 0.42, 1.08, 1.08], gap="small")
 
     with header_cols[0]:
         st.markdown(
