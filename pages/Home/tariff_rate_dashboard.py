@@ -813,6 +813,65 @@ def _inject_css():
             min-height:28px !important;
             height:28px !important;
         }
+
+        /* V12: heading + filters share one compact top card. */
+        .combined-filter-divider {
+            height:1px;
+            background:#d8e2ec;
+            margin:.02rem 0 .06rem 0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) {
+            padding:.12rem .42rem .14rem !important;
+            margin-bottom:.06rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) > div > div[data-testid="stVerticalBlock"] {
+            gap:.04rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stHorizontalBlock"] {
+            min-height:0 !important;
+            height:auto !important;
+            gap:.15rem !important;
+            margin:0 !important;
+            padding:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stWidgetLabel"] {
+            min-height:10px !important;
+            height:auto !important;
+            margin:0 0 2px 0 !important;
+            padding:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stWidgetLabel"] p {
+            font-size:8.7px !important;
+            line-height:10px !important;
+            font-weight:600 !important;
+            margin:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stSelectbox"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stMultiSelect"] {
+            margin:0 !important;
+            padding:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+            min-height:27px !important;
+            height:27px !important;
+            border-radius:6px !important;
+            padding-top:0 !important;
+            padding-bottom:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stMultiSelect"] div[data-baseweb="select"] span {
+            font-size:9px !important;
+        }
+        /* Keep the top date and action visually balanced even though filters share the card. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stDateInput"] input {
+            min-height:26px !important;
+            height:26px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stButton"] button {
+            min-height:26px !important;
+            height:26px !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -984,7 +1043,7 @@ _inject_css()
 
 scope_type, scope_value = _get_login_scope()
 
-# Compact heading/date/load card. Filters render in their own separate card below.
+# Compact heading/date/load card. Filters are appended inside the same top card after data loads.
 header_panel = st.container(border=True)
 with header_panel:
     st.markdown('<div class="header-panel-marker"></div>', unsafe_allow_html=True)
@@ -1088,11 +1147,10 @@ if data.empty:
 
 
 # =============================================================================
-# FILTER ROW - separate compact card below the heading card
+# FILTER ROW - directly below the heading inside the SAME top card
 # =============================================================================
-filter_panel = st.container(border=True)
-with filter_panel:
-    st.markdown('<div class="filter-panel-marker"></div>', unsafe_allow_html=True)
+with header_panel:
+    st.markdown('<div class="combined-filter-divider"></div>', unsafe_allow_html=True)
     filter_cols = st.columns([0.95, 1.0, 1.0, 1.0, 1.0, 1.0, 1.15], gap="small")
 
 with filter_cols[0]:
