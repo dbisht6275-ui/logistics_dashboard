@@ -122,6 +122,26 @@ def _inject_css():
             color:#6b7280!important;opacity:1!important;font-weight:500!important;
             -webkit-text-fill-color:#6b7280!important;
         }
+        .st-key-stock_topbar div[data-testid="stDownloadButton"]{
+            margin-top:4px!important;
+            width:132px!important;
+        }
+        .st-key-stock_topbar div[data-testid="stDownloadButton"] button{
+            min-height:27px!important;height:27px!important;
+            padding:0 11px!important;border-radius:6px!important;
+            background:rgba(255,255,255,.10)!important;
+            border:1px solid rgba(255,255,255,.34)!important;
+            color:#ffffff!important;box-shadow:none!important;
+            font:600 9.5px/1 "Inter","Segoe UI",Arial,sans-serif!important;
+            white-space:nowrap!important;word-break:keep-all!important;
+        }
+        .st-key-stock_topbar div[data-testid="stDownloadButton"] button:hover{
+            background:rgba(255,255,255,.18)!important;
+            border-color:rgba(255,255,255,.55)!important;
+        }
+        .st-key-stock_topbar div[data-testid="stDownloadButton"] button p{
+            margin:0!important;white-space:nowrap!important;
+        }
 
         /* filter row */
         .st-key-stock_filters{
@@ -1551,6 +1571,8 @@ def show_stock_operations():
                     """,
                     unsafe_allow_html=True,
                 )
+                # Render the full-dashboard CSV here after filters/data are resolved below.
+                header_download_placeholder = st.empty()
             with live_col:
                 st.markdown(
                     f'<div class="stock-live-wrap"><span class="stock-live">LIVE</span><span class="stock-updated">As-on {today:%d %b %Y}</span></div>',
@@ -1566,7 +1588,7 @@ def show_stock_operations():
 
         # FILTER BAR. Date inputs are rendered first because ERP data depends on them.
         with st.container(key="stock_filters"):
-            cols = st.columns([.88,.88,.88,.72,.72,1.00,.76,.84,.70,.98,1.12], gap="small")
+            cols = st.columns([.90,.90,.90,.76,.76,1.12,.82,.90,.76,1.02], gap="small")
             with cols[0]:
                 start_date = st.date_input("From Date", value=month_start, max_value=today, format="DD/MM/YYYY", key="stock_dashboard_from_date")
             with cols[1]:
@@ -1640,15 +1662,15 @@ def show_stock_operations():
 
             with cols[9]:
                 st.button("Run Report", type="primary", use_container_width=True, key="stock_dashboard_run_report")
-            with cols[10]:
-                st.download_button(
-                    "Download CSV",
-                    data=filtered.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"stock_operations_{as_on_date:%d-%m-%Y}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                    key="stock_dashboard_download_csv",
-                )
+
+            # Full-dashboard export is intentionally placed in the page header, not the filter bar.
+            header_download_placeholder.download_button(
+                "Download CSV",
+                data=filtered.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"stock_operations_{as_on_date:%d-%m-%Y}.csv",
+                mime="text/csv",
+                key="stock_dashboard_download_csv",
+            )
 
         if filtered.empty:
             st.warning("No records match the selected filters/search.")
