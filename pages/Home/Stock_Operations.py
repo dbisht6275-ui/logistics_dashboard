@@ -265,17 +265,22 @@ def _inject_css():
         .st-key-action_download div[data-testid="stDownloadButton"] button,
         .st-key-branch_pending_download div[data-testid="stDownloadButton"] button,
         .st-key-routes_download div[data-testid="stDownloadButton"] button,
-        .st-key-priority_download div[data-testid="stDownloadButton"] button{
-            min-height:21px!important;height:21px!important;
-            padding:0 7px!important;margin-top:1px!important;
+        .st-key-priority_download div[data-testid="stDownloadButton"] button,
+        .st-key-stock_category_exceptions_download div[data-testid="stDownloadButton"] button,
+        .st-key-delivered_stock_download div[data-testid="stDownloadButton"] button{
+            min-height:24px!important;height:24px!important;
+            min-width:52px!important;
+            padding:0 8px!important;margin-top:1px!important;
             border:1px solid #c9d9ea!important;border-radius:5px!important;
             background:#f7fbff!important;color:#1769b6!important;
-            font:600 8.5px/1 "Inter","Inter","Segoe UI",Arial,sans-serif!important;
+            font:600 9px/1 "Inter","Segoe UI",Arial,sans-serif!important;
             box-shadow:none!important;white-space:nowrap!important;
+            overflow:hidden!important;
         }
         .st-key-insights_download, .st-key-action_download, .st-key-branch_pending_download,
-        .st-key-routes_download, .st-key-priority_download{
-            min-height:22px!important;height:22px!important;
+        .st-key-routes_download, .st-key-priority_download,
+        .st-key-stock_category_exceptions_download, .st-key-delivered_stock_download{
+            min-height:25px!important;height:25px!important;min-width:52px!important;
         }
         .st-key-stock_page [data-testid="stSegmentedControl"]{width:100%!important;overflow:visible!important}
         .st-key-stock_page [data-testid="stSegmentedControl"] > div,
@@ -757,7 +762,7 @@ def _render_insights(df):
     insights = _operational_insights(df)
     insight_df = _insights_table(df)
 
-    title_col, note_col, download_col = st.columns([6.0, 3.0, .42], gap="small")
+    title_col, note_col, download_col = st.columns([6.0, 3.0, .68], gap="small")
     with title_col:
         st.markdown(
             '<div class="stock-insights" style="padding:8px 10px">'
@@ -773,7 +778,7 @@ def _render_insights(df):
         )
     with download_col:
         st.download_button(
-            "CSV",
+            "↓ CSV",
             data=insight_df.to_csv(index=False).encode("utf-8-sig"),
             file_name="operational_insights.csv",
             mime="text/csv",
@@ -813,7 +818,7 @@ def _insights_table(df):
 
 def _render_download_heading(title, icon, df, file_name, download_key, note=None):
     """Render a panel heading with a CSV download arrow on the right."""
-    left_col, note_col, download_col = st.columns([6.3, 2.8, .42], gap="small")
+    left_col, note_col, download_col = st.columns([6.1, 2.7, .72], gap="small")
     with left_col:
         st.markdown(
             f'<div class="stock-panel-head" style="margin-bottom:0;padding-top:3px">'
@@ -829,7 +834,7 @@ def _render_download_heading(title, icon, df, file_name, download_key, note=None
             )
     with download_col:
         st.download_button(
-            "CSV",
+            "↓ CSV",
             data=df.to_csv(index=False).encode("utf-8-sig"),
             file_name=file_name,
             mime="text/csv",
