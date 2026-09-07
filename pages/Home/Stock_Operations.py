@@ -141,12 +141,21 @@ def _inject_css():
         .st-key-stock_filters div[data-testid="stButton"] button{
             min-height:31px!important;height:31px!important;margin-top:15px!important;
             background:#2477df!important;border:0!important;border-radius:7px!important;color:white!important;
-            font-size:10px!important;font-weight:600!important;box-shadow:0 4px 9px rgba(36,119,223,.18)!important
+            font:600 9.5px/1 "Inter","Segoe UI",Arial,sans-serif!important;
+            box-shadow:0 4px 9px rgba(36,119,223,.18)!important;
+            white-space:nowrap!important;word-break:keep-all!important;overflow:hidden!important;
+            padding:0 10px!important;
         }
         .st-key-stock_filters div[data-testid="stDownloadButton"] button{
             min-height:31px!important;height:31px!important;margin-top:15px!important;
             background:#fff!important;border:1px solid #b9d2ec!important;border-radius:7px!important;
-            color:#165da9!important;font-size:10px!important;font-weight:800!important
+            color:#165da9!important;font:600 9.5px/1 "Inter","Segoe UI",Arial,sans-serif!important;
+            white-space:nowrap!important;word-break:keep-all!important;overflow:hidden!important;
+            padding:0 9px!important;
+        }
+        .st-key-stock_filters div[data-testid="stButton"] button p,
+        .st-key-stock_filters div[data-testid="stDownloadButton"] button p{
+            white-space:nowrap!important;word-break:keep-all!important;margin:0!important;
         }
 
         /* KPI row */
@@ -1557,7 +1566,7 @@ def show_stock_operations():
 
         # FILTER BAR. Date inputs are rendered first because ERP data depends on them.
         with st.container(key="stock_filters"):
-            cols = st.columns([.88,.88,.88,.72,.72,1.02,.78,.86,.72,.78,.86], gap="small")
+            cols = st.columns([.88,.88,.88,.72,.72,1.00,.76,.84,.70,.98,1.12], gap="small")
             with cols[0]:
                 start_date = st.date_input("From Date", value=month_start, max_value=today, format="DD/MM/YYYY", key="stock_dashboard_from_date")
             with cols[1]:
@@ -1630,10 +1639,10 @@ def show_stock_operations():
             filtered = _apply_search(working, search_text)
 
             with cols[9]:
-                st.button("⌕ Run Report", type="primary", use_container_width=True, key="stock_dashboard_run_report")
+                st.button("Run Report", type="primary", use_container_width=True, key="stock_dashboard_run_report")
             with cols[10]:
                 st.download_button(
-                    "⇩ Download CSV",
+                    "Download CSV",
                     data=filtered.to_csv(index=False).encode("utf-8-sig"),
                     file_name=f"stock_operations_{as_on_date:%d-%m-%Y}.csv",
                     mime="text/csv",
