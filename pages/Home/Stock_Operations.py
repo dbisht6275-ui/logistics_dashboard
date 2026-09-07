@@ -76,6 +76,7 @@ def _inject_css():
         /* IMPORTANT: everything below is scoped to this page only. */
         .st-key-stock_page{
             background:#f4f8fc;
+            font-family:"Inter","Inter","Segoe UI",Arial,sans-serif;
             border-radius:12px;
             padding:0 7px 8px 7px;
         }
@@ -96,15 +97,15 @@ def _inject_css():
             background:linear-gradient(180deg,#34a9ff,#60d7ff);
             box-shadow:0 0 0 3px rgba(255,255,255,.08)
         }
-        .stock-title{font:800 19px/1.08 "Segoe UI",Arial,sans-serif;color:#fff;letter-spacing:-.25px}
-        .stock-subtitle{font:500 8.5px/1.2 "Segoe UI",Arial,sans-serif;color:#d8e9f8;margin-top:3px}
+        .stock-title{font:700 20px/1.12 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#fff;letter-spacing:-.25px}
+        .stock-subtitle{font:500 10px/1.3 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#d8e9f8;margin-top:3px}
         .stock-live-wrap{height:44px;display:flex;align-items:center;justify-content:flex-end;gap:8px}
         .stock-live{
             display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;
-            background:#2fbf69;color:#fff;font:800 7.5px "Segoe UI",Arial,sans-serif;letter-spacing:.3px
+            background:#2fbf69;color:#fff;font:700 9px "Inter","Inter","Segoe UI",Arial,sans-serif;letter-spacing:.3px
         }
         .stock-live:before{content:"";width:6px;height:6px;border-radius:50%;background:#d8ffe8}
-        .stock-updated{font:600 7.5px "Segoe UI",Arial,sans-serif;color:#d5e6f7;white-space:nowrap}
+        .stock-updated{font:500 9px "Inter","Inter","Segoe UI",Arial,sans-serif;color:#d5e6f7;white-space:nowrap}
 
         .st-key-stock_topbar div[data-testid="stTextInput"]{margin-top:5px}
         .st-key-stock_topbar div[data-testid="stTextInput"] input{
@@ -112,13 +113,13 @@ def _inject_css():
             background:#ffffff!important;
             border:1px solid #c9d7e6!important;
             color:#111827!important;border-radius:8px!important;
-            font-size:9px!important;font-weight:800!important;
+            font-size:11px!important;font-weight:600!important;
             -webkit-text-fill-color:#111827!important;
             caret-color:#111827!important;
         }
-        .st-key-stock_topbar input, .st-key-stock_topbar textarea{color:#111827!important;font-weight:800!important;-webkit-text-fill-color:#111827!important;}
+        .st-key-stock_topbar input, .st-key-stock_topbar textarea{color:#111827!important;font-weight:600!important;-webkit-text-fill-color:#111827!important;}
         .st-key-stock_topbar div[data-testid="stTextInput"] input::placeholder{
-            color:#6b7280!important;opacity:1!important;font-weight:600!important;
+            color:#6b7280!important;opacity:1!important;font-weight:500!important;
             -webkit-text-fill-color:#6b7280!important;
         }
 
@@ -129,23 +130,23 @@ def _inject_css():
         }
         .st-key-stock_filters label,
         .st-key-stock_filters label p{
-            font:700 7.4px/1.1 "Segoe UI",Arial,sans-serif!important;color:#4d6680!important;
+            font:600 9px/1.2 "Inter","Inter","Segoe UI",Arial,sans-serif!important;color:#4d6680!important;
             margin-bottom:2px!important
         }
         .st-key-stock_filters div[data-testid="stDateInput"] input,
         .st-key-stock_filters div[data-baseweb="select"]>div{
             min-height:31px!important;height:31px!important;border-radius:7px!important;
-            border-color:#d7e2ee!important;background:#fff!important;font-size:8px!important
+            border-color:#d7e2ee!important;background:#fff!important;font-size:10px!important
         }
         .st-key-stock_filters div[data-testid="stButton"] button{
             min-height:31px!important;height:31px!important;margin-top:15px!important;
             background:#2477df!important;border:0!important;border-radius:7px!important;color:white!important;
-            font-size:8px!important;font-weight:800!important;box-shadow:0 4px 9px rgba(36,119,223,.18)!important
+            font-size:10px!important;font-weight:600!important;box-shadow:0 4px 9px rgba(36,119,223,.18)!important
         }
         .st-key-stock_filters div[data-testid="stDownloadButton"] button{
             min-height:31px!important;height:31px!important;margin-top:15px!important;
             background:#fff!important;border:1px solid #b9d2ec!important;border-radius:7px!important;
-            color:#165da9!important;font-size:8px!important;font-weight:800!important
+            color:#165da9!important;font-size:10px!important;font-weight:800!important
         }
 
         /* KPI row */
@@ -160,9 +161,9 @@ def _inject_css():
             width:31px;height:31px;min-width:31px;border-radius:9px;display:flex;align-items:center;justify-content:center;
             background:var(--soft);color:var(--tone);font-size:16px;font-weight:900;line-height:1
         }
-        .stock-kpi-label{font:700 8.2px/1.12 "Segoe UI",Arial,sans-serif;color:#29445f;white-space:nowrap}
-        .stock-kpi-value{font:850 18px/1.03 "Segoe UI",Arial,sans-serif;color:#153a66;margin-top:4px;letter-spacing:-.25px}
-        .stock-kpi-note{font:600 7.1px/1.2 "Segoe UI",Arial,sans-serif;color:#74869a;margin-top:5px;padding-left:39px}
+        .stock-kpi-label{font:600 9.5px/1.2 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#29445f;white-space:nowrap}
+        .stock-kpi-value{font:700 20px/1.05 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#153a66;margin-top:4px;letter-spacing:-.25px}
+        .stock-kpi-note{font:500 8.5px/1.25 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#74869a;margin-top:5px;padding-left:39px}
         .stock-kpi.critical .stock-kpi-value,.stock-kpi.critical .stock-kpi-note{color:#d9333f}
 
         /* cards */
@@ -174,16 +175,16 @@ def _inject_css():
         .st-key-stock_page .stPlotlyChart{margin:-4px 0 -8px!important}
 
         .stock-panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 7px 0;padding:3px 2px 2px;min-height:26px}
-        .stock-panel-name{display:flex;align-items:center;gap:6px;font:800 11.5px "Segoe UI",Arial,sans-serif;color:#173c68}
+        .stock-panel-name{display:flex;align-items:center;gap:6px;font:700 12.5px "Inter","Inter","Segoe UI",Arial,sans-serif;color:#173c68}
         .stock-panel-name .ico{font-size:12px;color:#1a70ce}
-        .stock-panel-meta{font:900 8.4px "Segoe UI",Arial,sans-serif;color:#173c68;letter-spacing:.05px}
+        .stock-panel-meta{font:600 9px "Inter","Inter","Segoe UI",Arial,sans-serif;color:#173c68;letter-spacing:.05px}
         .stock-view{color:#1c78dd;font-weight:700}
         .st-key-insights_view_all button,
         .st-key-action_view_all button,
         .st-key-branch_view_all button{
             min-height:24px!important;height:24px!important;padding:0 7px!important;
             background:transparent!important;border:0!important;box-shadow:none!important;
-            color:#1c78dd!important;font-size:7.4px!important;font-weight:800!important;
+            color:#1c78dd!important;font-size:9px!important;font-weight:600!important;
         }
         .st-key-insights_view_all button:hover,
         .st-key-action_view_all button:hover,
@@ -197,8 +198,8 @@ def _inject_css():
             box-shadow:0 3px 10px rgba(20,40,65,.035)
         }
         .stock-insights-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;padding:2px 1px 1px;min-height:25px}
-        .stock-insights-title{font:800 10.5px "Segoe UI",Arial,sans-serif;color:#173c68}
-        .stock-insights-note{font:600 7px "Segoe UI",Arial,sans-serif;color:#7d8da0}
+        .stock-insights-title{font:700 12px "Inter","Inter","Segoe UI",Arial,sans-serif;color:#173c68}
+        .stock-insights-note{font:500 8.5px "Inter","Inter","Segoe UI",Arial,sans-serif;color:#7d8da0}
         .stock-insight-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;width:100%}
         .stock-insight{
             min-height:70px;background:#fff;border:1px solid #e0e8f1;border-radius:8px;padding:9px 9px 8px;
@@ -206,18 +207,18 @@ def _inject_css():
         }
         .stock-insight-icon{
             width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-            background:var(--soft);color:var(--accent);font:900 12px "Segoe UI Symbol","Segoe UI",Arial,sans-serif
+            background:var(--soft);color:var(--accent);font:900 12px "Segoe UI Symbol","Inter","Segoe UI",Arial,sans-serif
         }
-        .stock-insight-label{font:750 8.1px/1.18 "Segoe UI",Arial,sans-serif;color:#344d67;margin-bottom:1px}
-        .stock-insight-value{font:850 13px/1.12 "Segoe UI",Arial,sans-serif;color:var(--accent);margin-top:3px;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-        .stock-insight-sub{grid-column:2;font:600 6.8px/1.15 "Segoe UI",Arial,sans-serif;color:#798a9d;margin-top:-5px}
+        .stock-insight-label{font:600 9.5px/1.22 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#344d67;margin-bottom:1px}
+        .stock-insight-value{font:700 14px/1.15 "Inter","Inter","Segoe UI",Arial,sans-serif;color:var(--accent);margin-top:3px;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+        .stock-insight-sub{grid-column:2;font:500 8px/1.2 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#798a9d;margin-top:-5px}
 
         .deep-insights-head{
             display:flex;align-items:center;justify-content:space-between;
             padding:7px 9px 5px;margin-top:1px
         }
-        .deep-insights-title{font:850 10.8px/1.2 "Segoe UI",Arial,sans-serif;color:#173c68}
-        .deep-insights-note{font:650 7px/1.2 "Segoe UI",Arial,sans-serif;color:#7d8da0}
+        .deep-insights-title{font:700 12px/1.25 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#173c68}
+        .deep-insights-note{font:500 8.5px/1.25 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#7d8da0}
         .deep-card{
             min-height:76px;background:#fff;border:1px solid #dfe8f1;border-radius:9px;
             padding:8px 9px;box-shadow:0 2px 8px rgba(20,40,65,.035);position:relative;overflow:hidden
@@ -226,20 +227,20 @@ def _inject_css():
         .deep-card-top{display:flex;align-items:center;gap:7px}
         .deep-card-icon{
             width:27px;height:27px;min-width:27px;border-radius:8px;display:flex;align-items:center;justify-content:center;
-            background:var(--soft);color:var(--accent);font:900 12px/1 "Segoe UI Symbol","Segoe UI",Arial,sans-serif
+            background:var(--soft);color:var(--accent);font:900 12px/1 "Segoe UI Symbol","Inter","Segoe UI",Arial,sans-serif
         }
-        .deep-card-label{font:750 7.8px/1.15 "Segoe UI",Arial,sans-serif;color:#50657b;text-transform:uppercase;letter-spacing:.15px}
-        .deep-card-value{font:900 15px/1.1 "Segoe UI",Arial,sans-serif;color:#173c68;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .deep-card-note{font:650 7px/1.25 "Segoe UI",Arial,sans-serif;color:#7b8b9d;margin-top:6px}
+        .deep-card-label{font:600 9px/1.2 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#50657b;text-transform:uppercase;letter-spacing:.15px}
+        .deep-card-value{font:700 16px/1.12 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#173c68;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .deep-card-note{font:500 8.5px/1.3 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#7b8b9d;margin-top:6px}
         .deep-card-note b{color:#405873}
 
         /* HTML tables */
         .stock-table-wrap{width:100%;max-width:100%;max-height:355px;overflow:auto;border:1px solid #e0e8f0;border-radius:7px;background:#fff}
-        table.stock-table{width:100%;min-width:100%;border-collapse:separate;border-spacing:0;table-layout:auto;font:650 8.8px/1.22 "Segoe UI",Arial,sans-serif;color:#2e4761}
+        table.stock-table{width:100%;min-width:100%;border-collapse:separate;border-spacing:0;table-layout:auto;font:500 10px/1.35 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#2e4761}
         table.stock-table th{
             position:sticky;top:0;z-index:20;
             background:#eef5fb!important;color:#38516c;padding:7px 7px;text-align:left;border-right:1px solid #dfe8f0;
-            border-bottom:1px solid #d9e4ee;font-weight:800;white-space:nowrap;
+            border-bottom:1px solid #d9e4ee;font-weight:600;white-space:nowrap;
             box-shadow:0 1px 0 #d9e4ee
         }
         table.stock-table td{
@@ -269,7 +270,7 @@ def _inject_css():
             padding:0 7px!important;margin-top:1px!important;
             border:1px solid #c9d9ea!important;border-radius:5px!important;
             background:#f7fbff!important;color:#1769b6!important;
-            font:800 7px/1 "Segoe UI",Arial,sans-serif!important;
+            font:600 8.5px/1 "Inter","Inter","Segoe UI",Arial,sans-serif!important;
             box-shadow:none!important;white-space:nowrap!important;
         }
         .st-key-insights_download, .st-key-action_download, .st-key-branch_pending_download,
@@ -282,13 +283,13 @@ def _inject_css():
         .st-key-stock_page [data-testid="stSegmentedControl"] button{flex:1 1 0!important;min-width:38px!important;white-space:nowrap!important}
 
         /* bottom charts */
-        .stock-mini-note{font:600 6.8px "Segoe UI",Arial,sans-serif;color:#7d8ea1}
-        .stock-footer{display:flex;justify-content:space-between;align-items:center;padding:3px 5px 0;color:#7f8fa1;font:600 6.8px "Segoe UI",Arial,sans-serif}
+        .stock-mini-note{font:500 8px "Inter","Inter","Segoe UI",Arial,sans-serif;color:#7d8ea1}
+        .stock-footer{display:flex;justify-content:space-between;align-items:center;padding:3px 5px 0;color:#7f8fa1;font:500 8px "Inter","Inter","Segoe UI",Arial,sans-serif}
 
         .st-key-stock_page div[data-testid="stExpander"]{
             border:1px solid #e0e8f0!important;border-radius:8px!important;background:#fff!important
         }
-        .st-key-stock_page div[data-testid="stExpander"] summary{font-size:8px!important;font-weight:700!important;color:#526a82!important}
+        .st-key-stock_page div[data-testid="stExpander"] summary{font-size:10px!important;font-weight:700!important;color:#526a82!important}
 
         @media(max-width:1350px){
             .stock-insight-grid{grid-template-columns:repeat(3,1fr)}
@@ -501,8 +502,8 @@ def _base_chart(fig, height, margins):
         margin=margins,
         paper_bgcolor="white",
         plot_bgcolor="white",
-        font=dict(family="Segoe UI, Arial", size=8, color="#405873"),
-        hoverlabel=dict(font_size=9),
+        font=dict(family="Inter, Segoe UI, Arial", size=10, color="#405873"),
+        hoverlabel=dict(font_size=10),
     )
     return fig
 
@@ -540,7 +541,7 @@ def _zone_bar(df, column, title):
     fig.update_traces(
         texttemplate="<b>%{x:,.0f}</b>",
         textposition="outside",
-        textfont=dict(size=8, color="#173c68", family="Arial Black, Segoe UI, Arial"),
+        textfont=dict(size=8, color="#173c68", family="Inter, Segoe UI, Arial"),
         marker=dict(line=dict(width=0)),
         cliponaxis=False,
         hovertemplate="<b>%{y}</b><br>%{x:,} GR<extra></extra>",
@@ -552,11 +553,11 @@ def _zone_bar(df, column, title):
             title=None,
             showgrid=True,
             gridcolor="#edf2f7",
-            tickfont=dict(size=7, color="#64748b"),
+            tickfont=dict(size=9, color="#64748b"),
         ),
         yaxis=dict(
             title=None,
-            tickfont=dict(size=8, color="#334155", family="Arial Black, Segoe UI, Arial"),
+            tickfont=dict(size=9.5, color="#334155", family="Inter, Segoe UI, Arial"),
             autorange="reversed",
             automargin=True,
         ),
@@ -604,7 +605,7 @@ def _donut(df):
                 textfont=dict(
                     size=10,
                     color="white",
-                    family="Arial Black, Segoe UI, Arial",
+                    family="Inter, Segoe UI, Arial",
                 ),
                 hovertemplate=(
                     "<b>%{label}</b><br>"
@@ -631,7 +632,7 @@ def _donut(df):
         font=dict(
             size=18,
             color="#153a66",
-            family="Arial Black, Segoe UI, Arial",
+            family="Inter, Segoe UI, Arial",
         ),
     )
     fig.add_annotation(
@@ -647,7 +648,7 @@ def _donut(df):
         font=dict(
             size=10,
             color="#153a66",
-            family="Arial Black, Segoe UI, Arial",
+            family="Inter, Segoe UI, Arial",
         ),
     )
 
@@ -676,7 +677,7 @@ def _donut(df):
             xanchor="left",
             yanchor="middle",
             align="left",
-            font=dict(size=10, color="#173c68", family="Segoe UI, Arial"),
+            font=dict(size=10, color="#173c68", family="Inter, Segoe UI, Arial"),
         )
 
     _base_chart(fig, 185, dict(l=0, r=2, t=0, b=0))
@@ -766,7 +767,7 @@ def _render_insights(df):
         )
     with note_col:
         st.markdown(
-            '<div style="padding-top:11px;text-align:right;font:650 7px Segoe UI,Arial,sans-serif;color:#7d8da0">'
+            '<div style="padding-top:11px;text-align:right;font:650 7px Inter,Segoe UI,Arial,sans-serif;color:#7d8da0">'
             'Key exception highlights requiring attention</div>',
             unsafe_allow_html=True,
         )
@@ -823,7 +824,7 @@ def _render_download_heading(title, icon, df, file_name, download_key, note=None
     with note_col:
         if note:
             st.markdown(
-                f'<div style="padding-top:8px;text-align:right;font:650 7px Segoe UI,Arial,sans-serif;color:#7d8da0">{html.escape(str(note))}</div>',
+                f'<div style="padding-top:8px;text-align:right;font:650 7px Inter,Segoe UI,Arial,sans-serif;color:#7d8da0">{html.escape(str(note))}</div>',
                 unsafe_allow_html=True,
             )
     with download_col:
@@ -1002,8 +1003,8 @@ def _reason_category_chart(df):
     _base_chart(fig, 245, dict(l=8, r=50, t=8, b=24))
     fig.update_layout(
         showlegend=False,
-        xaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=7)),
-        yaxis=dict(title=None, tickfont=dict(size=8, family="Arial Black, Segoe UI, Arial"), automargin=True),
+        xaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=9)),
+        yaxis=dict(title=None, tickfont=dict(size=9.5, family="Inter, Segoe UI, Arial"), automargin=True),
         bargap=.28,
     )
     return fig
@@ -1054,8 +1055,8 @@ def _consignee_risk_chart(df, limit=10):
     _base_chart(fig, 245, dict(l=8, r=50, t=8, b=24))
     fig.update_layout(
         showlegend=False,
-        xaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=7)),
-        yaxis=dict(title=None, tickfont=dict(size=7.5, family="Arial Black, Segoe UI, Arial"), automargin=True),
+        xaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=9)),
+        yaxis=dict(title=None, tickfont=dict(size=9, family="Inter, Segoe UI, Arial"), automargin=True),
         bargap=.25,
     )
     return fig
@@ -1420,14 +1421,14 @@ def _ageing_chart(filtered):
     fig.update_traces(
         texttemplate="%{x:,.0f}",
         textposition="outside",
-        textfont=dict(size=9, color="#29445f"),
+        textfont=dict(size=10, color="#29445f"),
         cliponaxis=False,
         hovertemplate="<b>%{y}</b><br>%{x:,} GR<extra></extra>",
     )
     _base_chart(fig, 205, dict(l=8, r=48, t=0, b=24))
     fig.update_layout(
         showlegend=False,
-        xaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=8)),
+        xaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=9)),
         yaxis=dict(
             title=None,
             tickfont=dict(size=9),
@@ -1492,8 +1493,8 @@ def _stock_date_chart(filtered, as_on_date, period="M"):
     )
     _base_chart(fig, 220, dict(l=8, r=8, t=8, b=35))
     fig.update_layout(
-        xaxis=dict(title=None, tickfont=dict(size=8), tickangle=-30 if period in {"D", "W"} else 0),
-        yaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=8)),
+        xaxis=dict(title=None, tickfont=dict(size=9), tickangle=-30 if period in {"D", "W"} else 0),
+        yaxis=dict(title=None, gridcolor="#edf2f7", tickfont=dict(size=9)),
         bargap=.25,
         showlegend=False,
     )
