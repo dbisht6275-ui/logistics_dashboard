@@ -158,13 +158,17 @@ def _inject_css():
             min-height:31px!important;height:31px!important;border-radius:7px!important;
             border-color:#d7e2ee!important;background:#fff!important;font-size:10px!important
         }
+        .st-key-stock_filters div[data-testid="stButton"]{
+            display:flex!important;justify-content:center!important;align-items:flex-end!important;
+        }
         .st-key-stock_filters div[data-testid="stButton"] button{
-            min-height:31px!important;height:31px!important;margin-top:15px!important;
+            min-height:31px!important;height:31px!important;width:88px!important;min-width:88px!important;
+            margin-top:15px!important;margin-left:auto!important;margin-right:auto!important;
             background:#2477df!important;border:0!important;border-radius:7px!important;color:white!important;
             font:600 9.5px/1 "Inter","Segoe UI",Arial,sans-serif!important;
-            box-shadow:0 4px 9px rgba(36,119,223,.18)!important;
+            box-shadow:0 3px 7px rgba(36,119,223,.16)!important;
             white-space:nowrap!important;word-break:keep-all!important;overflow:hidden!important;
-            padding:0 10px!important;
+            padding:0 12px!important;
         }
         .st-key-stock_filters div[data-testid="stDownloadButton"] button{
             min-height:31px!important;height:31px!important;margin-top:15px!important;
@@ -1588,7 +1592,7 @@ def show_stock_operations():
 
         # FILTER BAR. Date inputs are rendered first because ERP data depends on them.
         with st.container(key="stock_filters"):
-            cols = st.columns([.90,.90,.90,.76,.76,1.12,.82,.90,.76,1.02], gap="small")
+            cols = st.columns([.94,.94,.94,.78,.78,1.16,.84,.92,.78,.64], gap="small")
             with cols[0]:
                 start_date = st.date_input("From Date", value=month_start, max_value=today, format="DD/MM/YYYY", key="stock_dashboard_from_date")
             with cols[1]:
@@ -1661,7 +1665,7 @@ def show_stock_operations():
             filtered = _apply_search(working, search_text)
 
             with cols[9]:
-                st.button("Run Report", type="primary", use_container_width=True, key="stock_dashboard_run_report")
+                st.button("Run Report", type="primary", use_container_width=False, key="stock_dashboard_run_report")
 
             # Full-dashboard export is intentionally placed in the page header, not the filter bar.
             header_download_placeholder.download_button(
