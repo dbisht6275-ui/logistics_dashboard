@@ -196,8 +196,8 @@ def _inject_css():
         }
         .stock-kpi-label{font:600 9.5px/1.2 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#29445f;white-space:nowrap}
         .stock-kpi-value{font:700 20px/1.05 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#153a66;margin-top:4px;letter-spacing:-.25px}
-        .stock-kpi-note{font:500 8.5px/1.25 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#74869a;margin-top:5px;padding-left:39px}
-        .stock-kpi.critical .stock-kpi-value,.stock-kpi.critical .stock-kpi-note{color:#d9333f}
+        .stock-kpi-note{font:500 8.5px/1.25 "Inter","Inter","Segoe UI",Arial,sans-serif;color:#405873;margin-top:5px;padding-left:39px}
+        .stock-kpi.critical .stock-kpi-value,.stock-kpi.critical .stock-kpi-note{color:#b42318}
 
         /* cards */
         .st-key-stock_page div[data-testid="stVerticalBlockBorderWrapper"]{
