@@ -1607,21 +1607,76 @@ def show_stock_operations():
                 st.error("As-on Date cannot be before From Date.")
                 return
 
-            try:
-                stock_df = _attach_stock_hierarchy(
-                    load_stock_data(start_date=start_date, end_date=end_date, as_on_date=as_on_date)
+            current_request = (start_date, end_date, as_on_date)
+
+            # ERP data must load only when the user explicitly clicks Run Report.
+            with cols[9]:
+                run_report = st.button(
+                    "Run Report",
+                    type="primary",
+                    use_container_width=False,
+                    key="stock_dashboard_run_report",
                 )
-                locked_zone, locked_circle, locked_branch = _derive_role_scope(stock_df)
-                stock_df = _apply_locked_scope(stock_df, locked_zone, locked_circle, locked_branch)
-            except Exception as exc:
-                st.error(f"Stock dashboard data could not be loaded: {exc}")
+
+            if run_report:
+                try:
+                    stock_df = _attach_stock_hierarchy(
+                        load_stock_data(
+                            start_date=start_date,
+                            end_date=end_date,
+                            as_on_date=as_on_date,
+                        )
+                    )
+                    locked_zone, locked_circle, locked_branch = _derive_role_scope(stock_df)
+                    stock_df = _apply_locked_scope(
+                        stock_df, locked_zone, locked_circle, locked_branch
+                    )
+                except Exception as exc:
+                    # Do not leave an older report visible after a failed refresh.
+                    st.session_state.pop("stock_dashboard_loaded_data", None)
+                    st.session_state.pop("stock_dashboard_loaded_scope", None)
+                    st.session_state.pop("stock_dashboard_loaded_request", None)
+                    st.error(f"Stock dashboard data could not be loaded: {exc}")
+                    return
+
+                if stock_df.empty:
+                    st.session_state.pop("stock_dashboard_loaded_data", None)
+                    st.session_state.pop("stock_dashboard_loaded_scope", None)
+                    st.session_state.pop("stock_dashboard_loaded_request", None)
+                    st.warning("No stock data is available for your assigned scope.")
+                    return
+
+                # Keep the loaded result in memory so normal filter/search reruns do not hit ERP again.
+                st.session_state["stock_dashboard_loaded_data"] = stock_df
+                st.session_state["stock_dashboard_loaded_scope"] = (
+                    locked_zone, locked_circle, locked_branch
+                )
+                st.session_state["stock_dashboard_loaded_request"] = current_request
+
+                # A fresh report should start with clean data filters.
+                for filter_key in (
+                    "stock_zone_filter", "stock_zone_locked",
+                    "stock_circle_filter", "stock_circle_locked",
+                    "stock_branch_filter", "stock_branch_locked",
+                    "stock_type_filter", "stock_age_filter", "stock_load_filter",
+                ):
+                    st.session_state.pop(filter_key, None)
+
+            stock_df = st.session_state.get("stock_dashboard_loaded_data")
+            loaded_scope = st.session_state.get("stock_dashboard_loaded_scope")
+            loaded_request = st.session_state.get("stock_dashboard_loaded_request")
+
+            # Do not show stale data for dates that have not been run yet.
+            if stock_df is None or loaded_scope is None or loaded_request != current_request:
+                if loaded_request is not None and loaded_request != current_request:
+                    st.info("Date selection changed. Click Run Report to load data for the new dates.")
+                else:
+                    st.info("Select the dates and click Run Report to load stock data.")
                 return
 
-            if stock_df.empty:
-                st.warning("No stock data is available for your assigned scope.")
-                return
-
+            locked_zone, locked_circle, locked_branch = loaded_scope
             working = stock_df
+
             with cols[3]:
                 if locked_zone:
                     selected_zones = st.multiselect("Zone", [locked_zone], default=[locked_zone], disabled=True, key="stock_zone_locked")
@@ -1663,9 +1718,6 @@ def show_stock_operations():
                 working = working[_match_scope_values(working["load_type"], load_types)]
 
             filtered = _apply_search(working, search_text)
-
-            with cols[9]:
-                st.button("Run Report", type="primary", use_container_width=False, key="stock_dashboard_run_report")
 
             # Full-dashboard export is intentionally placed in the page header, not the filter bar.
             header_download_placeholder.download_button(
