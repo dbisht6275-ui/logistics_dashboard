@@ -2177,24 +2177,6 @@ def show_OutstandingAnalysis():
 
     st.caption(f"Showing {len(detail_df):,} filtered records")
 
-    # Filtered subtotal: calculated only from rows currently visible after
-    # all dashboard filters and the Detailed Records search box.
-    subtotal_fields = [
-        ("billamount", "Bill Amount"),
-        ("recdamount", "Received"),
-        ("balance", "Balance"),
-        ("onaccrecd", "On-Account Recd"),
-        ("netbalance", "Net Outstanding"),
-    ]
-    subtotal_fields = [item for item in subtotal_fields if item[0] in detail_df.columns]
-
-    if subtotal_fields:
-        subtotal_cols = st.columns(len(subtotal_fields), gap="small")
-        for subtotal_col, (field, label) in zip(subtotal_cols, subtotal_fields):
-            subtotal_value = pd.to_numeric(detail_df[field], errors="coerce").fillna(0).sum()
-            with subtotal_col:
-                st.metric(label, f"₹{subtotal_value:,.0f}")
-
     st.dataframe(
         detail_df,
         width='stretch',
