@@ -2260,7 +2260,6 @@ def show_OutstandingAnalysis():
         f"Last refreshed: {last_refreshed.strftime('%d-%b-%Y %H:%M')} | "
         f"Records: {len(fdf):,}"
     )
-
 # Compatibility with the responsive/new page entry point.
 def main():
     show_OutstandingAnalysis()
