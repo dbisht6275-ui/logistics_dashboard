@@ -170,118 +170,49 @@ def _inject_css():
                 padding-bottom: 6px;
             }
 
-            /* ===== PROFESSIONAL COMPACT REPORT HEADER ===== */
-            .oa-header-kicker {
-                color: #2563eb;
-                font-size: 8px;
-                font-weight: 800;
-                letter-spacing: .11em;
-                text-transform: uppercase;
-                line-height: 1.05;
-                margin-bottom: 2px;
-            }
-
             .oa-header-title {
-                color: #0f2744;
-                font-size: 20px;
+                color: #102a43;
+                font-size: 21px;
                 font-weight: 850;
-                letter-spacing: -0.35px;
+                letter-spacing: -0.3px;
+                margin-right: 8px;
                 white-space: nowrap;
-                line-height: 1.05;
-                margin: 0;
-            }
-
-            .oa-header-subtitle {
-                color: #7b8794;
-                font-size: 9px;
-                font-weight: 500;
-                line-height: 1.1;
-                margin-top: 3px;
-                white-space: nowrap;
+                line-height: 1.15;
             }
 
             .oa-inline-date-label {
-                color: #65758b;
-                font-size: 8px;
-                font-weight: 800;
-                letter-spacing: .055em;
-                text-transform: uppercase;
-                line-height: 1;
-                margin: 0 0 4px 2px;
+                color: #243b53;
+                font-size: 10px;
+                font-weight: 600;
+                line-height: 1.1;
                 white-space: nowrap;
             }
 
-            /* Premium card-like shell, but deliberately shallow. */
+            /* Keep the bordered dashboard header compact like Business Overview. */
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-title) {
-                position: relative;
-                overflow: hidden;
-                border: 1px solid #dbe5f0 !important;
-                border-radius: 12px !important;
-                background: linear-gradient(180deg, #ffffff 0%, #f9fbfe 100%) !important;
-                box-shadow: 0 3px 10px rgba(15, 39, 68, .055) !important;
-            }
-
-            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-title)::before {
-                content: "";
-                position: absolute;
-                left: 0;
-                top: 0;
-                bottom: 0;
-                width: 4px;
-                background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
+                border-radius: 14px !important;
+                border-color: #d8e3f0 !important;
+                background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%) !important;
+                box-shadow: 0 4px 12px rgba(15, 42, 67, .06) !important;
             }
 
             div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-title) > div {
-                padding: .38rem .55rem .38rem .68rem !important;
+                padding-top: .45rem !important;
+                padding-bottom: .45rem !important;
             }
 
-            /* Make the date controls read like compact header controls. */
-            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-title)
-            div[data-testid="stDateInput"] {
-                margin: 0 !important;
-            }
-
-            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-title)
-            div[data-testid="stDateInput"] div[data-baseweb="input"] {
-                min-height: 32px !important;
-                height: 32px !important;
-                border-radius: 8px !important;
-                border-color: #d7e1ec !important;
-                background: #ffffff !important;
-                box-shadow: none !important;
-            }
-
-            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-title)
-            div[data-testid="stDateInput"] input {
-                min-height: 30px !important;
-                height: 30px !important;
-                padding-top: 0 !important;
-                padding-bottom: 0 !important;
-                font-size: 10.5px !important;
-                font-weight: 700 !important;
-                color: #243b53 !important;
-            }
-
-            /* Header Excel action: compact and executive-looking. */
-            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-title)
+            /* Header Excel action styled like the Overview dashboard action. */
             div[data-testid="stDownloadButton"] > button {
-                min-height: 32px !important;
-                height: 32px !important;
-                width: 100% !important;
-                padding: 4px 10px !important;
-                border: 1px solid #1d4ed8 !important;
+                min-height: 34px !important;
+                width: auto !important;
+                padding: 5px 11px !important;
+                border: 1px solid #2563eb !important;
                 border-radius: 8px !important;
                 color: #ffffff !important;
-                font-size: 10.5px !important;
+                font-size: 11px !important;
                 font-weight: 800 !important;
-                background: linear-gradient(180deg, #2f6feb 0%, #2563eb 100%) !important;
-                box-shadow: 0 2px 5px rgba(37, 99, 235, .18) !important;
-            }
-
-            div[data-testid="stVerticalBlockBorderWrapper"]:has(.oa-header-title)
-            div[data-testid="stDownloadButton"] > button:hover {
-                border-color: #1e40af !important;
-                background: #1d4ed8 !important;
+                background: linear-gradient(145deg, #3b82f6 0%, #2563eb 58%, #1d4ed8 100%) !important;
+                box-shadow: 0 3px 0 #1e40af, 0 6px 10px rgba(37,99,235,.18) !important;
             }
 
             /* Overview-style searchable multi-select slicers */
@@ -817,20 +748,25 @@ def _header_date_input(
     minimum_date,
     maximum_date,
 ):
-    """Render one small, professional date control inside the report header."""
-    st.markdown(
-        f'<div class="oa-inline-date-label">{escape(label)}</div>',
-        unsafe_allow_html=True,
+    """Render a compact header date with its label on the same line."""
+    label_col, input_col = st.columns(
+        [0.48, 1.0], gap="small", vertical_alignment="center"
     )
-    return st.date_input(
-        label,
-        value=value,
-        min_value=minimum_date,
-        max_value=maximum_date,
-        format="DD/MM/YYYY",
-        key=key,
-        label_visibility="collapsed",
-    )
+    with label_col:
+        st.markdown(
+            f'<div class="oa-inline-date-label">{escape(label)}</div>',
+            unsafe_allow_html=True,
+        )
+    with input_col:
+        return st.date_input(
+            label,
+            value=value,
+            min_value=minimum_date,
+            max_value=maximum_date,
+            format="DD/MM/YYYY",
+            key=key,
+            label_visibility="collapsed",
+        )
 
 
 def _safe_selectbox(
@@ -973,37 +909,30 @@ def show_OutstandingAnalysis():
     with st.container(border=True):
         if report_loaded:
             header_title, header_from, header_to, header_as_on, header_right = st.columns(
-                [2.55, 1.05, 1.05, 1.05, 0.72],
+                [2.00, 1.40, 1.40, 1.40, 0.65],
                 gap="small",
-                vertical_alignment="center",
+                vertical_alignment="bottom",
             )
             with header_title:
                 st.markdown('<span class="oa-responsive-marker oa-header-grid-marker"></span>', unsafe_allow_html=True)
-                st.markdown(
-                    """
-                    <div class="oa-header-kicker">Receivables Control</div>
-                    <div class="oa-header-title">Outstanding Analysis</div>
-                    <div class="oa-header-subtitle">Ageing, collections and open-balance monitoring</div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                st.markdown('<div class="oa-header-title">Outstanding Analysis</div>', unsafe_allow_html=True)
             with header_from:
                 from_date = _header_date_input(
-                    "From", "oa_from_date",
+                    "From Date", "oa_from_date",
                     value=st.session_state.get("oa_from_date", default_from_date),
                     minimum_date=minimum_report_date,
                     maximum_date=default_to_date,
                 )
             with header_to:
                 to_date = _header_date_input(
-                    "To", "oa_to_date",
+                    "To Date", "oa_to_date",
                     value=st.session_state.get("oa_to_date", default_to_date),
                     minimum_date=minimum_report_date,
                     maximum_date=default_to_date,
                 )
             with header_as_on:
                 as_on_date = _header_date_input(
-                    "As On", "oa_as_on_date",
+                    "As On Date", "oa_as_on_date",
                     value=st.session_state.get("oa_as_on_date", default_as_on_date),
                     minimum_date=minimum_report_date,
                     maximum_date=default_to_date,
@@ -1016,14 +945,7 @@ def show_OutstandingAnalysis():
             )
             with header_left:
                 st.markdown('<span class="oa-responsive-marker oa-header-grid-marker"></span>', unsafe_allow_html=True)
-                st.markdown(
-                    """
-                    <div class="oa-header-kicker">Receivables Control</div>
-                    <div class="oa-header-title">Outstanding Analysis</div>
-                    <div class="oa-header-subtitle">Ageing, collections and open-balance monitoring</div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                st.markdown('<div class="oa-header-title">Outstanding Analysis</div>', unsafe_allow_html=True)
             with header_right:
                 header_action_placeholder = st.empty()
 
@@ -2311,7 +2233,7 @@ def show_OutstandingAnalysis():
     # Put the export action in the top dashboard header, matching Overview.
     with header_action_placeholder:
         st.download_button(
-            "Excel",
+            "⬇ Excel",
             data=excel_data,
             file_name=(
                 "outstanding_filtered_"
