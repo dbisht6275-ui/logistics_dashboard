@@ -2115,6 +2115,49 @@ def show_OutstandingAnalysis():
 
         detail_df = detail_df[search_mask]
 
+    # -------------------------------------------------------------------
+    # FILTERED SUBTOTALS
+    # These totals follow every dashboard filter AND the Detailed Records
+    # search box because they are calculated from detail_df after searching.
+    # Amounts remain in plain rupees, matching the Detailed Records table.
+    # -------------------------------------------------------------------
+    subtotal_specs = [
+        ("billamount", "Bill Amount", "blue"),
+        ("recdamount", "Received", "green"),
+        ("balance", "Balance", "teal"),
+        ("onaccrecd", "On-Account Recd", "purple"),
+        ("netbalance", "Net Outstanding", "amber"),
+    ]
+    subtotal_specs = [
+        spec for spec in subtotal_specs if spec[0] in detail_df.columns
+    ]
+
+    if subtotal_specs:
+        st.markdown(
+            "<div style='font-size:12px;font-weight:800;color:#334155;"
+            "margin:8px 0 6px 0;'>Filtered Subtotal</div>",
+            unsafe_allow_html=True,
+        )
+
+        subtotal_cols = st.columns(len(subtotal_specs), gap="small")
+        for idx, (column, label, color) in enumerate(subtotal_specs):
+            subtotal_value = pd.to_numeric(
+                detail_df[column], errors="coerce"
+            ).fillna(0).sum()
+
+            with subtotal_cols[idx]:
+                if idx == 0:
+                    st.markdown(
+                        '<span class="oa-responsive-marker oa-kpi-grid-marker"></span>',
+                        unsafe_allow_html=True,
+                    )
+                _kpi_card(
+                    label,
+                    f"₹{subtotal_value:,.0f}",
+                    f"{len(detail_df):,} filtered records",
+                    color,
+                )
+
     # NOTE: Using pandas Styler (.style.format(...)) on this table used to
     # crash the page on larger date ranges with:
     #   StreamlitAPIException: The dataframe has `N` cells, but the maximum
