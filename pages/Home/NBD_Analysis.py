@@ -821,22 +821,31 @@ def show_NBDAnalysis() -> None:
         st.info("No NBD customer data found for the selected periods and filters.")
         return
 
-    format_map = {
-        "Compare Sale": "₹{:,.0f}",
-        "Compare LTL": "₹{:,.0f}",
-        "Compare FTL": "₹{:,.0f}",
-        "Current Sale": "₹{:,.0f}",
-        "Current LTL": "₹{:,.0f}",
-        "Current FTL": "₹{:,.0f}",
-        "Change": "₹{:,.0f}",
-        "Growth %": "{:+.1f}%",
+    # IMPORTANT: Do not pass a Pandas Styler to st.dataframe here.
+    # Large NBD reports can easily exceed Pandas Styler's default 262,144-cell
+    # render limit. Streamlit's native Arrow-backed dataframe renderer is
+    # virtualized and handles large reports without materializing CSS for every
+    # cell. NumberColumn keeps the values numeric while formatting them in the UI.
+    currency_columns = [
+        "Compare Sale", "Compare LTL", "Compare FTL",
+        "Current Sale", "Current LTL", "Current FTL", "Change",
+    ]
+    column_config = {
+        col: st.column_config.NumberColumn(col, format="₹%.0f")
+        for col in currency_columns
+        if col in display_report.columns
     }
+    if "Growth %" in display_report.columns:
+        column_config["Growth %"] = st.column_config.NumberColumn(
+            "Growth %", format="%.1f%%"
+        )
 
     st.dataframe(
-        display_report.style.format(format_map),
+        display_report,
         use_container_width=True,
         hide_index=True,
         height=580,
+        column_config=column_config,
     )
 
     # Explain any source limitations instead of fabricating fields.
