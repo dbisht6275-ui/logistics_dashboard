@@ -73,6 +73,7 @@ import streamlit as st
 
 from services.data_Outstanding import get_outstanding_data
 
+
 # ---------------------------------------------------------------------------
 # CONSTANTS
 # ---------------------------------------------------------------------------
