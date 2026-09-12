@@ -3243,6 +3243,5 @@ def show_CustomerAnalysis() -> None:
     with tab3:
         render_drilldown_tab(df, name_col, customer_label, conversion_type)
 
-
 # Public page entry point exported for app.py
 __all__ = ["show_CustomerAnalysis"]
