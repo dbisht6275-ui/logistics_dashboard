@@ -535,36 +535,75 @@ def _default_dates():
     return current_start, current_end, compare_start, compare_end
 
 
-def _render_filters(current_df: pd.DataFrame, compare_df: pd.DataFrame, name_col: str):
-    scope = st.session_state.get("data_scope", {}) or {}
-    cols = st.columns([1, 1, 1.1, 1, 1.5], gap="small")
+def _render_filters(
+    current_df: pd.DataFrame,
+    compare_df: pd.DataFrame,
+    name_col: str,
+    customer_only: bool = False,
+):
+    """Render filters for the selected NBD layout.
 
+    Customer Only intentionally removes Zone/Circle/Branch slicers. Login
+    data_scope is still enforced before this function, so users cannot bypass
+    their assigned geography by choosing the customer-only layout.
+    """
+    scope = st.session_state.get("data_scope", {}) or {}
     frames = [current_df, compare_df]
+
+    if customer_only:
+        # No geography slicers in this view. The data has already been scoped
+        # by apply_role_scope(), so only operational filters remain visible.
+        zones, circles, branches = [], [], []
+        c1, c2 = st.columns([1, 2], gap="small")
+        with c1:
+            load_types = st.multiselect(
+                "Load Type",
+                _safe_options(frames, "LoadType"),
+                placeholder="All load types",
+                key="nbd_customer_only_load_type",
+            )
+        load_frames = [_apply_multi(frame, "LoadType", load_types) for frame in frames]
+        with c2:
+            customers = st.multiselect(
+                "Customer",
+                _safe_options(load_frames, name_col),
+                placeholder="All customers",
+                key="nbd_customer_only_customer",
+            )
+        return zones, circles, branches, load_types, customers
+
+    cols = st.columns([1, 1, 1.1, 1, 1.5], gap="small")
 
     with cols[0]:
         if scope.get("zone"):
             zones = [scope["zone"]]
-            st.multiselect("Zone", zones, default=zones, disabled=True)
+            st.multiselect("Zone", zones, default=zones, disabled=True, key="nbd_geo_zone_locked")
         else:
-            zones = st.multiselect("Zone", _safe_options(frames, "Zone"), placeholder="All zones")
+            zones = st.multiselect(
+                "Zone", _safe_options(frames, "Zone"), placeholder="All zones", key="nbd_geo_zone"
+            )
 
     zone_frames = [_apply_multi(frame, "Zone", zones) for frame in frames]
 
     with cols[1]:
         if scope.get("circle"):
             circles = [scope["circle"]]
-            st.multiselect("Circle", circles, default=circles, disabled=True)
+            st.multiselect("Circle", circles, default=circles, disabled=True, key="nbd_geo_circle_locked")
         else:
-            circles = st.multiselect("Circle", _safe_options(zone_frames, "Circle"), placeholder="All circles")
+            circles = st.multiselect(
+                "Circle", _safe_options(zone_frames, "Circle"), placeholder="All circles", key="nbd_geo_circle"
+            )
 
     circle_frames = [_apply_multi(frame, "Circle", circles) for frame in zone_frames]
 
     with cols[2]:
         if scope.get("branch"):
             branches = [scope["branch"]]
-            st.multiselect("Branch", branches, default=branches, disabled=True)
+            st.multiselect("Branch", branches, default=branches, disabled=True, key="nbd_geo_branch_locked")
         else:
-            branches = st.multiselect("Branch", _safe_options(circle_frames, "Branch"), placeholder="All branches")
+            branches = st.multiselect(
+                "Branch", _safe_options(circle_frames, "Branch"), placeholder="All branches", key="nbd_geo_branch"
+            )
 
     branch_frames = [_apply_multi(frame, "Branch", branches) for frame in circle_frames]
 
@@ -573,6 +612,7 @@ def _render_filters(current_df: pd.DataFrame, compare_df: pd.DataFrame, name_col
             "Load Type",
             _safe_options(branch_frames, "LoadType"),
             placeholder="All load types",
+            key="nbd_geo_load_type",
         )
 
     load_frames = [_apply_multi(frame, "LoadType", load_types) for frame in branch_frames]
@@ -582,6 +622,7 @@ def _render_filters(current_df: pd.DataFrame, compare_df: pd.DataFrame, name_col
             "Customer",
             _safe_options(load_frames, name_col),
             placeholder="All customers",
+            key="nbd_geo_customer",
         )
 
     return zones, circles, branches, load_types, customers
@@ -606,8 +647,8 @@ def show_NBDAnalysis() -> None:
         with mode_col:
             st.markdown("<span class='nbd-period-badge'>MANUAL PERIOD MODE</span>", unsafe_allow_html=True)
 
-        d1, d2, d3, d4, view_col, run_col = st.columns(
-            [1, 1, 1, 1, .9, 1.05], gap="small", vertical_alignment="bottom"
+        d1, d2, d3, d4, view_col, layout_col, run_col = st.columns(
+            [1, 1, 1, 1, .78, 1.18, 1.05], gap="small", vertical_alignment="bottom"
         )
 
         with d1:
@@ -640,6 +681,13 @@ def show_NBDAnalysis() -> None:
                 ["origin", "destination"],
                 format_func=lambda x: "Origin" if x == "origin" else "Destination",
                 key="nbd_view_type",
+            )
+        with layout_col:
+            report_layout = st.selectbox(
+                "Report Layout",
+                ["Customer + Geography", "Customer Only"],
+                key="nbd_report_layout",
+                help="Customer Only removes Zone, Circle and Branch from filters and output.",
             )
         with run_col:
             run_report = st.button("▶ Run NBD Report", type="primary", use_container_width=True)
@@ -696,9 +744,16 @@ def show_NBDAnalysis() -> None:
     config = _customer_config(view_type)
     name_col = config["name"]
 
+    customer_only = report_layout == "Customer Only"
+
     with st.container(border=True):
-        st.markdown("<div class='nbd-section-title'>Filters</div>", unsafe_allow_html=True)
-        zones, circles, branches, load_types, customers = _render_filters(current_df, compare_df, name_col)
+        filter_title = "Customer Filters" if customer_only else "Filters"
+        st.markdown(f"<div class='nbd-section-title'>{filter_title}</div>", unsafe_allow_html=True)
+        if customer_only:
+            st.caption("Customer Only view: Zone, Circle and Branch are intentionally hidden. Login data-scope restrictions still apply in the background.")
+        zones, circles, branches, load_types, customers = _render_filters(
+            current_df, compare_df, name_col, customer_only=customer_only
+        )
 
     current_filtered = _apply_common_filters(
         current_df, zones, circles, branches, load_types, customers, name_col
@@ -708,6 +763,8 @@ def show_NBDAnalysis() -> None:
     )
 
     report = build_nbd_report(current_filtered, compare_filtered, view_type)
+    if customer_only and not report.empty:
+        report = report.drop(columns=["Zone", "Circle", "Branch"], errors="ignore")
 
     total_customers = len(report)
     new_count = int((report["Customer Type"] == "NEW").sum()) if not report.empty else 0
@@ -733,7 +790,8 @@ def show_NBDAnalysis() -> None:
         st.markdown("<div class='nbd-section-title'>NBD Customer MIS</div>", unsafe_allow_html=True)
         st.caption(
             f"Current: {current_start:%d-%b-%Y} to {current_end:%d-%b-%Y}  |  "
-            f"Comparison: {compare_start:%d-%b-%Y} to {compare_end:%d-%b-%Y}"
+            f"Comparison: {compare_start:%d-%b-%Y} to {compare_end:%d-%b-%Y}  |  "
+            f"Layout: {report_layout}"
         )
     with table_head_mid:
         selected_status = st.multiselect(
