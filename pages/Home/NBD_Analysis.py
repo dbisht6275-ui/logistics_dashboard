@@ -793,14 +793,56 @@ def show_NBDAnalysis() -> None:
             f"Comparison: {compare_start:%d-%b-%Y} to {compare_end:%d-%b-%Y}  |  "
             f"Layout: {report_layout}"
         )
+
+    # Compact Customer Type filter. A normal multiselect renders one chip per
+    # selected value and becomes two rows when NEW + REGULAR + LOST are all
+    # selected. Keep the header row fixed-height by showing a single popover
+    # summary instead; the user can still select any combination inside it.
+    for _status in status_options:
+        _key = f"nbd_status_{_status.lower()}"
+        if _key not in st.session_state:
+            st.session_state[_key] = True
+
+    selected_status = [
+        _status for _status in status_options
+        if st.session_state.get(f"nbd_status_{_status.lower()}", False)
+    ]
+
+    if len(selected_status) == len(status_options):
+        status_summary = "All Customer Types"
+    elif not selected_status:
+        status_summary = "No Customer Type"
+    elif len(selected_status) == 1:
+        status_summary = selected_status[0]
+    else:
+        status_summary = f"{len(selected_status)} types selected"
+
     with table_head_mid:
-        selected_status = st.multiselect(
-            "Customer Type",
-            status_options,
-            default=status_options,
-            key="nbd_status_filter",
-            label_visibility="collapsed",
-        )
+        with st.popover(status_summary, use_container_width=True):
+            action_left, action_right = st.columns(2, gap="small")
+            with action_left:
+                if st.button("Select All", key="nbd_status_select_all", use_container_width=True):
+                    for _status in status_options:
+                        st.session_state[f"nbd_status_{_status.lower()}"] = True
+                    st.rerun()
+            with action_right:
+                if st.button("Clear", key="nbd_status_clear", use_container_width=True):
+                    for _status in status_options:
+                        st.session_state[f"nbd_status_{_status.lower()}"] = False
+                    st.rerun()
+
+            for _status in status_options:
+                st.checkbox(
+                    _status,
+                    key=f"nbd_status_{_status.lower()}",
+                )
+
+    # Re-read checkbox state after rendering so the report responds immediately
+    # to individual checkbox changes on the same Streamlit rerun.
+    selected_status = [
+        _status for _status in status_options
+        if st.session_state.get(f"nbd_status_{_status.lower()}", False)
+    ]
 
     display_report = report[report["Customer Type"].isin(selected_status)].copy() if selected_status else report.iloc[0:0].copy()
 
