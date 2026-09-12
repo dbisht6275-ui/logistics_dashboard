@@ -2378,34 +2378,180 @@ def build_nbd_customer_mis(
 
 
 def render_nbd_customer_tab(
-    current_df: pd.DataFrame,
-    compare_df: pd.DataFrame,
     code_col: str,
     name_col: str,
     customer_label: str,
+    view_type: str,
     fin_year: str,
     compare_fin_year: str,
-    selected_quarters,
-    selected_months,
+    zone,
+    circle,
+    branch,
+    load_type: str,
+    customer: str,
 ) -> None:
-    """Render NBD Customer MIS in the layout shared by the user."""
-    nbd_df = build_nbd_customer_mis(current_df, compare_df, code_col, name_col)
-    current_start, current_end = _nbd_period_bounds(fin_year, selected_quarters, selected_months)
-    compare_start, compare_end = get_date_range(compare_fin_year)
+    """Render NBD MIS using fully independent manual date periods.
+
+    NBD does not use the main dashboard Quarter or Month selections at all.
+    Both Current and Comparison periods are controlled only by the four manual
+    date inputs below. Database queries run only when 'Run NBD Report' is clicked.
+    """
+
+    # Independent defaults: full active FY vs full previous FY. These are only
+    # starting values for the date pickers and are never tied to Quarter/Month.
+    default_current_start, default_current_end = get_date_range(fin_year)
+    default_compare_start, default_compare_end = get_date_range(compare_fin_year)
+    default_current_start = pd.to_datetime(default_current_start).date()
+    default_current_end = pd.to_datetime(default_current_end).date()
+    default_compare_start = pd.to_datetime(default_compare_start).date()
+    default_compare_end = pd.to_datetime(default_compare_end).date()
+
+    # Context-specific widget keys prevent dates from one FY/view leaking into
+    # another FY/view while still keeping manual selections stable on reruns.
+    context_key = f"{view_type}_{fin_year}".replace("-", "_")
+
+    st.markdown(
+        "<div style='display:flex;align-items:center;gap:10px;margin-bottom:5px;'>"
+        "<div class='section-header' style='margin:0 !important;'>NEW BUSINESS DEVELOPMENT MIS REPORT</div>"
+        "<span style='background:#dcfce7;color:#166534;border:1px solid #86efac;"
+        "padding:3px 8px;border-radius:999px;font-size:10px;font-weight:800;'>MANUAL NBD PERIOD MODE</span>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Select Current From/To and Comparison From/To manually. Main dashboard Quarter and Month selections do not affect NBD periods."
+    )
+
+    d1, d2, d3, d4, run_col = st.columns(
+        [1.05, 1.05, 1.05, 1.05, 1.00], gap="small", vertical_alignment="bottom"
+    )
+    with d1:
+        current_start = st.date_input(
+            "Current From",
+            value=default_current_start,
+            key=f"nbd_current_from_{context_key}",
+            format="DD-MM-YYYY",
+        )
+    with d2:
+        current_end = st.date_input(
+            "Current To",
+            value=default_current_end,
+            key=f"nbd_current_to_{context_key}",
+            format="DD-MM-YYYY",
+        )
+    with d3:
+        compare_start = st.date_input(
+            "Comparison From",
+            value=default_compare_start,
+            key=f"nbd_compare_from_{context_key}",
+            format="DD-MM-YYYY",
+        )
+    with d4:
+        compare_end = st.date_input(
+            "Comparison To",
+            value=default_compare_end,
+            key=f"nbd_compare_to_{context_key}",
+            format="DD-MM-YYYY",
+        )
+    with run_col:
+        run_nbd = st.button(
+            "▶ Run NBD Report",
+            key=f"nbd_run_{context_key}",
+            type="primary",
+            use_container_width=True,
+        )
+
+    # Streamlit normally returns date objects, but normalize defensively.
+    current_start = pd.to_datetime(current_start).date()
+    current_end = pd.to_datetime(current_end).date()
     compare_start = pd.to_datetime(compare_start).date()
     compare_end = pd.to_datetime(compare_end).date()
 
+    if current_start > current_end:
+        st.error("Current From date cannot be after Current To date.")
+        return
+    if compare_start > compare_end:
+        st.error("Comparison From date cannot be after Comparison To date.")
+        return
+
+    requested_signature = (
+        current_start.isoformat(), current_end.isoformat(),
+        compare_start.isoformat(), compare_end.isoformat(), view_type,
+    )
+    signature_key = f"nbd_loaded_signature_{context_key}"
+    current_data_key = f"nbd_loaded_current_df_{context_key}"
+    compare_data_key = f"nbd_loaded_compare_df_{context_key}"
+
+    if run_nbd:
+        try:
+            with st.spinner("Loading NBD current and comparison period data..."):
+                manual_current_df = clean_booking_data(
+                    load_booking_data(
+                        current_start.strftime("%Y-%m-%d"),
+                        current_end.strftime("%Y-%m-%d"),
+                        view_type,
+                    )
+                )
+                manual_compare_df = clean_booking_data(
+                    load_booking_data(
+                        compare_start.strftime("%Y-%m-%d"),
+                        compare_end.strftime("%Y-%m-%d"),
+                        view_type,
+                    )
+                )
+        except Exception as exc:
+            st.error(f"Unable to load NBD data: {exc}")
+            return
+
+        st.session_state[current_data_key] = manual_current_df
+        st.session_state[compare_data_key] = manual_compare_df
+        st.session_state[signature_key] = requested_signature
+
+    loaded_signature = st.session_state.get(signature_key)
+    if loaded_signature is None:
+        st.info("Choose the four dates above and click ▶ Run NBD Report.")
+        return
+
+    if tuple(loaded_signature) != requested_signature:
+        st.info("NBD dates have changed. Click ▶ Run NBD Report to refresh the data.")
+        return
+
+    current_df = st.session_state.get(current_data_key)
+    compare_df = st.session_state.get(compare_data_key)
+    if current_df is None or compare_df is None:
+        st.info("Click ▶ Run NBD Report to load the selected periods.")
+        return
+
+    # The manual dates define the NBD periods. Common geography/load/customer
+    # filters still apply, but Quarter and Month are intentionally ignored here.
+    current_df = apply_filters(
+        current_df, zone, circle, branch, [], [], load_type, customer, name_col
+    )
+    compare_df = apply_filters(
+        compare_df, zone, circle, branch, [], [], load_type, customer, name_col
+    )
+
+    missing = [
+        col for col in (code_col, name_col, "Revenue")
+        if col not in current_df.columns and col not in compare_df.columns
+    ]
+    if missing:
+        st.error(f"NBD source data is missing required columns: {missing}")
+        return
+
+    nbd_df = build_nbd_customer_mis(current_df, compare_df, code_col, name_col)
+
     st.markdown(
-        f"<div class='section-header'>NEW BUSINESS DEVELOPMENT MIS REPORT</div>"
-        f"<div style='font-size:11px;color:#64748b;margin-bottom:8px;'>"
-        f"Sale Period: <b>{current_start:%d-%m-%Y} - {current_end:%d-%m-%Y}</b> &nbsp;&nbsp;|&nbsp;&nbsp; "
-        f"Comparison Period: <b>{compare_start:%d-%m-%Y} - {compare_end:%d-%m-%Y}</b>"
+        f"<div style='font-size:11px;color:#64748b;margin:2px 0 8px 0;'>"
+        f"Current Period: <b>{current_start:%d-%m-%Y} - {current_end:%d-%m-%Y}</b>"
+        f" &nbsp;&nbsp;|&nbsp;&nbsp; Comparison Period: "
+        f"<b>{compare_start:%d-%m-%Y} - {compare_end:%d-%m-%Y}</b>"
         f"</div>",
         unsafe_allow_html=True,
     )
 
     if nbd_df.empty:
-        st.info("No NBD customer movement found for the selected filters and periods.")
+        st.info("No NBD customer movement found for the selected filters and manual periods.")
         return
 
     # Summary cards make NEW / LOST / REGULAR movement immediately visible.
@@ -2417,7 +2563,7 @@ def render_nbd_customer_tab(
     with m1:
         kpi_card("NBD Customers", f"{total_count:,}", "Union of both periods", "👥", "#2563eb", None)
     with m2:
-        kpi_card("New", f"{new_count:,}", "No compare-period business", "🆕", "#16a34a", True if new_count else None)
+        kpi_card("New", f"{new_count:,}", "No comparison-period business", "🆕", "#16a34a", True if new_count else None)
     with m3:
         kpi_card("Lost", f"{lost_count:,}", "No current-period business", "❌", "#dc2626", False if lost_count else None)
     with m4:
@@ -2460,8 +2606,8 @@ def render_nbd_customer_tab(
         worksheet.write(1, 0, "Report:  NEW BUSINESS DEVELOPMENT MIS REPORT", sub_fmt)
         worksheet.write(
             2, 0,
-            f"Sale Period: {current_start:%d-%m-%Y}-{current_end:%d-%m-%Y}    "
-            f"Comparision Period : {compare_start:%d-%m-%Y} - {compare_end:%d-%m-%Y}",
+            f"Sale Period: {current_start:%d-%m-%Y} - {current_end:%d-%m-%Y}    "
+            f"Comparison Period: {compare_start:%d-%m-%Y} - {compare_end:%d-%m-%Y}",
             sub_fmt,
         )
         for col_num, col_name in enumerate(display_df.columns):
@@ -2475,8 +2621,6 @@ def render_nbd_customer_tab(
             elif col_name in {"Customer Mobile NO", "GST No"}:
                 width = 18
             worksheet.set_column(idx, idx, width)
-        sale_start = start_row + 1
-        sale_end = start_row + len(display_df)
         for col_name in sale_cols:
             col_idx = display_df.columns.get_loc(col_name)
             worksheet.set_column(col_idx, col_idx, 17, money_fmt)
@@ -2492,9 +2636,12 @@ def render_nbd_customer_tab(
     st.download_button(
         "Download NBD MIS Excel",
         data=output,
-        file_name=f"NBD_MIS_{fin_year}.xlsx",
+        file_name=(
+            f"NBD_MIS_{current_start:%Y%m%d}_{current_end:%Y%m%d}_vs_"
+            f"{compare_start:%Y%m%d}_{compare_end:%Y%m%d}.xlsx"
+        ),
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        key="customer_nbd_mis_export",
+        key=f"customer_nbd_mis_export_{context_key}",
         use_container_width=False,
     )
 
@@ -3076,13 +3223,9 @@ def show_CustomerAnalysis() -> None:
             unsafe_allow_html=True,
         )
 
-    # NBD uses the selected current period, but compares it with the FULL previous FY.
-    # Geography / load-type / customer filters remain common to both periods;
-    # Quarter and Month are intentionally NOT applied to the comparison FY.
-    nbd_current_df = apply_filters(df, zone, circle, branch, quarter, month, load_type, customer, name_col)
-    nbd_compare_df = apply_filters(prev_df, zone, circle, branch, [], [], load_type, customer, name_col)
-
-    df      = nbd_current_df
+    # Main Customer Analysis keeps its existing FY / Quarter / Month behaviour.
+    # NBD has its own independent manual date controls inside the NBD tab.
+    df      = apply_filters(df,      zone, circle, branch, quarter, month, load_type, customer, name_col)
     prev_df = apply_filters(prev_df, zone, circle, branch, quarter, month, load_type, customer, name_col)
     old_df  = apply_filters(old_df,  zone, circle, branch, quarter, month, load_type, customer, name_col)
 
@@ -3223,25 +3366,28 @@ def show_CustomerAnalysis() -> None:
     # --- Tabs ---
     tab1, tab2, tab3 = st.tabs([
         "Executive Overview",
-        "NBD Customer",
+        "NBD Customer (Manual)",
         "Detailed Analysis",
     ])
     with tab1:
         render_overview_tab(customer_summary, monthly, df, code_col, name_col, customer_label, prev_df, lost_customer_codes, conversion_type)
     with tab2:
         render_nbd_customer_tab(
-            nbd_current_df,
-            nbd_compare_df,
-            code_col,
-            name_col,
-            customer_label,
-            fin_year,
-            previous_year,
-            quarter,
-            month,
+            code_col=code_col,
+            name_col=name_col,
+            customer_label=customer_label,
+            view_type=view_type,
+            fin_year=fin_year,
+            compare_fin_year=previous_year,
+            zone=zone,
+            circle=circle,
+            branch=branch,
+            load_type=load_type,
+            customer=customer,
         )
     with tab3:
         render_drilldown_tab(df, name_col, customer_label, conversion_type)
+
 
 # Public page entry point exported for app.py
 __all__ = ["show_CustomerAnalysis"]
