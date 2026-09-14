@@ -132,6 +132,14 @@ def apply_nbd_style() -> None:
             border-left:3px solid #17365D;
             padding-left:6px;
         }
+        .nbd-filter-inline-title {
+            color:#0f2744;
+            font-size:13px;
+            font-weight:850;
+            line-height:1.1;
+            padding-top:24px;
+            white-space:nowrap;
+        }
         .nbd-duplicate-badge {
             display:inline-flex;
             align-items:center;
@@ -731,7 +739,9 @@ def _render_filters(
         # No geography slicers in this view. The data has already been scoped
         # by apply_role_scope(), so only operational filters remain visible.
         zones, circles, branches = [], [], []
-        c1, c2 = st.columns([1, 2], gap="small")
+        title_col, c1, c2 = st.columns([0.42, 1, 2], gap="small")
+        with title_col:
+            st.markdown("<div class='nbd-filter-inline-title'>Filters</div>", unsafe_allow_html=True)
         with c1:
             load_types = st.multiselect(
                 "Load Type",
@@ -749,9 +759,12 @@ def _render_filters(
             )
         return zones, circles, branches, load_types, customers
 
-    cols = st.columns([1, 1, 1.1, 1, 1.5], gap="small")
+    cols = st.columns([0.42, 1, 1, 1.1, 1, 1.5], gap="small")
 
     with cols[0]:
+        st.markdown("<div class='nbd-filter-inline-title'>Filters</div>", unsafe_allow_html=True)
+
+    with cols[1]:
         if scope.get("zone"):
             zones = [scope["zone"]]
             st.multiselect("Zone", zones, default=zones, disabled=True, key="nbd_geo_zone_locked")
@@ -762,7 +775,7 @@ def _render_filters(
 
     zone_frames = [_apply_multi(frame, "Zone", zones) for frame in frames]
 
-    with cols[1]:
+    with cols[2]:
         if scope.get("circle"):
             circles = [scope["circle"]]
             st.multiselect("Circle", circles, default=circles, disabled=True, key="nbd_geo_circle_locked")
@@ -773,7 +786,7 @@ def _render_filters(
 
     circle_frames = [_apply_multi(frame, "Circle", circles) for frame in zone_frames]
 
-    with cols[2]:
+    with cols[3]:
         if scope.get("branch"):
             branches = [scope["branch"]]
             st.multiselect("Branch", branches, default=branches, disabled=True, key="nbd_geo_branch_locked")
@@ -784,7 +797,7 @@ def _render_filters(
 
     branch_frames = [_apply_multi(frame, "Branch", branches) for frame in circle_frames]
 
-    with cols[3]:
+    with cols[4]:
         load_types = st.multiselect(
             "Load Type",
             _safe_options(branch_frames, "LoadType"),
@@ -794,7 +807,7 @@ def _render_filters(
 
     load_frames = [_apply_multi(frame, "LoadType", load_types) for frame in branch_frames]
 
-    with cols[4]:
+    with cols[5]:
         customers = st.multiselect(
             "Customer",
             _safe_options(load_frames, name_col),
@@ -929,13 +942,11 @@ def show_NBDAnalysis() -> None:
     customer_only = report_layout == "Customer Only"
 
     with st.container(border=True):
-        filter_title = "Customer Filters" if customer_only else "Filters"
-        st.markdown(f"<div class='nbd-section-title'>{filter_title}</div>", unsafe_allow_html=True)
-        if customer_only:
-            st.caption("Customer Only view: Zone, Circle and Branch are intentionally hidden. Login data-scope restrictions still apply in the background.")
         zones, circles, branches, load_types, customers = _render_filters(
             current_df, compare_df, name_col, customer_only=customer_only
         )
+        if customer_only:
+            st.caption("Customer Only view: Zone, Circle and Branch are intentionally hidden. Login data-scope restrictions still apply in the background.")
 
     current_filtered = _apply_common_filters(
         current_df, zones, circles, branches, load_types, customers, name_col
