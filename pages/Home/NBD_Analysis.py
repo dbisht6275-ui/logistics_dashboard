@@ -85,14 +85,19 @@ def apply_nbd_style() -> None:
 
         .nbd-kpi {
             box-sizing:border-box;
-            background:#fff;
-            border:1px solid #e2e8f0;
+            background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+            border:1px solid #dbe4ef;
             border-left:3px solid var(--accent,#2563eb);
-            border-radius:8px;
+            border-radius:9px;
             padding:6px 8px;
             height:64px;
             min-height:64px;
-            box-shadow:0 1px 5px rgba(15,23,42,.045);
+            box-shadow:0 2px 7px rgba(15,23,42,.055);
+            transition:box-shadow .15s ease, transform .15s ease;
+        }
+        .nbd-kpi:hover {
+            box-shadow:0 5px 14px rgba(15,23,42,.10);
+            transform:translateY(-1px);
         }
         div[data-testid="stElementContainer"]:has(.nbd-kpi) {
             min-height:64px !important;
@@ -124,6 +129,22 @@ def apply_nbd_style() -> None:
             color:#0f2744;
             margin:1px 0 5px 0;
             line-height:1.2;
+            border-left:3px solid #17365D;
+            padding-left:6px;
+        }
+        .nbd-duplicate-badge {
+            display:inline-flex;
+            align-items:center;
+            gap:5px;
+            margin-top:3px;
+            padding:3px 8px;
+            border-radius:999px;
+            background:#fff7d6;
+            border:1px solid #f2cf66;
+            color:#7c4a03;
+            font-size:9px;
+            font-weight:800;
+            line-height:1.2;
         }
 
         div[data-testid="stCaptionContainer"] p {
@@ -131,7 +152,27 @@ def apply_nbd_style() -> None:
             line-height:1.25 !important;
             margin:0 !important;
         }
+        div[data-testid="stDataFrame"] {
+            border:1px solid #cbd5e1 !important;
+            border-radius:9px !important;
+            overflow:hidden !important;
+            box-shadow:0 3px 10px rgba(15,23,42,.06) !important;
+        }
         div[data-testid="stDataFrame"] * { font-size: 10.5px !important; }
+
+        /* Streamlit dataframe header: dark navy with white labels.
+           Multiple selectors are kept for compatibility across Streamlit versions. */
+        div[data-testid="stDataFrame"] [role="columnheader"],
+        div[data-testid="stDataFrame"] div[role="columnheader"] {
+            background:#17365D !important;
+            color:#ffffff !important;
+            font-weight:800 !important;
+        }
+        div[data-testid="stDataFrame"] [role="columnheader"] *,
+        div[data-testid="stDataFrame"] div[role="columnheader"] * {
+            color:#ffffff !important;
+            font-weight:800 !important;
+        }
 
         div[data-testid="stDownloadButton"] button,
         div[data-testid="stButton"] button,
@@ -370,26 +411,39 @@ def _period_customer_summary(
     code_col: str,
     name_col: str,
     prefix: str,
+    group_keys: list[str],
 ) -> pd.DataFrame:
     if df is None or df.empty:
-        return pd.DataFrame(columns=[code_col, name_col])
+        return pd.DataFrame(columns=[*group_keys, name_col])
 
     work = df.copy()
     work["__LoadGroup"] = work["LoadType"].map(_load_group)
 
-    keys = [code_col]
-    base = work.groupby(keys, as_index=False).agg(**{f"{prefix} Sale": ("Revenue", "sum")})
+    # In Customer + Geography layout the same customer code is allowed to
+    # appear once per booking location. In Customer Only layout group_keys
+    # contains only the customer code, so the customer remains unique.
+    keys = [col for col in group_keys if col in work.columns]
+    if code_col not in keys:
+        keys.append(code_col)
+
+    base = (
+        work.groupby(keys, as_index=False, dropna=False)
+        .agg(**{f"{prefix} Sale": ("Revenue", "sum")})
+    )
 
     for group_name in ("LTL", "FTL"):
         part = (
             work[work["__LoadGroup"] == group_name]
-            .groupby(keys, as_index=False)
+            .groupby(keys, as_index=False, dropna=False)
             .agg(**{f"{prefix} {group_name}": ("Revenue", "sum")})
         )
         base = base.merge(part, on=keys, how="left")
 
-    names = work.groupby(code_col, as_index=False).agg(**{name_col: (name_col, _first_non_blank)})
-    base = base.merge(names, on=code_col, how="left")
+    names = (
+        work.groupby(keys, as_index=False, dropna=False)
+        .agg(**{name_col: (name_col, _first_non_blank)})
+    )
+    base = base.merge(names, on=keys, how="left")
 
     for col in (f"{prefix} LTL", f"{prefix} FTL"):
         if col not in base.columns:
@@ -403,25 +457,57 @@ def build_nbd_report(
     current_df: pd.DataFrame,
     compare_df: pd.DataFrame,
     view_type: str,
+    customer_only: bool = False,
 ) -> pd.DataFrame:
     config = _customer_config(view_type)
     code_col = config["code"]
     name_col = config["name"]
 
-    current = _period_customer_summary(current_df, code_col, name_col, "Current")
-    compare = _period_customer_summary(compare_df, code_col, name_col, "Compare")
+    current_df = current_df.copy()
+    compare_df = compare_df.copy()
 
-    # Merge on code where possible. Name is refreshed from the period in which
-    # the customer is present; this avoids duplicates when the spelling changed.
-    current_by_code = current.drop(columns=[name_col], errors="ignore")
-    compare_by_code = compare.drop(columns=[name_col], errors="ignore")
+    # Customer + Geography must NOT collapse a customer code across branches.
+    # A code can legitimately book from multiple locations, therefore the
+    # geographic identity becomes part of the report key.
+    geo_cols = ["Zone", "Circle", "Branch"]
+    if customer_only:
+        group_keys = [code_col]
+    else:
+        for frame in (current_df, compare_df):
+            for col in geo_cols:
+                if col not in frame.columns:
+                    frame[col] = ""
+                else:
+                    frame[col] = frame[col].fillna("").astype(str).str.strip()
+        group_keys = [*geo_cols, code_col]
 
-    codes = pd.DataFrame({code_col: pd.Index(
-        set(current_by_code[code_col].dropna().tolist()) |
-        set(compare_by_code[code_col].dropna().tolist())
-    ).tolist()})
+    current = _period_customer_summary(
+        current_df, code_col, name_col, "Current", group_keys
+    )
+    compare = _period_customer_summary(
+        compare_df, code_col, name_col, "Compare", group_keys
+    )
 
-    report = codes.merge(compare_by_code, on=code_col, how="left").merge(current_by_code, on=code_col, how="left")
+    current_by_key = current.drop(columns=[name_col], errors="ignore")
+    compare_by_key = compare.drop(columns=[name_col], errors="ignore")
+
+    # Keep every unique customer/location combination from either period.
+    key_frames = []
+    if not current_by_key.empty:
+        key_frames.append(current_by_key[group_keys])
+    if not compare_by_key.empty:
+        key_frames.append(compare_by_key[group_keys])
+
+    if key_frames:
+        keys_df = pd.concat(key_frames, ignore_index=True).drop_duplicates()
+    else:
+        keys_df = pd.DataFrame(columns=group_keys)
+
+    report = (
+        keys_df
+        .merge(compare_by_key, on=group_keys, how="left")
+        .merge(current_by_key, on=group_keys, how="left")
+    )
 
     numeric_cols = [
         "Compare Sale", "Compare LTL", "Compare FTL",
@@ -432,15 +518,17 @@ def build_nbd_report(
             report[col] = 0.0
         report[col] = pd.to_numeric(report[col], errors="coerce").fillna(0.0)
 
-    # Customer name/details can come from either period. Current is preferred.
+    # Customer name/contact details are also resolved at the same reporting key.
     detail_frames = []
     for frame, priority in ((compare_df, 1), (current_df, 2)):
         if frame is None or frame.empty:
             continue
-        available = [code_col, name_col]
-        for col in ("Zone", "Circle", "Branch", "Mobile", "GSTIN"):
-            if col in frame.columns:
+
+        available = list(group_keys)
+        for col in (name_col, "Mobile", "GSTIN"):
+            if col in frame.columns and col not in available:
                 available.append(col)
+
         detail = frame[available].copy()
         detail["__priority"] = priority
         detail_frames.append(detail)
@@ -448,12 +536,17 @@ def build_nbd_report(
     if detail_frames:
         details = pd.concat(detail_frames, ignore_index=True, sort=False)
         details = details.sort_values("__priority", ascending=False)
+
         agg_map = {name_col: _first_non_blank}
-        for col in ("Zone", "Circle", "Branch", "Mobile", "GSTIN"):
+        for col in ("Mobile", "GSTIN"):
             if col in details.columns:
                 agg_map[col] = _first_non_blank
-        details = details.groupby(code_col, as_index=False).agg(agg_map)
-        report = report.merge(details, on=code_col, how="left")
+
+        details = (
+            details.groupby(group_keys, as_index=False, dropna=False)
+            .agg(agg_map)
+        )
+        report = report.merge(details, on=group_keys, how="left")
     else:
         report[name_col] = ""
 
@@ -803,6 +896,7 @@ def show_NBDAnalysis() -> None:
     current_df = st.session_state.get("nbd_current_df", pd.DataFrame())
     compare_df = st.session_state.get("nbd_compare_df", pd.DataFrame())
     config = _customer_config(view_type)
+    code_col = config["code"]
     name_col = config["name"]
 
     customer_only = report_layout == "Customer Only"
@@ -823,9 +917,21 @@ def show_NBDAnalysis() -> None:
         compare_df, zones, circles, branches, load_types, customers, name_col
     )
 
-    report = build_nbd_report(current_filtered, compare_filtered, view_type)
+    report = build_nbd_report(
+        current_filtered, compare_filtered, view_type, customer_only=customer_only
+    )
     if customer_only and not report.empty:
         report = report.drop(columns=["Zone", "Circle", "Branch"], errors="ignore")
+
+    # In Customer + Geography, the same customer code may legitimately appear
+    # on multiple rows because it books from multiple locations. Keep those rows
+    # separate, but flag the repeated code so the user can spot it immediately.
+    duplicate_code_values = set()
+    if not customer_only and not report.empty and code_col in report.columns:
+        _code_text = report[code_col].fillna("").astype(str).str.strip()
+        _valid_code = _code_text.ne("") & ~_code_text.str.casefold().isin({"nan", "none"})
+        _duplicate_mask = _valid_code & _code_text.duplicated(keep=False)
+        duplicate_code_values = set(_code_text[_duplicate_mask].tolist())
 
     total_customers = len(report)
     new_count = int((report["Customer Type"] == "NEW").sum()) if not report.empty else 0
@@ -854,6 +960,15 @@ def show_NBDAnalysis() -> None:
             f"Comparison: {compare_start:%d-%b-%Y} to {compare_end:%d-%b-%Y}  |  "
             f"Layout: {report_layout}"
         )
+        if not customer_only and duplicate_code_values:
+            repeated_rows = int(
+                report[code_col].fillna("").astype(str).str.strip().isin(duplicate_code_values).sum()
+            )
+            st.markdown(
+                f"<span class='nbd-duplicate-badge'>◆ {len(duplicate_code_values):,} repeated customer codes • "
+                f"{repeated_rows:,} location rows highlighted</span>",
+                unsafe_allow_html=True,
+            )
 
     # Compact Customer Type filter. A normal multiselect renders one chip per
     # selected value and becomes two rows when NEW + REGULAR + LOST are all
@@ -943,8 +1058,53 @@ def show_NBDAnalysis() -> None:
             "Growth %", format="%.1f%%"
         )
 
+    table_data = display_report
+
+    # Highlight repeated customer-code rows only in Customer + Geography.
+    # The highlight is presentation-only; it does not alter grouping, totals,
+    # NEW/LOST/REGULAR classification, filtering or the Excel export.
+    if not customer_only and duplicate_code_values and code_col in display_report.columns:
+        _display_codes = display_report[code_col].fillna("").astype(str).str.strip()
+        _duplicate_display_mask = _display_codes.isin(duplicate_code_values)
+
+        def _highlight_repeated_row(row):
+            if bool(_duplicate_display_mask.loc[row.name]):
+                return [
+                    "background-color:#fff7d6; color:#6b4700; font-weight:600; "
+                    "border-top:1px solid #f5df94; border-bottom:1px solid #f5df94"
+                ] * len(row)
+            return [""] * len(row)
+
+        # Large NBD reports can exceed Pandas' default Styler element cap.
+        # Raise it only to what this table needs, with a small safety margin.
+        required_elements = max(262_144, int(display_report.shape[0] * max(1, display_report.shape[1]) * 1.10))
+        pd.set_option("styler.render.max_elements", required_elements)
+
+        table_data = (
+            display_report.style
+            .apply(_highlight_repeated_row, axis=1)
+            .set_table_styles([
+                {
+                    "selector": "th.col_heading",
+                    "props": [
+                        ("background-color", "#17365D"),
+                        ("color", "#FFFFFF"),
+                        ("font-weight", "800"),
+                        ("border-color", "#274b73"),
+                    ],
+                },
+                {
+                    "selector": "th.blank",
+                    "props": [
+                        ("background-color", "#17365D"),
+                        ("color", "#FFFFFF"),
+                    ],
+                },
+            ])
+        )
+
     st.dataframe(
-        display_report,
+        table_data,
         use_container_width=True,
         hide_index=True,
         height=580,
