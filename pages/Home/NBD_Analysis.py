@@ -1125,11 +1125,11 @@ def show_NBDAnalysis() -> None:
     # browser responsive even when the report contains tens of thousands of rows.
     total_rows = len(display_report)
 
-    page_ctrl_left, page_ctrl_mid, page_ctrl_right = st.columns(
-        [3.8, 1.25, 1.25], gap="small", vertical_alignment="bottom"
+    page_ctrl_left, page_ctrl_rows, page_ctrl_prev, page_ctrl_next = st.columns(
+        [4.4, 1.35, .85, .85], gap="small", vertical_alignment="bottom"
     )
 
-    with page_ctrl_mid:
+    with page_ctrl_rows:
         rows_per_page = st.selectbox(
             "Rows per page",
             [25, 50, 100, 200],
@@ -1139,30 +1139,44 @@ def show_NBDAnalysis() -> None:
 
     total_pages = max(1, (total_rows + rows_per_page - 1) // rows_per_page)
 
-    # Clamp the saved page whenever filters/status/rows-per-page reduce the
-    # available number of pages.
-    saved_page = int(st.session_state.get("nbd_page_number", 1) or 1)
-    if saved_page < 1 or saved_page > total_pages:
-        st.session_state["nbd_page_number"] = 1
+    # Page number is kept internally. Users navigate with Previous / Next,
+    # avoiding a separate page-number input while still rendering only a small
+    # slice of the report at a time.
+    current_page = int(st.session_state.get("nbd_page_number", 1) or 1)
+    if current_page < 1 or current_page > total_pages:
+        current_page = 1
+        st.session_state["nbd_page_number"] = current_page
 
-    with page_ctrl_right:
-        current_page = st.number_input(
-            "Page",
-            min_value=1,
-            max_value=total_pages,
-            step=1,
-            key="nbd_page_number",
-        )
+    with page_ctrl_prev:
+        if st.button(
+            "◀ Previous",
+            key="nbd_prev_page",
+            use_container_width=True,
+            disabled=current_page <= 1,
+        ):
+            st.session_state["nbd_page_number"] = max(1, current_page - 1)
+            st.rerun()
 
-    page_start = (int(current_page) - 1) * rows_per_page
+    with page_ctrl_next:
+        if st.button(
+            "Next ▶",
+            key="nbd_next_page",
+            use_container_width=True,
+            disabled=current_page >= total_pages,
+        ):
+            st.session_state["nbd_page_number"] = min(total_pages, current_page + 1)
+            st.rerun()
+
+    # Re-read after navigation state updates.
+    current_page = int(st.session_state.get("nbd_page_number", 1) or 1)
+    page_start = (current_page - 1) * rows_per_page
     page_end = min(page_start + rows_per_page, total_rows)
     page_report = display_report.iloc[page_start:page_end].copy()
 
     with page_ctrl_left:
         st.markdown(
             f"<div class='nbd-page-info'>Showing <b>{page_start + 1:,}</b>–<b>{page_end:,}</b> "
-            f"of <b>{total_rows:,}</b> rows &nbsp;•&nbsp; Page <b>{int(current_page):,}</b> "
-            f"of <b>{total_pages:,}</b></div>",
+            f"of <b>{total_rows:,}</b> rows &nbsp;•&nbsp; <b>{current_page:,}/{total_pages:,}</b></div>",
             unsafe_allow_html=True,
         )
 
