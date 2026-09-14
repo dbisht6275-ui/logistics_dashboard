@@ -663,12 +663,12 @@ def export_nbd_excel(
         worksheet.write("A1", "SUGAM PARIVAHAN PVT. LTD. - NBD CUSTOMER MIS", title_fmt)
         worksheet.write(
             "A2",
-            f"Current Period: {current_start:%d-%b-%Y} to {current_end:%d-%b-%Y}",
+            f"Current Period: {current_start:%d/%m/%Y} to {current_end:%d/%m/%Y}",
             period_fmt,
         )
         worksheet.write(
             "A3",
-            f"Comparison Period: {compare_start:%d-%b-%Y} to {compare_end:%d-%b-%Y}",
+            f"Comparison Period: {compare_start:%d/%m/%Y} to {compare_end:%d/%m/%Y}",
             period_fmt,
         )
 
@@ -833,24 +833,28 @@ def show_NBDAnalysis() -> None:
                 "Current From",
                 value=st.session_state.get("nbd_current_start", default_current_start),
                 key="nbd_current_start",
+                format="DD/MM/YYYY",
             )
         with d2:
             current_end = st.date_input(
                 "Current To",
                 value=st.session_state.get("nbd_current_end", default_current_end),
                 key="nbd_current_end",
+                format="DD/MM/YYYY",
             )
         with d3:
             compare_start = st.date_input(
                 "Comparison From",
                 value=st.session_state.get("nbd_compare_start", default_compare_start),
                 key="nbd_compare_start",
+                format="DD/MM/YYYY",
             )
         with d4:
             compare_end = st.date_input(
                 "Comparison To",
                 value=st.session_state.get("nbd_compare_end", default_compare_end),
                 key="nbd_compare_end",
+                format="DD/MM/YYYY",
             )
         with view_col:
             view_type = st.selectbox(
@@ -970,8 +974,8 @@ def show_NBDAnalysis() -> None:
     with k2: _kpi("New", f"{new_count:,}", "Current only", GREEN)
     with k3: _kpi("Regular", f"{regular_count:,}", "Active in both", PURPLE)
     with k4: _kpi("Lost", f"{lost_count:,}", "Comparison only", RED)
-    with k5: _kpi("Current Business", _money(current_sale), f"{current_start:%d-%b-%Y} to {current_end:%d-%b-%Y}", BLUE)
-    with k6: _kpi("Compare Business", _money(compare_sale), f"{compare_start:%d-%b-%Y} to {compare_end:%d-%b-%Y}", ORANGE)
+    with k5: _kpi("Current Business", _money(current_sale), f"{current_start:%d/%m/%Y} to {current_end:%d/%m/%Y}", BLUE)
+    with k6: _kpi("Compare Business", _money(compare_sale), f"{compare_start:%d/%m/%Y} to {compare_end:%d/%m/%Y}", ORANGE)
     with k7: _kpi("Growth", f"{growth:+.1f}%", _money(change), GREEN if growth >= 0 else RED)
 
     status_options = ["NEW", "REGULAR", "LOST"]
@@ -980,8 +984,8 @@ def show_NBDAnalysis() -> None:
         st.markdown("<div class='nbd-section-title'>NBD Customer MIS</div>", unsafe_allow_html=True)
         st.markdown(
             f"<div class='nbd-report-meta'>"
-            f"Current: {current_start:%d-%b-%Y} to {current_end:%d-%b-%Y} &nbsp;|&nbsp; "
-            f"Comparison: {compare_start:%d-%b-%Y} to {compare_end:%d-%b-%Y} &nbsp;|&nbsp; "
+            f"Current: {current_start:%d/%m/%Y} to {current_end:%d/%m/%Y} &nbsp;|&nbsp; "
+            f"Comparison: {compare_start:%d/%m/%Y} to {compare_end:%d/%m/%Y} &nbsp;|&nbsp; "
             f"Layout: {html.escape(report_layout)}"
             f"</div>",
             unsafe_allow_html=True,
