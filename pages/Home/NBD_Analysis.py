@@ -274,6 +274,8 @@ def _apply_common_filters(
     load_types,
     customers,
     customer_name_col: str,
+    party_filter_values=None,
+    party_filter_col: str | None = None,
 ) -> pd.DataFrame:
     filtered = df
     filtered = _apply_multi(filtered, "Zone", zones)
@@ -281,6 +283,8 @@ def _apply_common_filters(
     filtered = _apply_multi(filtered, "Branch", branches)
     filtered = _apply_multi(filtered, "LoadType", load_types)
     filtered = _apply_multi(filtered, customer_name_col, customers)
+    if party_filter_col:
+        filtered = _apply_multi(filtered, party_filter_col, party_filter_values)
     return filtered
 
 
@@ -546,15 +550,17 @@ def _render_filters(
     Customer Only intentionally removes Zone/Circle/Branch slicers. Login
     data_scope is still enforced before this function, so users cannot bypass
     their assigned geography by choosing the customer-only layout.
+
+    Party Wise Filter is independent from the report View, so an Origin report
+    can still be narrowed by Consignee and a Destination report by Consignor.
     """
     scope = st.session_state.get("data_scope", {}) or {}
     frames = [current_df, compare_df]
 
     if customer_only:
-        # No geography slicers in this view. The data has already been scoped
-        # by apply_role_scope(), so only operational filters remain visible.
         zones, circles, branches = [], [], []
-        c1, c2 = st.columns([1, 2], gap="small")
+
+        c1, c2, c3, c4 = st.columns([1, 1.15, 1.8, 2], gap="small")
         with c1:
             load_types = st.multiselect(
                 "Load Type",
@@ -562,16 +568,42 @@ def _render_filters(
                 placeholder="All load types",
                 key="nbd_customer_only_load_type",
             )
+
         load_frames = [_apply_multi(frame, "LoadType", load_types) for frame in frames]
+
         with c2:
+            party_filter_type = st.selectbox(
+                "Party Filter",
+                ["Consignor Wise", "Consignee Wise"],
+                key="nbd_customer_only_party_filter_type",
+            )
+
+        party_filter_col = "Consignor" if party_filter_type == "Consignor Wise" else "Consignee"
+
+        with c3:
+            party_filter_values = st.multiselect(
+                party_filter_type,
+                _safe_options(load_frames, party_filter_col),
+                placeholder=f"All {party_filter_col.lower()}s",
+                key="nbd_customer_only_party_filter_values",
+            )
+
+        party_frames = [_apply_multi(frame, party_filter_col, party_filter_values) for frame in load_frames]
+
+        with c4:
             customers = st.multiselect(
                 "Customer",
-                _safe_options(load_frames, name_col),
+                _safe_options(party_frames, name_col),
                 placeholder="All customers",
                 key="nbd_customer_only_customer",
             )
-        return zones, circles, branches, load_types, customers
 
+        return (
+            zones, circles, branches, load_types, customers,
+            party_filter_values, party_filter_col,
+        )
+
+    # Geography layout: keep the existing geography filters on the first row.
     cols = st.columns([1, 1, 1.1, 1, 1.5], gap="small")
 
     with cols[0]:
@@ -625,7 +657,32 @@ def _render_filters(
             key="nbd_geo_customer",
         )
 
-    return zones, circles, branches, load_types, customers
+    # Additional Consignor / Consignee filter row requested for NBD analysis.
+    party_type_col, party_value_col = st.columns([1.2, 3.8], gap="small")
+    with party_type_col:
+        party_filter_type = st.selectbox(
+            "Party Filter",
+            ["Consignor Wise", "Consignee Wise"],
+            key="nbd_geo_party_filter_type",
+        )
+
+    party_filter_col = "Consignor" if party_filter_type == "Consignor Wise" else "Consignee"
+
+    # Build party options after geography + load type + customer filters, so the
+    # dropdown only shows parties that are relevant to the current selection.
+    customer_frames = [_apply_multi(frame, name_col, customers) for frame in load_frames]
+    with party_value_col:
+        party_filter_values = st.multiselect(
+            party_filter_type,
+            _safe_options(customer_frames, party_filter_col),
+            placeholder=f"All {party_filter_col.lower()}s",
+            key="nbd_geo_party_filter_values",
+        )
+
+    return (
+        zones, circles, branches, load_types, customers,
+        party_filter_values, party_filter_col,
+    )
 
 
 # =====================================================
@@ -751,15 +808,22 @@ def show_NBDAnalysis() -> None:
         st.markdown(f"<div class='nbd-section-title'>{filter_title}</div>", unsafe_allow_html=True)
         if customer_only:
             st.caption("Customer Only view: Zone, Circle and Branch are intentionally hidden. Login data-scope restrictions still apply in the background.")
-        zones, circles, branches, load_types, customers = _render_filters(
+        (
+            zones, circles, branches, load_types, customers,
+            party_filter_values, party_filter_col,
+        ) = _render_filters(
             current_df, compare_df, name_col, customer_only=customer_only
         )
 
     current_filtered = _apply_common_filters(
-        current_df, zones, circles, branches, load_types, customers, name_col
+        current_df, zones, circles, branches, load_types, customers, name_col,
+        party_filter_values=party_filter_values,
+        party_filter_col=party_filter_col,
     )
     compare_filtered = _apply_common_filters(
-        compare_df, zones, circles, branches, load_types, customers, name_col
+        compare_df, zones, circles, branches, load_types, customers, name_col,
+        party_filter_values=party_filter_values,
+        party_filter_col=party_filter_col,
     )
 
     report = build_nbd_report(current_filtered, compare_filtered, view_type)
