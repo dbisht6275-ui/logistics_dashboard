@@ -58,6 +58,43 @@ def apply_nbd_style() -> None:
             font-size: 11px !important;
         }
 
+
+        /* Period colour coding: Current dates share one background, Comparison dates another. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(1) div[data-testid="stDateInput"] div[data-baseweb="input"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(2) div[data-testid="stDateInput"] div[data-baseweb="input"] {
+            background:#e8f1ff !important;
+            border-color:#93b7ea !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(1) div[data-testid="stDateInput"] input,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(2) div[data-testid="stDateInput"] input {
+            background:#e8f1ff !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(3) div[data-testid="stDateInput"] div[data-baseweb="input"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(4) div[data-testid="stDateInput"] div[data-baseweb="input"] {
+            background:#fff2e2 !important;
+            border-color:#e7b877 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(3) div[data-testid="stDateInput"] input,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(4) div[data-testid="stDateInput"] input {
+            background:#fff2e2 !important;
+        }
+
         .nbd-title {
             color:#102a43;
             font-size:18px;
@@ -175,6 +212,7 @@ def apply_nbd_style() -> None:
             line-height:1.25 !important;
             margin:0 !important;
         }
+        .nbd-page-info {font-size:11px;color:#475569;padding:7px 2px 5px;white-space:nowrap;}
         div[data-testid="stDataFrame"] {
             border:1px solid #cbd5e1 !important;
             border-radius:9px !important;
@@ -992,7 +1030,6 @@ def show_NBDAnalysis() -> None:
     status_options = ["NEW", "REGULAR", "LOST"]
     table_head_left, table_head_mid, table_head_right = st.columns([4.5, 1.3, 1.4], vertical_alignment="center")
     with table_head_left:
-        st.markdown("<div class='nbd-section-title'>NBD Customer MIS</div>", unsafe_allow_html=True)
         st.markdown(
             f"<div class='nbd-report-meta'>"
             f"Current: {current_start:%d/%m/%Y} to {current_end:%d/%m/%Y} &nbsp;|&nbsp; "
@@ -1080,11 +1117,55 @@ def show_NBDAnalysis() -> None:
         st.info("No NBD customer data found for the selected periods and filters.")
         return
 
-    # IMPORTANT: Do not pass a Pandas Styler to st.dataframe here.
-    # Large NBD reports can easily exceed Pandas Styler's default 262,144-cell
-    # render limit. Streamlit's native Arrow-backed dataframe renderer is
-    # virtualized and handles large reports without materializing CSS for every
-    # cell. NumberColumn keeps the values numeric while formatting them in the UI.
+    # =============================================================
+    # Pagination
+    # =============================================================
+    # Render only one page at a time. The complete filtered dataset is still
+    # used for KPIs, NEW/LOST/REGULAR counts and Excel export. This keeps the
+    # browser responsive even when the report contains tens of thousands of rows.
+    total_rows = len(display_report)
+
+    page_ctrl_left, page_ctrl_mid, page_ctrl_right = st.columns(
+        [3.8, 1.25, 1.25], gap="small", vertical_alignment="bottom"
+    )
+
+    with page_ctrl_mid:
+        rows_per_page = st.selectbox(
+            "Rows per page",
+            [25, 50, 100, 200],
+            index=1,
+            key="nbd_rows_per_page",
+        )
+
+    total_pages = max(1, (total_rows + rows_per_page - 1) // rows_per_page)
+
+    # Clamp the saved page whenever filters/status/rows-per-page reduce the
+    # available number of pages.
+    saved_page = int(st.session_state.get("nbd_page_number", 1) or 1)
+    if saved_page < 1 or saved_page > total_pages:
+        st.session_state["nbd_page_number"] = 1
+
+    with page_ctrl_right:
+        current_page = st.number_input(
+            "Page",
+            min_value=1,
+            max_value=total_pages,
+            step=1,
+            key="nbd_page_number",
+        )
+
+    page_start = (int(current_page) - 1) * rows_per_page
+    page_end = min(page_start + rows_per_page, total_rows)
+    page_report = display_report.iloc[page_start:page_end].copy()
+
+    with page_ctrl_left:
+        st.markdown(
+            f"<div class='nbd-page-info'>Showing <b>{page_start + 1:,}</b>–<b>{page_end:,}</b> "
+            f"of <b>{total_rows:,}</b> rows &nbsp;•&nbsp; Page <b>{int(current_page):,}</b> "
+            f"of <b>{total_pages:,}</b></div>",
+            unsafe_allow_html=True,
+        )
+
     currency_columns = [
         "Compare Sale", "Compare LTL", "Compare FTL",
         "Current Sale", "Current LTL", "Current FTL", "Change",
@@ -1092,19 +1173,19 @@ def show_NBDAnalysis() -> None:
     column_config = {
         col: st.column_config.NumberColumn(col, format="₹%.0f")
         for col in currency_columns
-        if col in display_report.columns
+        if col in page_report.columns
     }
-    if "Growth %" in display_report.columns:
+    if "Growth %" in page_report.columns:
         column_config["Growth %"] = st.column_config.NumberColumn(
             "Growth %", format="%.1f%%"
         )
 
-    # Always use a Styler for the visible dataframe so the column-header style is
-    # explicitly carried with the table. This is more reliable than CSS-only
-    # selectors across Streamlit versions.
+    # Styling is applied only to the current page, not to the full report.
+    # This avoids the large Pandas Styler object that previously caused the UI
+    # to become slow or unresponsive on large datasets.
     required_elements = max(
-        262_144,
-        int(display_report.shape[0] * max(1, display_report.shape[1]) * 1.10),
+        10_000,
+        int(page_report.shape[0] * max(1, page_report.shape[1]) * 1.20),
     )
     pd.set_option("styler.render.max_elements", required_elements)
 
@@ -1114,17 +1195,15 @@ def show_NBDAnalysis() -> None:
             "border-color:#17365D; text-align:left"
         ] * len(columns)
 
-    table_data = display_report.style.apply_index(_navy_column_headers, axis="columns")
+    table_data = page_report.style.apply_index(_navy_column_headers, axis="columns")
 
     # Highlight repeated customer-code rows only in Customer + Geography.
-    # The highlight is presentation-only; it does not alter grouping, totals,
-    # NEW/LOST/REGULAR classification, filtering or the Excel export.
-    if not customer_only and duplicate_code_values and code_col in display_report.columns:
-        _display_codes = display_report[code_col].fillna("").astype(str).str.strip()
-        _duplicate_display_mask = _display_codes.isin(duplicate_code_values)
+    if not customer_only and duplicate_code_values and code_col in page_report.columns:
+        _page_codes = page_report[code_col].fillna("").astype(str).str.strip()
+        _duplicate_page_mask = _page_codes.isin(duplicate_code_values)
 
         def _highlight_repeated_row(row):
-            if bool(_duplicate_display_mask.loc[row.name]):
+            if bool(_duplicate_page_mask.loc[row.name]):
                 return [
                     "background-color:#fff7d6; color:#6b4700; font-weight:600; "
                     "border-top:1px solid #f5df94; border-bottom:1px solid #f5df94"
@@ -1133,8 +1212,6 @@ def show_NBDAnalysis() -> None:
 
         table_data = table_data.apply(_highlight_repeated_row, axis=1)
 
-    # Keep table-style rules too as a fallback for Streamlit/Pandas combinations
-    # that honor table CSS selectors for dataframe headers.
     table_data = table_data.set_table_styles([
         {
             "selector": "th.col_heading",
