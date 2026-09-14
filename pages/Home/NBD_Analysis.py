@@ -212,7 +212,6 @@ def apply_nbd_style() -> None:
             line-height:1.25 !important;
             margin:0 !important;
         }
-        .nbd-page-info {font-size:11px;color:#475569;padding:7px 2px 5px;white-space:nowrap;}
         div[data-testid="stDataFrame"] {
             border:1px solid #cbd5e1 !important;
             border-radius:9px !important;
@@ -678,6 +677,7 @@ def _kpi(title: str, value: str, note: str, color: str) -> None:
     )
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
 def export_nbd_excel(
     report_df: pd.DataFrame,
     current_start: date,
@@ -1118,66 +1118,26 @@ def show_NBDAnalysis() -> None:
         return
 
     # =============================================================
-    # Pagination
+    # Fast full-table rendering (no pagination)
     # =============================================================
-    # Render only one page at a time. The complete filtered dataset is still
-    # used for KPIs, NEW/LOST/REGULAR counts and Excel export. This keeps the
-    # browser responsive even when the report contains tens of thousands of rows.
-    total_rows = len(display_report)
+    # IMPORTANT: keep the dataframe native/Arrow-backed. Pandas Styler creates
+    # per-cell CSS and becomes very slow for large NBD reports. Streamlit's
+    # native dataframe renderer is virtualized, so only visible rows are painted
+    # in the browser even though the complete filtered report remains available
+    # for scrolling, sorting and searching.
+    table_report = display_report
 
-    page_ctrl_left, page_ctrl_rows, page_ctrl_prev, page_ctrl_next = st.columns(
-        [4.4, 1.35, .85, .85], gap="small", vertical_alignment="bottom"
-    )
-
-    with page_ctrl_rows:
-        rows_per_page = st.selectbox(
-            "Rows per page",
-            [25, 50, 100, 200],
-            index=1,
-            key="nbd_rows_per_page",
-        )
-
-    total_pages = max(1, (total_rows + rows_per_page - 1) // rows_per_page)
-
-    # Page number is kept internally. Users navigate with Previous / Next,
-    # avoiding a separate page-number input while still rendering only a small
-    # slice of the report at a time.
-    current_page = int(st.session_state.get("nbd_page_number", 1) or 1)
-    if current_page < 1 or current_page > total_pages:
-        current_page = 1
-        st.session_state["nbd_page_number"] = current_page
-
-    with page_ctrl_prev:
-        if st.button(
-            "◀ Previous",
-            key="nbd_prev_page",
-            use_container_width=True,
-            disabled=current_page <= 1,
-        ):
-            st.session_state["nbd_page_number"] = max(1, current_page - 1)
-            st.rerun()
-
-    with page_ctrl_next:
-        if st.button(
-            "Next ▶",
-            key="nbd_next_page",
-            use_container_width=True,
-            disabled=current_page >= total_pages,
-        ):
-            st.session_state["nbd_page_number"] = min(total_pages, current_page + 1)
-            st.rerun()
-
-    # Re-read after navigation state updates.
-    current_page = int(st.session_state.get("nbd_page_number", 1) or 1)
-    page_start = (current_page - 1) * rows_per_page
-    page_end = min(page_start + rows_per_page, total_rows)
-    page_report = display_report.iloc[page_start:page_end].copy()
-
-    with page_ctrl_left:
-        st.markdown(
-            f"<div class='nbd-page-info'>Showing <b>{page_start + 1:,}</b>–<b>{page_end:,}</b> "
-            f"of <b>{total_rows:,}</b> rows &nbsp;•&nbsp; <b>{current_page:,}/{total_pages:,}</b></div>",
-            unsafe_allow_html=True,
+    # Lightweight duplicate indicator for Customer + Geography. Full-row
+    # Pandas Styler highlighting is intentionally avoided because it is the main
+    # source of lag on large tables. The repeated-code badge above the table is
+    # retained, and repeated rows get a small marker without expensive styling.
+    if not customer_only and duplicate_code_values and code_col in table_report.columns:
+        table_report = table_report.copy()
+        _table_codes = table_report[code_col].fillna("").astype(str).str.strip()
+        table_report.insert(
+            0,
+            "Repeated",
+            _table_codes.isin(duplicate_code_values).map({True: "◆", False: ""}),
         )
 
     currency_columns = [
@@ -1187,66 +1147,21 @@ def show_NBDAnalysis() -> None:
     column_config = {
         col: st.column_config.NumberColumn(col, format="₹%.0f")
         for col in currency_columns
-        if col in page_report.columns
+        if col in table_report.columns
     }
-    if "Growth %" in page_report.columns:
+    if "Growth %" in table_report.columns:
         column_config["Growth %"] = st.column_config.NumberColumn(
             "Growth %", format="%.1f%%"
         )
-
-    # Styling is applied only to the current page, not to the full report.
-    # This avoids the large Pandas Styler object that previously caused the UI
-    # to become slow or unresponsive on large datasets.
-    required_elements = max(
-        10_000,
-        int(page_report.shape[0] * max(1, page_report.shape[1]) * 1.20),
-    )
-    pd.set_option("styler.render.max_elements", required_elements)
-
-    def _navy_column_headers(columns):
-        return [
-            "background-color:#0b2447; color:#ffffff; font-weight:800; "
-            "border-color:#17365D; text-align:left"
-        ] * len(columns)
-
-    table_data = page_report.style.apply_index(_navy_column_headers, axis="columns")
-
-    # Highlight repeated customer-code rows only in Customer + Geography.
-    if not customer_only and duplicate_code_values and code_col in page_report.columns:
-        _page_codes = page_report[code_col].fillna("").astype(str).str.strip()
-        _duplicate_page_mask = _page_codes.isin(duplicate_code_values)
-
-        def _highlight_repeated_row(row):
-            if bool(_duplicate_page_mask.loc[row.name]):
-                return [
-                    "background-color:#fff7d6; color:#6b4700; font-weight:600; "
-                    "border-top:1px solid #f5df94; border-bottom:1px solid #f5df94"
-                ] * len(row)
-            return [""] * len(row)
-
-        table_data = table_data.apply(_highlight_repeated_row, axis=1)
-
-    table_data = table_data.set_table_styles([
-        {
-            "selector": "th.col_heading",
-            "props": [
-                ("background-color", "#0b2447"),
-                ("color", "#FFFFFF"),
-                ("font-weight", "800"),
-                ("border-color", "#17365D"),
-            ],
-        },
-        {
-            "selector": "th.blank",
-            "props": [
-                ("background-color", "#0b2447"),
-                ("color", "#FFFFFF"),
-            ],
-        },
-    ])
+    if "Repeated" in table_report.columns:
+        column_config["Repeated"] = st.column_config.TextColumn(
+            "",
+            width="small",
+            help="◆ = same customer code appears in more than one geography row",
+        )
 
     st.dataframe(
-        table_data,
+        table_report,
         use_container_width=True,
         hide_index=True,
         height=580,
