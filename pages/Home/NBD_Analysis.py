@@ -23,67 +23,115 @@ def apply_nbd_style() -> None:
     st.markdown(
         """
         <style>
+        /* Compact NBD page: visual-only changes, report logic remains untouched. */
         .block-container {
             max-width: 100% !important;
-            padding: .45rem .75rem 1.1rem !important;
+            padding: .25rem .55rem .75rem !important;
         }
-        div[data-testid="stVerticalBlock"] { gap: .45rem !important; }
-        div[data-testid="stHorizontalBlock"] { gap: .55rem !important; }
+
+        div[data-testid="stVerticalBlock"] { gap: .22rem !important; }
+        div[data-testid="stHorizontalBlock"] { gap: .38rem !important; }
+
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            border-radius: 11px !important;
+            border-radius: 9px !important;
             border: 1px solid #dbe4ef !important;
-            box-shadow: 0 3px 10px rgba(15,42,67,.06) !important;
+            box-shadow: 0 2px 7px rgba(15,42,67,.05) !important;
             background: #fff !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding: .65rem .75rem !important;
+            padding: .38rem .55rem !important;
         }
+
+        /* Compact widget labels and controls. */
+        label[data-testid="stWidgetLabel"] {
+            min-height: 16px !important;
+            margin-bottom: 0 !important;
+        }
+        label[data-testid="stWidgetLabel"] p {
+            font-size: 10.5px !important;
+            line-height: 1.05 !important;
+        }
+        div[data-baseweb="select"] > div {
+            min-height: 34px !important;
+            height: 34px !important;
+            font-size: 11px !important;
+        }
+        div[data-testid="stDateInput"] div[data-baseweb="input"] {
+            min-height: 34px !important;
+            height: 34px !important;
+        }
+        div[data-testid="stDateInput"] input {
+            min-height: 32px !important;
+            height: 32px !important;
+            padding-top: 2px !important;
+            padding-bottom: 2px !important;
+            font-size: 11px !important;
+        }
+
         .nbd-title {
             color:#102a43;
-            font-size:21px;
+            font-size:18px;
             font-weight:850;
-            line-height:1.15;
+            line-height:1.05;
             margin:0;
         }
         .nbd-subtitle {
             color:#64748b;
-            font-size:11px;
-            margin-top:3px;
+            font-size:9.5px;
+            line-height:1.05;
+            margin-top:1px;
         }
         .nbd-period-badge {
             display:inline-block;
-            padding:4px 8px;
+            padding:2px 7px;
             border-radius:999px;
             background:#ecfdf5;
             color:#166534;
             border:1px solid #bbf7d0;
-            font-size:10px;
+            font-size:8.5px;
             font-weight:800;
-            letter-spacing:.15px;
+            letter-spacing:.1px;
         }
+
         .nbd-kpi {
             background:#fff;
             border:1px solid #e2e8f0;
-            border-left:4px solid var(--accent,#2563eb);
-            border-radius:10px;
-            padding:8px 10px;
-            min-height:72px;
-            box-shadow:0 2px 7px rgba(15,23,42,.05);
+            border-left:3px solid var(--accent,#2563eb);
+            border-radius:8px;
+            padding:5px 7px;
+            min-height:56px;
+            box-shadow:0 1px 5px rgba(15,23,42,.045);
         }
-        .nbd-kpi-title {font-size:10.5px;color:#64748b;font-weight:750;}
-        .nbd-kpi-value {font-size:18px;color:#0f172a;font-weight:900;margin-top:2px;white-space:nowrap;}
-        .nbd-kpi-note {font-size:10px;color:#64748b;margin-top:2px;}
-        .nbd-section-title {font-size:14px;font-weight:850;color:#0f2744;margin-bottom:5px;}
+        .nbd-kpi-title {font-size:9px;color:#64748b;font-weight:750;line-height:1.05;}
+        .nbd-kpi-value {font-size:15px;color:#0f172a;font-weight:900;margin-top:1px;line-height:1.1;white-space:nowrap;}
+        .nbd-kpi-note {font-size:8.5px;color:#64748b;margin-top:1px;line-height:1.05;white-space:nowrap;}
+        .nbd-section-title {font-size:12px;font-weight:850;color:#0f2744;margin:0 0 2px 0;line-height:1.05;}
+
+        div[data-testid="stCaptionContainer"] p {
+            font-size:9.5px !important;
+            line-height:1.1 !important;
+            margin:0 !important;
+        }
         div[data-testid="stDataFrame"] * { font-size: 10.5px !important; }
+
         div[data-testid="stDownloadButton"] button,
         div[data-testid="stButton"] button {
-            min-height:38px !important;
-            border-radius:8px !important;
-            font-size:11px !important;
+            min-height:34px !important;
+            height:34px !important;
+            padding:.15rem .55rem !important;
+            border-radius:7px !important;
+            font-size:10.5px !important;
             font-weight:750 !important;
         }
+        div[data-testid="stPopover"] button {
+            min-height:34px !important;
+            height:34px !important;
+            padding:.15rem .55rem !important;
+            font-size:10.5px !important;
+        }
+
         @media (max-width: 768px) {
-            .block-container {padding:.35rem .45rem .8rem !important;}
+            .block-container {padding:.25rem .4rem .65rem !important;}
             div[data-testid="stHorizontalBlock"] {
                 flex-direction:column !important;
                 align-items:stretch !important;
