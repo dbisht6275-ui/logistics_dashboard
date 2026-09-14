@@ -23,14 +23,15 @@ def apply_nbd_style() -> None:
     st.markdown(
         """
         <style>
-        /* Compact NBD page: visual-only changes, report logic remains untouched. */
+        /* Safe compact layout: smaller spacing without forcing widget heights. */
         .block-container {
             max-width: 100% !important;
-            padding: .25rem .55rem .75rem !important;
+            padding: .35rem .65rem .9rem !important;
         }
 
-        div[data-testid="stVerticalBlock"] { gap: .22rem !important; }
-        div[data-testid="stHorizontalBlock"] { gap: .38rem !important; }
+        /* Keep enough vertical breathing room so Streamlit labels never overlap. */
+        div[data-testid="stVerticalBlock"] { gap: .55rem !important; }
+        div[data-testid="stHorizontalBlock"] { gap: .45rem !important; }
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
             border-radius: 9px !important;
@@ -39,32 +40,21 @@ def apply_nbd_style() -> None:
             background: #fff !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding: .38rem .55rem !important;
+            padding: .50rem .65rem !important;
         }
 
-        /* Compact widget labels and controls. */
-        label[data-testid="stWidgetLabel"] {
-            min-height: 16px !important;
-            margin-bottom: 0 !important;
-        }
+        /* Compact text only. Do not force fixed widget heights; that caused overlap. */
         label[data-testid="stWidgetLabel"] p {
             font-size: 10.5px !important;
-            line-height: 1.05 !important;
+            line-height: 1.25 !important;
+            margin-bottom: 3px !important;
         }
         div[data-baseweb="select"] > div {
-            min-height: 34px !important;
-            height: 34px !important;
+            min-height: 38px !important;
             font-size: 11px !important;
         }
-        div[data-testid="stDateInput"] div[data-baseweb="input"] {
-            min-height: 34px !important;
-            height: 34px !important;
-        }
         div[data-testid="stDateInput"] input {
-            min-height: 32px !important;
-            height: 32px !important;
-            padding-top: 2px !important;
-            padding-bottom: 2px !important;
+            min-height: 36px !important;
             font-size: 11px !important;
         }
 
@@ -72,18 +62,18 @@ def apply_nbd_style() -> None:
             color:#102a43;
             font-size:18px;
             font-weight:850;
-            line-height:1.05;
+            line-height:1.18;
             margin:0;
         }
         .nbd-subtitle {
             color:#64748b;
             font-size:9.5px;
-            line-height:1.05;
-            margin-top:1px;
+            line-height:1.25;
+            margin-top:2px;
         }
         .nbd-period-badge {
             display:inline-block;
-            padding:2px 7px;
+            padding:3px 7px;
             border-radius:999px;
             background:#ecfdf5;
             color:#166534;
@@ -94,44 +84,67 @@ def apply_nbd_style() -> None:
         }
 
         .nbd-kpi {
+            box-sizing:border-box;
             background:#fff;
             border:1px solid #e2e8f0;
             border-left:3px solid var(--accent,#2563eb);
             border-radius:8px;
-            padding:5px 7px;
-            min-height:56px;
+            padding:6px 8px;
+            height:64px;
+            min-height:64px;
             box-shadow:0 1px 5px rgba(15,23,42,.045);
         }
-        .nbd-kpi-title {font-size:9px;color:#64748b;font-weight:750;line-height:1.05;}
-        .nbd-kpi-value {font-size:15px;color:#0f172a;font-weight:900;margin-top:1px;line-height:1.1;white-space:nowrap;}
-        .nbd-kpi-note {font-size:8.5px;color:#64748b;margin-top:1px;line-height:1.05;white-space:nowrap;}
-        .nbd-section-title {font-size:12px;font-weight:850;color:#0f2744;margin:0 0 2px 0;line-height:1.05;}
+        div[data-testid="stElementContainer"]:has(.nbd-kpi) {
+            min-height:64px !important;
+        }
+        .nbd-kpi-title {
+            font-size:9px;
+            color:#64748b;
+            font-weight:750;
+            line-height:1.15;
+        }
+        .nbd-kpi-value {
+            font-size:15px;
+            color:#0f172a;
+            font-weight:900;
+            margin-top:2px;
+            line-height:1.15;
+            white-space:nowrap;
+        }
+        .nbd-kpi-note {
+            font-size:8.5px;
+            color:#64748b;
+            margin-top:2px;
+            line-height:1.15;
+            white-space:nowrap;
+        }
+        .nbd-section-title {
+            font-size:12.5px;
+            font-weight:850;
+            color:#0f2744;
+            margin:1px 0 5px 0;
+            line-height:1.2;
+        }
 
         div[data-testid="stCaptionContainer"] p {
             font-size:9.5px !important;
-            line-height:1.1 !important;
+            line-height:1.25 !important;
             margin:0 !important;
         }
         div[data-testid="stDataFrame"] * { font-size: 10.5px !important; }
 
         div[data-testid="stDownloadButton"] button,
-        div[data-testid="stButton"] button {
-            min-height:34px !important;
-            height:34px !important;
-            padding:.15rem .55rem !important;
+        div[data-testid="stButton"] button,
+        div[data-testid="stPopover"] button {
+            min-height:38px !important;
+            padding:.2rem .6rem !important;
             border-radius:7px !important;
             font-size:10.5px !important;
             font-weight:750 !important;
         }
-        div[data-testid="stPopover"] button {
-            min-height:34px !important;
-            height:34px !important;
-            padding:.15rem .55rem !important;
-            font-size:10.5px !important;
-        }
 
         @media (max-width: 768px) {
-            .block-container {padding:.25rem .4rem .65rem !important;}
+            .block-container {padding:.3rem .45rem .75rem !important;}
             div[data-testid="stHorizontalBlock"] {
                 flex-direction:column !important;
                 align-items:stretch !important;
