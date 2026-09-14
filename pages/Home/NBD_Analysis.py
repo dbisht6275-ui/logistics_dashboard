@@ -146,6 +146,21 @@ def apply_nbd_style() -> None:
             font-weight:800;
             line-height:1.2;
         }
+        .nbd-report-meta {
+            display:block;
+            width:100%;
+            box-sizing:border-box;
+            background:#0b2447;
+            color:#ffffff;
+            border:1px solid #17365D;
+            border-radius:7px;
+            padding:6px 10px;
+            margin:2px 0 4px 0;
+            font-size:9.5px;
+            font-weight:700;
+            line-height:1.25;
+            box-shadow:0 2px 6px rgba(11,36,71,.14);
+        }
 
         div[data-testid="stCaptionContainer"] p {
             font-size:9.5px !important;
@@ -170,6 +185,14 @@ def apply_nbd_style() -> None:
         }
         div[data-testid="stDataFrame"] [role="columnheader"] *,
         div[data-testid="stDataFrame"] div[role="columnheader"] * {
+            color:#ffffff !important;
+            font-weight:800 !important;
+        }
+
+        /* Additional selectors used by newer Streamlit dataframe builds. */
+        div[data-testid="stDataFrame"] [data-testid="column-header"],
+        div[data-testid="stDataFrame"] [data-testid="column-header"] > div {
+            background:#0b2447 !important;
             color:#ffffff !important;
             font-weight:800 !important;
         }
@@ -955,10 +978,13 @@ def show_NBDAnalysis() -> None:
     table_head_left, table_head_mid, table_head_right = st.columns([4.5, 1.3, 1.4], vertical_alignment="center")
     with table_head_left:
         st.markdown("<div class='nbd-section-title'>NBD Customer MIS</div>", unsafe_allow_html=True)
-        st.caption(
-            f"Current: {current_start:%d-%b-%Y} to {current_end:%d-%b-%Y}  |  "
-            f"Comparison: {compare_start:%d-%b-%Y} to {compare_end:%d-%b-%Y}  |  "
-            f"Layout: {report_layout}"
+        st.markdown(
+            f"<div class='nbd-report-meta'>"
+            f"Current: {current_start:%d-%b-%Y} to {current_end:%d-%b-%Y} &nbsp;|&nbsp; "
+            f"Comparison: {compare_start:%d-%b-%Y} to {compare_end:%d-%b-%Y} &nbsp;|&nbsp; "
+            f"Layout: {html.escape(report_layout)}"
+            f"</div>",
+            unsafe_allow_html=True,
         )
         if not customer_only and duplicate_code_values:
             repeated_rows = int(
@@ -1058,7 +1084,22 @@ def show_NBDAnalysis() -> None:
             "Growth %", format="%.1f%%"
         )
 
-    table_data = display_report
+    # Always use a Styler for the visible dataframe so the column-header style is
+    # explicitly carried with the table. This is more reliable than CSS-only
+    # selectors across Streamlit versions.
+    required_elements = max(
+        262_144,
+        int(display_report.shape[0] * max(1, display_report.shape[1]) * 1.10),
+    )
+    pd.set_option("styler.render.max_elements", required_elements)
+
+    def _navy_column_headers(columns):
+        return [
+            "background-color:#0b2447; color:#ffffff; font-weight:800; "
+            "border-color:#17365D; text-align:left"
+        ] * len(columns)
+
+    table_data = display_report.style.apply_index(_navy_column_headers, axis="columns")
 
     # Highlight repeated customer-code rows only in Customer + Geography.
     # The highlight is presentation-only; it does not alter grouping, totals,
@@ -1075,33 +1116,28 @@ def show_NBDAnalysis() -> None:
                 ] * len(row)
             return [""] * len(row)
 
-        # Large NBD reports can exceed Pandas' default Styler element cap.
-        # Raise it only to what this table needs, with a small safety margin.
-        required_elements = max(262_144, int(display_report.shape[0] * max(1, display_report.shape[1]) * 1.10))
-        pd.set_option("styler.render.max_elements", required_elements)
+        table_data = table_data.apply(_highlight_repeated_row, axis=1)
 
-        table_data = (
-            display_report.style
-            .apply(_highlight_repeated_row, axis=1)
-            .set_table_styles([
-                {
-                    "selector": "th.col_heading",
-                    "props": [
-                        ("background-color", "#17365D"),
-                        ("color", "#FFFFFF"),
-                        ("font-weight", "800"),
-                        ("border-color", "#274b73"),
-                    ],
-                },
-                {
-                    "selector": "th.blank",
-                    "props": [
-                        ("background-color", "#17365D"),
-                        ("color", "#FFFFFF"),
-                    ],
-                },
-            ])
-        )
+    # Keep table-style rules too as a fallback for Streamlit/Pandas combinations
+    # that honor table CSS selectors for dataframe headers.
+    table_data = table_data.set_table_styles([
+        {
+            "selector": "th.col_heading",
+            "props": [
+                ("background-color", "#0b2447"),
+                ("color", "#FFFFFF"),
+                ("font-weight", "800"),
+                ("border-color", "#17365D"),
+            ],
+        },
+        {
+            "selector": "th.blank",
+            "props": [
+                ("background-color", "#0b2447"),
+                ("color", "#FFFFFF"),
+            ],
+        },
+    ])
 
     st.dataframe(
         table_data,
