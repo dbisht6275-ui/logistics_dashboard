@@ -894,11 +894,7 @@ if "📦 Stock Operations" not in allowed_menu:
         if "🏠 Business Overview" in allowed_menu else 0
     allowed_menu.insert(stock_position, "📦 Stock Operations")
 
-# Farmhouse Trip is an internal utility page. Keep it available to authenticated users.
-if "🏡 Farmhouse Trip" not in allowed_menu:
-    farmhouse_position = allowed_menu.index("🏠 Business Overview") + 1 \
-        if "🏠 Business Overview" in allowed_menu else 0
-    allowed_menu.insert(farmhouse_position, "🏡 Farmhouse Trip")
+
 
 # NBD Customer Analysis is a newly registered primary page. Keep it immediately
 # visible to admins even before the role/menu permission table is re-saved.
