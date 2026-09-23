@@ -16,7 +16,6 @@ from pages.Home.Net_Profit_Analysis import show_net_profit_dashboard
 from pages.Home.comparison_tab import show_comparison
 from pages.Home.Customer_Analysis import show_CustomerAnalysis
 from pages.Home.NBD_Analysis import show_NBDAnalysis
-from pages.Home.Farm_house import show_farmhouse
 
 from pages.Home.Outstanding_Analysis import show_OutstandingAnalysis
 from pages.Home.Monthly_Trend_EDD import show_monthly_trend_edd
@@ -818,7 +817,6 @@ section.main {
 # checkboxes always match what's actually available here.
 FULL_MENU_ITEMS = [
     "🏠 Business Overview",
-    "🏡 Farmhouse Trip",
     "💹 P&L Dashboard",
     "💰 Net Profit Dashboard",
     "📊 Comparison",
@@ -1228,9 +1226,6 @@ track_usage(_current_usage_page, count_open=True)
 
 if menu == "🏠 Business Overview":
     show_overview()
-
-elif menu == "🏡 Farmhouse Trip":
-    show_farmhouse()
 
 elif menu == "📦 Stock Operations":
     show_stock_operations()
