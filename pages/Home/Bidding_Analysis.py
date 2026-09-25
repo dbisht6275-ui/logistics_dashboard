@@ -1363,6 +1363,201 @@ def render_charts(df):
 
 
 # ============================================================
+# VENDOR WINNER PERFORMANCE
+# ============================================================
+
+def render_vendor_performance(df):
+    st.markdown("### Vendor Winner Performance")
+
+    winner_df = df[
+        df["HAS_WINNER"]
+        & _clean_text_series(df["WINNER_NAME"]).ne("")
+    ].copy()
+
+    if winner_df.empty:
+        st.info("No winner-vendor data available for the selected filters.")
+        return
+
+    # Defensive: one BID should contribute only once to winner statistics.
+    winner_df = (
+        winner_df
+        .sort_values(["BIDID", "BIDOPENDT"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    winner_df["APPROVED_WIN_FLAG"] = (
+        _clean_text_series(winner_df["APPROVED"]).str.upper().eq("Y")
+    ).astype(int)
+
+    winner_df["L1_WIN_FLAG"] = (
+        winner_df["WINNER_VS_L1"].eq("Winner = L1")
+    ).astype(int)
+
+    winner_df["MANUAL_WIN_FLAG"] = (
+        winner_df["WINNER_MODE"].eq("Manual")
+    ).astype(int)
+
+    winner_df["LHC_CREATED_FLAG"] = (
+        winner_df["LHC_STATUS"].eq("LHC Created")
+    ).astype(int)
+
+    winner_df["LHC_PENDING_FLAG"] = (
+        winner_df["LHC_STATUS"].eq("Winner - LHC Pending")
+    ).astype(int)
+
+    winner_df["SINGLE_BIDDER_WIN_FLAG"] = (
+        pd.to_numeric(winner_df["BIDDER_COUNT"], errors="coerce").eq(1)
+    ).astype(int)
+
+    vendor_table = (
+        winner_df.groupby("WINNER_NAME", as_index=False)
+        .agg(
+            **{
+                "Winner Bids": ("BIDID", "nunique"),
+                "L1 Wins": ("L1_WIN_FLAG", "sum"),
+                "Manual Wins": ("MANUAL_WIN_FLAG", "sum"),
+                "Approved Wins": ("APPROVED_WIN_FLAG", "sum"),
+                "LHC Created": ("LHC_CREATED_FLAG", "sum"),
+                "LHC Pending": ("LHC_PENDING_FLAG", "sum"),
+                "Single Bidder Wins": ("SINGLE_BIDDER_WIN_FLAG", "sum"),
+                "Avg Bidders": ("BIDDER_COUNT", "mean"),
+                "Avg Saving vs L1": ("SAVING_VS_L1", "mean"),
+                "Branches": ("BRANCH", "nunique"),
+                "Routes": ("ROUTE", "nunique"),
+                "Last Win": ("BIDOPENDT", "max"),
+                "Oldest Pending Days": ("LHC_PENDING_AGE_DAYS", "max"),
+            }
+        )
+    )
+
+    total_winner_bids = int(winner_df["BIDID"].nunique())
+
+    vendor_table["Win Share %"] = (
+        vendor_table["Winner Bids"] / total_winner_bids * 100.0
+        if total_winner_bids else 0.0
+    )
+
+    vendor_table["LHC Pending %"] = (
+        vendor_table["LHC Pending"]
+        .div(vendor_table["Approved Wins"].replace(0, pd.NA))
+        .mul(100.0)
+        .fillna(0.0)
+    )
+
+    vendor_table["Avg Bidders"] = pd.to_numeric(
+        vendor_table["Avg Bidders"], errors="coerce"
+    ).round(2)
+
+    vendor_table["Avg Saving vs L1"] = pd.to_numeric(
+        vendor_table["Avg Saving vs L1"], errors="coerce"
+    ).round(0)
+
+    vendor_table["Oldest Pending Days"] = pd.to_numeric(
+        vendor_table["Oldest Pending Days"], errors="coerce"
+    ).fillna(0).astype(int)
+
+    vendor_table = vendor_table.sort_values(
+        ["Winner Bids", "Approved Wins", "L1 Wins", "WINNER_NAME"],
+        ascending=[False, False, False, True],
+    ).reset_index(drop=True)
+
+    vendor_table.insert(0, "Rank", range(1, len(vendor_table) + 1))
+    vendor_table = vendor_table.rename(columns={"WINNER_NAME": "Vendor"})
+
+    display_columns = [
+        "Rank",
+        "Vendor",
+        "Winner Bids",
+        "Win Share %",
+        "L1 Wins",
+        "Manual Wins",
+        "Approved Wins",
+        "LHC Created",
+        "LHC Pending",
+        "LHC Pending %",
+        "Single Bidder Wins",
+        "Avg Bidders",
+        "Avg Saving vs L1",
+        "Branches",
+        "Routes",
+        "Last Win",
+        "Oldest Pending Days",
+    ]
+
+    vendor_table = vendor_table[display_columns]
+
+    if not vendor_table.empty:
+        top_vendor = vendor_table.iloc[0]
+        st.markdown(
+            f"""
+            <div class="bid-report-meta">
+                🏆 Top Winner Vendor: <b>{top_vendor['Vendor']}</b>
+                &nbsp;•&nbsp; {int(top_vendor['Winner Bids']):,} wins
+                &nbsp;•&nbsp; {float(top_vendor['Win Share %']):.1f}% share
+                &nbsp;•&nbsp; {int(top_vendor['L1 Wins']):,} L1 wins
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.dataframe(
+        vendor_table,
+        use_container_width=True,
+        hide_index=True,
+        height=430,
+        column_config={
+            "Rank": st.column_config.NumberColumn("Rank", format="%d", width="small"),
+            "Vendor": st.column_config.TextColumn("Vendor", width="large"),
+            "Winner Bids": st.column_config.NumberColumn("Winner Bids", format="%d"),
+            "Win Share %": st.column_config.ProgressColumn(
+                "Win Share %",
+                min_value=0,
+                max_value=100,
+                format="%.1f%%",
+            ),
+            "L1 Wins": st.column_config.NumberColumn("L1 Wins", format="%d"),
+            "Manual Wins": st.column_config.NumberColumn("Manual Wins", format="%d"),
+            "Approved Wins": st.column_config.NumberColumn("Approved Wins", format="%d"),
+            "LHC Created": st.column_config.NumberColumn("LHC Created", format="%d"),
+            "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
+            "LHC Pending %": st.column_config.ProgressColumn(
+                "LHC Pending %",
+                min_value=0,
+                max_value=100,
+                format="%.1f%%",
+            ),
+            "Single Bidder Wins": st.column_config.NumberColumn(
+                "Single Bidder Wins", format="%d"
+            ),
+            "Avg Bidders": st.column_config.NumberColumn("Avg Bidders", format="%.2f"),
+            "Avg Saving vs L1": st.column_config.NumberColumn(
+                "Avg Saving vs L1", format="₹ %.0f"
+            ),
+            "Branches": st.column_config.NumberColumn("Branches", format="%d"),
+            "Routes": st.column_config.NumberColumn("Routes", format="%d"),
+            "Last Win": st.column_config.DatetimeColumn(
+                "Last Win", format="DD/MM/YYYY"
+            ),
+            "Oldest Pending Days": st.column_config.NumberColumn(
+                "Oldest Pending Days", format="%d"
+            ),
+        },
+    )
+
+    csv_data = vendor_table.to_csv(index=False).encode("utf-8-sig")
+
+    st.download_button(
+        "⬇️ Download Vendor Performance",
+        data=csv_data,
+        file_name="vendor_winner_performance.csv",
+        mime="text/csv",
+        key="download_vendor_winner_performance",
+    )
+
+
+
+# ============================================================
 # EXCEPTIONS
 # ============================================================
 
@@ -2095,6 +2290,7 @@ def show_bidding_analysis():
 
     render_kpis(filtered_df)
     render_charts(filtered_df)
+    render_vendor_performance(filtered_df)
     render_exceptions(filtered_df)
     render_detail_table(filtered_df)
 
