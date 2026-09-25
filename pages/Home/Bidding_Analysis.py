@@ -1619,6 +1619,378 @@ def render_charts(df):
 
 
 # ============================================================
+# VEHICLE TYPE INSIGHTS
+# ============================================================
+
+def render_vehicle_type_insights(df):
+    """Management view of bidding demand and controls by vehicle type."""
+    st.markdown("### Vehicle Type Insights")
+
+    if "VEHICLETYPE" not in df.columns or df.empty:
+        st.info("No vehicle type data available for the selected filters.")
+        return
+
+    # One BID contributes only once to vehicle-level metrics.
+    base = (
+        df.sort_values(["BIDID", "BIDOPENDT"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    base["VEHICLE_TYPE_CLEAN"] = (
+        _clean_text_series(base["VEHICLETYPE"])
+        .replace("", "Not Available")
+    )
+
+    base["QUERY_FLAG"] = (
+        _clean_text_series(base["QUERYBID"]).str.upper().eq("YES")
+    ).astype(int)
+    base["APPROVED_FLAG"] = (
+        _clean_text_series(base["APPROVED"]).str.upper().eq("Y")
+    ).astype(int)
+    base["WINNER_FLAG"] = base["HAS_WINNER"].fillna(False).astype(int)
+    base["APPROVED_WINNER_FLAG"] = (
+        base["HAS_WINNER"].fillna(False)
+        & _clean_text_series(base["APPROVED"]).str.upper().eq("Y")
+    ).astype(int)
+    base["L1_FLAG"] = base["WINNER_MODE"].eq("L-1").astype(int)
+    base["MANUAL_FLAG"] = base["WINNER_MODE"].eq("Manual").astype(int)
+    base["SINGLE_BIDDER_FLAG"] = (
+        pd.to_numeric(base["BIDDER_COUNT"], errors="coerce").eq(1)
+    ).astype(int)
+    base["GAP_CHECKED_FLAG"] = base["GAP_STATUS"].isin(["OK", "Violation"]).astype(int)
+    base["GAP_VIOLATION_FLAG"] = base["GAP_STATUS"].eq("Violation").astype(int)
+    base["LHC_PENDING_FLAG"] = base["LHC_STATUS"].eq("Winner - LHC Pending").astype(int)
+    base["REPLIED_QUERY_FLAG"] = (
+        base.get("QUERY_RESPONSE_STATUS", pd.Series(index=base.index, dtype="object"))
+        .eq("Replied")
+    ).astype(int)
+
+    bidders_numeric = pd.to_numeric(base["BIDDER_COUNT"], errors="coerce")
+    base["BIDDERS_FOR_AVG"] = bidders_numeric.where(bidders_numeric.gt(0))
+    base["FINALRATE_NUM"] = pd.to_numeric(base["FINALRATE"], errors="coerce")
+    base["SAVING_VS_L1_NUM"] = pd.to_numeric(base["SAVING_VS_L1"], errors="coerce")
+    if "QUERY_RESPONSE_HOURS" in base.columns:
+        base["QUERY_RESPONSE_HOURS_NUM"] = pd.to_numeric(
+            base["QUERY_RESPONSE_HOURS"], errors="coerce"
+        )
+    else:
+        base["QUERY_RESPONSE_HOURS_NUM"] = pd.NA
+
+    vehicle = (
+        base.groupby("VEHICLE_TYPE_CLEAN", as_index=False)
+        .agg(
+            **{
+                "Bids": ("BIDID", "nunique"),
+                "Query Bids": ("QUERY_FLAG", "sum"),
+                "Approved Bids": ("APPROVED_FLAG", "sum"),
+                "Winner Bids": ("WINNER_FLAG", "sum"),
+                "Approved Winner Bids": ("APPROVED_WINNER_FLAG", "sum"),
+                "L1 Selected": ("L1_FLAG", "sum"),
+                "Manual Selected": ("MANUAL_FLAG", "sum"),
+                "Single Bidder": ("SINGLE_BIDDER_FLAG", "sum"),
+                "Gap Checked": ("GAP_CHECKED_FLAG", "sum"),
+                "Gap Violations": ("GAP_VIOLATION_FLAG", "sum"),
+                "LHC Pending": ("LHC_PENDING_FLAG", "sum"),
+                "Replied Queries": ("REPLIED_QUERY_FLAG", "sum"),
+                "Avg Bidders": ("BIDDERS_FOR_AVG", "mean"),
+                "Avg Final Rate": ("FINALRATE_NUM", "mean"),
+                "Avg Saving vs L1": ("SAVING_VS_L1_NUM", "mean"),
+                "Avg Query Response Hrs": ("QUERY_RESPONSE_HOURS_NUM", "mean"),
+                "Branches": ("BRANCH", "nunique"),
+                "Routes": ("ROUTE", "nunique"),
+            }
+        )
+        .rename(columns={"VEHICLE_TYPE_CLEAN": "Vehicle Type"})
+    )
+
+    if vehicle.empty:
+        st.info("No vehicle type data available for the selected filters.")
+        return
+
+    total_bids = int(vehicle["Bids"].sum())
+    vehicle["Share %"] = (
+        vehicle["Bids"].div(total_bids).mul(100.0) if total_bids else 0.0
+    )
+    vehicle["Query Rate %"] = (
+        vehicle["Query Bids"].div(vehicle["Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["Approval Rate %"] = (
+        vehicle["Approved Bids"].div(vehicle["Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["Single Bidder %"] = (
+        vehicle["Single Bidder"].div(vehicle["Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["L1 Win %"] = (
+        vehicle["L1 Selected"].div(vehicle["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["Manual Win %"] = (
+        vehicle["Manual Selected"].div(vehicle["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["Gap Violation %"] = (
+        vehicle["Gap Violations"].div(vehicle["Gap Checked"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["LHC Pending %"] = (
+        vehicle["LHC Pending"].div(vehicle["Approved Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["Query Reply %"] = (
+        vehicle["Replied Queries"].div(vehicle["Query Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+
+    vehicle["Avg Bidders"] = pd.to_numeric(vehicle["Avg Bidders"], errors="coerce").round(2)
+    vehicle["Avg Final Rate"] = pd.to_numeric(vehicle["Avg Final Rate"], errors="coerce").round(0)
+    vehicle["Avg Saving vs L1"] = pd.to_numeric(vehicle["Avg Saving vs L1"], errors="coerce").round(0)
+    vehicle["Avg Query Response Hrs"] = pd.to_numeric(
+        vehicle["Avg Query Response Hrs"], errors="coerce"
+    ).round(2)
+
+    vehicle = vehicle.sort_values(
+        ["Bids", "Query Bids", "Vehicle Type"],
+        ascending=[False, False, True],
+    ).reset_index(drop=True)
+
+    # --------------------------------------------------------
+    # Management KPIs
+    # --------------------------------------------------------
+    most_used = vehicle.iloc[0]
+
+    queried_candidates = vehicle[vehicle["Query Bids"].gt(0)]
+    most_queried = (
+        queried_candidates.sort_values(["Query Bids", "Query Rate %"], ascending=[False, False]).iloc[0]
+        if not queried_candidates.empty else None
+    )
+
+    # Small-volume vehicle types can distort rate KPIs, so use a practical
+    # minimum of 3 bids/winners while still showing ALL vehicle types below.
+    competition_candidates = vehicle[vehicle["Bids"].ge(3) & vehicle["Avg Bidders"].notna()]
+    if competition_candidates.empty:
+        competition_candidates = vehicle[vehicle["Avg Bidders"].notna()]
+    highest_competition = (
+        competition_candidates.sort_values(["Avg Bidders", "Bids"], ascending=[False, False]).iloc[0]
+        if not competition_candidates.empty else None
+    )
+
+    manual_candidates = vehicle[vehicle["Winner Bids"].ge(3)]
+    if manual_candidates.empty:
+        manual_candidates = vehicle[vehicle["Winner Bids"].gt(0)]
+    highest_manual = (
+        manual_candidates.sort_values(["Manual Win %", "Winner Bids"], ascending=[False, False]).iloc[0]
+        if not manual_candidates.empty else None
+    )
+
+    pending_candidates = vehicle[vehicle["Approved Winner Bids"].ge(3)]
+    if pending_candidates.empty:
+        pending_candidates = vehicle[vehicle["Approved Winner Bids"].gt(0)]
+    highest_pending = (
+        pending_candidates.sort_values(["LHC Pending %", "LHC Pending"], ascending=[False, False]).iloc[0]
+        if not pending_candidates.empty else None
+    )
+
+    k1, k2, k3, k4, k5 = st.columns(5, gap="small")
+    _kpi_card(
+        k1,
+        "🚚 Most Bid Vehicle",
+        str(most_used["Vehicle Type"]),
+        f"{int(most_used['Bids']):,} bids • {float(most_used['Share %']):.1f}% share",
+        "blue",
+    )
+    _kpi_card(
+        k2,
+        "💬 Most Query Bids",
+        str(most_queried["Vehicle Type"]) if most_queried is not None else "-",
+        (
+            f"{int(most_queried['Query Bids']):,} queries • {float(most_queried['Query Rate %']):.1f}% rate"
+            if most_queried is not None else "No query bids"
+        ),
+        "purple",
+    )
+    _kpi_card(
+        k3,
+        "👥 Highest Avg Bidders",
+        str(highest_competition["Vehicle Type"]) if highest_competition is not None else "-",
+        (
+            f"{float(highest_competition['Avg Bidders']):.2f} bidders • {int(highest_competition['Bids']):,} bids"
+            if highest_competition is not None else "No bidder data"
+        ),
+        "cyan",
+    )
+    _kpi_card(
+        k4,
+        "✍️ Highest Manual Share",
+        str(highest_manual["Vehicle Type"]) if highest_manual is not None else "-",
+        (
+            f"{float(highest_manual['Manual Win %']):.1f}% • {int(highest_manual['Manual Selected']):,} manual wins"
+            if highest_manual is not None else "No winner data"
+        ),
+        "orange",
+    )
+    _kpi_card(
+        k5,
+        "⏳ Highest LHC Pending %",
+        str(highest_pending["Vehicle Type"]) if highest_pending is not None else "-",
+        (
+            f"{float(highest_pending['LHC Pending %']):.1f}% • {int(highest_pending['LHC Pending']):,} pending"
+            if highest_pending is not None else "No approved winner data"
+        ),
+        "red",
+    )
+
+    # --------------------------------------------------------
+    # Charts - do NOT truncate to Top 10; show every vehicle type.
+    # --------------------------------------------------------
+    chart_left, chart_right = st.columns(2, gap="small")
+
+    chart_height = min(850, max(320, 44 * len(vehicle) + 90))
+
+    with chart_left:
+        volume_fig = _horizontal_bar_chart(
+            vehicle["Vehicle Type"],
+            vehicle["Bids"],
+            height=chart_height,
+            value_name="Bids",
+        )
+        _render_chart_card("Vehicle Type Bid Volume — All Types", volume_fig)
+
+    with chart_right:
+        winner_mix = vehicle[
+            ["Vehicle Type", "L1 Selected", "Manual Selected", "Winner Bids"]
+        ].copy()
+        winner_mix["Other Winner"] = (
+            winner_mix["Winner Bids"]
+            - winner_mix["L1 Selected"]
+            - winner_mix["Manual Selected"]
+        ).clip(lower=0)
+        winner_mix = winner_mix.sort_values("Winner Bids", ascending=True)
+
+        mix_fig = go.Figure()
+        mix_fig.add_trace(
+            go.Bar(
+                x=winner_mix["L1 Selected"],
+                y=winner_mix["Vehicle Type"],
+                name="L-1",
+                orientation="h",
+                marker=dict(color="#16a34a"),
+                hovertemplate="<b>%{y}</b><br>L-1 Winners: %{x:,}<extra></extra>",
+            )
+        )
+        mix_fig.add_trace(
+            go.Bar(
+                x=winner_mix["Manual Selected"],
+                y=winner_mix["Vehicle Type"],
+                name="Manual",
+                orientation="h",
+                marker=dict(color="#f59e0b"),
+                hovertemplate="<b>%{y}</b><br>Manual Winners: %{x:,}<extra></extra>",
+            )
+        )
+        if winner_mix["Other Winner"].gt(0).any():
+            mix_fig.add_trace(
+                go.Bar(
+                    x=winner_mix["Other Winner"],
+                    y=winner_mix["Vehicle Type"],
+                    name="Other / Missing",
+                    orientation="h",
+                    marker=dict(color="#94a3b8"),
+                    hovertemplate="<b>%{y}</b><br>Other Winners: %{x:,}<extra></extra>",
+                )
+            )
+
+        _compact_chart_layout(mix_fig, height=chart_height, bottom_margin=42)
+        mix_fig.update_layout(
+            barmode="stack",
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.01,
+                xanchor="right",
+                x=1,
+                font=dict(size=9, color=CHART_TEXT_COLOR),
+            ),
+            bargap=0.28,
+        )
+        mix_fig.update_yaxes(showgrid=False, automargin=True)
+        mix_fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+        _render_chart_card("Vehicle Type Winner Mix — L-1 vs Manual", mix_fig)
+
+    # --------------------------------------------------------
+    # Detailed insight table for all vehicle types.
+    # --------------------------------------------------------
+    st.markdown("#### Vehicle-wise Performance & Control Matrix")
+
+    display_cols = [
+        "Vehicle Type",
+        "Bids",
+        "Share %",
+        "Query Bids",
+        "Query Rate %",
+        "Query Reply %",
+        "Avg Query Response Hrs",
+        "Approved Bids",
+        "Approval Rate %",
+        "Avg Bidders",
+        "Single Bidder %",
+        "Winner Bids",
+        "L1 Selected",
+        "L1 Win %",
+        "Manual Selected",
+        "Manual Win %",
+        "Gap Violations",
+        "Gap Violation %",
+        "LHC Pending",
+        "LHC Pending %",
+        "Avg Final Rate",
+        "Avg Saving vs L1",
+        "Branches",
+        "Routes",
+    ]
+
+    vehicle_display = vehicle[display_cols].copy()
+
+    st.dataframe(
+        vehicle_display,
+        use_container_width=True,
+        hide_index=True,
+        height=min(620, 88 + 35 * len(vehicle_display)),
+        column_config={
+            "Vehicle Type": st.column_config.TextColumn("Vehicle Type", width="medium"),
+            "Bids": st.column_config.NumberColumn("Bids", format="%d"),
+            "Share %": st.column_config.ProgressColumn("Bid Share %", min_value=0, max_value=100, format="%.1f%%"),
+            "Query Bids": st.column_config.NumberColumn("Query Bids", format="%d"),
+            "Query Rate %": st.column_config.ProgressColumn("Query Rate %", min_value=0, max_value=100, format="%.1f%%"),
+            "Query Reply %": st.column_config.ProgressColumn("Query Reply %", min_value=0, max_value=100, format="%.1f%%"),
+            "Avg Query Response Hrs": st.column_config.NumberColumn("Avg Query TAT (Hrs)", format="%.2f"),
+            "Approved Bids": st.column_config.NumberColumn("Approved", format="%d"),
+            "Approval Rate %": st.column_config.ProgressColumn("Approval %", min_value=0, max_value=100, format="%.1f%%"),
+            "Avg Bidders": st.column_config.NumberColumn("Avg Bidders", format="%.2f"),
+            "Single Bidder %": st.column_config.ProgressColumn("Single Bidder %", min_value=0, max_value=100, format="%.1f%%"),
+            "Winner Bids": st.column_config.NumberColumn("Winner Bids", format="%d"),
+            "L1 Selected": st.column_config.NumberColumn("L-1", format="%d"),
+            "L1 Win %": st.column_config.ProgressColumn("L-1 Win %", min_value=0, max_value=100, format="%.1f%%"),
+            "Manual Selected": st.column_config.NumberColumn("Manual", format="%d"),
+            "Manual Win %": st.column_config.ProgressColumn("Manual Win %", min_value=0, max_value=100, format="%.1f%%"),
+            "Gap Violations": st.column_config.NumberColumn("Gap Violations", format="%d"),
+            "Gap Violation %": st.column_config.ProgressColumn("Gap Violation %", min_value=0, max_value=100, format="%.1f%%"),
+            "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
+            "LHC Pending %": st.column_config.ProgressColumn("LHC Pending %", min_value=0, max_value=100, format="%.1f%%"),
+            "Avg Final Rate": st.column_config.NumberColumn("Avg Final Rate", format="₹ %.0f"),
+            "Avg Saving vs L1": st.column_config.NumberColumn("Avg Saving vs L1", format="₹ %.0f"),
+            "Branches": st.column_config.NumberColumn("Branches", format="%d"),
+            "Routes": st.column_config.NumberColumn("Routes", format="%d"),
+        },
+    )
+
+    csv_data = vehicle_display.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        "⬇️ Download Vehicle Type Insights",
+        data=csv_data,
+        file_name="vehicle_type_bidding_insights.csv",
+        mime="text/csv",
+        key="download_vehicle_type_insights",
+    )
+
+
+# ============================================================
 # QUERY RESPONSE MONITORING
 # ============================================================
 
@@ -3145,6 +3517,7 @@ def show_bidding_analysis():
 
     render_kpis(filtered_df)
     render_charts(filtered_df)
+    render_vehicle_type_insights(filtered_df)
     render_query_response_analysis(filtered_df)
     render_vendor_performance(filtered_df)
     render_exceptions(filtered_df)
