@@ -104,9 +104,27 @@ BIDDING_SQL = text(
     (
         SELECT
             BIDID,
-            COUNT(*) AS BIDDER_COUNT
-        FROM CTE
-        GROUP BY BIDID
+            COUNT(*) AS BIDDER_COUNT,
+            STUFF(
+                (
+                    SELECT
+                        '|||' + CAST(
+                            CONCAT(
+                                C2.VENDCODE,
+                                '::',
+                                REPLACE(REPLACE(ISNULL(C2.VENDNAME, ''), '|||', ' '), '::', ' ')
+                            ) AS NVARCHAR(MAX)
+                        )
+                    FROM CTE C2
+                    WHERE C2.BIDID = C1.BIDID
+                    FOR XML PATH(''), TYPE
+                ).value('.', 'NVARCHAR(MAX)'),
+                1,
+                3,
+                ''
+            ) AS BIDDER_VENDOR_LIST
+        FROM CTE C1
+        GROUP BY C1.BIDID
     )
 
     SELECT
@@ -174,6 +192,7 @@ BIDDING_SQL = text(
 
         /* Bidder participation */
         COALESCE(BS.BIDDER_COUNT, 0) AS BIDDER_COUNT,
+        COALESCE(BS.BIDDER_VENDOR_LIST, '') AS BIDDER_VENDOR_LIST,
 
         /* Top 3 */
         TOP3.L_1_NAME,
@@ -876,6 +895,142 @@ def _bar_chart_with_values(labels, values, height=245, rotate_x=0):
     return fig
 
 
+def _horizontal_bar_chart(labels, values, height=270, value_name="Bids"):
+    """Ranked horizontal bar chart for long category labels."""
+    work = pd.DataFrame({"Label": [str(x) for x in labels], "Value": values})
+    work["Value"] = pd.to_numeric(work["Value"], errors="coerce").fillna(0).astype(int)
+    work = work.sort_values("Value", ascending=True)
+
+    fig = go.Figure(
+        go.Bar(
+            x=work["Value"],
+            y=work["Label"],
+            orientation="h",
+            text=[f"{v:,}" for v in work["Value"]],
+            textposition="outside",
+            cliponaxis=False,
+            marker=dict(
+                color="#2563eb",
+                line=dict(color="#1d4ed8", width=0.5),
+            ),
+            hovertemplate=f"<b>%{{y}}</b><br>{value_name}: %{{x:,}}<extra></extra>",
+        )
+    )
+
+    max_value = int(work["Value"].max()) if not work.empty else 0
+    if max_value > 0:
+        fig.update_xaxes(range=[0, max_value * 1.18])
+
+    _compact_chart_layout(fig, height=height, bottom_margin=38)
+    fig.update_yaxes(
+        showgrid=False,
+        autorange=True,
+        tickfont=dict(size=9),
+        automargin=True,
+    )
+    fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+    fig.update_layout(bargap=0.30)
+    return fig
+
+
+def _donut_chart(labels, values, height=245, center_label="Total"):
+    """Clean donut for small part-to-whole comparisons."""
+    labels = [str(x) for x in labels]
+    values = [int(v) if pd.notna(v) else 0 for v in values]
+    total = sum(values)
+
+    fig = go.Figure(
+        go.Pie(
+            labels=labels,
+            values=values,
+            hole=0.64,
+            sort=False,
+            textinfo="percent",
+            textfont=dict(size=10),
+            hovertemplate="<b>%{label}</b><br>Bids: %{value:,}<br>Share: %{percent}<extra></extra>",
+            marker=dict(line=dict(color="#ffffff", width=2)),
+        )
+    )
+
+    fig.update_layout(
+        height=height,
+        margin=dict(l=12, r=12, t=8, b=8),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#ffffff",
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.03,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=9),
+        ),
+        font=dict(family="Arial, sans-serif", size=10, color="#334155"),
+        annotations=[
+            dict(
+                text=f"<b>{total:,}</b><br><span style='font-size:9px'>{center_label}</span>",
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=14, color="#0f172a"),
+                align="center",
+            )
+        ],
+    )
+    return fig
+
+
+def _lollipop_chart(labels, values, height=270, value_name="Bids"):
+    """Compact lollipop ranking to avoid repeating bar charts."""
+    work = pd.DataFrame({"Label": [str(x) for x in labels], "Value": values})
+    work["Value"] = pd.to_numeric(work["Value"], errors="coerce").fillna(0).astype(int)
+    work = work.sort_values("Value", ascending=True)
+
+    line_x, line_y = [], []
+    for label, value in zip(work["Label"], work["Value"]):
+        line_x.extend([0, value, None])
+        line_y.extend([label, label, None])
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=line_x,
+            y=line_y,
+            mode="lines",
+            line=dict(color="#cbd5e1", width=2),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=work["Value"],
+            y=work["Label"],
+            mode="markers+text",
+            text=[f"{v:,}" for v in work["Value"]],
+            textposition="middle right",
+            marker=dict(
+                size=10,
+                color="#2563eb",
+                line=dict(color="#ffffff", width=1.5),
+            ),
+            cliponaxis=False,
+            hovertemplate=f"<b>%{{y}}</b><br>{value_name}: %{{x:,}}<extra></extra>",
+            showlegend=False,
+        )
+    )
+
+    max_value = int(work["Value"].max()) if not work.empty else 0
+    if max_value > 0:
+        fig.update_xaxes(range=[0, max_value * 1.22])
+
+    _compact_chart_layout(fig, height=height, bottom_margin=38)
+    fig.update_yaxes(showgrid=False, automargin=True)
+    fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+    return fig
+
+
 def _line_chart_with_values(labels, values, height=235):
     """Create daily trend chart with value labels above every point."""
     labels = [str(x) for x in labels]
@@ -1162,43 +1317,47 @@ def render_charts(df):
             df.groupby("BRANCH", dropna=False)["BIDID"]
             .nunique()
             .sort_values(ascending=False)
-            .head(15)
+            .head(12)
             .rename("Bids")
             .reset_index()
         )
 
         if not branch_data.empty:
-            branch_fig = _bar_chart_with_values(
+            branch_fig = _horizontal_bar_chart(
                 branch_data["BRANCH"],
                 branch_data["Bids"],
-                height=270,
-                rotate_x=-35,
+                height=300,
+                value_name="Bids",
             )
-            _render_chart_card("Bids by Branch", branch_fig)
+            _render_chart_card("Top Branches by Bid Volume", branch_fig)
         else:
             with st.container(border=True):
-                st.markdown("<div class='bid-chart-title'>Bids by Branch</div>", unsafe_allow_html=True)
+                st.markdown("<div class='bid-chart-title'>Top Branches by Bid Volume</div>", unsafe_allow_html=True)
                 st.info("No branch data available.")
 
     with right:
         winner_data = (
             df.groupby("WINNER_MODE")["BIDID"]
             .nunique()
-            .sort_values(ascending=False)
+            .reindex(["L-1", "Manual", "Other / Missing"])
+            .fillna(0)
+            .astype(int)
             .rename("Bids")
             .reset_index()
         )
+        winner_data = winner_data[winner_data["Bids"].gt(0)]
 
         if not winner_data.empty:
-            winner_fig = _bar_chart_with_values(
+            winner_fig = _donut_chart(
                 winner_data["WINNER_MODE"],
                 winner_data["Bids"],
-                height=270,
+                height=300,
+                center_label="Winner Bids",
             )
-            _render_chart_card("Winner Selection", winner_fig)
+            _render_chart_card("Winner Selection Mix", winner_fig)
         else:
             with st.container(border=True):
-                st.markdown("<div class='bid-chart-title'>Winner Selection</div>", unsafe_allow_html=True)
+                st.markdown("<div class='bid-chart-title'>Winner Selection Mix</div>", unsafe_allow_html=True)
                 st.info("No winner data available.")
 
     left, right = st.columns(2, gap="small")
@@ -1221,13 +1380,15 @@ def render_charts(df):
             .rename("Bids")
             .reset_index()
         )
+        participation = participation[participation["Bids"].gt(0)]
 
-        participation_fig = _bar_chart_with_values(
+        participation_fig = _donut_chart(
             participation["BIDDER_BUCKET"],
             participation["Bids"],
-            height=245,
+            height=255,
+            center_label="Bids",
         )
-        _render_chart_card("Bidder Participation", participation_fig)
+        _render_chart_card("Bidder Participation Mix", participation_fig)
 
     with right:
         gap_data = (
@@ -1239,13 +1400,15 @@ def render_charts(df):
             .rename("Bids")
             .reset_index()
         )
+        gap_data = gap_data[gap_data["Bids"].gt(0)]
 
-        gap_fig = _bar_chart_with_values(
+        gap_fig = _donut_chart(
             gap_data["GAP_STATUS"],
             gap_data["Bids"],
-            height=245,
+            height=255,
+            center_label="Checked",
         )
-        _render_chart_card("₹500 Gap Compliance", gap_fig)
+        _render_chart_card("₹500 Gap Compliance Mix", gap_fig)
 
     # --------------------------------------------------------
     # Additional management insights
@@ -1260,26 +1423,26 @@ def render_charts(df):
             .groupby("APPROVEDBYUSER_CLEAN")["BIDID"]
             .nunique()
             .sort_values(ascending=False)
-            .head(15)
+            .head(12)
             .rename("Bids")
             .reset_index()
         )
 
         if not approved_user_data.empty:
-            approved_user_fig = _bar_chart_with_values(
+            approved_user_fig = _lollipop_chart(
                 approved_user_data["APPROVEDBYUSER_CLEAN"],
                 approved_user_data["Bids"],
-                height=270,
-                rotate_x=-35,
+                height=300,
+                value_name="Approved Bids",
             )
             _render_chart_card(
-                "Approved By User-wise Bids",
+                "Approver Workload — Top Users",
                 approved_user_fig,
             )
         else:
             with st.container(border=True):
                 st.markdown(
-                    "<div class='bid-chart-title'>Approved By User-wise Bids</div>",
+                    "<div class='bid-chart-title'>Approver Workload — Top Users</div>",
                     unsafe_allow_html=True,
                 )
                 st.info("No approver data available.")
@@ -1292,17 +1455,17 @@ def render_charts(df):
             .groupby("ROUTE_CLEAN")["BIDID"]
             .nunique()
             .sort_values(ascending=False)
-            .head(15)
+            .head(12)
             .rename("Bids")
             .reset_index()
         )
 
         if not route_data.empty:
-            route_fig = _bar_chart_with_values(
+            route_fig = _horizontal_bar_chart(
                 route_data["ROUTE_CLEAN"],
                 route_data["Bids"],
-                height=270,
-                rotate_x=-35,
+                height=300,
+                value_name="Bids",
             )
             _render_chart_card(
                 "Top Routes by Bid Volume",
@@ -1366,17 +1529,223 @@ def render_charts(df):
 # VENDOR WINNER PERFORMANCE
 # ============================================================
 
+def _vendor_participation_rows(df):
+    """Build one row per Vendor x Bid for accurate wins/losses."""
+    base = (
+        df.sort_values(["BIDID", "BIDOPENDT"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    rows = []
+
+    for _, row in base.iterrows():
+        bidid = row.get("BIDID")
+        winner_value = row.get("WINNER_NAME")
+        winner = "" if pd.isna(winner_value) else str(winner_value).strip()
+        winner_key = winner.upper()
+        seen = set()
+
+        raw_value = row.get("BIDDER_VENDOR_LIST")
+        raw_list = "" if pd.isna(raw_value) else str(raw_value).strip()
+
+        if raw_list:
+            for token in raw_list.split("|||"):
+                token = token.strip()
+                if not token:
+                    continue
+
+                if "::" in token:
+                    vendcode, vendor = token.split("::", 1)
+                else:
+                    vendcode, vendor = "", token
+
+                vendcode = vendcode.strip()
+                vendor = vendor.strip()
+                vendor_key = vendor.upper()
+
+                if not vendor or vendor_key in seen:
+                    continue
+
+                seen.add(vendor_key)
+                rows.append(
+                    {
+                        "BIDID": bidid,
+                        "Vendor Code": vendcode,
+                        "Vendor": vendor,
+                        "Is Win": int(bool(winner_key) and vendor_key == winner_key),
+                    }
+                )
+        else:
+            # Backward-compatible fallback for cached data loaded before the
+            # all-bidder SQL field existed. Refreshing the dashboard loads all bidders.
+            for col in ["L_1_NAME", "L_2_NAME", "L_3_NAME"]:
+                vendor_value = row.get(col)
+                vendor = "" if pd.isna(vendor_value) else str(vendor_value).strip()
+                vendor_key = vendor.upper()
+                if not vendor or vendor_key in seen:
+                    continue
+                seen.add(vendor_key)
+                rows.append(
+                    {
+                        "BIDID": bidid,
+                        "Vendor Code": "",
+                        "Vendor": vendor,
+                        "Is Win": int(bool(winner_key) and vendor_key == winner_key),
+                    }
+                )
+
+        # Defensive: keep a selected winner in the vendor table even if the bidder
+        # list is incomplete because of source-data issues.
+        if winner and winner_key not in seen:
+            rows.append(
+                {
+                    "BIDID": bidid,
+                    "Vendor Code": "",
+                    "Vendor": winner,
+                    "Is Win": 1,
+                }
+            )
+
+    if not rows:
+        return pd.DataFrame(columns=["BIDID", "Vendor Code", "Vendor", "Is Win"])
+
+    participation = pd.DataFrame(rows)
+    participation["Vendor Key"] = _clean_text_series(participation["Vendor"]).str.upper()
+
+    # One vendor can appear only once per bid in performance calculations.
+    participation = (
+        participation.sort_values(["BIDID", "Is Win"], ascending=[True, False])
+        .drop_duplicates(subset=["BIDID", "Vendor Key"], keep="first")
+        .copy()
+    )
+    return participation
+
+
+def _vendor_win_loss_chart(vendor_table, height=330):
+    """Top vendor participation split into won and lost bids."""
+    work = vendor_table.sort_values(
+        ["Bid Participations", "Winner Bids"], ascending=[False, False]
+    ).head(12).copy()
+    work = work.sort_values("Bid Participations", ascending=True)
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=work["Winner Bids"],
+            y=work["Vendor"],
+            name="Won",
+            orientation="h",
+            marker=dict(color="#16a34a"),
+            hovertemplate="<b>%{y}</b><br>Won: %{x:,}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=work["Lost Bids"],
+            y=work["Vendor"],
+            name="Lost",
+            orientation="h",
+            marker=dict(color="#cbd5e1"),
+            hovertemplate="<b>%{y}</b><br>Lost: %{x:,}<extra></extra>",
+        )
+    )
+
+    _compact_chart_layout(fig, height=height, bottom_margin=42)
+    fig.update_layout(
+        barmode="stack",
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.01,
+            xanchor="right",
+            x=1,
+            font=dict(size=9),
+        ),
+        bargap=0.28,
+    )
+    fig.update_yaxes(showgrid=False, automargin=True)
+    fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+    return fig
+
+
+def _vendor_win_rate_chart(vendor_table, height=330):
+    """Dot plot of vendor win rate, restricted to meaningful participation."""
+    work = vendor_table[vendor_table["Bid Participations"].gt(0)].copy()
+    work = work.sort_values(
+        ["Bid Participations", "Win Rate %"], ascending=[False, False]
+    ).head(12)
+    work = work.sort_values("Win Rate %", ascending=True)
+
+    fig = go.Figure(
+        go.Scatter(
+            x=work["Win Rate %"],
+            y=work["Vendor"],
+            mode="markers+text",
+            text=[f"{v:.1f}%" for v in work["Win Rate %"]],
+            textposition="middle right",
+            marker=dict(
+                size=10,
+                color="#7c3aed",
+                line=dict(color="#ffffff", width=1.5),
+            ),
+            customdata=work[["Bid Participations", "Winner Bids", "Lost Bids"]],
+            hovertemplate=(
+                "<b>%{y}</b><br>Win Rate: %{x:.1f}%<br>"
+                "Participations: %{customdata[0]:,}<br>"
+                "Won: %{customdata[1]:,}<br>"
+                "Lost: %{customdata[2]:,}<extra></extra>"
+            ),
+            showlegend=False,
+        )
+    )
+
+    _compact_chart_layout(fig, height=height, bottom_margin=42)
+    fig.update_xaxes(
+        range=[0, 108],
+        ticksuffix="%",
+        dtick=20,
+        showgrid=True,
+        gridcolor="#eef2f7",
+    )
+    fig.update_yaxes(showgrid=False, automargin=True)
+    return fig
+
+
 def render_vendor_performance(df):
-    st.markdown("### Vendor Winner Performance")
+    st.markdown("### Vendor Performance — Wins, Losses & Conversion")
+
+    participation = _vendor_participation_rows(df)
+
+    if participation.empty:
+        st.info("No vendor participation data available for the selected filters.")
+        return
+
+    participation_summary = (
+        participation.groupby("Vendor", as_index=False)
+        .agg(
+            **{
+                "Bid Participations": ("BIDID", "nunique"),
+                "Winner Bids": ("Is Win", "sum"),
+            }
+        )
+    )
+    participation_summary["Lost Bids"] = (
+        participation_summary["Bid Participations"] - participation_summary["Winner Bids"]
+    ).clip(lower=0)
+    participation_summary["Win Rate %"] = (
+        participation_summary["Winner Bids"]
+        .div(participation_summary["Bid Participations"].replace(0, pd.NA))
+        .mul(100.0)
+        .fillna(0.0)
+    )
+    participation_summary["Loss Rate %"] = 100.0 - participation_summary["Win Rate %"]
 
     winner_df = df[
         df["HAS_WINNER"]
         & _clean_text_series(df["WINNER_NAME"]).ne("")
     ].copy()
-
-    if winner_df.empty:
-        st.info("No winner-vendor data available for the selected filters.")
-        return
 
     # Defensive: one BID should contribute only once to winner statistics.
     winner_df = (
@@ -1386,57 +1755,80 @@ def render_vendor_performance(df):
         .copy()
     )
 
-    winner_df["APPROVED_WIN_FLAG"] = (
-        _clean_text_series(winner_df["APPROVED"]).str.upper().eq("Y")
-    ).astype(int)
+    if not winner_df.empty:
+        winner_df["APPROVED_WIN_FLAG"] = (
+            _clean_text_series(winner_df["APPROVED"]).str.upper().eq("Y")
+        ).astype(int)
 
-    winner_df["L1_WIN_FLAG"] = (
-        winner_df["WINNER_VS_L1"].eq("Winner = L1")
-    ).astype(int)
+        winner_df["L1_WIN_FLAG"] = (
+            winner_df["WINNER_VS_L1"].eq("Winner = L1")
+        ).astype(int)
 
-    winner_df["MANUAL_WIN_FLAG"] = (
-        winner_df["WINNER_MODE"].eq("Manual")
-    ).astype(int)
+        winner_df["MANUAL_WIN_FLAG"] = (
+            winner_df["WINNER_MODE"].eq("Manual")
+        ).astype(int)
 
-    winner_df["LHC_CREATED_FLAG"] = (
-        winner_df["LHC_STATUS"].eq("LHC Created")
-    ).astype(int)
+        winner_df["LHC_CREATED_FLAG"] = (
+            winner_df["LHC_STATUS"].eq("LHC Created")
+        ).astype(int)
 
-    winner_df["LHC_PENDING_FLAG"] = (
-        winner_df["LHC_STATUS"].eq("Winner - LHC Pending")
-    ).astype(int)
+        winner_df["LHC_PENDING_FLAG"] = (
+            winner_df["LHC_STATUS"].eq("Winner - LHC Pending")
+        ).astype(int)
 
-    winner_df["SINGLE_BIDDER_WIN_FLAG"] = (
-        pd.to_numeric(winner_df["BIDDER_COUNT"], errors="coerce").eq(1)
-    ).astype(int)
+        winner_df["SINGLE_BIDDER_WIN_FLAG"] = (
+            pd.to_numeric(winner_df["BIDDER_COUNT"], errors="coerce").eq(1)
+        ).astype(int)
 
-    vendor_table = (
-        winner_df.groupby("WINNER_NAME", as_index=False)
-        .agg(
-            **{
-                "Winner Bids": ("BIDID", "nunique"),
-                "L1 Wins": ("L1_WIN_FLAG", "sum"),
-                "Manual Wins": ("MANUAL_WIN_FLAG", "sum"),
-                "Approved Wins": ("APPROVED_WIN_FLAG", "sum"),
-                "LHC Created": ("LHC_CREATED_FLAG", "sum"),
-                "LHC Pending": ("LHC_PENDING_FLAG", "sum"),
-                "Single Bidder Wins": ("SINGLE_BIDDER_WIN_FLAG", "sum"),
-                "Avg Bidders": ("BIDDER_COUNT", "mean"),
-                "Avg Saving vs L1": ("SAVING_VS_L1", "mean"),
-                "Branches": ("BRANCH", "nunique"),
-                "Routes": ("ROUTE", "nunique"),
-                "Last Win": ("BIDOPENDT", "max"),
-                "Oldest Pending Days": ("LHC_PENDING_AGE_DAYS", "max"),
-            }
+        winner_metrics = (
+            winner_df.groupby("WINNER_NAME", as_index=False)
+            .agg(
+                **{
+                    "L1 Wins": ("L1_WIN_FLAG", "sum"),
+                    "Manual Wins": ("MANUAL_WIN_FLAG", "sum"),
+                    "Approved Wins": ("APPROVED_WIN_FLAG", "sum"),
+                    "LHC Created": ("LHC_CREATED_FLAG", "sum"),
+                    "LHC Pending": ("LHC_PENDING_FLAG", "sum"),
+                    "Single Bidder Wins": ("SINGLE_BIDDER_WIN_FLAG", "sum"),
+                    "Avg Bidders": ("BIDDER_COUNT", "mean"),
+                    "Avg Saving vs L1": ("SAVING_VS_L1", "mean"),
+                    "Branches": ("BRANCH", "nunique"),
+                    "Routes": ("ROUTE", "nunique"),
+                    "Last Win": ("BIDOPENDT", "max"),
+                    "Oldest Pending Days": ("LHC_PENDING_AGE_DAYS", "max"),
+                }
+            )
+            .rename(columns={"WINNER_NAME": "Vendor"})
         )
+    else:
+        winner_metrics = pd.DataFrame(columns=["Vendor"])
+
+    vendor_table = participation_summary.merge(
+        winner_metrics,
+        on="Vendor",
+        how="left",
     )
 
-    total_winner_bids = int(winner_df["BIDID"].nunique())
-
+    total_winner_bids = int(winner_df["BIDID"].nunique()) if not winner_df.empty else 0
     vendor_table["Win Share %"] = (
         vendor_table["Winner Bids"] / total_winner_bids * 100.0
         if total_winner_bids else 0.0
     )
+
+    count_cols = [
+        "L1 Wins",
+        "Manual Wins",
+        "Approved Wins",
+        "LHC Created",
+        "LHC Pending",
+        "Single Bidder Wins",
+        "Branches",
+        "Routes",
+    ]
+    for col in count_cols:
+        if col not in vendor_table.columns:
+            vendor_table[col] = 0
+        vendor_table[col] = pd.to_numeric(vendor_table[col], errors="coerce").fillna(0).astype(int)
 
     vendor_table["LHC Pending %"] = (
         vendor_table["LHC Pending"]
@@ -1444,6 +1836,10 @@ def render_vendor_performance(df):
         .mul(100.0)
         .fillna(0.0)
     )
+
+    for col in ["Avg Bidders", "Avg Saving vs L1"]:
+        if col not in vendor_table.columns:
+            vendor_table[col] = pd.NA
 
     vendor_table["Avg Bidders"] = pd.to_numeric(
         vendor_table["Avg Bidders"], errors="coerce"
@@ -1453,22 +1849,53 @@ def render_vendor_performance(df):
         vendor_table["Avg Saving vs L1"], errors="coerce"
     ).round(0)
 
+    if "Oldest Pending Days" not in vendor_table.columns:
+        vendor_table["Oldest Pending Days"] = 0
     vendor_table["Oldest Pending Days"] = pd.to_numeric(
         vendor_table["Oldest Pending Days"], errors="coerce"
     ).fillna(0).astype(int)
 
+    if "Last Win" not in vendor_table.columns:
+        vendor_table["Last Win"] = pd.NaT
+
     vendor_table = vendor_table.sort_values(
-        ["Winner Bids", "Approved Wins", "L1 Wins", "WINNER_NAME"],
+        ["Bid Participations", "Winner Bids", "Win Rate %", "Vendor"],
         ascending=[False, False, False, True],
     ).reset_index(drop=True)
 
     vendor_table.insert(0, "Rank", range(1, len(vendor_table) + 1))
-    vendor_table = vendor_table.rename(columns={"WINNER_NAME": "Vendor"})
+
+    total_participations = int(vendor_table["Bid Participations"].sum())
+    total_wins = int(vendor_table["Winner Bids"].sum())
+    total_losses = int(vendor_table["Lost Bids"].sum())
+    overall_win_rate = (total_wins / total_participations * 100.0) if total_participations else 0.0
+
+    v1, v2, v3, v4 = st.columns(4, gap="small")
+    _kpi_card(v1, "🤝 Vendor Participations", f"{total_participations:,}", "Vendor × bid attempts", "blue")
+    _kpi_card(v2, "🏆 Won Bids", f"{total_wins:,}", f"{overall_win_rate:.1f}% conversion", "green")
+    _kpi_card(v3, "❌ Lost Bids", f"{total_losses:,}", "Participated but not selected", "red")
+    _kpi_card(v4, "🏢 Active Vendors", f"{vendor_table['Vendor'].nunique():,}", "Participated in selected period", "purple")
+
+    chart_left, chart_right = st.columns(2, gap="small")
+    with chart_left:
+        _render_chart_card(
+            "Top Vendor Participation — Won vs Lost",
+            _vendor_win_loss_chart(vendor_table),
+        )
+    with chart_right:
+        _render_chart_card(
+            "Vendor Win Rate — Top Participants",
+            _vendor_win_rate_chart(vendor_table),
+        )
 
     display_columns = [
         "Rank",
         "Vendor",
+        "Bid Participations",
         "Winner Bids",
+        "Lost Bids",
+        "Win Rate %",
+        "Loss Rate %",
         "Win Share %",
         "L1 Wins",
         "Manual Wins",
@@ -1488,14 +1915,21 @@ def render_vendor_performance(df):
     vendor_table = vendor_table[display_columns]
 
     if not vendor_table.empty:
-        top_vendor = vendor_table.iloc[0]
+        top_participant = vendor_table.iloc[0]
+        top_winner = vendor_table.sort_values(
+            ["Winner Bids", "Win Rate %", "Bid Participations"],
+            ascending=[False, False, False],
+        ).iloc[0]
         st.markdown(
             f"""
             <div class="bid-report-meta">
-                🏆 Top Winner Vendor: <b>{top_vendor['Vendor']}</b>
-                &nbsp;•&nbsp; {int(top_vendor['Winner Bids']):,} wins
-                &nbsp;•&nbsp; {float(top_vendor['Win Share %']):.1f}% share
-                &nbsp;•&nbsp; {int(top_vendor['L1 Wins']):,} L1 wins
+                📊 Most Active: <b>{top_participant['Vendor']}</b>
+                &nbsp;•&nbsp; {int(top_participant['Bid Participations']):,} participations
+                &nbsp;•&nbsp; {int(top_participant['Lost Bids']):,} lost
+                &nbsp;&nbsp; | &nbsp;&nbsp;
+                🏆 Most Wins: <b>{top_winner['Vendor']}</b>
+                &nbsp;•&nbsp; {int(top_winner['Winner Bids']):,} wins
+                &nbsp;•&nbsp; {float(top_winner['Win Rate %']):.1f}% win rate
             </div>
             """,
             unsafe_allow_html=True,
@@ -1505,11 +1939,25 @@ def render_vendor_performance(df):
         vendor_table,
         use_container_width=True,
         hide_index=True,
-        height=430,
+        height=470,
         column_config={
             "Rank": st.column_config.NumberColumn("Rank", format="%d", width="small"),
             "Vendor": st.column_config.TextColumn("Vendor", width="large"),
-            "Winner Bids": st.column_config.NumberColumn("Winner Bids", format="%d"),
+            "Bid Participations": st.column_config.NumberColumn("Bid Participations", format="%d"),
+            "Winner Bids": st.column_config.NumberColumn("Won Bids", format="%d"),
+            "Lost Bids": st.column_config.NumberColumn("Lost Bids", format="%d"),
+            "Win Rate %": st.column_config.ProgressColumn(
+                "Win Rate %",
+                min_value=0,
+                max_value=100,
+                format="%.1f%%",
+            ),
+            "Loss Rate %": st.column_config.ProgressColumn(
+                "Loss Rate %",
+                min_value=0,
+                max_value=100,
+                format="%.1f%%",
+            ),
             "Win Share %": st.column_config.ProgressColumn(
                 "Win Share %",
                 min_value=0,
@@ -1550,11 +1998,10 @@ def render_vendor_performance(df):
     st.download_button(
         "⬇️ Download Vendor Performance",
         data=csv_data,
-        file_name="vendor_winner_performance.csv",
+        file_name="vendor_performance_wins_losses.csv",
         mime="text/csv",
         key="download_vendor_winner_performance",
     )
-
 
 
 # ============================================================
@@ -2120,6 +2567,21 @@ def show_bidding_analysis():
             box-shadow:0 2px 6px rgba(37,99,235,.18) !important;
         }
 
+        .bid-report-meta {
+            display:block;
+            width:100%;
+            box-sizing:border-box;
+            background:#f8fafc;
+            border:1px solid #dbe4ef;
+            border-left:3px solid #7c3aed;
+            border-radius:7px;
+            padding:6px 9px;
+            margin:4px 0 6px 0;
+            color:#334155;
+            font-size:9.5px;
+            line-height:1.35;
+        }
+
         .bid-chart-title {
             box-sizing:border-box;
             display:block;
@@ -2239,7 +2701,18 @@ def show_bidding_analysis():
         st.error("From Date cannot be greater than To Date.")
         return
 
-    should_load = load_clicked or "bidding_raw_data" not in st.session_state
+    cached_raw = st.session_state.get("bidding_raw_data")
+    needs_schema_refresh = (
+        isinstance(cached_raw, pd.DataFrame)
+        and not cached_raw.empty
+        and "BIDDER_VENDOR_LIST" not in cached_raw.columns
+    )
+
+    should_load = (
+        load_clicked
+        or "bidding_raw_data" not in st.session_state
+        or needs_schema_refresh
+    )
 
     if should_load:
         st.session_state["bidding_from_date"] = from_date
@@ -2247,7 +2720,7 @@ def show_bidding_analysis():
 
         try:
             with st.spinner("Loading bidding data..."):
-                if load_clicked:
+                if load_clicked or needs_schema_refresh:
                     load_bidding_data.clear()
 
                 raw_df = load_bidding_data(from_date, to_date)
