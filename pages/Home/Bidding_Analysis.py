@@ -461,10 +461,29 @@ def prepare_bidding_data(df):
     df["HAS_WINNER"] = is_winner_flag | has_winner_name | has_final_rate
 
     lhc_no_text = _clean_text_series(df["LHCNO"])
+    approved_y = _clean_text_series(df["APPROVED"]).str.upper().eq("Y")
 
     df["LHC_STATUS"] = "No Winner"
-    df.loc[df["HAS_WINNER"] & lhc_no_text.ne(""), "LHC_STATUS"] = "LHC Created"
-    df.loc[df["HAS_WINNER"] & lhc_no_text.eq(""), "LHC_STATUS"] = "Winner - LHC Pending"
+
+    # LHC already exists.
+    df.loc[
+        df["HAS_WINNER"] & lhc_no_text.ne(""),
+        "LHC_STATUS"
+    ] = "LHC Created"
+
+    # IMPORTANT CONTROL:
+    # Count Winner -> LHC Pending only when the BID is approved.
+    df.loc[
+        df["HAS_WINNER"] & lhc_no_text.eq("") & approved_y,
+        "LHC_STATUS"
+    ] = "Winner - LHC Pending"
+
+    # Winner exists but approval is still not Y, therefore it is not yet an
+    # approved LHC-pending case.
+    df.loc[
+        df["HAS_WINNER"] & lhc_no_text.eq("") & ~approved_y,
+        "LHC_STATUS"
+    ] = "Winner - Not Approved"
 
     # There is no separate Winner Selected Date in the current SQL output.
     # Ageing therefore uses:
@@ -608,7 +627,7 @@ def apply_dashboard_filters(df):
         with row2[4]:
             lhc_status_filter = st.multiselect(
                 "LHC Status",
-                ["LHC Created", "Winner - LHC Pending", "No Winner"],
+                ["LHC Created", "Winner - LHC Pending", "Winner - Not Approved", "No Winner"],
                 key="bid_filter_lhc_status",
                 placeholder="All LHC statuses",
             )
@@ -721,6 +740,15 @@ def render_kpis(df):
 
     # LHC operational control KPIs
     winner_bids = int(df.loc[df["HAS_WINNER"], "BIDID"].nunique())
+
+    approved_winner_mask = (
+        df["HAS_WINNER"]
+        & _clean_text_series(df["APPROVED"]).str.upper().eq("Y")
+    )
+    approved_winner_bids = int(
+        df.loc[approved_winner_mask, "BIDID"].nunique()
+    )
+
     lhc_created = int(
         df.loc[df["LHC_STATUS"].eq("LHC Created"), "BIDID"].nunique()
     )
@@ -744,7 +772,10 @@ def render_kpis(df):
     )
 
     lhc_created_pct = (lhc_created / winner_bids * 100) if winner_bids else 0
-    lhc_pending_pct = (lhc_pending / winner_bids * 100) if winner_bids else 0
+    lhc_pending_pct = (
+        lhc_pending / approved_winner_bids * 100
+        if approved_winner_bids else 0
+    )
 
     l1c, l2c, l3c, l4c = st.columns(4, gap="small")
 
@@ -766,7 +797,7 @@ def render_kpis(df):
         l3c,
         "⏳ LHC Pending",
         f"{lhc_pending:,}",
-        f"{lhc_pending_pct:.1f}% of winner bids",
+        f"{lhc_pending_pct:.1f}% of approved winner bids",
         "red",
     )
     _kpi_card(
@@ -1316,7 +1347,7 @@ def render_charts(df):
                 height=255,
             )
             _render_chart_card(
-                "Winner → LHC Pending Ageing  •  Count + % of Pending",
+                "Approved Winner → LHC Pending Ageing  •  Count + % of Pending",
                 ageing_fig,
             )
         else:
@@ -1399,7 +1430,7 @@ def render_exceptions(df):
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
-            "⏳ Winner → LHC Pending",
+            "⏳ Approved Winner → LHC Pending",
             "₹500 Gap Violations",
             "Manual Winners",
             "Duplicate Winner Flags",
