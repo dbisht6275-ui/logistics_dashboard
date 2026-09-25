@@ -2445,13 +2445,26 @@ def show_bidding_analysis():
             min-height:32px !important;
         }
 
-        /* Compact header date labels */
-        .bid-header-anchor + div label[data-testid="stWidgetLabel"] p,
+        /* Header date labels are rendered inline, to the LEFT of each date box. */
+        .bid-inline-date-label {
+            display:flex;
+            align-items:center;
+            justify-content:flex-end;
+            min-height:32px;
+            height:32px;
+            color:#334155;
+            font-size:9.5px;
+            font-weight:800;
+            line-height:1;
+            white-space:nowrap;
+            padding-right:2px;
+        }
+
+        /* Remove any extra vertical space around collapsed date labels in header. */
         div[data-testid="stHorizontalBlock"]:has(.bid-header-anchor)
-        label[data-testid="stWidgetLabel"] p {
-            font-size:9px !important;
-            margin-bottom:1px !important;
-            line-height:1.05 !important;
+        div[data-testid="stDateInput"] {
+            margin-top:0 !important;
+            margin-bottom:0 !important;
         }
 
         /* Collapsible filters */
@@ -2661,13 +2674,30 @@ def show_bidding_analysis():
         }
         hr { margin:.35rem 0 !important; }
 
+        /* Data tables: dark-blue outer frame + white header text. */
         div[data-testid="stDataFrame"] {
-            border:1px solid #cbd5e1 !important;
+            border:2px solid #0b2447 !important;
             border-radius:9px !important;
             overflow:hidden !important;
-            box-shadow:0 3px 10px rgba(15,23,42,.06) !important;
+            box-shadow:0 3px 10px rgba(11,36,71,.12) !important;
+            --gdg-bg-header:#0b2447;
+            --gdg-bg-header-has-focus:#17365D;
+            --gdg-text-header:#ffffff;
         }
         div[data-testid="stDataFrame"] * { font-size:10.5px !important; }
+
+        /* Works on Streamlit versions exposing dataframe headers as DOM elements. */
+        div[data-testid="stDataFrame"] [role="columnheader"],
+        div[data-testid="stDataFrame"] [data-testid="stDataFrameHeaderCell"] {
+            background:#0b2447 !important;
+            color:#ffffff !important;
+            border-color:#17365D !important;
+        }
+        div[data-testid="stDataFrame"] [role="columnheader"] *,
+        div[data-testid="stDataFrame"] [data-testid="stDataFrameHeaderCell"] * {
+            color:#ffffff !important;
+            fill:#ffffff !important;
+        }
 
         div[data-testid="stDownloadButton"] button,
         div[data-testid="stButton"] button {
@@ -2697,8 +2727,8 @@ def show_bidding_analysis():
         st.session_state["bidding_to_date"] = today
 
     with st.container(border=True):
-        title_col, d1, d2, run_col = st.columns(
-            [4.4, 0.95, 0.95, 1.35],
+        title_col, dates_col, run_col = st.columns(
+            [4.65, 2.45, 1.35],
             gap="small",
             vertical_alignment="bottom",
         )
@@ -2711,21 +2741,44 @@ def show_bidding_analysis():
                 unsafe_allow_html=True,
             )
 
-        with d1:
-            from_date = st.date_input(
-                "From",
-                value=st.session_state["bidding_from_date"],
-                format="DD/MM/YYYY",
-                key="bidding_from_date_input",
+        # Keep From / To labels on the LEFT of the date boxes so the header uses
+        # horizontal space instead of adding an extra label row above the inputs.
+        with dates_col:
+            from_lbl, from_box, to_lbl, to_box = st.columns(
+                [0.30, 1.00, 0.20, 1.00],
+                gap="small",
+                vertical_alignment="center",
             )
 
-        with d2:
-            to_date = st.date_input(
-                "To",
-                value=st.session_state["bidding_to_date"],
-                format="DD/MM/YYYY",
-                key="bidding_to_date_input",
-            )
+            with from_lbl:
+                st.markdown(
+                    "<div class='bid-inline-date-label'>From</div>",
+                    unsafe_allow_html=True,
+                )
+
+            with from_box:
+                from_date = st.date_input(
+                    "From",
+                    value=st.session_state["bidding_from_date"],
+                    format="DD/MM/YYYY",
+                    key="bidding_from_date_input",
+                    label_visibility="collapsed",
+                )
+
+            with to_lbl:
+                st.markdown(
+                    "<div class='bid-inline-date-label'>To</div>",
+                    unsafe_allow_html=True,
+                )
+
+            with to_box:
+                to_date = st.date_input(
+                    "To",
+                    value=st.session_state["bidding_to_date"],
+                    format="DD/MM/YYYY",
+                    key="bidding_to_date_input",
+                    label_visibility="collapsed",
+                )
 
         with run_col:
             load_clicked = st.button(
