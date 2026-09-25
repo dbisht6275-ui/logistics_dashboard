@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 
 from datetime import date, timedelta
 from sqlalchemy import create_engine, text
@@ -648,44 +649,173 @@ def render_kpis(df):
     )
 
 
+def _compact_chart_layout(fig, height=245, bottom_margin=48):
+    """Common compact styling for all management charts."""
+    fig.update_layout(
+        height=height,
+        margin=dict(l=18, r=18, t=12, b=bottom_margin),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#ffffff",
+        showlegend=False,
+        hoverlabel=dict(
+            bgcolor="#0b2447",
+            font_size=11,
+            font_color="#ffffff",
+        ),
+        font=dict(
+            family="Arial, sans-serif",
+            size=10,
+            color="#334155",
+        ),
+    )
+    fig.update_xaxes(
+        showgrid=False,
+        zeroline=False,
+        linecolor="#dbe4ef",
+        tickfont=dict(size=9),
+        title=None,
+    )
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor="#eef2f7",
+        zeroline=False,
+        tickfont=dict(size=9),
+        title=None,
+        rangemode="tozero",
+    )
+    return fig
+
+
+def _bar_chart_with_values(labels, values, height=245, rotate_x=0):
+    """Create a compact bar chart with values always visible above bars."""
+    labels = [str(x) for x in labels]
+    values = [int(v) if pd.notna(v) else 0 for v in values]
+
+    fig = go.Figure(
+        go.Bar(
+            x=labels,
+            y=values,
+            text=[f"{v:,}" for v in values],
+            textposition="outside",
+            textfont=dict(size=10, color="#0f172a"),
+            cliponaxis=False,
+            marker=dict(
+                color="#2563eb",
+                line=dict(color="#1d4ed8", width=0.5),
+            ),
+            hovertemplate="<b>%{x}</b><br>Bids: %{y:,}<extra></extra>",
+        )
+    )
+
+    max_value = max(values) if values else 0
+    if max_value > 0:
+        fig.update_yaxes(range=[0, max_value * 1.18])
+
+    _compact_chart_layout(fig, height=height, bottom_margin=58 if rotate_x else 42)
+    fig.update_xaxes(tickangle=rotate_x)
+    return fig
+
+
+def _line_chart_with_values(labels, values, height=235):
+    """Create daily trend chart with value labels above every point."""
+    labels = [str(x) for x in labels]
+    values = [int(v) if pd.notna(v) else 0 for v in values]
+
+    fig = go.Figure(
+        go.Scatter(
+            x=labels,
+            y=values,
+            mode="lines+markers+text",
+            text=[f"{v:,}" for v in values],
+            textposition="top center",
+            textfont=dict(size=9, color="#0f172a"),
+            line=dict(color="#2563eb", width=2),
+            marker=dict(
+                size=6,
+                color="#ffffff",
+                line=dict(color="#2563eb", width=2),
+            ),
+            hovertemplate="<b>%{x}</b><br>Bids: %{y:,}<extra></extra>",
+        )
+    )
+
+    max_value = max(values) if values else 0
+    if max_value > 0:
+        fig.update_yaxes(range=[0, max_value * 1.20])
+
+    _compact_chart_layout(fig, height=height, bottom_margin=44)
+    return fig
+
+
+def _render_chart_card(title, fig):
+    """Render every chart inside the same bordered compact card."""
+    with st.container(border=True):
+        st.markdown(
+            f"<div class='bid-chart-title'>{title}</div>",
+            unsafe_allow_html=True,
+        )
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={
+                "displayModeBar": False,
+                "responsive": True,
+            },
+        )
+
+
 def render_charts(df):
     st.markdown("### Management Analysis")
 
-    left, right = st.columns(2)
+    left, right = st.columns(2, gap="small")
 
     with left:
-        st.markdown("#### Bids by Branch")
         branch_data = (
             df.groupby("BRANCH", dropna=False)["BIDID"]
             .nunique()
             .sort_values(ascending=False)
             .head(15)
             .rename("Bids")
-            .to_frame()
+            .reset_index()
         )
+
         if not branch_data.empty:
-            st.bar_chart(branch_data, use_container_width=True)
+            branch_fig = _bar_chart_with_values(
+                branch_data["BRANCH"],
+                branch_data["Bids"],
+                height=270,
+                rotate_x=-35,
+            )
+            _render_chart_card("Bids by Branch", branch_fig)
         else:
-            st.info("No branch data available.")
+            with st.container(border=True):
+                st.markdown("<div class='bid-chart-title'>Bids by Branch</div>", unsafe_allow_html=True)
+                st.info("No branch data available.")
 
     with right:
-        st.markdown("#### Winner Selection")
         winner_data = (
             df.groupby("WINNER_MODE")["BIDID"]
             .nunique()
             .sort_values(ascending=False)
             .rename("Bids")
-            .to_frame()
+            .reset_index()
         )
-        if not winner_data.empty:
-            st.bar_chart(winner_data, use_container_width=True)
-        else:
-            st.info("No winner data available.")
 
-    left, right = st.columns(2)
+        if not winner_data.empty:
+            winner_fig = _bar_chart_with_values(
+                winner_data["WINNER_MODE"],
+                winner_data["Bids"],
+                height=270,
+            )
+            _render_chart_card("Winner Selection", winner_fig)
+        else:
+            with st.container(border=True):
+                st.markdown("<div class='bid-chart-title'>Winner Selection</div>", unsafe_allow_html=True)
+                st.info("No winner data available.")
+
+    left, right = st.columns(2, gap="small")
 
     with left:
-        st.markdown("#### Bidder Participation")
         participation_order = [
             "No Bidder",
             "1 Bidder",
@@ -701,12 +831,17 @@ def render_charts(df):
             .fillna(0)
             .astype(int)
             .rename("Bids")
-            .to_frame()
+            .reset_index()
         )
-        st.bar_chart(participation, use_container_width=True)
+
+        participation_fig = _bar_chart_with_values(
+            participation["BIDDER_BUCKET"],
+            participation["Bids"],
+            height=245,
+        )
+        _render_chart_card("Bidder Participation", participation_fig)
 
     with right:
-        st.markdown("#### ₹500 Gap Compliance")
         gap_data = (
             df.groupby("GAP_STATUS")["BIDID"]
             .nunique()
@@ -714,24 +849,39 @@ def render_charts(df):
             .fillna(0)
             .astype(int)
             .rename("Bids")
-            .to_frame()
+            .reset_index()
         )
-        st.bar_chart(gap_data, use_container_width=True)
 
-    st.markdown("#### Daily Bid Trend")
+        gap_fig = _bar_chart_with_values(
+            gap_data["GAP_STATUS"],
+            gap_data["Bids"],
+            height=245,
+        )
+        _render_chart_card("₹500 Gap Compliance", gap_fig)
 
     trend_df = df.dropna(subset=["BIDOPENDT"]).copy()
+
     if not trend_df.empty:
         trend_df["BID_DATE"] = trend_df["BIDOPENDT"].dt.date
         daily = (
             trend_df.groupby("BID_DATE")["BIDID"]
             .nunique()
             .rename("Bids")
-            .to_frame()
+            .reset_index()
         )
-        st.line_chart(daily, use_container_width=True)
+
+        daily["DATE_LABEL"] = pd.to_datetime(daily["BID_DATE"]).dt.strftime("%d %b")
+
+        daily_fig = _line_chart_with_values(
+            daily["DATE_LABEL"],
+            daily["Bids"],
+            height=245,
+        )
+        _render_chart_card("Daily Bid Trend", daily_fig)
     else:
-        st.info("No bid date data available.")
+        with st.container(border=True):
+            st.markdown("<div class='bid-chart-title'>Daily Bid Trend</div>", unsafe_allow_html=True)
+            st.info("No bid date data available.")
 
 
 # ============================================================
@@ -1153,6 +1303,23 @@ def show_bidding_analysis():
         .bid-kpi-cyan   { --accent:#0891b2; }
         .bid-kpi-rose   { --accent:#e11d48; }
         .bid-kpi-navy   { --accent:#0f2f63; }
+
+        .bid-chart-title {
+            font-size:11px;
+            font-weight:850;
+            color:#0f2744;
+            line-height:1.2;
+            margin:0 0 2px 0;
+            padding-left:6px;
+            border-left:3px solid #2563eb;
+        }
+        div[data-testid="stPlotlyChart"] {
+            border-radius:7px !important;
+            overflow:hidden !important;
+        }
+        div[data-testid="stElementContainer"]:has(.bid-chart-title) {
+            margin-bottom:-4px !important;
+        }
 
         h3 {
             font-size:12.5px !important;
