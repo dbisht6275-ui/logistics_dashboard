@@ -893,6 +893,96 @@ def _render_chart_card(title, fig):
         )
 
 
+
+def _ageing_chart_with_values(ageing_df, height=255):
+    """
+    Professional ageing chart:
+    - Different color by ageing severity
+    - Count + % displayed above each bar
+    - % is calculated against total Winner -> LHC Pending bids
+    """
+    work = ageing_df.copy()
+
+    work["Bids"] = pd.to_numeric(work["Bids"], errors="coerce").fillna(0).astype(int)
+    total_pending = int(work["Bids"].sum())
+
+    if total_pending > 0:
+        work["Percent"] = work["Bids"] / total_pending * 100.0
+    else:
+        work["Percent"] = 0.0
+
+    # Green -> teal -> blue -> amber -> orange -> red progression.
+    ageing_colors = {
+        "0 Day": "#16a34a",
+        "1 Day": "#22c55e",
+        "2-3 Days": "#0d9488",
+        "4-7 Days": "#2563eb",
+        "8-15 Days": "#d97706",
+        "16-30 Days": "#ea580c",
+        "31+ Days": "#dc2626",
+    }
+
+    colors = [
+        ageing_colors.get(str(bucket), "#64748b")
+        for bucket in work["LHC_AGEING_BUCKET"]
+    ]
+
+    labels = [
+        f"{count:,}  |  {pct:.1f}%"
+        for count, pct in zip(work["Bids"], work["Percent"])
+    ]
+
+    fig = go.Figure(
+        go.Bar(
+            x=work["LHC_AGEING_BUCKET"].astype(str),
+            y=work["Bids"],
+            text=labels,
+            textposition="outside",
+            textfont=dict(
+                size=10,
+                color="#0f172a",
+            ),
+            cliponaxis=False,
+            marker=dict(
+                color=colors,
+                line=dict(
+                    color="#ffffff",
+                    width=0.8,
+                ),
+            ),
+            customdata=work["Percent"],
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Pending Bids: %{y:,}<br>"
+                "Share: %{customdata:.1f}%"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    max_value = int(work["Bids"].max()) if not work.empty else 0
+    if max_value > 0:
+        fig.update_yaxes(range=[0, max_value * 1.24])
+
+    _compact_chart_layout(
+        fig,
+        height=height,
+        bottom_margin=55,
+    )
+
+    fig.update_layout(
+        showlegend=False,
+        bargap=0.28,
+    )
+
+    fig.update_xaxes(
+        tickangle=-18,
+        tickfont=dict(size=9),
+    )
+
+    return fig
+
+
 def render_charts(df):
     st.markdown("### Management Analysis")
 
@@ -1014,13 +1104,14 @@ def render_charts(df):
                 .reset_index()
             )
 
-            ageing_fig = _bar_chart_with_values(
-                ageing_data["LHC_AGEING_BUCKET"],
-                ageing_data["Bids"],
-                height=245,
-                rotate_x=-20,
+            ageing_fig = _ageing_chart_with_values(
+                ageing_data,
+                height=255,
             )
-            _render_chart_card("Winner → LHC Pending Ageing", ageing_fig)
+            _render_chart_card(
+                "Winner → LHC Pending Ageing  •  Count + % of Pending",
+                ageing_fig,
+            )
         else:
             with st.container(border=True):
                 st.markdown(
