@@ -1175,6 +1175,11 @@ def show_bidding_analysis():
             padding:.50rem .65rem !important;
         }
 
+        /* Chart cards need a few pixels of safe top space so headings never clip. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.bid-chart-title) > div {
+            padding-top:.42rem !important;
+        }
+
         label[data-testid="stWidgetLabel"] p {
             font-size:10.5px !important;
             line-height:1.25 !important;
@@ -1332,20 +1337,27 @@ def show_bidding_analysis():
         .bid-kpi-navy   { --accent:#0f2f63; }
 
         .bid-chart-title {
+            box-sizing:border-box;
+            display:block;
+            min-height:22px;
             font-size:11px;
             font-weight:850;
             color:#0f2744;
-            line-height:1.2;
-            margin:0 0 2px 0;
-            padding-left:6px;
+            line-height:1.35;
+            margin:0 0 4px 0;
+            padding:3px 0 3px 7px;
             border-left:3px solid #2563eb;
+            overflow:visible;
+            white-space:nowrap;
         }
         div[data-testid="stPlotlyChart"] {
             border-radius:7px !important;
             overflow:hidden !important;
         }
         div[data-testid="stElementContainer"]:has(.bid-chart-title) {
-            margin-bottom:-4px !important;
+            min-height:22px !important;
+            margin-bottom:0 !important;
+            overflow:visible !important;
         }
 
         h3 {
