@@ -451,6 +451,64 @@ def prepare_bidding_data(df):
         + _clean_text_series(df["DESTINATIONCITY"]).replace("", "-")
     )
 
+    # --------------------------------------------------------
+    # LHC CONTROL / PENDING AGEING
+    # --------------------------------------------------------
+    is_winner_flag = _clean_text_series(df["ISWINNER"]).str.upper().eq("Y")
+    has_winner_name = _clean_text_series(df["WINNER_NAME"]).ne("")
+    has_final_rate = df["FINALRATE"].notna()
+
+    df["HAS_WINNER"] = is_winner_flag | has_winner_name | has_final_rate
+
+    lhc_no_text = _clean_text_series(df["LHCNO"])
+
+    df["LHC_STATUS"] = "No Winner"
+    df.loc[df["HAS_WINNER"] & lhc_no_text.ne(""), "LHC_STATUS"] = "LHC Created"
+    df.loc[df["HAS_WINNER"] & lhc_no_text.eq(""), "LHC_STATUS"] = "Winner - LHC Pending"
+
+    # There is no separate Winner Selected Date in the current SQL output.
+    # Ageing therefore uses:
+    # APPROVEDON -> BIDCLOSEDT -> BIDOPENDT
+    ageing_source = (
+        df[["APPROVEDON", "BIDCLOSEDT", "BIDOPENDT"]]
+        .bfill(axis=1)
+        .iloc[:, 0]
+    )
+
+    df["LHC_AGEING_FROM"] = pd.to_datetime(ageing_source, errors="coerce")
+
+    today_ts = pd.Timestamp(date.today())
+    ageing_days = (
+        today_ts - df["LHC_AGEING_FROM"].dt.normalize()
+    ).dt.days
+
+    ageing_days = ageing_days.clip(lower=0)
+
+    pending_mask = df["LHC_STATUS"].eq("Winner - LHC Pending")
+    df["LHC_PENDING_AGE_DAYS"] = ageing_days.where(pending_mask)
+
+    def lhc_age_bucket(days):
+        if pd.isna(days):
+            return "Not Pending"
+
+        days = int(days)
+
+        if days == 0:
+            return "0 Day"
+        if days == 1:
+            return "1 Day"
+        if days <= 3:
+            return "2-3 Days"
+        if days <= 7:
+            return "4-7 Days"
+        if days <= 15:
+            return "8-15 Days"
+        if days <= 30:
+            return "16-30 Days"
+        return "31+ Days"
+
+    df["LHC_AGEING_BUCKET"] = df["LHC_PENDING_AGE_DAYS"].apply(lhc_age_bucket)
+
     return df
 
 
@@ -471,7 +529,7 @@ def _sorted_options(series):
 def apply_dashboard_filters(df):
     """Compact collapsible filters. Default state is collapsed."""
     with st.expander("🔎 Filters — click to expand / collapse", expanded=False):
-        row1 = st.columns(4, gap="small")
+        row1 = st.columns(5, gap="small")
 
         with row1[0]:
             branch_filter = st.multiselect(
@@ -490,6 +548,14 @@ def apply_dashboard_filters(df):
             )
 
         with row1[2]:
+            querybid_filter = st.multiselect(
+                "Query Bid",
+                ["YES", "NO"],
+                key="bid_filter_querybid",
+                placeholder="YES / NO",
+            )
+
+        with row1[3]:
             winner_filter = st.multiselect(
                 "Winner Type",
                 _sorted_options(df["WINNER_MODE"]),
@@ -497,7 +563,7 @@ def apply_dashboard_filters(df):
                 placeholder="All winner types",
             )
 
-        with row1[3]:
+        with row1[4]:
             vehicle_filter = st.multiselect(
                 "Vehicle Type",
                 _sorted_options(df["VEHICLETYPE"]),
@@ -505,7 +571,7 @@ def apply_dashboard_filters(df):
                 placeholder="All vehicle types",
             )
 
-        row2 = st.columns(4, gap="small")
+        row2 = st.columns(5, gap="small")
 
         with row2[0]:
             origin_filter = st.multiselect(
@@ -539,6 +605,14 @@ def apply_dashboard_filters(df):
                 placeholder="All",
             )
 
+        with row2[4]:
+            lhc_status_filter = st.multiselect(
+                "LHC Status",
+                ["LHC Created", "Winner - LHC Pending", "No Winner"],
+                key="bid_filter_lhc_status",
+                placeholder="All LHC statuses",
+            )
+
     filtered = df.copy()
 
     if branch_filter:
@@ -546,6 +620,9 @@ def apply_dashboard_filters(df):
 
     if source_filter:
         filtered = filtered[filtered["SOURCE"].isin(source_filter)]
+
+    if querybid_filter:
+        filtered = filtered[filtered["QUERYBID"].isin(querybid_filter)]
 
     if winner_filter:
         filtered = filtered[filtered["WINNER_MODE"].isin(winner_filter)]
@@ -564,6 +641,9 @@ def apply_dashboard_filters(df):
 
     if approved_filter:
         filtered = filtered[filtered["APPROVED"].isin(approved_filter)]
+
+    if lhc_status_filter:
+        filtered = filtered[filtered["LHC_STATUS"].isin(lhc_status_filter)]
 
     return filtered
 
@@ -637,6 +717,64 @@ def render_kpis(df):
         "-" if pd.isna(avg_bidders) else f"{avg_bidders:.2f}",
         "Per participating bid",
         "cyan",
+    )
+
+    # LHC operational control KPIs
+    winner_bids = int(df.loc[df["HAS_WINNER"], "BIDID"].nunique())
+    lhc_created = int(
+        df.loc[df["LHC_STATUS"].eq("LHC Created"), "BIDID"].nunique()
+    )
+    lhc_pending = int(
+        df.loc[df["LHC_STATUS"].eq("Winner - LHC Pending"), "BIDID"].nunique()
+    )
+
+    pending_rows = df[df["LHC_STATUS"].eq("Winner - LHC Pending")].copy()
+
+    oldest_pending = (
+        int(pending_rows["LHC_PENDING_AGE_DAYS"].max())
+        if not pending_rows.empty and pending_rows["LHC_PENDING_AGE_DAYS"].notna().any()
+        else 0
+    )
+
+    pending_over_7 = int(
+        pending_rows.loc[
+            pending_rows["LHC_PENDING_AGE_DAYS"].gt(7),
+            "BIDID"
+        ].nunique()
+    )
+
+    lhc_created_pct = (lhc_created / winner_bids * 100) if winner_bids else 0
+    lhc_pending_pct = (lhc_pending / winner_bids * 100) if winner_bids else 0
+
+    l1c, l2c, l3c, l4c = st.columns(4, gap="small")
+
+    _kpi_card(
+        l1c,
+        "🏆 Winner Bids",
+        f"{winner_bids:,}",
+        "Winner already selected",
+        "navy",
+    )
+    _kpi_card(
+        l2c,
+        "🚚 LHC Created",
+        f"{lhc_created:,}",
+        f"{lhc_created_pct:.1f}% of winner bids",
+        "green",
+    )
+    _kpi_card(
+        l3c,
+        "⏳ LHC Pending",
+        f"{lhc_pending:,}",
+        f"{lhc_pending_pct:.1f}% of winner bids",
+        "red",
+    )
+    _kpi_card(
+        l4c,
+        "🕒 Oldest Pending",
+        f"{oldest_pending:,} days",
+        f"{pending_over_7:,} bids pending > 7 days",
+        "amber",
     )
 
 
@@ -850,29 +988,74 @@ def render_charts(df):
         )
         _render_chart_card("₹500 Gap Compliance", gap_fig)
 
-    trend_df = df.dropna(subset=["BIDOPENDT"]).copy()
+    left, right = st.columns(2, gap="small")
 
-    if not trend_df.empty:
-        trend_df["BID_DATE"] = trend_df["BIDOPENDT"].dt.date
-        daily = (
-            trend_df.groupby("BID_DATE")["BIDID"]
-            .nunique()
-            .rename("Bids")
-            .reset_index()
-        )
+    with left:
+        pending_df = df[df["LHC_STATUS"].eq("Winner - LHC Pending")].copy()
 
-        daily["DATE_LABEL"] = pd.to_datetime(daily["BID_DATE"]).dt.strftime("%d %b")
+        ageing_order = [
+            "0 Day",
+            "1 Day",
+            "2-3 Days",
+            "4-7 Days",
+            "8-15 Days",
+            "16-30 Days",
+            "31+ Days",
+        ]
 
-        daily_fig = _line_chart_with_values(
-            daily["DATE_LABEL"],
-            daily["Bids"],
-            height=245,
-        )
-        _render_chart_card("Daily Bid Trend", daily_fig)
-    else:
-        with st.container(border=True):
-            st.markdown("<div class='bid-chart-title'>Daily Bid Trend</div>", unsafe_allow_html=True)
-            st.info("No bid date data available.")
+        if not pending_df.empty:
+            ageing_data = (
+                pending_df.groupby("LHC_AGEING_BUCKET")["BIDID"]
+                .nunique()
+                .reindex(ageing_order)
+                .fillna(0)
+                .astype(int)
+                .rename("Bids")
+                .reset_index()
+            )
+
+            ageing_fig = _bar_chart_with_values(
+                ageing_data["LHC_AGEING_BUCKET"],
+                ageing_data["Bids"],
+                height=245,
+                rotate_x=-20,
+            )
+            _render_chart_card("Winner → LHC Pending Ageing", ageing_fig)
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Winner → LHC Pending Ageing</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No winner bids are pending for LHC.")
+
+    with right:
+        trend_df = df.dropna(subset=["BIDOPENDT"]).copy()
+
+        if not trend_df.empty:
+            trend_df["BID_DATE"] = trend_df["BIDOPENDT"].dt.date
+            daily = (
+                trend_df.groupby("BID_DATE")["BIDID"]
+                .nunique()
+                .rename("Bids")
+                .reset_index()
+            )
+
+            daily["DATE_LABEL"] = pd.to_datetime(daily["BID_DATE"]).dt.strftime("%d %b")
+
+            daily_fig = _line_chart_with_values(
+                daily["DATE_LABEL"],
+                daily["Bids"],
+                height=245,
+            )
+            _render_chart_card("Daily Bid Trend", daily_fig)
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Daily Bid Trend</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No bid date data available.")
 
 
 # ============================================================
@@ -926,6 +1109,14 @@ def _exception_table(df, columns):
                 "Final-Hire Diff",
                 format="₹ %.2f",
             ),
+            "LHC_PENDING_AGE_DAYS": st.column_config.NumberColumn(
+                "Ageing Days",
+                format="%d",
+            ),
+            "LHC_AGEING_FROM": st.column_config.DatetimeColumn(
+                "Ageing From",
+                format="DD/MM/YYYY",
+            ),
         },
     )
 
@@ -933,8 +1124,9 @@ def _exception_table(df, columns):
 def render_exceptions(df):
     st.markdown("### Exceptions & Control Checks")
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
         [
+            "⏳ Winner → LHC Pending",
             "₹500 Gap Violations",
             "Manual Winners",
             "Duplicate Winner Flags",
@@ -965,17 +1157,73 @@ def render_exceptions(df):
     ]
 
     with tab1:
+        pending_df = df[df["LHC_STATUS"].eq("Winner - LHC Pending")].copy()
+
+        ageing_order = [
+            "0 Day",
+            "1 Day",
+            "2-3 Days",
+            "4-7 Days",
+            "8-15 Days",
+            "16-30 Days",
+            "31+ Days",
+        ]
+
+        age_filter = st.multiselect(
+            "Pending Ageing",
+            ageing_order,
+            key="bid_lhc_pending_age_filter",
+            placeholder="All ageing buckets",
+        )
+
+        if age_filter:
+            pending_df = pending_df[
+                pending_df["LHC_AGEING_BUCKET"].isin(age_filter)
+            ]
+
+        pending_df = pending_df.sort_values(
+            ["LHC_PENDING_AGE_DAYS", "BIDID"],
+            ascending=[False, False],
+            na_position="last",
+        )
+
+        _exception_table(
+            pending_df,
+            [
+                "BIDID",
+                "BIDOPENDT",
+                "BIDCLOSEDT",
+                "APPROVEDON",
+                "BRANCH",
+                "ROUTE",
+                "VEHICLETYPE",
+                "QUERYBID",
+                "APPROVED",
+                "WINNER_NAME",
+                "WINNER_MODE",
+                "FINALRATE",
+                "LHC_STATUS",
+                "LHC_AGEING_FROM",
+                "LHC_PENDING_AGE_DAYS",
+                "LHC_AGEING_BUCKET",
+                "GENERATEBYUSER",
+                "APPROVEDBYUSER",
+                "MANUALBIDREASON",
+            ],
+        )
+
+    with tab2:
         violation_df = df[df["GAP_STATUS"].eq("Violation")].copy()
         _exception_table(violation_df, base_cols)
 
-    with tab2:
+    with tab3:
         manual_df = df[df["WINNER_MODE"].eq("Manual")].copy()
         _exception_table(
             manual_df,
             base_cols + ["WINNER_VS_L1", "QUERY_AMOUNT"],
         )
 
-    with tab3:
+    with tab4:
         duplicate_df = df[df["WINNER_COUNT"].gt(1)].copy()
         _exception_table(
             duplicate_df,
@@ -994,7 +1242,7 @@ def render_exceptions(df):
             ],
         )
 
-    with tab4:
+    with tab5:
         single_df = df[df["BIDDER_COUNT"].eq(1)].copy()
         _exception_table(
             single_df,
@@ -1014,7 +1262,7 @@ def render_exceptions(df):
             ],
         )
 
-    with tab5:
+    with tab6:
         mismatch_df = df[df["FINAL_HIRE_STATUS"].eq("Mismatch")].copy()
         _exception_table(
             mismatch_df,
@@ -1068,7 +1316,11 @@ def render_detail_table(df):
         "SAVING_VS_L1",
         "WINNER_VS_L1",
         "MANUALBIDREASON",
+        "LHC_STATUS",
         "LHCNO",
+        "LHC_AGEING_FROM",
+        "LHC_PENDING_AGE_DAYS",
+        "LHC_AGEING_BUCKET",
         "HIREAMOUNT",
         "FINAL_HIRE_STATUS",
         "FINAL_HIRE_DIFF",
@@ -1131,6 +1383,14 @@ def render_detail_table(df):
             "FINAL_HIRE_DIFF": st.column_config.NumberColumn(
                 "Final-Hire Diff",
                 format="₹ %.2f",
+            ),
+            "LHC_PENDING_AGE_DAYS": st.column_config.NumberColumn(
+                "Ageing Days",
+                format="%d",
+            ),
+            "LHC_AGEING_FROM": st.column_config.DatetimeColumn(
+                "Ageing From",
+                format="DD/MM/YYYY",
             ),
         },
     )
@@ -1475,6 +1735,13 @@ def show_bidding_analysis():
             return
 
     raw_df = st.session_state.get("bidding_raw_data", pd.DataFrame())
+
+    # Re-run lightweight derived calculations on cached data as well.
+    # This ensures newly added control fields are available immediately
+    # after a code deployment without forcing users to reload SQL first.
+    if raw_df is not None and not raw_df.empty:
+        raw_df = prepare_bidding_data(raw_df)
+        st.session_state["bidding_raw_data"] = raw_df
 
     if raw_df is None or raw_df.empty:
         st.warning("No bidding data found for the selected date range.")
