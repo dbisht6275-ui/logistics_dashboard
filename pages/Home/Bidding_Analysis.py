@@ -690,6 +690,9 @@ def apply_dashboard_filters(df):
 # KPI / CHARTS
 # ============================================================
 
+CHART_TEXT_COLOR = "#0f2744"
+CHART_MUTED_TEXT_COLOR = "#334155"
+
 def _format_inr(value):
     if value is None or pd.isna(value):
         return "-"
@@ -728,6 +731,15 @@ def render_kpis(df):
     )
 
     l1_bids = int(df.loc[df["WINNER_MODE"].eq("L-1"), "BIDID"].nunique())
+    winner_not_l1 = int(
+        df.loc[df["WINNER_VS_L1"].eq("Winner != L1"), "BIDID"].nunique()
+    )
+    comparable_winner_bids = int(
+        df.loc[
+            df["WINNER_VS_L1"].isin(["Winner = L1", "Winner != L1"]),
+            "BIDID",
+        ].nunique()
+    )
     manual_bids = int(df.loc[df["WINNER_MODE"].eq("Manual"), "BIDID"].nunique())
     single_bidder = int(df.loc[df["BIDDER_COUNT"].eq(1), "BIDID"].nunique())
     gap_violations = int(df.loc[df["GAP_STATUS"].eq("Violation"), "BIDID"].nunique())
@@ -736,21 +748,32 @@ def render_kpis(df):
     approved_pct = (approved_bids / total_bids * 100) if total_bids else 0
     query_pct = (query_bids / total_bids * 100) if total_bids else 0
     l1_pct = (l1_bids / total_bids * 100) if total_bids else 0
+    winner_not_l1_pct = (
+        winner_not_l1 / comparable_winner_bids * 100
+        if comparable_winner_bids else 0
+    )
     manual_pct = (manual_bids / total_bids * 100) if total_bids else 0
     single_pct = (single_bidder / total_bids * 100) if total_bids else 0
     gap_pct = (gap_violations / total_bids * 100) if total_bids else 0
 
-    k1, k2, k3, k4, k5, k6, k7, k8 = st.columns(8, gap="small")
+    k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
 
     _kpi_card(k1, "📦 Total Bids", f"{total_bids:,}", "Filtered unique bids", "blue")
     _kpi_card(k2, "✅ Approved", f"{approved_bids:,}", f"{approved_pct:.1f}% of bids", "green")
     _kpi_card(k3, "💬 Query Bids", f"{query_bids:,}", f"{query_pct:.1f}% of bids", "purple")
     _kpi_card(k4, "🥇 L-1 Selected", f"{l1_bids:,}", f"{l1_pct:.1f}% of bids", "teal")
-    _kpi_card(k5, "✍️ Manual", f"{manual_bids:,}", f"{manual_pct:.1f}% of bids", "orange")
-    _kpi_card(k6, "👤 Single Bidder", f"{single_bidder:,}", f"{single_pct:.1f}% of bids", "amber")
-    _kpi_card(k7, "⚠️ Gap Violations", f"{gap_violations:,}", f"{gap_pct:.1f}% of bids", "red")
     _kpi_card(
-        k8,
+        k5,
+        "🚫 Winner Not L1",
+        f"{winner_not_l1:,}",
+        f"{winner_not_l1_pct:.1f}% of comparable winners",
+        "rose",
+    )
+    _kpi_card(k6, "✍️ Manual", f"{manual_bids:,}", f"{manual_pct:.1f}% of bids", "orange")
+    _kpi_card(k7, "👤 Single Bidder", f"{single_bidder:,}", f"{single_pct:.1f}% of bids", "amber")
+    _kpi_card(k8, "⚠️ Gap Violations", f"{gap_violations:,}", f"{gap_pct:.1f}% of bids", "red")
+    _kpi_card(
+        k9,
         "👥 Avg Bidders",
         "-" if pd.isna(avg_bidders) else f"{avg_bidders:.2f}",
         "Per participating bid",
@@ -844,21 +867,21 @@ def _compact_chart_layout(fig, height=245, bottom_margin=48):
         font=dict(
             family="Arial, sans-serif",
             size=10,
-            color="#334155",
+            color=CHART_TEXT_COLOR,
         ),
     )
     fig.update_xaxes(
         showgrid=False,
         zeroline=False,
         linecolor="#dbe4ef",
-        tickfont=dict(size=9),
+        tickfont=dict(size=9, color=CHART_TEXT_COLOR),
         title=None,
     )
     fig.update_yaxes(
         showgrid=True,
         gridcolor="#eef2f7",
         zeroline=False,
-        tickfont=dict(size=9),
+        tickfont=dict(size=9, color=CHART_TEXT_COLOR),
         title=None,
         rangemode="tozero",
     )
@@ -876,7 +899,7 @@ def _bar_chart_with_values(labels, values, height=245, rotate_x=0):
             y=values,
             text=[f"{v:,}" for v in values],
             textposition="outside",
-            textfont=dict(size=10, color="#0f172a"),
+            textfont=dict(size=10, color=CHART_TEXT_COLOR),
             cliponaxis=False,
             marker=dict(
                 color="#2563eb",
@@ -908,6 +931,7 @@ def _horizontal_bar_chart(labels, values, height=270, value_name="Bids"):
             orientation="h",
             text=[f"{v:,}" for v in work["Value"]],
             textposition="outside",
+            textfont=dict(size=9, color=CHART_TEXT_COLOR),
             cliponaxis=False,
             marker=dict(
                 color="#2563eb",
@@ -925,7 +949,7 @@ def _horizontal_bar_chart(labels, values, height=270, value_name="Bids"):
     fig.update_yaxes(
         showgrid=False,
         autorange=True,
-        tickfont=dict(size=9),
+        tickfont=dict(size=9, color=CHART_TEXT_COLOR),
         automargin=True,
     )
     fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
@@ -946,7 +970,7 @@ def _donut_chart(labels, values, height=245, center_label="Total"):
             hole=0.64,
             sort=False,
             textinfo="percent",
-            textfont=dict(size=10),
+            textfont=dict(size=10, color=CHART_TEXT_COLOR),
             hovertemplate="<b>%{label}</b><br>Bids: %{value:,}<br>Share: %{percent}<extra></extra>",
             marker=dict(line=dict(color="#ffffff", width=2)),
         )
@@ -964,16 +988,16 @@ def _donut_chart(labels, values, height=245, center_label="Total"):
             y=-0.03,
             xanchor="center",
             x=0.5,
-            font=dict(size=9),
+            font=dict(size=9, color=CHART_TEXT_COLOR),
         ),
-        font=dict(family="Arial, sans-serif", size=10, color="#334155"),
+        font=dict(family="Arial, sans-serif", size=10, color=CHART_TEXT_COLOR),
         annotations=[
             dict(
                 text=f"<b>{total:,}</b><br><span style='font-size:9px'>{center_label}</span>",
                 x=0.5,
                 y=0.5,
                 showarrow=False,
-                font=dict(size=14, color="#0f172a"),
+                font=dict(size=14, color=CHART_TEXT_COLOR),
                 align="center",
             )
         ],
@@ -1010,6 +1034,7 @@ def _lollipop_chart(labels, values, height=270, value_name="Bids"):
             mode="markers+text",
             text=[f"{v:,}" for v in work["Value"]],
             textposition="middle right",
+            textfont=dict(size=9, color=CHART_TEXT_COLOR),
             marker=dict(
                 size=10,
                 color="#2563eb",
@@ -1026,8 +1051,8 @@ def _lollipop_chart(labels, values, height=270, value_name="Bids"):
         fig.update_xaxes(range=[0, max_value * 1.22])
 
     _compact_chart_layout(fig, height=height, bottom_margin=38)
-    fig.update_yaxes(showgrid=False, automargin=True)
-    fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+    fig.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=9, color=CHART_TEXT_COLOR))
+    fig.update_xaxes(showgrid=True, gridcolor="#eef2f7", tickfont=dict(size=9, color=CHART_TEXT_COLOR))
     return fig
 
 
@@ -1043,7 +1068,7 @@ def _line_chart_with_values(labels, values, height=235):
             mode="lines+markers+text",
             text=[f"{v:,}" for v in values],
             textposition="top center",
-            textfont=dict(size=9, color="#0f172a"),
+            textfont=dict(size=9, color=CHART_TEXT_COLOR),
             line=dict(color="#2563eb", width=2),
             marker=dict(
                 size=6,
@@ -1126,7 +1151,7 @@ def _ageing_chart_with_values(ageing_df, height=255):
             textposition="outside",
             textfont=dict(
                 size=10,
-                color="#0f172a",
+                color=CHART_TEXT_COLOR,
             ),
             cliponaxis=False,
             marker=dict(
@@ -1163,7 +1188,7 @@ def _ageing_chart_with_values(ageing_df, height=255):
 
     fig.update_xaxes(
         tickangle=-18,
-        tickfont=dict(size=9),
+        tickfont=dict(size=9, color=CHART_TEXT_COLOR),
     )
 
     return fig
@@ -1310,6 +1335,9 @@ def _render_bid_trend_card(df):
 def render_charts(df):
     st.markdown("### Management Analysis")
 
+    # --------------------------------------------------------
+    # Row 1: primary volume rankings
+    # --------------------------------------------------------
     left, right = st.columns(2, gap="small")
 
     with left:
@@ -1336,22 +1364,56 @@ def render_charts(df):
                 st.info("No branch data available.")
 
     with right:
-        winner_data = (
-            df.groupby("WINNER_MODE")["BIDID"]
+        route_data = (
+            df.assign(
+                ROUTE_CLEAN=_clean_text_series(df["ROUTE"]).replace("", "Not Available")
+            )
+            .groupby("ROUTE_CLEAN")["BIDID"]
             .nunique()
-            .reindex(["L-1", "Manual", "Other / Missing"])
-            .fillna(0)
-            .astype(int)
+            .sort_values(ascending=False)
+            .head(12)
             .rename("Bids")
             .reset_index()
         )
-        winner_data = winner_data[winner_data["Bids"].gt(0)]
 
+        if not route_data.empty:
+            route_fig = _horizontal_bar_chart(
+                route_data["ROUTE_CLEAN"],
+                route_data["Bids"],
+                height=300,
+                value_name="Bids",
+            )
+            _render_chart_card("Top Routes by Bid Volume", route_fig)
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Top Routes by Bid Volume</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No route data available.")
+
+    # --------------------------------------------------------
+    # Row 2: all composition donuts in ONE row
+    # --------------------------------------------------------
+    d1, d2, d3 = st.columns(3, gap="small")
+
+    winner_data = (
+        df.groupby("WINNER_MODE")["BIDID"]
+        .nunique()
+        .reindex(["L-1", "Manual", "Other / Missing"])
+        .fillna(0)
+        .astype(int)
+        .rename("Bids")
+        .reset_index()
+    )
+    winner_data = winner_data[winner_data["Bids"].gt(0)]
+
+    with d1:
         if not winner_data.empty:
             winner_fig = _donut_chart(
                 winner_data["WINNER_MODE"],
                 winner_data["Bids"],
-                height=300,
+                height=250,
                 center_label="Winner Bids",
             )
             _render_chart_card("Winner Selection Mix", winner_fig)
@@ -1360,58 +1422,65 @@ def render_charts(df):
                 st.markdown("<div class='bid-chart-title'>Winner Selection Mix</div>", unsafe_allow_html=True)
                 st.info("No winner data available.")
 
-    left, right = st.columns(2, gap="small")
+    participation_order = [
+        "No Bidder",
+        "1 Bidder",
+        "2 Bidders",
+        "3 Bidders",
+        "4+ Bidders",
+    ]
+    participation = (
+        df.groupby("BIDDER_BUCKET")["BIDID"]
+        .nunique()
+        .reindex(participation_order)
+        .fillna(0)
+        .astype(int)
+        .rename("Bids")
+        .reset_index()
+    )
+    participation = participation[participation["Bids"].gt(0)]
 
-    with left:
-        participation_order = [
-            "No Bidder",
-            "1 Bidder",
-            "2 Bidders",
-            "3 Bidders",
-            "4+ Bidders",
-        ]
+    with d2:
+        if not participation.empty:
+            participation_fig = _donut_chart(
+                participation["BIDDER_BUCKET"],
+                participation["Bids"],
+                height=250,
+                center_label="Bids",
+            )
+            _render_chart_card("Bidder Participation Mix", participation_fig)
+        else:
+            with st.container(border=True):
+                st.markdown("<div class='bid-chart-title'>Bidder Participation Mix</div>", unsafe_allow_html=True)
+                st.info("No bidder participation data available.")
 
-        participation = (
-            df.groupby("BIDDER_BUCKET")["BIDID"]
-            .nunique()
-            .reindex(participation_order)
-            .fillna(0)
-            .astype(int)
-            .rename("Bids")
-            .reset_index()
-        )
-        participation = participation[participation["Bids"].gt(0)]
+    gap_data = (
+        df.groupby("GAP_STATUS")["BIDID"]
+        .nunique()
+        .reindex(["OK", "Violation", "Not Comparable"])
+        .fillna(0)
+        .astype(int)
+        .rename("Bids")
+        .reset_index()
+    )
+    gap_data = gap_data[gap_data["Bids"].gt(0)]
 
-        participation_fig = _donut_chart(
-            participation["BIDDER_BUCKET"],
-            participation["Bids"],
-            height=255,
-            center_label="Bids",
-        )
-        _render_chart_card("Bidder Participation Mix", participation_fig)
-
-    with right:
-        gap_data = (
-            df.groupby("GAP_STATUS")["BIDID"]
-            .nunique()
-            .reindex(["OK", "Violation", "Not Comparable"])
-            .fillna(0)
-            .astype(int)
-            .rename("Bids")
-            .reset_index()
-        )
-        gap_data = gap_data[gap_data["Bids"].gt(0)]
-
-        gap_fig = _donut_chart(
-            gap_data["GAP_STATUS"],
-            gap_data["Bids"],
-            height=255,
-            center_label="Checked",
-        )
-        _render_chart_card("₹500 Gap Compliance Mix", gap_fig)
+    with d3:
+        if not gap_data.empty:
+            gap_fig = _donut_chart(
+                gap_data["GAP_STATUS"],
+                gap_data["Bids"],
+                height=250,
+                center_label="Checked",
+            )
+            _render_chart_card("₹500 Gap Compliance Mix", gap_fig)
+        else:
+            with st.container(border=True):
+                st.markdown("<div class='bid-chart-title'>₹500 Gap Compliance Mix</div>", unsafe_allow_html=True)
+                st.info("No gap-compliance data available.")
 
     # --------------------------------------------------------
-    # Additional management insights
+    # Row 3: operational management views
     # --------------------------------------------------------
     left, right = st.columns(2, gap="small")
 
@@ -1448,40 +1517,6 @@ def render_charts(df):
                 st.info("No approver data available.")
 
     with right:
-        route_data = (
-            df.assign(
-                ROUTE_CLEAN=_clean_text_series(df["ROUTE"]).replace("", "Not Available")
-            )
-            .groupby("ROUTE_CLEAN")["BIDID"]
-            .nunique()
-            .sort_values(ascending=False)
-            .head(12)
-            .rename("Bids")
-            .reset_index()
-        )
-
-        if not route_data.empty:
-            route_fig = _horizontal_bar_chart(
-                route_data["ROUTE_CLEAN"],
-                route_data["Bids"],
-                height=300,
-                value_name="Bids",
-            )
-            _render_chart_card(
-                "Top Routes by Bid Volume",
-                route_fig,
-            )
-        else:
-            with st.container(border=True):
-                st.markdown(
-                    "<div class='bid-chart-title'>Top Routes by Bid Volume</div>",
-                    unsafe_allow_html=True,
-                )
-                st.info("No route data available.")
-
-    left, right = st.columns(2, gap="small")
-
-    with left:
         pending_df = df[df["LHC_STATUS"].eq("Winner - LHC Pending")].copy()
 
         ageing_order = [
@@ -1507,7 +1542,7 @@ def render_charts(df):
 
             ageing_fig = _ageing_chart_with_values(
                 ageing_data,
-                height=255,
+                height=300,
             )
             _render_chart_card(
                 "Approved Winner → LHC Pending Ageing  •  Count + % of Pending",
@@ -1521,8 +1556,10 @@ def render_charts(df):
                 )
                 st.info("No winner bids are pending for LHC.")
 
-    with right:
-        _render_bid_trend_card(df)
+    # --------------------------------------------------------
+    # Row 4: full-width time trend
+    # --------------------------------------------------------
+    _render_bid_trend_card(df)
 
 
 # ============================================================
@@ -1661,12 +1698,12 @@ def _vendor_win_loss_chart(vendor_table, height=330):
             y=1.01,
             xanchor="right",
             x=1,
-            font=dict(size=9),
+            font=dict(size=9, color=CHART_TEXT_COLOR),
         ),
         bargap=0.28,
     )
-    fig.update_yaxes(showgrid=False, automargin=True)
-    fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+    fig.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=9, color=CHART_TEXT_COLOR))
+    fig.update_xaxes(showgrid=True, gridcolor="#eef2f7", tickfont=dict(size=9, color=CHART_TEXT_COLOR))
     return fig
 
 
@@ -1685,6 +1722,7 @@ def _vendor_win_rate_chart(vendor_table, height=330):
             mode="markers+text",
             text=[f"{v:.1f}%" for v in work["Win Rate %"]],
             textposition="middle right",
+            textfont=dict(size=9, color=CHART_TEXT_COLOR),
             marker=dict(
                 size=10,
                 color="#7c3aed",
@@ -1709,7 +1747,7 @@ def _vendor_win_rate_chart(vendor_table, height=330):
         showgrid=True,
         gridcolor="#eef2f7",
     )
-    fig.update_yaxes(showgrid=False, automargin=True)
+    fig.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=9, color=CHART_TEXT_COLOR))
     return fig
 
 
