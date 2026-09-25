@@ -468,13 +468,17 @@ def _sorted_options(series):
 
 
 def apply_dashboard_filters(df):
-    # Filters are kept inside a compact expander so the dashboard opens with
-    # management KPIs visible immediately. The selected filters remain active
-    # even when the expander is collapsed.
-    with st.expander("🔎 Filters", expanded=False):
-        row1 = st.columns(4, gap="small")
+    """Compact inline filters matching the NBD dashboard layout."""
+    with st.container(border=True):
+        row1 = st.columns([0.42, 1.25, 0.82, 1.05, 1.45], gap="small")
 
         with row1[0]:
+            st.markdown(
+                "<div class='bid-filter-inline-title'>Filters</div>",
+                unsafe_allow_html=True,
+            )
+
+        with row1[1]:
             branch_filter = st.multiselect(
                 "Branch",
                 _sorted_options(df["BRANCH"]),
@@ -482,7 +486,7 @@ def apply_dashboard_filters(df):
                 placeholder="All branches",
             )
 
-        with row1[1]:
+        with row1[2]:
             source_filter = st.multiselect(
                 "Source",
                 _sorted_options(df["SOURCE"]),
@@ -490,7 +494,7 @@ def apply_dashboard_filters(df):
                 placeholder="All sources",
             )
 
-        with row1[2]:
+        with row1[3]:
             winner_filter = st.multiselect(
                 "Winner Type",
                 _sorted_options(df["WINNER_MODE"]),
@@ -498,7 +502,7 @@ def apply_dashboard_filters(df):
                 placeholder="All winner types",
             )
 
-        with row1[3]:
+        with row1[4]:
             vehicle_filter = st.multiselect(
                 "Vehicle Type",
                 _sorted_options(df["VEHICLETYPE"]),
@@ -506,9 +510,12 @@ def apply_dashboard_filters(df):
                 placeholder="All vehicle types",
             )
 
-        row2 = st.columns(4, gap="small")
+        row2 = st.columns([0.42, 1.25, 1.25, 1.05, 0.82], gap="small")
 
         with row2[0]:
+            st.markdown("<div style='height:1px'></div>", unsafe_allow_html=True)
+
+        with row2[1]:
             origin_filter = st.multiselect(
                 "Origin",
                 _sorted_options(df["ORIGINCITY"]),
@@ -516,7 +523,7 @@ def apply_dashboard_filters(df):
                 placeholder="All origins",
             )
 
-        with row2[1]:
+        with row2[2]:
             destination_filter = st.multiselect(
                 "Destination",
                 _sorted_options(df["DESTINATIONCITY"]),
@@ -524,7 +531,7 @@ def apply_dashboard_filters(df):
                 placeholder="All destinations",
             )
 
-        with row2[2]:
+        with row2[3]:
             gap_filter = st.multiselect(
                 "₹500 Gap Status",
                 ["OK", "Violation", "Not Comparable"],
@@ -532,7 +539,7 @@ def apply_dashboard_filters(df):
                 placeholder="All statuses",
             )
 
-        with row2[3]:
+        with row2[4]:
             approved_filter = st.multiselect(
                 "Approved",
                 _sorted_options(df["APPROVED"]),
@@ -579,17 +586,14 @@ def _format_inr(value):
     return f"₹{value:,.0f}"
 
 
-def _kpi_card(column, icon, label, value, note="", tone="blue"):
-    note_html = f'<div class="bid-kpi-note">{note}</div>' if note else '<div class="bid-kpi-note">&nbsp;</div>'
+def _kpi_card(column, label, value, note="", tone="blue"):
+    note_text = note if note else "&nbsp;"
     column.markdown(
         f"""
         <div class="bid-kpi-card bid-kpi-{tone}">
-            <div class="bid-kpi-top">
-                <span class="bid-kpi-icon">{icon}</span>
-                <span class="bid-kpi-label">{label}</span>
-            </div>
+            <div class="bid-kpi-label">{label}</div>
             <div class="bid-kpi-value">{value}</div>
-            {note_html}
+            <div class="bid-kpi-note">{note_text}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -617,40 +621,30 @@ def render_kpis(df):
     manual_bids = int(df.loc[df["WINNER_MODE"].eq("Manual"), "BIDID"].nunique())
     single_bidder = int(df.loc[df["BIDDER_COUNT"].eq(1), "BIDID"].nunique())
     gap_violations = int(df.loc[df["GAP_STATUS"].eq("Violation"), "BIDID"].nunique())
-
     avg_bidders = df.loc[df["BIDDER_COUNT"].gt(0), "BIDDER_COUNT"].mean()
-    duplicate_winner_flags = int(
-        df.loc[df["WINNER_COUNT"].gt(1), "BIDID"].nunique()
-    )
-
-    final_rate_total = df["FINALRATE"].sum(min_count=1)
-    saving_vs_l1 = df["SAVING_VS_L1"].sum(min_count=1)
 
     approved_pct = (approved_bids / total_bids * 100) if total_bids else 0
+    query_pct = (query_bids / total_bids * 100) if total_bids else 0
     l1_pct = (l1_bids / total_bids * 100) if total_bids else 0
     manual_pct = (manual_bids / total_bids * 100) if total_bids else 0
     single_pct = (single_bidder / total_bids * 100) if total_bids else 0
+    gap_pct = (gap_violations / total_bids * 100) if total_bids else 0
 
-    r1 = st.columns(5, gap="small")
-    _kpi_card(r1[0], "📦", "Total Bids", f"{total_bids:,}", "Filtered unique bids", "blue")
-    _kpi_card(r1[1], "✅", "Approved", f"{approved_bids:,}", f"{approved_pct:.1f}% of bids", "green")
-    _kpi_card(r1[2], "💬", "Query Bids", f"{query_bids:,}", "Rate query raised", "purple")
-    _kpi_card(r1[3], "🥇", "L-1 Selected", f"{l1_bids:,}", f"{l1_pct:.1f}% of bids", "teal")
-    _kpi_card(r1[4], "✍️", "Manual Selected", f"{manual_bids:,}", f"{manual_pct:.1f}% of bids", "orange")
+    k1, k2, k3, k4, k5, k6, k7, k8 = st.columns(8, gap="small")
 
-    r2 = st.columns(5, gap="small")
-    _kpi_card(r2[0], "👤", "Single Bidder", f"{single_bidder:,}", f"{single_pct:.1f}% of bids", "amber")
-    _kpi_card(r2[1], "⚠️", "Gap Violations", f"{gap_violations:,}", "L1-L2 gap below ₹500", "red")
+    _kpi_card(k1, "📦 Total Bids", f"{total_bids:,}", "Filtered unique bids", "blue")
+    _kpi_card(k2, "✅ Approved", f"{approved_bids:,}", f"{approved_pct:.1f}% of bids", "green")
+    _kpi_card(k3, "💬 Query Bids", f"{query_bids:,}", f"{query_pct:.1f}% of bids", "purple")
+    _kpi_card(k4, "🥇 L-1 Selected", f"{l1_bids:,}", f"{l1_pct:.1f}% of bids", "teal")
+    _kpi_card(k5, "✍️ Manual", f"{manual_bids:,}", f"{manual_pct:.1f}% of bids", "orange")
+    _kpi_card(k6, "👤 Single Bidder", f"{single_bidder:,}", f"{single_pct:.1f}% of bids", "amber")
+    _kpi_card(k7, "⚠️ Gap Violations", f"{gap_violations:,}", f"{gap_pct:.1f}% of bids", "red")
     _kpi_card(
-        r2[2], "👥", "Avg Bidders / Bid",
+        k8,
+        "👥 Avg Bidders",
         "-" if pd.isna(avg_bidders) else f"{avg_bidders:.2f}",
-        "Competitive participation", "cyan"
-    )
-    _kpi_card(r2[3], "🚩", "Duplicate Winners", f"{duplicate_winner_flags:,}", "Multiple winner flags", "rose")
-    _kpi_card(
-        r2[4], "₹", "Total Final Rate", _format_inr(final_rate_total),
-        (f"Saving {_format_inr(saving_vs_l1)} vs L1" if not pd.isna(saving_vs_l1) else "No saving data"),
-        "navy"
+        "Per participating bid",
+        "cyan",
     )
 
 
@@ -1020,236 +1014,186 @@ def show_bidding_analysis():
         """
         <style>
         /* =====================================================
-           COMPACT BIDDING DASHBOARD
+           COMPACT BIDDING DASHBOARD - NBD STYLE
            ===================================================== */
-        .main .block-container {
-            padding-top: .35rem !important;
-            padding-bottom: 1rem !important;
+        .block-container {
+            max-width:100% !important;
+            padding:.35rem .65rem .9rem !important;
         }
 
-        .bid-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            margin: 0 0 .45rem 0;
-            padding: .62rem .82rem;
-            border: 1px solid #dfe7f1;
-            border-radius: 12px;
-            background: linear-gradient(135deg, #ffffff 0%, #f5f9ff 100%);
-            box-shadow: 0 2px 8px rgba(15,47,99,.05);
+        div[data-testid="stVerticalBlock"] { gap:.55rem !important; }
+        div[data-testid="stHorizontalBlock"] { gap:.45rem !important; }
+
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius:9px !important;
+            border:1px solid #dbe4ef !important;
+            box-shadow:0 2px 7px rgba(15,42,67,.05) !important;
+            background:#fff !important;
         }
-        .bid-title-wrap { min-width: 0; }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding:.50rem .65rem !important;
+        }
+
+        label[data-testid="stWidgetLabel"] p {
+            font-size:10.5px !important;
+            line-height:1.25 !important;
+            margin-bottom:3px !important;
+        }
+        div[data-baseweb="select"] > div {
+            min-height:38px !important;
+            font-size:11px !important;
+        }
+        div[data-testid="stDateInput"] input {
+            min-height:36px !important;
+            font-size:11px !important;
+        }
+
         .bid-title {
-            margin: 0;
-            color: #0f2f63;
-            font-size: 1.42rem;
-            line-height: 1.1;
-            font-weight: 800;
-            letter-spacing: -.02em;
+            color:#102a43;
+            font-size:18px;
+            font-weight:850;
+            line-height:1.18;
+            margin:0;
         }
         .bid-subtitle {
-            margin-top: .18rem;
-            color: #64748b;
-            font-size: .78rem;
-            line-height: 1.25;
+            color:#64748b;
+            font-size:9.5px;
+            line-height:1.25;
+            margin-top:2px;
         }
-        .bid-header-badge {
-            flex: 0 0 auto;
-            padding: .28rem .55rem;
-            border-radius: 999px;
-            background: #eaf2ff;
-            color: #1d5aa6;
-            font-size: .70rem;
-            font-weight: 700;
-            border: 1px solid #d3e4fb;
+        .bid-period-badge {
+            display:inline-block;
+            padding:3px 7px;
+            border-radius:999px;
+            background:#eff6ff;
+            color:#1d4f91;
+            border:1px solid #bfdbfe;
+            font-size:8.5px;
+            font-weight:800;
+            letter-spacing:.1px;
         }
-
-        /* Compact date form */
-        div[data-testid="stForm"] {
-            padding: .48rem .65rem .38rem !important;
-            margin-bottom: .25rem !important;
-            border: 1px solid #e1e7ef !important;
-            border-radius: 10px !important;
-            background: #ffffff !important;
-        }
-        div[data-testid="stForm"] [data-testid="stWidgetLabel"] p {
-            font-size: .72rem !important;
-            font-weight: 650 !important;
-            margin-bottom: .10rem !important;
-        }
-        div[data-testid="stForm"] [data-testid="stDateInput"] input {
-            min-height: 34px !important;
-            height: 34px !important;
-            font-size: .78rem !important;
-        }
-        div[data-testid="stForm"] .stButton > button,
-        div[data-testid="stForm"] [data-testid="stFormSubmitButton"] > button {
-            min-height: 34px !important;
-            height: 34px !important;
-            margin-top: 0 !important;
-            border-radius: 8px !important;
-            font-size: .78rem !important;
-            font-weight: 700 !important;
-            color: #ffffff !important;
-            background: linear-gradient(135deg,#1769d2,#0f4f9d) !important;
-            border: 0 !important;
-            box-shadow: 0 3px 8px rgba(23,105,210,.18) !important;
-        }
-
         .bid-period-line {
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            margin: .14rem 0 .32rem;
-            color: #6b7280;
-            font-size: .72rem;
-        }
-        .bid-period-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #22c55e;
-            box-shadow: 0 0 0 3px rgba(34,197,94,.11);
-        }
-
-        /* Compact expander / filters */
-        [data-testid="stExpander"] {
-            border: 1px solid #e2e8f0 !important;
-            border-radius: 10px !important;
-            background: #fff !important;
-            margin-bottom: .45rem !important;
-        }
-        [data-testid="stExpander"] summary {
-            min-height: 36px !important;
-            padding-top: .25rem !important;
-            padding-bottom: .25rem !important;
-        }
-        [data-testid="stExpander"] summary p {
-            font-size: .80rem !important;
-            font-weight: 700 !important;
-            color: #27466f !important;
-        }
-        [data-testid="stExpander"] [data-testid="stWidgetLabel"] p {
-            font-size: .69rem !important;
-            font-weight: 650 !important;
-        }
-        [data-testid="stExpander"] [data-baseweb="select"] > div {
-            min-height: 34px !important;
-            font-size: .75rem !important;
+            display:block;
+            width:100%;
+            box-sizing:border-box;
+            background:#0b2447;
+            color:#ffffff;
+            border:1px solid #17365D;
+            border-radius:7px;
+            padding:6px 10px;
+            margin:2px 0 4px 0;
+            font-size:9.5px;
+            font-weight:700;
+            line-height:1.25;
+            box-shadow:0 2px 6px rgba(11,36,71,.14);
         }
 
-        /* KPI cards */
+        .bid-filter-inline-title {
+            color:#0f2744;
+            font-size:13px;
+            font-weight:850;
+            line-height:1.1;
+            padding-top:24px;
+            white-space:nowrap;
+        }
+
         .bid-kpi-card {
-            min-height: 91px;
-            padding: .58rem .65rem .50rem;
-            margin-bottom: .34rem;
-            border-radius: 11px;
-            border: 1px solid #e3eaf3;
-            background: #ffffff;
-            box-shadow: 0 2px 8px rgba(15,47,99,.055);
-            position: relative;
-            overflow: hidden;
+            box-sizing:border-box;
+            background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+            border:1px solid #dbe4ef;
+            border-left:3px solid var(--accent,#2563eb);
+            border-radius:9px;
+            padding:6px 8px;
+            height:64px;
+            min-height:64px;
+            box-shadow:0 2px 7px rgba(15,23,42,.055);
+            transition:box-shadow .15s ease, transform .15s ease;
         }
-        .bid-kpi-card::before {
-            content: "";
-            position: absolute;
-            left: 0;
-            top: 0;
-            bottom: 0;
-            width: 4px;
-            background: var(--accent);
+        .bid-kpi-card:hover {
+            box-shadow:0 5px 14px rgba(15,23,42,.10);
+            transform:translateY(-1px);
         }
-        .bid-kpi-top {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            min-width: 0;
-        }
-        .bid-kpi-icon {
-            width: 25px;
-            height: 25px;
-            flex: 0 0 25px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 7px;
-            background: var(--soft);
-            font-size: .78rem;
+        div[data-testid="stElementContainer"]:has(.bid-kpi-card) {
+            min-height:64px !important;
         }
         .bid-kpi-label {
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-            color: #53657d;
-            font-size: .69rem;
-            font-weight: 750;
-            text-transform: uppercase;
-            letter-spacing: .025em;
+            font-size:9px;
+            color:#64748b;
+            font-weight:750;
+            line-height:1.15;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
         }
         .bid-kpi-value {
-            margin-top: .34rem;
-            color: #12233f;
-            font-size: 1.38rem;
-            line-height: 1;
-            font-weight: 850;
-            letter-spacing: -.025em;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-size:15px;
+            color:#0f172a;
+            font-weight:900;
+            margin-top:2px;
+            line-height:1.15;
+            white-space:nowrap;
         }
         .bid-kpi-note {
-            margin-top: .26rem;
-            color: #7a8799;
-            font-size: .61rem;
-            line-height: 1.05;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-size:8.5px;
+            color:#64748b;
+            margin-top:2px;
+            line-height:1.15;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
         }
 
-        .bid-kpi-blue   { --accent:#2563eb; --soft:#eff6ff; }
-        .bid-kpi-green  { --accent:#16a34a; --soft:#f0fdf4; }
-        .bid-kpi-purple { --accent:#7c3aed; --soft:#f5f3ff; }
-        .bid-kpi-teal   { --accent:#0f9f8f; --soft:#f0fdfa; }
-        .bid-kpi-orange { --accent:#ea580c; --soft:#fff7ed; }
-        .bid-kpi-amber  { --accent:#d97706; --soft:#fffbeb; }
-        .bid-kpi-red    { --accent:#dc2626; --soft:#fef2f2; }
-        .bid-kpi-cyan   { --accent:#0891b2; --soft:#ecfeff; }
-        .bid-kpi-rose   { --accent:#e11d48; --soft:#fff1f2; }
-        .bid-kpi-navy   { --accent:#0f2f63; --soft:#eef4fb; }
+        .bid-kpi-blue   { --accent:#2563eb; }
+        .bid-kpi-green  { --accent:#16a34a; }
+        .bid-kpi-purple { --accent:#7c3aed; }
+        .bid-kpi-teal   { --accent:#0f9f8f; }
+        .bid-kpi-orange { --accent:#ea580c; }
+        .bid-kpi-amber  { --accent:#d97706; }
+        .bid-kpi-red    { --accent:#dc2626; }
+        .bid-kpi-cyan   { --accent:#0891b2; }
+        .bid-kpi-rose   { --accent:#e11d48; }
+        .bid-kpi-navy   { --accent:#0f2f63; }
 
-        /* Less vertical whitespace around headings/dividers/charts */
         h3 {
-            margin-top: .55rem !important;
-            margin-bottom: .35rem !important;
-            font-size: 1.02rem !important;
+            font-size:12.5px !important;
+            font-weight:850 !important;
+            color:#0f2744 !important;
+            margin:1px 0 5px 0 !important;
+            line-height:1.2 !important;
+            border-left:3px solid #17365D;
+            padding-left:6px;
         }
         h4 {
-            margin-top: .35rem !important;
-            margin-bottom: .25rem !important;
-            font-size: .84rem !important;
+            font-size:11px !important;
+            font-weight:800 !important;
+            color:#334155 !important;
+            margin:2px 0 4px 0 !important;
         }
-        hr {
-            margin: .52rem 0 !important;
+        hr { margin:.35rem 0 !important; }
+
+        div[data-testid="stDataFrame"] {
+            border:1px solid #cbd5e1 !important;
+            border-radius:9px !important;
+            overflow:hidden !important;
+            box-shadow:0 3px 10px rgba(15,23,42,.06) !important;
         }
-        [data-testid="stVerticalBlock"] {
-            gap: .48rem;
+        div[data-testid="stDataFrame"] * { font-size:10.5px !important; }
+
+        div[data-testid="stDownloadButton"] button,
+        div[data-testid="stButton"] button {
+            min-height:38px !important;
+            padding:.2rem .6rem !important;
+            border-radius:7px !important;
+            font-size:10.5px !important;
+            font-weight:750 !important;
         }
 
-        @media (max-width: 900px) {
-            .bid-header-badge { display:none; }
-            .bid-kpi-value { font-size: 1.18rem; }
+        @media (max-width: 1000px) {
+            div[data-testid="stHorizontalBlock"] {
+                flex-wrap:wrap !important;
+            }
         }
         </style>
-
-        <div class="bid-header">
-            <div class="bid-title-wrap">
-                <div class="bid-title">🚚 Bidding Analysis</div>
-                <div class="bid-subtitle">Competition • winner selection • ₹500 gap compliance • final rate • LHC validation</div>
-            </div>
-            <div class="bid-header-badge">Management Dashboard</div>
-        </div>
         """,
         unsafe_allow_html=True,
     )
@@ -1262,26 +1206,46 @@ def show_bidding_analysis():
     if "bidding_to_date" not in st.session_state:
         st.session_state["bidding_to_date"] = today
 
-    with st.form("bidding_period_form", clear_on_submit=False):
-        c1, c2, c3 = st.columns([1, 1, .85], gap="small")
+    with st.container(border=True):
+        title_col, badge_col = st.columns([5.2, 1.15], vertical_alignment="center")
 
-        with c1:
+        with title_col:
+            st.markdown(
+                "<div class='bid-title'>🚚 Bidding Analysis</div>"
+                "<div class='bid-subtitle'>Competition, winner selection, ₹500 gap compliance and LHC hire validation.</div>",
+                unsafe_allow_html=True,
+            )
+
+        with badge_col:
+            st.markdown(
+                "<span class='bid-period-badge'>BID CONTROL MIS</span>",
+                unsafe_allow_html=True,
+            )
+
+        d1, d2, run_col = st.columns([1, 1, 1.05], gap="small", vertical_alignment="bottom")
+
+        with d1:
             from_date = st.date_input(
                 "From Date",
                 value=st.session_state["bidding_from_date"],
+                format="DD/MM/YYYY",
+                key="bidding_from_date_input",
             )
 
-        with c2:
+        with d2:
             to_date = st.date_input(
                 "To Date",
                 value=st.session_state["bidding_to_date"],
+                format="DD/MM/YYYY",
+                key="bidding_to_date_input",
             )
 
-        with c3:
-            st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
-            load_clicked = st.form_submit_button(
-                "↻ Load / Refresh",
+        with run_col:
+            load_clicked = st.button(
+                "↻ Load / Refresh Bidding Data",
+                type="primary",
                 use_container_width=True,
+                key="bidding_load_refresh",
             )
 
     if from_date > to_date:
@@ -1316,12 +1280,9 @@ def show_bidding_analysis():
     st.markdown(
         f"""
         <div class="bid-period-line">
-            <span class="bid-period-dot"></span>
-            <span>
-                Loaded <b>{st.session_state['bidding_from_date'].strftime('%d %b %Y')}</b>
-                to <b>{st.session_state['bidding_to_date'].strftime('%d %b %Y')}</b>
-                &nbsp;•&nbsp; <b>{raw_df['BIDID'].nunique():,}</b> unique bids
-            </span>
+            Loaded Period: {st.session_state['bidding_from_date'].strftime('%d/%m/%Y')}
+            to {st.session_state['bidding_to_date'].strftime('%d/%m/%Y')}
+            &nbsp;|&nbsp; {raw_df['BIDID'].nunique():,} unique bids
         </div>
         """,
         unsafe_allow_html=True,
@@ -1334,13 +1295,7 @@ def show_bidding_analysis():
         return
 
     render_kpis(filtered_df)
-
-    st.markdown("---")
     render_charts(filtered_df)
-
-    st.markdown("---")
     render_exceptions(filtered_df)
-
-    st.markdown("---")
     render_detail_table(filtered_df)
 
