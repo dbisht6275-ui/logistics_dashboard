@@ -16,6 +16,7 @@ from pages.Home.Net_Profit_Analysis import show_net_profit_dashboard
 from pages.Home.comparison_tab import show_comparison
 from pages.Home.Customer_Analysis import show_CustomerAnalysis
 from pages.Home.NBD_Analysis import show_NBDAnalysis
+from pages.Home.Bidding_Analysis import show_bidding_analysis
 
 from pages.Home.Outstanding_Analysis import show_OutstandingAnalysis
 from pages.Home.Monthly_Trend_EDD import show_monthly_trend_edd
@@ -825,6 +826,7 @@ FULL_MENU_ITEMS = [
     "📅 Monthly Trend EDD",
     "👥 Customer Analysis",
     "🧭 NBD Customer Analysis",
+    "🚚 Bidding Analysis",
     "🚛 Service Analysis",
     "📦 Stock Operations",
     "📄 Reports",
@@ -905,6 +907,18 @@ if role.lower() == "admin" and "🧭 NBD Customer Analysis" not in allowed_menu:
     else:
         nbd_position = len(allowed_menu)
     allowed_menu.insert(nbd_position, "🧭 NBD Customer Analysis")
+
+# Bidding Analysis is a newly registered primary page. Keep it immediately
+# visible to admins even before the role/menu permission table is re-saved.
+# Other roles can be granted access normally from User Management.
+if role.lower() == "admin" and "🚚 Bidding Analysis" not in allowed_menu:
+    if "🧭 NBD Customer Analysis" in allowed_menu:
+        bidding_position = allowed_menu.index("🧭 NBD Customer Analysis") + 1
+    elif "👥 Customer Analysis" in allowed_menu:
+        bidding_position = allowed_menu.index("👥 Customer Analysis") + 1
+    else:
+        bidding_position = len(allowed_menu)
+    allowed_menu.insert(bidding_position, "🚚 Bidding Analysis")
 
 # Usage Analytics is a system/admin page and does not require a database permission row.
 if role.lower() == "admin" and "📊 Usage Analytics" not in allowed_menu:
@@ -1246,6 +1260,9 @@ elif menu == "👥 Customer Analysis":
 
 elif menu == "🧭 NBD Customer Analysis":
     show_NBDAnalysis()
+
+elif menu == "🚚 Bidding Analysis":
+    show_bidding_analysis()
 
 elif menu == "📅 Monthly Trend EDD":
     show_monthly_trend_edd()
