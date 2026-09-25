@@ -469,17 +469,11 @@ def _sorted_options(series):
 
 
 def apply_dashboard_filters(df):
-    """Compact inline filters matching the NBD dashboard layout."""
-    with st.container(border=True):
-        row1 = st.columns([0.42, 1.25, 0.82, 1.05, 1.45], gap="small")
+    """Compact collapsible filters. Default state is collapsed."""
+    with st.expander("🔎 Filters — click to expand / collapse", expanded=False):
+        row1 = st.columns(4, gap="small")
 
         with row1[0]:
-            st.markdown(
-                "<div class='bid-filter-inline-title'>Filters</div>",
-                unsafe_allow_html=True,
-            )
-
-        with row1[1]:
             branch_filter = st.multiselect(
                 "Branch",
                 _sorted_options(df["BRANCH"]),
@@ -487,7 +481,7 @@ def apply_dashboard_filters(df):
                 placeholder="All branches",
             )
 
-        with row1[2]:
+        with row1[1]:
             source_filter = st.multiselect(
                 "Source",
                 _sorted_options(df["SOURCE"]),
@@ -495,7 +489,7 @@ def apply_dashboard_filters(df):
                 placeholder="All sources",
             )
 
-        with row1[3]:
+        with row1[2]:
             winner_filter = st.multiselect(
                 "Winner Type",
                 _sorted_options(df["WINNER_MODE"]),
@@ -503,7 +497,7 @@ def apply_dashboard_filters(df):
                 placeholder="All winner types",
             )
 
-        with row1[4]:
+        with row1[3]:
             vehicle_filter = st.multiselect(
                 "Vehicle Type",
                 _sorted_options(df["VEHICLETYPE"]),
@@ -511,12 +505,9 @@ def apply_dashboard_filters(df):
                 placeholder="All vehicle types",
             )
 
-        row2 = st.columns([0.42, 1.25, 1.25, 1.05, 0.82], gap="small")
+        row2 = st.columns(4, gap="small")
 
         with row2[0]:
-            st.markdown("<div style='height:1px'></div>", unsafe_allow_html=True)
-
-        with row2[1]:
             origin_filter = st.multiselect(
                 "Origin",
                 _sorted_options(df["ORIGINCITY"]),
@@ -524,7 +515,7 @@ def apply_dashboard_filters(df):
                 placeholder="All origins",
             )
 
-        with row2[2]:
+        with row2[1]:
             destination_filter = st.multiselect(
                 "Destination",
                 _sorted_options(df["DESTINATIONCITY"]),
@@ -532,7 +523,7 @@ def apply_dashboard_filters(df):
                 placeholder="All destinations",
             )
 
-        with row2[3]:
+        with row2[2]:
             gap_filter = st.multiselect(
                 "₹500 Gap Status",
                 ["OK", "Violation", "Not Comparable"],
@@ -540,7 +531,7 @@ def apply_dashboard_filters(df):
                 placeholder="All statuses",
             )
 
-        with row2[4]:
+        with row2[3]:
             approved_filter = st.multiselect(
                 "Approved",
                 _sorted_options(df["APPROVED"]),
@@ -1194,8 +1185,44 @@ def show_bidding_analysis():
             font-size:11px !important;
         }
         div[data-testid="stDateInput"] input {
-            min-height:36px !important;
-            font-size:11px !important;
+            min-height:32px !important;
+            height:32px !important;
+            font-size:10px !important;
+            padding-top:2px !important;
+            padding-bottom:2px !important;
+        }
+
+        div[data-testid="stDateInput"] div[data-baseweb="input"] {
+            min-height:32px !important;
+        }
+
+        /* Compact header date labels */
+        .bid-header-anchor + div label[data-testid="stWidgetLabel"] p,
+        div[data-testid="stHorizontalBlock"]:has(.bid-header-anchor)
+        label[data-testid="stWidgetLabel"] p {
+            font-size:9px !important;
+            margin-bottom:1px !important;
+            line-height:1.05 !important;
+        }
+
+        /* Collapsible filters */
+        div[data-testid="stExpander"] {
+            border:1px solid #dbe4ef !important;
+            border-radius:9px !important;
+            background:#ffffff !important;
+            box-shadow:0 2px 7px rgba(15,42,67,.04) !important;
+        }
+        div[data-testid="stExpander"] summary {
+            min-height:32px !important;
+            padding:.25rem .55rem !important;
+        }
+        div[data-testid="stExpander"] summary p {
+            font-size:10.5px !important;
+            font-weight:800 !important;
+            color:#0f2744 !important;
+        }
+        div[data-testid="stExpander"] details > div {
+            padding:.15rem .55rem .45rem !important;
         }
 
         .bid-title {
@@ -1348,10 +1375,10 @@ def show_bidding_analysis():
 
         div[data-testid="stDownloadButton"] button,
         div[data-testid="stButton"] button {
-            min-height:38px !important;
-            padding:.2rem .6rem !important;
+            min-height:32px !important;
+            padding:.15rem .5rem !important;
             border-radius:7px !important;
-            font-size:10.5px !important;
+            font-size:10px !important;
             font-weight:750 !important;
         }
 
@@ -1374,26 +1401,23 @@ def show_bidding_analysis():
         st.session_state["bidding_to_date"] = today
 
     with st.container(border=True):
-        title_col, badge_col = st.columns([5.2, 1.15], vertical_alignment="center")
+        title_col, d1, d2, run_col = st.columns(
+            [4.4, 0.95, 0.95, 1.35],
+            gap="small",
+            vertical_alignment="bottom",
+        )
 
         with title_col:
             st.markdown(
+                "<div class='bid-header-anchor'></div>"
                 "<div class='bid-title'>🚚 Bidding Analysis</div>"
                 "<div class='bid-subtitle'>Competition, winner selection, ₹500 gap compliance and LHC hire validation.</div>",
                 unsafe_allow_html=True,
             )
 
-        with badge_col:
-            st.markdown(
-                "<span class='bid-period-badge'>BID CONTROL MIS</span>",
-                unsafe_allow_html=True,
-            )
-
-        d1, d2, run_col = st.columns([1, 1, 1.05], gap="small", vertical_alignment="bottom")
-
         with d1:
             from_date = st.date_input(
-                "From Date",
+                "From",
                 value=st.session_state["bidding_from_date"],
                 format="DD/MM/YYYY",
                 key="bidding_from_date_input",
@@ -1401,7 +1425,7 @@ def show_bidding_analysis():
 
         with d2:
             to_date = st.date_input(
-                "To Date",
+                "To",
                 value=st.session_state["bidding_to_date"],
                 format="DD/MM/YYYY",
                 key="bidding_to_date_input",
@@ -1409,7 +1433,7 @@ def show_bidding_analysis():
 
         with run_col:
             load_clicked = st.button(
-                "↻ Load / Refresh Bidding Data",
+                "↻ Load / Refresh",
                 type="primary",
                 use_container_width=True,
                 key="bidding_load_refresh",
