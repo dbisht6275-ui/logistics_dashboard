@@ -983,6 +983,144 @@ def _ageing_chart_with_values(ageing_df, height=255):
     return fig
 
 
+
+def _bid_trend_data(df, mode):
+    """Aggregate unique BIDIDs by Day / Month / Quarter / Year."""
+    trend_df = df.dropna(subset=["BIDOPENDT"]).copy()
+
+    if trend_df.empty:
+        return pd.DataFrame(columns=["PERIOD_LABEL", "Bids"])
+
+    trend_df["BIDOPENDT"] = pd.to_datetime(trend_df["BIDOPENDT"], errors="coerce")
+    trend_df = trend_df.dropna(subset=["BIDOPENDT"])
+
+    if mode == "D":
+        trend_df["PERIOD_KEY"] = trend_df["BIDOPENDT"].dt.date
+        grouped = (
+            trend_df.groupby("PERIOD_KEY")["BIDID"]
+            .nunique()
+            .rename("Bids")
+            .reset_index()
+        )
+        grouped["PERIOD_LABEL"] = pd.to_datetime(grouped["PERIOD_KEY"]).dt.strftime("%d %b")
+
+    elif mode == "M":
+        trend_df["PERIOD_KEY"] = trend_df["BIDOPENDT"].dt.to_period("M")
+        grouped = (
+            trend_df.groupby("PERIOD_KEY")["BIDID"]
+            .nunique()
+            .rename("Bids")
+            .reset_index()
+        )
+        grouped["PERIOD_LABEL"] = grouped["PERIOD_KEY"].dt.strftime("%b %Y")
+
+    elif mode == "Q":
+        trend_df["PERIOD_KEY"] = trend_df["BIDOPENDT"].dt.to_period("Q")
+        grouped = (
+            trend_df.groupby("PERIOD_KEY")["BIDID"]
+            .nunique()
+            .rename("Bids")
+            .reset_index()
+        )
+        grouped["PERIOD_LABEL"] = grouped["PERIOD_KEY"].apply(
+            lambda p: f"Q{p.quarter} {p.year}"
+        )
+
+    else:  # Y
+        trend_df["PERIOD_KEY"] = trend_df["BIDOPENDT"].dt.year
+        grouped = (
+            trend_df.groupby("PERIOD_KEY")["BIDID"]
+            .nunique()
+            .rename("Bids")
+            .reset_index()
+        )
+        grouped["PERIOD_LABEL"] = grouped["PERIOD_KEY"].astype(int).astype(str)
+
+    return grouped[["PERIOD_LABEL", "Bids"]]
+
+
+def _render_bid_trend_card(df):
+    """Bid Trend chart with D / M / Q / Y buttons in the card header."""
+    if "bid_trend_mode" not in st.session_state:
+        st.session_state["bid_trend_mode"] = "D"
+
+    current_mode = st.session_state["bid_trend_mode"]
+
+    with st.container(border=True):
+        # Marker is used by CSS to scope compact button styling to this card only.
+        st.markdown("<span class='bid-trend-marker'></span>", unsafe_allow_html=True)
+
+        title_col, d_col, m_col, q_col, y_col = st.columns(
+            [5.5, .42, .42, .42, .42],
+            gap="small",
+            vertical_alignment="center",
+        )
+
+        with title_col:
+            st.markdown(
+                "<div class='bid-chart-title'>Bid Trend</div>",
+                unsafe_allow_html=True,
+            )
+
+        button_map = [
+            ("D", d_col, "bid_trend_d"),
+            ("M", m_col, "bid_trend_m"),
+            ("Q", q_col, "bid_trend_q"),
+            ("Y", y_col, "bid_trend_y"),
+        ]
+
+        for mode, col, key in button_map:
+            with col:
+                if st.button(
+                    mode,
+                    key=key,
+                    type="primary" if current_mode == mode else "secondary",
+                    use_container_width=True,
+                    help={
+                        "D": "Daily",
+                        "M": "Monthly",
+                        "Q": "Quarterly",
+                        "Y": "Yearly",
+                    }[mode],
+                ):
+                    st.session_state["bid_trend_mode"] = mode
+                    st.rerun()
+
+        current_mode = st.session_state["bid_trend_mode"]
+        trend_data = _bid_trend_data(df, current_mode)
+
+        if trend_data.empty:
+            st.info("No bid date data available.")
+            return
+
+        subtitle_map = {
+            "D": "Daily",
+            "M": "Monthly",
+            "Q": "Quarterly",
+            "Y": "Yearly",
+        }
+
+        st.caption(
+            f"{subtitle_map[current_mode]} unique bid volume • "
+            f"{int(trend_data['Bids'].sum()):,} period-count total"
+        )
+
+        trend_fig = _line_chart_with_values(
+            trend_data["PERIOD_LABEL"],
+            trend_data["Bids"],
+            height=245,
+        )
+
+        st.plotly_chart(
+            trend_fig,
+            use_container_width=True,
+            config={
+                "displayModeBar": False,
+                "responsive": True,
+            },
+        )
+
+
 def render_charts(df):
     st.markdown("### Management Analysis")
 
@@ -1121,32 +1259,7 @@ def render_charts(df):
                 st.info("No winner bids are pending for LHC.")
 
     with right:
-        trend_df = df.dropna(subset=["BIDOPENDT"]).copy()
-
-        if not trend_df.empty:
-            trend_df["BID_DATE"] = trend_df["BIDOPENDT"].dt.date
-            daily = (
-                trend_df.groupby("BID_DATE")["BIDID"]
-                .nunique()
-                .rename("Bids")
-                .reset_index()
-            )
-
-            daily["DATE_LABEL"] = pd.to_datetime(daily["BID_DATE"]).dt.strftime("%d %b")
-
-            daily_fig = _line_chart_with_values(
-                daily["DATE_LABEL"],
-                daily["Bids"],
-                height=245,
-            )
-            _render_chart_card("Daily Bid Trend", daily_fig)
-        else:
-            with st.container(border=True):
-                st.markdown(
-                    "<div class='bid-chart-title'>Daily Bid Trend</div>",
-                    unsafe_allow_html=True,
-                )
-                st.info("No bid date data available.")
+        _render_bid_trend_card(df)
 
 
 # ============================================================
@@ -1686,6 +1799,31 @@ def show_bidding_analysis():
         .bid-kpi-cyan   { --accent:#0891b2; }
         .bid-kpi-rose   { --accent:#e11d48; }
         .bid-kpi-navy   { --accent:#0f2f63; }
+
+        .bid-trend-mode-label {
+            display:flex;
+            align-items:center;
+            justify-content:flex-end;
+            gap:4px;
+            min-height:24px;
+        }
+
+        /* Compact D / M / Q / Y buttons used only in Bid Trend card */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.bid-trend-marker)
+        div[data-testid="stButton"] button {
+            min-height:26px !important;
+            height:26px !important;
+            padding:0 .42rem !important;
+            border-radius:6px !important;
+            font-size:9.5px !important;
+            font-weight:850 !important;
+            line-height:1 !important;
+        }
+
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.bid-trend-marker)
+        div[data-testid="stButton"] button[kind="primary"] {
+            box-shadow:0 2px 6px rgba(37,99,235,.18) !important;
+        }
 
         .bid-chart-title {
             box-sizing:border-box;
