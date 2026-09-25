@@ -396,6 +396,61 @@ def prepare_bidding_data(df):
             df[col] = pd.to_datetime(df[col], errors="coerce")
 
     # --------------------------------------------------------
+    # Query lifecycle / turnaround metrics
+    # --------------------------------------------------------
+    # Current source mapping used by the dashboard:
+    #   GENERATEDDATE  -> query/bid received/generated timestamp
+    #   REPLYUPDATEON  -> query reply updated/sent timestamp
+    #   APPROVEDBYUSER -> user who handled/approved the query
+    query_mask = _clean_text_series(df["QUERYBID"]).str.upper().eq("YES")
+
+    df["QUERY_RECEIVED_ON"] = df["GENERATEDDATE"].where(query_mask)
+    df["QUERY_REPLY_ON"] = df["REPLYUPDATEON"].where(query_mask)
+
+    response_delta = df["QUERY_REPLY_ON"] - df["QUERY_RECEIVED_ON"]
+    response_hours = response_delta.dt.total_seconds() / 3600.0
+
+    # Negative TAT indicates source timestamps need checking, so do not fold it
+    # into management averages.
+    df["QUERY_RESPONSE_HOURS"] = response_hours.where(response_hours.ge(0))
+
+    df["QUERY_RESPONSE_STATUS"] = "Not a Query Bid"
+    df.loc[query_mask & df["QUERY_REPLY_ON"].isna(), "QUERY_RESPONSE_STATUS"] = "Pending Reply"
+    df.loc[query_mask & df["QUERY_REPLY_ON"].notna(), "QUERY_RESPONSE_STATUS"] = "Replied"
+    df.loc[query_mask & response_hours.lt(0), "QUERY_RESPONSE_STATUS"] = "Check Dates"
+
+    now_ts = pd.Timestamp.now()
+    pending_delta = now_ts - df["QUERY_RECEIVED_ON"]
+    pending_hours = pending_delta.dt.total_seconds() / 3600.0
+    df["QUERY_PENDING_HOURS"] = pending_hours.where(
+        query_mask
+        & df["QUERY_REPLY_ON"].isna()
+        & pending_hours.ge(0)
+    )
+
+    def query_response_bucket(row):
+        status = row.get("QUERY_RESPONSE_STATUS")
+        hours = row.get("QUERY_RESPONSE_HOURS")
+
+        if status == "Pending Reply":
+            return "Pending"
+        if status == "Check Dates":
+            return "Check Dates"
+        if status != "Replied" or pd.isna(hours):
+            return "Not Applicable"
+        if hours <= 2:
+            return "≤ 2 Hours"
+        if hours <= 4:
+            return "2-4 Hours"
+        if hours <= 8:
+            return "4-8 Hours"
+        if hours <= 24:
+            return "8-24 Hours"
+        return "24+ Hours"
+
+    df["QUERY_RESPONSE_BUCKET"] = df.apply(query_response_bucket, axis=1)
+
+    # --------------------------------------------------------
     # Derived management metrics
     # --------------------------------------------------------
     df["L1_L2_GAP"] = df["L_2_AMOUNT"] - df["L_1_AMOUNT"]
@@ -1562,6 +1617,228 @@ def render_charts(df):
     _render_bid_trend_card(df)
 
 
+
+# ============================================================
+# QUERY RESPONSE MONITORING
+# ============================================================
+
+def render_query_response_analysis(df):
+    """Track query arrival, reply time, turnaround and the approver/user."""
+    st.markdown("### Query Response Monitoring")
+
+    query_df = df[
+        _clean_text_series(df["QUERYBID"]).str.upper().eq("YES")
+    ].copy()
+
+    if query_df.empty:
+        st.info("No query bids are available for the selected filters.")
+        return
+
+    # One row per BID for management counts.
+    query_df = (
+        query_df
+        .sort_values(["BIDID", "QUERY_RECEIVED_ON"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    total_queries = int(query_df["BIDID"].nunique())
+    replied_queries = int(
+        query_df.loc[query_df["QUERY_RESPONSE_STATUS"].eq("Replied"), "BIDID"].nunique()
+    )
+    pending_queries = int(
+        query_df.loc[query_df["QUERY_RESPONSE_STATUS"].eq("Pending Reply"), "BIDID"].nunique()
+    )
+    invalid_dates = int(
+        query_df.loc[query_df["QUERY_RESPONSE_STATUS"].eq("Check Dates"), "BIDID"].nunique()
+    )
+
+    avg_response = query_df.loc[
+        query_df["QUERY_RESPONSE_STATUS"].eq("Replied"),
+        "QUERY_RESPONSE_HOURS",
+    ].mean()
+
+    q1, q2, q3, q4 = st.columns(4, gap="small")
+    _kpi_card(q1, "💬 Query Bids", f"{total_queries:,}", "Queries in selected period", "purple")
+    _kpi_card(q2, "✅ Replied", f"{replied_queries:,}", "Reply update available", "green")
+    _kpi_card(q3, "⏳ Pending Reply", f"{pending_queries:,}", "No reply update yet", "red")
+    _kpi_card(
+        q4,
+        "⏱ Avg Response Time",
+        "-" if pd.isna(avg_response) else f"{avg_response:.1f} hrs",
+        f"{invalid_dates:,} records need date check" if invalid_dates else "Received → reply update",
+        "cyan",
+    )
+
+    # Delay-control KPIs. For replied queries use actual response time; for
+    # pending queries use the current pending age so open delays are visible too.
+    query_df["QUERY_EFFECTIVE_HOURS"] = query_df["QUERY_RESPONSE_HOURS"]
+    pending_mask = query_df["QUERY_RESPONSE_STATUS"].eq("Pending Reply")
+    query_df.loc[pending_mask, "QUERY_EFFECTIVE_HOURS"] = query_df.loc[
+        pending_mask, "QUERY_PENDING_HOURS"
+    ]
+
+    over_2 = int(query_df.loc[query_df["QUERY_EFFECTIVE_HOURS"].gt(2), "BIDID"].nunique())
+    over_4 = int(query_df.loc[query_df["QUERY_EFFECTIVE_HOURS"].gt(4), "BIDID"].nunique())
+    over_8 = int(query_df.loc[query_df["QUERY_EFFECTIVE_HOURS"].gt(8), "BIDID"].nunique())
+    over_24 = int(query_df.loc[query_df["QUERY_EFFECTIVE_HOURS"].gt(24), "BIDID"].nunique())
+
+    d1, d2, d3, d4 = st.columns(4, gap="small")
+    _kpi_card(d1, "⚠️ > 2 Hours", f"{over_2:,}", "Replied late + currently pending", "amber")
+    _kpi_card(d2, "⚠️ > 4 Hours", f"{over_4:,}", "Replied late + currently pending", "orange")
+    _kpi_card(d3, "🚨 > 8 Hours", f"{over_8:,}", "Replied late + currently pending", "red")
+    _kpi_card(d4, "🛑 > 24 Hours", f"{over_24:,}", "Critical response delay", "rose")
+
+    left, right = st.columns(2, gap="small")
+
+    with left:
+        response_order = [
+            "≤ 2 Hours",
+            "2-4 Hours",
+            "4-8 Hours",
+            "8-24 Hours",
+            "24+ Hours",
+            "Pending",
+            "Check Dates",
+        ]
+        response_mix = (
+            query_df.groupby("QUERY_RESPONSE_BUCKET")["BIDID"]
+            .nunique()
+            .reindex(response_order)
+            .fillna(0)
+            .astype(int)
+            .rename("Bids")
+            .reset_index()
+        )
+        response_mix = response_mix[response_mix["Bids"].gt(0)]
+
+        if not response_mix.empty:
+            response_fig = _donut_chart(
+                response_mix["QUERY_RESPONSE_BUCKET"],
+                response_mix["Bids"],
+                height=255,
+                center_label="Queries",
+            )
+            _render_chart_card("Query Response Time Mix", response_fig)
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Query Response Time Mix</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No response-time data available.")
+
+    with right:
+        approver_work = (
+            query_df.assign(
+                APPROVER_CLEAN=_clean_text_series(query_df["APPROVEDBYUSER"]).replace("", "Not Available")
+            )
+            .groupby("APPROVER_CLEAN")["BIDID"]
+            .nunique()
+            .sort_values(ascending=False)
+            .head(12)
+            .rename("Queries")
+            .reset_index()
+        )
+
+        if not approver_work.empty:
+            approver_fig = _lollipop_chart(
+                approver_work["APPROVER_CLEAN"],
+                approver_work["Queries"],
+                height=255,
+                value_name="Query Bids",
+            )
+            _render_chart_card("Query Handling by Approver", approver_fig)
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Query Handling by Approver</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No approver data available.")
+
+    st.markdown("#### Query-wise Response Tracker")
+    st.caption(
+        "Query Received On = GENERATEDDATE • Reply Sent/Updated On = REPLYUPDATEON • "
+        "Handled By = APPROVEDBYUSER"
+    )
+
+    # Human-readable delay band for quick control review.
+    def query_delay_status(row):
+        status = row.get("QUERY_RESPONSE_STATUS")
+        hours = row.get("QUERY_EFFECTIVE_HOURS")
+
+        if status == "Check Dates":
+            return "Check Dates"
+        if pd.isna(hours):
+            return "-"
+        if hours > 24:
+            return "> 24 Hours"
+        if hours > 8:
+            return "8-24 Hours"
+        if hours > 4:
+            return "4-8 Hours"
+        if hours > 2:
+            return "2-4 Hours"
+        return "Within 2 Hours"
+
+    query_df["QUERY_DELAY_STATUS"] = query_df.apply(query_delay_status, axis=1)
+
+    tracker = query_df[
+        [
+            "BIDID",
+            "BRANCH",
+            "ROUTE",
+            "QUERY_RECEIVED_ON",
+            "QUERY_REPLY_ON",
+            "QUERY_RESPONSE_STATUS",
+            "QUERY_DELAY_STATUS",
+            "QUERY_RESPONSE_HOURS",
+            "QUERY_PENDING_HOURS",
+            "APPROVEDBYUSER",
+            "QUERY_AMOUNT",
+            "WINNER_NAME",
+            "FINALRATE",
+        ]
+    ].copy()
+
+    tracker = tracker.sort_values(
+        ["QUERY_RESPONSE_STATUS", "QUERY_RECEIVED_ON", "BIDID"],
+        ascending=[True, False, False],
+        na_position="last",
+    )
+
+    st.dataframe(
+        tracker,
+        use_container_width=True,
+        hide_index=True,
+        height=390,
+        column_config={
+            "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
+            "BRANCH": st.column_config.TextColumn("Branch"),
+            "ROUTE": st.column_config.TextColumn("Route", width="large"),
+            "QUERY_RECEIVED_ON": st.column_config.DatetimeColumn(
+                "Query Received On", format="DD/MM/YYYY HH:mm"
+            ),
+            "QUERY_REPLY_ON": st.column_config.DatetimeColumn(
+                "Reply Sent / Updated On", format="DD/MM/YYYY HH:mm"
+            ),
+            "QUERY_RESPONSE_STATUS": st.column_config.TextColumn("Reply Status"),
+            "QUERY_DELAY_STATUS": st.column_config.TextColumn("Delay Band"),
+            "QUERY_RESPONSE_HOURS": st.column_config.NumberColumn(
+                "Response Time (hrs)", format="%.2f"
+            ),
+            "QUERY_PENDING_HOURS": st.column_config.NumberColumn(
+                "Pending Age (hrs)", format="%.1f"
+            ),
+            "APPROVEDBYUSER": st.column_config.TextColumn("Handled / Approved By"),
+            "QUERY_AMOUNT": st.column_config.NumberColumn("Query Amount", format="₹ %.2f"),
+            "WINNER_NAME": st.column_config.TextColumn("Winner"),
+            "FINALRATE": st.column_config.NumberColumn("Final Rate", format="₹ %.2f"),
+        },
+    )
+
+
 # ============================================================
 # VENDOR WINNER PERFORMANCE
 # ============================================================
@@ -2277,6 +2554,10 @@ def render_detail_table(df):
         "BRANCH",
         "SOURCE",
         "QUERYBID",
+        "QUERY_RECEIVED_ON",
+        "QUERY_REPLY_ON",
+        "QUERY_RESPONSE_STATUS",
+        "QUERY_RESPONSE_HOURS",
         "APPROVED",
         "ROUTE",
         "VIA",
@@ -2332,6 +2613,16 @@ def render_detail_table(df):
         height=520,
         column_config={
             "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
+            "QUERY_RECEIVED_ON": st.column_config.DatetimeColumn(
+                "Query Received On", format="DD/MM/YYYY HH:mm"
+            ),
+            "QUERY_REPLY_ON": st.column_config.DatetimeColumn(
+                "Reply Sent / Updated On", format="DD/MM/YYYY HH:mm"
+            ),
+            "QUERY_RESPONSE_STATUS": st.column_config.TextColumn("Query Reply Status"),
+            "QUERY_RESPONSE_HOURS": st.column_config.NumberColumn(
+                "Query Response Hrs", format="%.2f"
+            ),
             "QUERY_AMOUNT": st.column_config.NumberColumn(
                 "Query Amount",
                 format="₹ %.2f",
@@ -2854,6 +3145,7 @@ def show_bidding_analysis():
 
     render_kpis(filtered_df)
     render_charts(filtered_df)
+    render_query_response_analysis(filtered_df)
     render_vendor_performance(filtered_df)
     render_exceptions(filtered_df)
     render_detail_table(filtered_df)
