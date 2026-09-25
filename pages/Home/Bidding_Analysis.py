@@ -1216,6 +1216,75 @@ def render_charts(df):
         )
         _render_chart_card("₹500 Gap Compliance", gap_fig)
 
+    # --------------------------------------------------------
+    # Additional management insights
+    # --------------------------------------------------------
+    left, right = st.columns(2, gap="small")
+
+    with left:
+        approved_user_data = (
+            df.assign(
+                APPROVEDBYUSER_CLEAN=_clean_text_series(df["APPROVEDBYUSER"]).replace("", "Not Available")
+            )
+            .groupby("APPROVEDBYUSER_CLEAN")["BIDID"]
+            .nunique()
+            .sort_values(ascending=False)
+            .head(15)
+            .rename("Bids")
+            .reset_index()
+        )
+
+        if not approved_user_data.empty:
+            approved_user_fig = _bar_chart_with_values(
+                approved_user_data["APPROVEDBYUSER_CLEAN"],
+                approved_user_data["Bids"],
+                height=270,
+                rotate_x=-35,
+            )
+            _render_chart_card(
+                "Approved By User-wise Bids",
+                approved_user_fig,
+            )
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Approved By User-wise Bids</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No approver data available.")
+
+    with right:
+        route_data = (
+            df.assign(
+                ROUTE_CLEAN=_clean_text_series(df["ROUTE"]).replace("", "Not Available")
+            )
+            .groupby("ROUTE_CLEAN")["BIDID"]
+            .nunique()
+            .sort_values(ascending=False)
+            .head(15)
+            .rename("Bids")
+            .reset_index()
+        )
+
+        if not route_data.empty:
+            route_fig = _bar_chart_with_values(
+                route_data["ROUTE_CLEAN"],
+                route_data["Bids"],
+                height=270,
+                rotate_x=-35,
+            )
+            _render_chart_card(
+                "Top Routes by Bid Volume",
+                route_fig,
+            )
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Top Routes by Bid Volume</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No route data available.")
+
     left, right = st.columns(2, gap="small")
 
     with left:
