@@ -455,7 +455,15 @@ def prepare_bidding_data(df):
     def gap_status(row):
         if pd.isna(row.get("L_1_AMOUNT")) or pd.isna(row.get("L_2_AMOUNT")):
             return "Not Comparable"
-        if row["L1_L2_GAP"] < 500:
+
+        gap = row.get("L1_L2_GAP")
+
+        # Equal L1/L2 rates are not treated as a Rs 500 gap violation.
+        if pd.isna(gap):
+            return "Not Comparable"
+        if abs(gap) <= 0.01:
+            return "Same Rate"
+        if 0 < gap < 500:
             return "Violation"
         return "OK"
 
@@ -481,20 +489,25 @@ def prepare_bidding_data(df):
     df["FINAL_HIRE_STATUS"] = df.apply(rate_match_status, axis=1)
 
     winner_level = _clean_text_series(df["WINNERLEVEL"]).str.lower()
-
-    df["WINNER_MODE"] = "Other / Missing"
-    df.loc[winner_level.eq("l-1"), "WINNER_MODE"] = "L-1"
-    df.loc[winner_level.eq("manual"), "WINNER_MODE"] = "Manual"
-
-    # Some records may contain manual reason even when WINNERLEVEL is inconsistent.
     manual_reason = _clean_text_series(df["MANUALBIDREASON"])
+    winner_name_text = _clean_text_series(df["WINNER_NAME"])
+
+    # Keep missing winner and missing winner-level as separate management states.
+    df["WINNER_MODE"] = "No Winner"
+    df.loc[winner_name_text.ne(""), "WINNER_MODE"] = "Winner - Level Missing"
+    df.loc[winner_name_text.ne("") & winner_level.eq("l-1"), "WINNER_MODE"] = "L-1"
+    df.loc[winner_name_text.ne("") & winner_level.eq("manual"), "WINNER_MODE"] = "Manual"
+
+    # Some records contain a manual reason even when WINNERLEVEL is inconsistent.
     df.loc[
-        manual_reason.ne("") & ~winner_level.eq("l-1"),
+        winner_name_text.ne("")
+        & manual_reason.ne("")
+        & ~winner_level.eq("l-1"),
         "WINNER_MODE"
     ] = "Manual"
 
     l1_name = _clean_text_series(df["L_1_NAME"]).str.upper()
-    winner_name = _clean_text_series(df["WINNER_NAME"]).str.upper()
+    winner_name = winner_name_text.str.upper()
 
     df["WINNER_VS_L1"] = "Not Comparable"
     comparable = l1_name.ne("") & winner_name.ne("")
@@ -682,7 +695,7 @@ def apply_dashboard_filters(df):
         with row2[2]:
             gap_filter = st.multiselect(
                 "₹500 Gap Status",
-                ["OK", "Violation", "Not Comparable"],
+                ["OK", "Violation", "Same Rate", "Not Comparable"],
                 key="bid_filter_gap",
                 placeholder="All statuses",
             )
@@ -1463,7 +1476,7 @@ def render_charts(df):
     winner_data = (
         df.groupby("WINNER_MODE")["BIDID"]
         .nunique()
-        .reindex(["L-1", "Manual", "Other / Missing"])
+        .reindex(["L-1", "Manual", "Winner - Level Missing", "No Winner"])
         .fillna(0)
         .astype(int)
         .rename("Bids")
@@ -1896,10 +1909,10 @@ def render_vehicle_type_insights(df):
                 go.Bar(
                     x=winner_mix["Other Winner"],
                     y=winner_mix["Vehicle Type"],
-                    name="Other / Missing",
+                    name="Winner - Level Missing / Other",
                     orientation="h",
                     marker=dict(color="#94a3b8"),
-                    hovertemplate="<b>%{y}</b><br>Other Winners: %{x:,}<extra></extra>",
+                    hovertemplate="<b>%{y}</b><br>Level Missing / Other Winners: %{x:,}<extra></extra>",
                 )
             )
 
