@@ -1,120 +1,96 @@
+import streamlit as st
+import pandas as pd
+import plotly.graph_objects as go
 
-        # Keep From / To labels on the LEFT of the date boxes so the header uses
-        # horizontal space instead of adding an extra label row above the inputs.
-        with dates_col:
-            from_lbl, from_box, to_lbl, to_box = st.columns(
-                [0.30, 1.00, 0.20, 1.00],
-                gap="small",
-                vertical_alignment="center",
-            )
+from datetime import date, timedelta
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
 
-            with from_lbl:
-                st.markdown(
-                    "<div class='bid-inline-date-label'>From</div>",
-                    unsafe_allow_html=True,
+
+# ============================================================
+# DATABASE CONNECTION
+# ============================================================
+
+@st.cache_resource(show_spinner=False)
+def get_bidding_engine():
+    """
+    Uses the same SQL Server connection pattern requested by the user:
+    SQLAlchemy + pymssql + Streamlit secrets.
+    """
+
+    def _build_engine():
+        connection_url = URL.create(
+            "mssql+pymssql",
+            username=st.secrets["DB_USER"],
+            password=st.secrets["DB_PASSWORD"],
+            host=st.secrets["DB_SERVER"],
+            port=int(st.secrets["DB_PORT"]),
+            database=st.secrets["DB_NAME"],
+        )
+
+        return create_engine(
+            connection_url,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+            pool_size=2,
+            max_overflow=1,
+        )
+
+    return _build_engine()
+
+
+# ============================================================
+# SQL
+# ============================================================
+
+BIDDING_SQL = text(
+    r"""
+    WITH CTE AS
+    (
+        SELECT
+            BP.BIDID,
+            BP.VENDCODE,
+            MAX(VD.VENDNAME) AS VENDNAME,
+            MAX(
+                COALESCE(
+                    TRY_CONVERT(DECIMAL(18,2), BP.BIDAMOUNT),
+                    0
                 )
+            ) AS BIDAMOUNT
+        FROM BIDAMOUNT BP
+        INNER JOIN BIDDETAIL BDD
+            ON BDD.BIDID = BP.BIDID
+           AND BDD.VENDCODE = BP.VENDCODE
+        INNER JOIN VENDMAST VD
+            ON VD.VENDCODE = BP.VENDCODE
+        WHERE ISNULL(BP.CANCEL,'N') <> 'Y'
+        GROUP BY
+            BP.BIDID,
+            BP.VENDCODE
+    ),
 
-            with from_box:
-                from_date = st.date_input(
-                    "From",
-                    value=st.session_state["bidding_from_date"],
-                    format="DD/MM/YYYY",
-                    key="bidding_from_date_input",
-                    label_visibility="collapsed",
-                )
+    RANKED AS
+    (
+        SELECT
+            *,
+            ROW_NUMBER() OVER
+            (
+                PARTITION BY BIDID
+                ORDER BY BIDAMOUNT ASC, VENDCODE ASC
+            ) AS RN
+        FROM CTE
+    ),
 
-            with to_lbl:
-                st.markdown(
-                    "<div class='bid-inline-date-label'>To</div>",
-                    unsafe_allow_html=True,
-                )
+    TOP3 AS
+    (
+        SELECT
+            BIDID,
 
-            with to_box:
-                to_date = st.date_input(
-                    "To",
-                    value=st.session_state["bidding_to_date"],
-                    format="DD/MM/YYYY",
-                    key="bidding_to_date_input",
-                    label_visibility="collapsed",
-                )
+            MAX(CASE WHEN RN = 1 THEN VENDNAME END) AS L_1_NAME,
+            MAX(CASE WHEN RN = 1 THEN BIDAMOUNT END) AS L_1_AMOUNT,
 
-        with run_col:
-            load_clicked = st.button(
-                "↻ Load / Refresh",
-                type="primary",
-                use_container_width=True,
-                key="bidding_load_refresh",
-            )
+            MAX(CASE WHEN RN = 2 THEN VENDNAME END) AS L_2_NAME,
+            MAX(CASE WHEN RN = 2 THEN BIDAMOUNT END) AS L_2_AMOUNT,
 
-    if from_date > to_date:
-        st.error("From Date cannot be greater than To Date.")
-        return
-
-    cached_raw = st.session_state.get("bidding_raw_data")
-    needs_schema_refresh = (
-        isinstance(cached_raw, pd.DataFrame)
-        and not cached_raw.empty
-        and "BIDDER_VENDOR_LIST" not in cached_raw.columns
-    )
-
-    should_load = (
-        load_clicked
-        or "bidding_raw_data" not in st.session_state
-        or needs_schema_refresh
-    )
-
-    if should_load:
-        st.session_state["bidding_from_date"] = from_date
-        st.session_state["bidding_to_date"] = to_date
-
-        try:
-            with st.spinner("Loading bidding data..."):
-                if load_clicked or needs_schema_refresh:
-                    load_bidding_data.clear()
-
-                raw_df = load_bidding_data(from_date, to_date)
-                st.session_state["bidding_raw_data"] = raw_df
-
-        except Exception as exc:
-            st.error("Unable to load bidding data from SQL Server.")
-            st.exception(exc)
-            return
-
-    raw_df = st.session_state.get("bidding_raw_data", pd.DataFrame())
-
-    # Re-run lightweight derived calculations on cached data as well.
-    # This ensures newly added control fields are available immediately
-    # after a code deployment without forcing users to reload SQL first.
-    if raw_df is not None and not raw_df.empty:
-        raw_df = prepare_bidding_data(raw_df)
-        st.session_state["bidding_raw_data"] = raw_df
-
-    if raw_df is None or raw_df.empty:
-        st.warning("No bidding data found for the selected date range.")
-        return
-
-    st.markdown(
-        f"""
-        <div class="bid-period-line">
-            Loaded Period: {st.session_state['bidding_from_date'].strftime('%d/%m/%Y')}
-            to {st.session_state['bidding_to_date'].strftime('%d/%m/%Y')}
-            &nbsp;|&nbsp; {raw_df['BIDID'].nunique():,} unique bids
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    filtered_df = apply_dashboard_filters(raw_df)
-
-    if filtered_df.empty:
-        st.warning("No records match the selected filters.")
-        return
-
-    render_kpis(filtered_df)
-    render_charts(filtered_df)
-    render_vehicle_type_insights(filtered_df)
-    render_query_response_analysis(filtered_df)
-    render_vendor_performance(filtered_df)
-    render_exceptions(filtered_df)
-    render_detail_table(filtered_df)
-
+            MAX(CASE WHEN RN = 3 THEN VENDNAME END) AS L_3_NAME,
+            MAX(CASE WHEN RN = 3 THEN BIDAMOUNT END) AS L_3_AMOUNT
