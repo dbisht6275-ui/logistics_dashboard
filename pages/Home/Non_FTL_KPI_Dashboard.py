@@ -259,6 +259,12 @@ def _fy_label(fy: str) -> str:
     return f"FY{start_year[-2:]}-{end_year[-2:]}"
 
 
+def _previous_fy(fy: str) -> str:
+    """2025-2026 -> 2024-2025"""
+    start_year, end_year = [int(x) for x in fy.split("-")]
+    return f"{start_year - 1}-{end_year - 1}"
+
+
 def _build_query() -> text:
     # Accounting/calculation logic is the same as the SQL supplied by the user.
     return text(
@@ -551,15 +557,20 @@ def show_non_ftl_kpi_dashboard() -> None:
 
     if run_report:
         start_date, end_date = get_date_range(pending_fy)
+        previous_fy = _previous_fy(pending_fy)
+        prev_start_date, prev_end_date = get_date_range(previous_fy)
 
         try:
             with st.spinner("Loading Non-FTL KPI data..."):
                 raw_df = load_non_ftl_kpis(start_date, end_date)
+                previous_df = load_non_ftl_kpis(prev_start_date, prev_end_date)
         except Exception as exc:
             st.error(f"Unable to load Non-FTL KPI data: {exc}")
             return
 
         st.session_state["nonftl_report_df"] = raw_df
+        st.session_state["nonftl_previous_report_df"] = previous_df
+        st.session_state["nonftl_previous_fy"] = previous_fy
         st.session_state["nonftl_active_fy"] = pending_fy
         st.session_state["nonftl_report_ready"] = True
 
@@ -596,6 +607,9 @@ def show_non_ftl_kpi_dashboard() -> None:
         return
 
     fy_column = _fy_label(active_fy)
+    previous_fy = st.session_state.get("nonftl_previous_fy", _previous_fy(active_fy))
+    previous_fy_column = _fy_label(previous_fy)
+    previous_stored_df = st.session_state.get("nonftl_previous_report_df")
 
     start_date, end_date = get_date_range(active_fy)
     st.markdown(
@@ -636,18 +650,48 @@ def show_non_ftl_kpi_dashboard() -> None:
 
     summary = df[
         ["SORT_ORDER", "PARTICULARS", "FY_VALUE"]
-    ].copy()
+    ].copy().rename(columns={"FY_VALUE": "CURRENT_VALUE"})
+
+    if previous_stored_df is not None and not previous_stored_df.empty:
+        previous_summary = previous_stored_df[
+            ["SORT_ORDER", "PARTICULARS", "FY_VALUE"]
+        ].copy().rename(columns={"FY_VALUE": "PREVIOUS_VALUE"})
+
+        summary = summary.merge(
+            previous_summary,
+            on=["SORT_ORDER", "PARTICULARS"],
+            how="left",
+        )
+    else:
+        summary["PREVIOUS_VALUE"] = 0.0
 
     summary[fy_column] = summary.apply(
         lambda row: _format_kpi_value(
             str(row["PARTICULARS"]),
-            row["FY_VALUE"],
+            row["CURRENT_VALUE"],
         ),
         axis=1,
     )
 
+    summary[previous_fy_column] = summary.apply(
+        lambda row: _format_kpi_value(
+            str(row["PARTICULARS"]),
+            row["PREVIOUS_VALUE"],
+        ),
+        axis=1,
+    )
+
+    def _change_pct(row):
+        prev = float(row["PREVIOUS_VALUE"] or 0.0)
+        curr = float(row["CURRENT_VALUE"] or 0.0)
+        if prev == 0:
+            return "-"
+        return f"{((curr - prev) / abs(prev)) * 100:,.2f}%"
+
+    summary["YoY Change"] = summary.apply(_change_pct, axis=1)
+
     summary = summary[
-        ["SORT_ORDER", "PARTICULARS", fy_column]
+        ["SORT_ORDER", "PARTICULARS", fy_column, previous_fy_column, "YoY Change"]
     ].rename(
         columns={
             "SORT_ORDER": "#",
