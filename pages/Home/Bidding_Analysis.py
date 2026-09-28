@@ -135,7 +135,16 @@ BIDDING_SQL = text(
 
         BH.APPROVED,
 
-        IIF(C.BIDID > 0,'APP','ERP') AS SOURCE,
+        CASE
+            WHEN EXISTS
+            (
+                SELECT 1
+                FROM CALLREGISTER CR WITH (NOLOCK)
+                WHERE CR.BIDID = BH.BIDID
+            )
+            THEN 'APP'
+            ELSE 'ERP'
+        END AS SOURCE,
 
         BR.STNNAME AS BRANCH,
 
