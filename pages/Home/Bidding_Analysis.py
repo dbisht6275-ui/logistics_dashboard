@@ -716,6 +716,41 @@ def apply_dashboard_filters(df):
                 placeholder="All LHC statuses",
             )
 
+        # Vendor filter uses the all-bidder list so a vendor can be filtered
+        # whether it won the bid or only participated.
+        vendor_options = []
+        if "BIDDER_VENDOR_LIST" in df.columns:
+            vendor_names = set()
+            for raw_value in df["BIDDER_VENDOR_LIST"].fillna("").astype(str):
+                for token in raw_value.split("|||"):
+                    token = token.strip()
+                    if not token:
+                        continue
+                    vendor = token.split("::", 1)[1] if "::" in token else token
+                    vendor = vendor.strip()
+                    if vendor:
+                        vendor_names.add(vendor)
+            vendor_options = sorted(vendor_names)
+
+        # Defensive fallback for older cached data where BIDDER_VENDOR_LIST
+        # may not yet be present.
+        if not vendor_options:
+            fallback_vendor_cols = [
+                c for c in ["WINNER_NAME", "L_1_NAME", "L_2_NAME", "L_3_NAME"]
+                if c in df.columns
+            ]
+            fallback_names = set()
+            for col in fallback_vendor_cols:
+                fallback_names.update(_sorted_options(df[col]))
+            vendor_options = sorted(fallback_names)
+
+        vendor_filter = st.multiselect(
+            "Vendor",
+            vendor_options,
+            key="bid_filter_vendor",
+            placeholder="All vendors",
+        )
+
     filtered = df.copy()
 
     if branch_filter:
@@ -747,6 +782,32 @@ def apply_dashboard_filters(df):
 
     if lhc_status_filter:
         filtered = filtered[filtered["LHC_STATUS"].isin(lhc_status_filter)]
+
+    if vendor_filter:
+        selected_vendor_keys = {str(v).strip().upper() for v in vendor_filter}
+
+        def _bid_has_selected_vendor(row):
+            # Primary check: all bidders who participated in the BID.
+            raw_value = row.get("BIDDER_VENDOR_LIST", "")
+            raw_list = "" if pd.isna(raw_value) else str(raw_value).strip()
+            if raw_list:
+                for token in raw_list.split("|||"):
+                    token = token.strip()
+                    if not token:
+                        continue
+                    vendor = token.split("::", 1)[1] if "::" in token else token
+                    if vendor.strip().upper() in selected_vendor_keys:
+                        return True
+
+            # Fallback / defensive checks.
+            for col in ["WINNER_NAME", "L_1_NAME", "L_2_NAME", "L_3_NAME"]:
+                value = row.get(col, "")
+                value = "" if pd.isna(value) else str(value).strip().upper()
+                if value in selected_vendor_keys:
+                    return True
+            return False
+
+        filtered = filtered[filtered.apply(_bid_has_selected_vendor, axis=1)]
 
     return filtered
 
