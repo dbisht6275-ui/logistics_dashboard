@@ -2146,7 +2146,10 @@ def show_net_profit_dashboard():
     # PRIMARY FILTERS
     # --------------------------------------------------------
 
-    filter_cols = executive_header.columns([1.15, 1, 1.35, 1.2, 1.2, 1.1, 1.0], gap="small")
+    filter_cols = executive_header.columns(
+        [1.15, 1.05, 1.05, 1, 1.35, 1.2, 1.2, 1.1, 1.0],
+        gap="small",
+    )
 
     with filter_cols[0]:
         fy = st.selectbox(
@@ -2159,9 +2162,44 @@ def show_net_profit_dashboard():
         st.info("Please select financial year.")
         return
 
-    start_date, end_date = get_date_range(fy)
+    # Financial Year remains the master period. From / To dates let the user
+    # analyse any smaller custom period inside the selected FY.
+    fy_start, fy_end = get_date_range(fy)
+
+    # Reset the custom date window to the full FY whenever FY changes.
+    # After that, the user can narrow it to any From / To date inside that FY.
+    if st.session_state.get("np_date_filter_fy") != fy:
+        st.session_state["np_from_date"] = fy_start
+        st.session_state["np_to_date"] = fy_end
+        st.session_state["np_date_filter_fy"] = fy
+
+    with filter_cols[1]:
+        start_date = st.date_input(
+            "From Date",
+            min_value=fy_start,
+            max_value=fy_end,
+            key="np_from_date",
+            format="DD/MM/YYYY",
+        )
+
+    with filter_cols[2]:
+        end_date = st.date_input(
+            "To Date",
+            min_value=fy_start,
+            max_value=fy_end,
+            key="np_to_date",
+            format="DD/MM/YYYY",
+        )
+
+    if start_date > end_date:
+        st.warning("From Date cannot be after To Date.")
+        return
+
     prev_fy = get_previous_fy(fy)
-    prev_start, prev_end = get_date_range(prev_fy)
+
+    # LY comparison uses the exact same date window shifted back by one year.
+    prev_start = (pd.Timestamp(start_date) - pd.DateOffset(years=1)).date()
+    prev_end = (pd.Timestamp(end_date) - pd.DateOffset(years=1)).date()
 
     # Branch/Agency master is loaded first and becomes the dashboard branch scope.
     branch_master_df = load_net_profit_branch_mast()
@@ -2206,7 +2244,7 @@ def show_net_profit_dashboard():
     )
 
     # Use whichever hierarchy columns are actually available.
-    with filter_cols[1]:
+    with filter_cols[3]:
         zones = st.multiselect(
             "Zone",
             safe_options(df, "zone"),
@@ -2222,7 +2260,7 @@ def show_net_profit_dashboard():
     circle_scope = apply_multi_filter(circle_scope, "zone", zones)
     circle_options = safe_options(circle_scope, "circle")
 
-    with filter_cols[2]:
+    with filter_cols[4]:
         circles = st.multiselect(
             "Circle",
             circle_options,
@@ -2237,7 +2275,7 @@ def show_net_profit_dashboard():
     branch_scope = apply_multi_filter(branch_scope, "circle", circles)
     branch_options = safe_options(branch_scope, "BRANCH")
 
-    with filter_cols[3]:
+    with filter_cols[5]:
         branches = st.multiselect(
             "Branch",
             branch_options,
@@ -2260,7 +2298,7 @@ def show_net_profit_dashboard():
             if quarter in quarter_options
         ]
 
-    with filter_cols[4]:
+    with filter_cols[6]:
         quarters = st.multiselect(
             "Quarter",
             quarter_options,
@@ -2283,7 +2321,7 @@ def show_net_profit_dashboard():
             if month in month_options
         ]
 
-    with filter_cols[5]:
+    with filter_cols[7]:
         months = st.multiselect(
             "Month",
             month_options,
@@ -2292,7 +2330,7 @@ def show_net_profit_dashboard():
             disabled=not month_options,
         )
 
-    with filter_cols[6]:
+    with filter_cols[8]:
         conversion_type = st.selectbox(
             "₹ Conversion",
             ["Crore", "Lac"],
