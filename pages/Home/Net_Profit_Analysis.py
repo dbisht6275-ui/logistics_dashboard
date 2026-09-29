@@ -2166,19 +2166,29 @@ def show_net_profit_dashboard():
             disabled=period_mode != "Financial Year",
         )
 
-    if period_mode == "Financial Year":
-        if fy == "Select FY":
-            st.info("Please select financial year.")
-            return
+    # Build the period selection first. Data is loaded only after the user
+    # presses Run. The committed selection is kept in session_state so
+    # changing Zone / Circle / Branch / Quarter / Month does not require
+    # pressing Run again.
+    selected_start = None
+    selected_end = None
+    selected_fy_label = None
+    selected_prev_fy_label = None
+    selected_prev_start = None
+    selected_prev_end = None
+    period_selection_valid = True
 
-        start_date, end_date = get_date_range(fy)
-        prev_fy = get_previous_fy(fy)
-        prev_start, prev_end = get_date_range(prev_fy)
+    if period_mode == "Financial Year":
+        if fy != "Select FY":
+            selected_start, selected_end = get_date_range(fy)
+            selected_prev_fy_label = get_previous_fy(fy)
+            selected_prev_start, selected_prev_end = get_date_range(selected_prev_fy_label)
+            selected_fy_label = fy
 
         with filter_cols[2]:
             st.date_input(
                 "From Date",
-                value=start_date,
+                value=selected_start if selected_start is not None else pd.Timestamp.today().date(),
                 disabled=True,
                 key="np_from_date_fy",
                 format="DD/MM/YYYY",
@@ -2187,17 +2197,19 @@ def show_net_profit_dashboard():
         with filter_cols[3]:
             st.date_input(
                 "To Date",
-                value=end_date,
+                value=selected_end if selected_end is not None else pd.Timestamp.today().date(),
                 disabled=True,
                 key="np_to_date_fy",
                 format="DD/MM/YYYY",
             )
+
+        period_selection_valid = fy != "Select FY"
     else:
         today = pd.Timestamp.today().date()
         default_from = today.replace(day=1)
 
         with filter_cols[2]:
-            start_date = st.date_input(
+            custom_start = st.date_input(
                 "From Date",
                 value=st.session_state.get("np_custom_from_date", default_from),
                 key="np_custom_from_date",
@@ -2205,23 +2217,60 @@ def show_net_profit_dashboard():
             )
 
         with filter_cols[3]:
-            end_date = st.date_input(
+            custom_end = st.date_input(
                 "To Date",
                 value=st.session_state.get("np_custom_to_date", today),
                 key="np_custom_to_date",
                 format="DD/MM/YYYY",
             )
 
-        if start_date > end_date:
-            st.warning("From Date cannot be after To Date.")
+        if custom_start > custom_end:
+            period_selection_valid = False
+        else:
+            selected_start = custom_start
+            selected_end = custom_end
+            selected_prev_start = (pd.Timestamp(custom_start) - pd.DateOffset(years=1)).date()
+            selected_prev_end = (pd.Timestamp(custom_end) - pd.DateOffset(years=1)).date()
+            selected_fy_label = f"{custom_start.strftime('%d-%b-%Y')} to {custom_end.strftime('%d-%b-%Y')}"
+            selected_prev_fy_label = f"{selected_prev_start.strftime('%d-%b-%Y')} to {selected_prev_end.strftime('%d-%b-%Y')}"
+
+    with filter_cols[4]:
+        run_clicked = st.button(
+            "▶ Run",
+            key="np_run_period",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if run_clicked:
+        if not period_selection_valid:
+            if period_mode == "Financial Year":
+                st.warning("Please select financial year.")
+            else:
+                st.warning("From Date cannot be after To Date.")
             return
 
-        prev_start = (pd.Timestamp(start_date) - pd.DateOffset(years=1)).date()
-        prev_end = (pd.Timestamp(end_date) - pd.DateOffset(years=1)).date()
+        st.session_state["np_committed_period"] = {
+            "mode": period_mode,
+            "start_date": selected_start,
+            "end_date": selected_end,
+            "prev_start": selected_prev_start,
+            "prev_end": selected_prev_end,
+            "fy": selected_fy_label,
+            "prev_fy": selected_prev_fy_label,
+        }
 
-        # Labels are reused by existing CY/LY charts and cards.
-        fy = f"{start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}"
-        prev_fy = f"{prev_start.strftime('%d-%b-%Y')} to {prev_end.strftime('%d-%b-%Y')}"
+    committed_period = st.session_state.get("np_committed_period")
+    if not committed_period:
+        st.info("Select Financial Year or Custom Date, then click Run.")
+        return
+
+    start_date = committed_period["start_date"]
+    end_date = committed_period["end_date"]
+    prev_start = committed_period["prev_start"]
+    prev_end = committed_period["prev_end"]
+    fy = committed_period["fy"]
+    prev_fy = committed_period["prev_fy"]
 
     # Branch/Agency master is loaded first and becomes the dashboard branch scope.
     branch_master_df = load_net_profit_branch_mast()
