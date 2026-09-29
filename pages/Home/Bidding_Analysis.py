@@ -1918,20 +1918,12 @@ def render_vehicle_type_insights(df):
     )
 
     # --------------------------------------------------------
-    # Charts - keep only 10 vehicle records visible at a time.
-    # Any additional vehicle types remain available by scrolling vertically.
-    # Both charts scroll together inside the same fixed-height area.
+    # Charts - show every vehicle type inside a fixed-height scroll area.
+    # Both charts scroll together so the page itself does not become too long.
     # --------------------------------------------------------
-    visible_vehicle_rows = min(10, len(vehicle))
-    row_height_px = 44
+    chart_height = min(1400, max(320, 44 * len(vehicle) + 90))
 
-    # Full chart height still includes every vehicle type so no data is hidden.
-    chart_height = min(1800, max(320, row_height_px * len(vehicle) + 100))
-
-    # Space for approximately 10 chart rows plus chart title/legend/margins.
-    scroll_height = min(chart_height + 70, row_height_px * visible_vehicle_rows + 155)
-
-    with st.container(height=scroll_height, border=False):
+    with st.container(height=540, border=False):
         chart_left, chart_right = st.columns(2, gap="small")
 
         with chart_left:
