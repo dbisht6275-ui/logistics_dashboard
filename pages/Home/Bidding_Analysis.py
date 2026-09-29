@@ -1918,82 +1918,84 @@ def render_vehicle_type_insights(df):
     )
 
     # --------------------------------------------------------
-    # Charts - do NOT truncate to Top 10; show every vehicle type.
+    # Charts - show every vehicle type inside a fixed-height scroll area.
+    # Both charts scroll together so the page itself does not become too long.
     # --------------------------------------------------------
-    chart_left, chart_right = st.columns(2, gap="small")
+    chart_height = min(1400, max(320, 44 * len(vehicle) + 90))
 
-    chart_height = min(850, max(320, 44 * len(vehicle) + 90))
+    with st.container(height=540, border=False):
+        chart_left, chart_right = st.columns(2, gap="small")
 
-    with chart_left:
-        volume_fig = _horizontal_bar_chart(
-            vehicle["Vehicle Type"],
-            vehicle["Bids"],
-            height=chart_height,
-            value_name="Bids",
-        )
-        _render_chart_card("Vehicle Type Bid Volume — All Types", volume_fig)
-
-    with chart_right:
-        winner_mix = vehicle[
-            ["Vehicle Type", "L1 Selected", "Manual Selected", "Winner Bids"]
-        ].copy()
-        winner_mix["Other Winner"] = (
-            winner_mix["Winner Bids"]
-            - winner_mix["L1 Selected"]
-            - winner_mix["Manual Selected"]
-        ).clip(lower=0)
-        winner_mix = winner_mix.sort_values("Winner Bids", ascending=True)
-
-        mix_fig = go.Figure()
-        mix_fig.add_trace(
-            go.Bar(
-                x=winner_mix["L1 Selected"],
-                y=winner_mix["Vehicle Type"],
-                name="L-1",
-                orientation="h",
-                marker=dict(color="#16a34a"),
-                hovertemplate="<b>%{y}</b><br>L-1 Winners: %{x:,}<extra></extra>",
+        with chart_left:
+            volume_fig = _horizontal_bar_chart(
+                vehicle["Vehicle Type"],
+                vehicle["Bids"],
+                height=chart_height,
+                value_name="Bids",
             )
-        )
-        mix_fig.add_trace(
-            go.Bar(
-                x=winner_mix["Manual Selected"],
-                y=winner_mix["Vehicle Type"],
-                name="Manual",
-                orientation="h",
-                marker=dict(color="#f59e0b"),
-                hovertemplate="<b>%{y}</b><br>Manual Winners: %{x:,}<extra></extra>",
-            )
-        )
-        if winner_mix["Other Winner"].gt(0).any():
+            _render_chart_card("Vehicle Type Bid Volume — All Types", volume_fig)
+
+        with chart_right:
+            winner_mix = vehicle[
+                ["Vehicle Type", "L1 Selected", "Manual Selected", "Winner Bids"]
+            ].copy()
+            winner_mix["Other Winner"] = (
+                winner_mix["Winner Bids"]
+                - winner_mix["L1 Selected"]
+                - winner_mix["Manual Selected"]
+            ).clip(lower=0)
+            winner_mix = winner_mix.sort_values("Winner Bids", ascending=True)
+
+            mix_fig = go.Figure()
             mix_fig.add_trace(
                 go.Bar(
-                    x=winner_mix["Other Winner"],
+                    x=winner_mix["L1 Selected"],
                     y=winner_mix["Vehicle Type"],
-                    name="Winner - Level Missing / Other",
+                    name="L-1",
                     orientation="h",
-                    marker=dict(color="#94a3b8"),
-                    hovertemplate="<b>%{y}</b><br>Level Missing / Other Winners: %{x:,}<extra></extra>",
+                    marker=dict(color="#16a34a"),
+                    hovertemplate="<b>%{y}</b><br>L-1 Winners: %{x:,}<extra></extra>",
                 )
             )
+            mix_fig.add_trace(
+                go.Bar(
+                    x=winner_mix["Manual Selected"],
+                    y=winner_mix["Vehicle Type"],
+                    name="Manual",
+                    orientation="h",
+                    marker=dict(color="#f59e0b"),
+                    hovertemplate="<b>%{y}</b><br>Manual Winners: %{x:,}<extra></extra>",
+                )
+            )
+            if winner_mix["Other Winner"].gt(0).any():
+                mix_fig.add_trace(
+                    go.Bar(
+                        x=winner_mix["Other Winner"],
+                        y=winner_mix["Vehicle Type"],
+                        name="Winner - Level Missing / Other",
+                        orientation="h",
+                        marker=dict(color="#94a3b8"),
+                        hovertemplate="<b>%{y}</b><br>Level Missing / Other Winners: %{x:,}<extra></extra>",
+                    )
+                )
 
-        _compact_chart_layout(mix_fig, height=chart_height, bottom_margin=42)
-        mix_fig.update_layout(
-            barmode="stack",
-            showlegend=True,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=1.01,
-                xanchor="right",
-                x=1,
-                font=dict(size=9, color=CHART_TEXT_COLOR),
-            ),
-            bargap=0.28,
-        )
-        mix_fig.update_yaxes(showgrid=False, automargin=True)
-        mix_fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
-        _render_chart_card("Vehicle Type Winner Mix — L-1 vs Manual", mix_fig)
+            _compact_chart_layout(mix_fig, height=chart_height, bottom_margin=42)
+            mix_fig.update_layout(
+                barmode="stack",
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.01,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=9, color=CHART_TEXT_COLOR),
+                ),
+                bargap=0.28,
+            )
+            mix_fig.update_yaxes(showgrid=False, automargin=True)
+            mix_fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+            _render_chart_card("Vehicle Type Winner Mix — L-1 vs Manual", mix_fig)
 
     # --------------------------------------------------------
     # Detailed insight table for all vehicle types.
