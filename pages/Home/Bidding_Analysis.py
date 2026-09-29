@@ -2169,12 +2169,59 @@ def render_query_response_analysis(df):
         response_mix = response_mix[response_mix["Bids"].gt(0)]
 
         if not response_mix.empty:
-            response_fig = _donut_chart(
-                response_mix["QUERY_RESPONSE_BUCKET"],
-                response_mix["Bids"],
-                height=255,
-                center_label="Queries",
+            total_queries_chart = int(response_mix["Bids"].sum())
+            response_mix["Percent"] = (
+                response_mix["Bids"] / total_queries_chart * 100.0
+                if total_queries_chart else 0.0
             )
+
+            # Keep the same category color sequence used in the existing donut chart.
+            response_colors = [
+                "#0d6efd",  # ≤ 2 Hours
+                "#83c9ff",  # 2-4 Hours
+                "#ff2b2b",  # 4-8 Hours
+                "#ffabab",  # 8-24 Hours
+                "#29b09d",  # 24+ Hours
+                "#7defa1",  # Pending
+                "#f5a623",  # Check Dates
+            ]
+
+            response_fig = go.Figure(
+                go.Bar(
+                    x=response_mix["QUERY_RESPONSE_BUCKET"],
+                    y=response_mix["Bids"],
+                    marker=dict(
+                        color=response_colors[:len(response_mix)],
+                        line=dict(color="#ffffff", width=0.8),
+                    ),
+                    text=[
+                        f"{int(count):,} | {pct:.1f}%"
+                        for count, pct in zip(
+                            response_mix["Bids"],
+                            response_mix["Percent"],
+                        )
+                    ],
+                    textposition="outside",
+                    textfont=dict(size=10, color=CHART_TEXT_COLOR),
+                    cliponaxis=False,
+                    customdata=response_mix["Percent"],
+                    hovertemplate=(
+                        "<b>%{x}</b><br>"
+                        "Queries: %{y:,}<br>"
+                        "Share: %{customdata:.1f}%"
+                        "<extra></extra>"
+                    ),
+                )
+            )
+
+            max_value = int(response_mix["Bids"].max()) if not response_mix.empty else 0
+            if max_value > 0:
+                response_fig.update_yaxes(range=[0, max_value * 1.20])
+
+            _compact_chart_layout(response_fig, height=255, bottom_margin=48)
+            response_fig.update_layout(bargap=0.28, showlegend=False)
+            response_fig.update_xaxes(tickangle=0)
+
             _render_chart_card("Query Response Time Mix", response_fig)
         else:
             with st.container(border=True):
