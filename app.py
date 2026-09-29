@@ -1,19 +1,26 @@
 import streamlit as st
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
+from collections import Counter
 import runpy
+import threading
+import time
+import uuid
 from services.login import login_page
 from services.roles import get_allowed_menu, get_allowed_reports, clear_role_cache
 
 from pages.Home.overview_tab import show_overview
 from pages.Home.PNL_Analysis import show_pnl_dashboard
-from pages.Home.Non_FTL_KPI_Dashboard import show_non_ftl_kpi_dashboard
 from pages.Home.Net_Profit_Analysis import show_net_profit_dashboard
 from pages.Home.comparison_tab import show_comparison
 from pages.Home.Customer_Analysis import show_CustomerAnalysis
+from pages.Home.NBD_Analysis import show_NBDAnalysis
+from pages.Home.Bidding_Analysis import show_bidding_analysis
 
 from pages.Home.Outstanding_Analysis import show_OutstandingAnalysis
 from pages.Home.Monthly_Trend_EDD import show_monthly_trend_edd
+from pages.Home.Stock_Operations import show_stock_operations
 from pages.IT.zone_booking_turnover import show_ZoneBookingTurnover
 from pages.IT.Bangladesh_Delivery_Turnover import show_bangladesh_delivery_turnover
 from pages.IT.BookingSummaryTurnover import show_booking_summary_turnover
@@ -27,34 +34,308 @@ from pages.Accounts.GrCostingHeadWise import show_GrCostingHeadWise
 from pages.Admin.user_management import show_UserManagement
 
 
-def show_tariff_rate_dashboard():
-    """Render the standalone tariff dashboard inside the existing app shell."""
-    app_directory = Path(__file__).resolve().parent
-    accepted_names = {"tariff_rate_dashboard.py", "tariff rate_dashboard.py"}
-    dashboard_file = next(
-        (
-            candidate
-            for candidate in app_directory.rglob("*.py")
-            if candidate.name.lower() in accepted_names
-            and candidate.resolve() != Path(__file__).resolve()
-        ),
-        None,
-    )
-    if dashboard_file is None:
-        st.error(
-            "Tariff dashboard file was not found anywhere in the deployed project. "
-            "Confirm that tariff_rate_dashboard.py was committed/uploaded to the "
-            "same deployment as app.py."
-        )
-        return
-    runpy.run_path(str(dashboard_file), run_name="tariff_rate_dashboard")
-
-
 st.set_page_config(
     page_title="Sugam Dashboard",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ✅ FIX: Import missing functions
+try:
+    from pages.IT.service_analysis import show_service_level
+except ImportError:
+    def show_service_level():
+        st.warning("🚛 Service Analysis page not found. Please create pages/IT/service_analysis.py")
+
+
+# ============================================================
+# LIVE USAGE ANALYTICS - NO DATABASE
+# ============================================================
+# This store lives only in the current Streamlit/AWS Python process.
+# It is intentionally NOT written to SQL/MySQL or any external database.
+# Counts reset whenever the app process restarts/redeploys.
+APP_TZ = ZoneInfo("Asia/Kolkata")
+ACTIVE_WINDOW_SECONDS = 15 * 60  # Keep aligned with your app's inactivity/logout window.
+
+
+@st.cache_resource(show_spinner=False)
+def get_usage_store():
+    return {
+        "lock": threading.RLock(),
+        "sessions": {},
+        "page_opens": Counter(),
+        "page_users": {},
+        "events": [],
+        "started_at": datetime.now(APP_TZ),
+    }
+
+
+def _usage_session_id():
+    if "_usage_session_id" not in st.session_state:
+        st.session_state["_usage_session_id"] = uuid.uuid4().hex
+    return st.session_state["_usage_session_id"]
+
+
+def _usage_employee_key():
+    employee_id = str(st.session_state.get("employee_id", "")).strip()
+    username = str(st.session_state.get("username", "")).strip()
+    employee_name = str(st.session_state.get("employee_name", "")).strip()
+    return employee_id or username or employee_name or _usage_session_id()
+
+
+def _cleanup_stale_usage_sessions(store, now_ts):
+    stale_ids = [
+        sid
+        for sid, info in store["sessions"].items()
+        if now_ts - info.get("last_seen", 0) > ACTIVE_WINDOW_SECONDS
+    ]
+    for sid in stale_ids:
+        store["sessions"].pop(sid, None)
+
+
+def track_usage(page_name, count_open=True):
+    """Mark this Streamlit session active and optionally count a real page change."""
+    store = get_usage_store()
+    now_ts = time.time()
+    sid = _usage_session_id()
+    employee_key = _usage_employee_key()
+
+    employee_name = (
+        st.session_state.get("employee_name")
+        or st.session_state.get("username")
+        or f"Employee {st.session_state.get('employee_id', '')}"
+    )
+
+    with store["lock"]:
+        _cleanup_stale_usage_sessions(store, now_ts)
+        store["sessions"][sid] = {
+            "session_id": sid,
+            "employee_key": employee_key,
+            "employee_id": st.session_state.get("employee_id", "-"),
+            "employee_name": str(employee_name),
+            "role": str(st.session_state.get("role", "viewer")).title(),
+            "page": page_name,
+            "last_seen": now_ts,
+        }
+
+        # Count only when the user actually changes page/report.
+        previous_page = st.session_state.get("_usage_last_page")
+        is_new_page = previous_page != page_name
+        should_count = count_open and is_new_page and page_name != "📊 Usage Analytics"
+
+        if should_count:
+            store["page_opens"][page_name] += 1
+            store["page_users"].setdefault(page_name, set()).add(employee_key)
+            store["events"].append({
+                "time": now_ts,
+                "employee_name": str(employee_name),
+                "employee_id": st.session_state.get("employee_id", "-"),
+                "page": page_name,
+            })
+            # Keep memory bounded.
+            if len(store["events"]) > 500:
+                del store["events"][:-500]
+
+    st.session_state["_usage_last_page"] = page_name
+
+
+def unregister_usage_session():
+    sid = st.session_state.get("_usage_session_id")
+    if not sid:
+        return
+    store = get_usage_store()
+    with store["lock"]:
+        store["sessions"].pop(sid, None)
+
+
+def _ago_text(seconds):
+    seconds = max(0, int(seconds))
+    if seconds < 15:
+        return "Just now"
+    if seconds < 60:
+        return f"{seconds} sec ago"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = minutes // 60
+    return f"{hours} hr ago"
+
+
+def get_usage_snapshot():
+    store = get_usage_store()
+    now_ts = time.time()
+
+    with store["lock"]:
+        _cleanup_stale_usage_sessions(store, now_ts)
+        sessions = [dict(v) for v in store["sessions"].values()]
+        page_opens = dict(store["page_opens"])
+        page_users = {k: len(v) for k, v in store["page_users"].items()}
+        events = [dict(e) for e in store["events"][-25:]]
+        started_at = store["started_at"]
+
+    # One row per employee, even if the same employee has multiple tabs/sessions.
+    active_by_employee = {}
+    for session in sessions:
+        key = session["employee_key"]
+        if key not in active_by_employee or session["last_seen"] > active_by_employee[key]["last_seen"]:
+            active_by_employee[key] = session
+
+    active_rows = []
+    for session in sorted(active_by_employee.values(), key=lambda x: x["last_seen"], reverse=True):
+        active_rows.append({
+            "Employee": session["employee_name"],
+            "Employee ID": session["employee_id"],
+            "Role": session["role"],
+            "Current Dashboard": session["page"],
+            "Last Active": _ago_text(now_ts - session["last_seen"]),
+        })
+
+    usage_rows = [
+        {
+            "Dashboard / Report": page,
+            "Opens": opens,
+            "Unique Users": page_users.get(page, 0),
+        }
+        for page, opens in sorted(page_opens.items(), key=lambda item: item[1], reverse=True)
+    ]
+
+    recent_rows = []
+    for event in reversed(events):
+        event_dt = datetime.fromtimestamp(event["time"], APP_TZ)
+        recent_rows.append({
+            "Time": event_dt.strftime("%d %b %I:%M:%S %p"),
+            "Employee": event["employee_name"],
+            "Employee ID": event["employee_id"],
+            "Opened": event["page"],
+        })
+
+    return {
+        "active_users": len(active_by_employee),
+        "active_sessions": len(sessions),
+        "active_rows": active_rows,
+        "usage_rows": usage_rows,
+        "recent_rows": recent_rows,
+        "total_opens": sum(page_opens.values()),
+        "most_used": usage_rows[0]["Dashboard / Report"] if usage_rows else "-",
+        "most_used_opens": usage_rows[0]["Opens"] if usage_rows else 0,
+        "started_at": started_at,
+    }
+
+
+def _render_usage_live_panel():
+    # Keep the admin's own session active while this live panel refreshes.
+    track_usage("📊 Usage Analytics", count_open=False)
+    snapshot = get_usage_snapshot()
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("🟢 Active Users Now", snapshot["active_users"])
+    c2.metric("🖥️ Active Sessions", snapshot["active_sessions"])
+    c3.metric(
+        "🏆 Most Used Dashboard",
+        snapshot["most_used"].replace("📄 Reports › ", "").replace("📊 ", ""),
+        f'{snapshot["most_used_opens"]} opens' if snapshot["most_used_opens"] else None,
+    )
+    c4.metric("📈 Total Page Opens", snapshot["total_opens"])
+
+    st.markdown("### Active Users")
+    if snapshot["active_rows"]:
+        st.dataframe(
+            snapshot["active_rows"],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No active users detected right now.")
+
+    left, right = st.columns([1.2, 1])
+
+    with left:
+        st.markdown("### Dashboard Usage")
+        if snapshot["usage_rows"]:
+            st.dataframe(
+                snapshot["usage_rows"],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("Usage will start appearing after users open dashboards.")
+
+    with right:
+        st.markdown("### Recent Activity")
+        if snapshot["recent_rows"]:
+            st.dataframe(
+                snapshot["recent_rows"],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("No activity has been recorded in this app process yet.")
+
+    st.caption(
+        "Live tracking uses application memory only — no database writes. "
+        f"Active means activity within the last {ACTIVE_WINDOW_SECONDS // 60} minutes. "
+        f"Tracking started {snapshot['started_at'].strftime('%d %b %Y %I:%M %p')} IST and resets after an app restart/redeploy."
+    )
+
+
+def show_usage_analytics():
+    st.markdown(
+        """
+        <style>
+        .usage-analytics-title {
+            margin-bottom: .15rem;
+            font-size: 1.75rem;
+            font-weight: 800;
+            color: #0f2f63;
+        }
+        .usage-analytics-subtitle {
+            margin-bottom: 1rem;
+            color: #64748b;
+            font-size: .92rem;
+        }
+        </style>
+        <div class="usage-analytics-title">📊 Usage Analytics</div>
+        <div class="usage-analytics-subtitle">
+            Live user activity and dashboard popularity without changing your database.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Streamlit fragments provide a lightweight live refresh on newer versions.
+    # Fallback keeps the page fully usable on older Streamlit versions.
+    if hasattr(st, "fragment"):
+        @st.fragment(run_every="10s")
+        def _live_usage_fragment():
+            _render_usage_live_panel()
+
+        _live_usage_fragment()
+    else:
+        if st.button("↻ Refresh Live Data", key="usage_manual_refresh"):
+            st.rerun()
+        _render_usage_live_panel()
+
+
+def show_tariff_rate_dashboard():
+    app_directory = Path(__file__).resolve().parent
+
+    dashboard_file = (
+        app_directory
+        / "pages"
+        / "Home"
+        / "tariff_rate_dashboard.py"
+    )
+
+    if not dashboard_file.is_file():
+        st.error(
+            f"Tariff dashboard not found at: {dashboard_file}"
+        )
+        return
+
+    runpy.run_path(
+        str(dashboard_file),
+        run_name="tariff_rate_dashboard",
+    )
 
 
 # =========================
@@ -64,127 +345,85 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-/* Keep the application content close to the top. */
+/* ============================================================
+   OPTION 3 - HOVER SIDEBAR (FIXED)
+   - Resting state: clean 72px icon rail
+   - Hover state: full 242px sidebar
+   - No blank space above SUGAM
+   - No native Streamlit radio circles / collapse control
+   - Bottom cards and action buttons stay hidden in icon rail
+   ============================================================ */
+
 [data-testid="stHeader"] {
     height: 2.1rem;
     background: transparent;
 }
 [data-testid="stToolbar"] { right: 1rem; }
 [data-testid="stDecoration"] { display: none; }
-.main .block-container { padding-top: 1.05rem !important; }
+.main .block-container {
+    padding-top: 1.05rem !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
 
-/* ============================================================
-   SUGAM sidebar shell — visual-only update.
-   All menu values, role checks, report routing and button logic
-   remain unchanged in the Python code below.
-   ============================================================ */
+/* Sidebar shell. */
 [data-testid="stSidebar"] {
-    width: 242px !important;
-    min-width: 242px !important;
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    flex: 0 0 72px !important;
     background: linear-gradient(180deg, #123568 0%, #0b2a58 58%, #08244d 100%);
     border-right: 1px solid rgba(7, 28, 63, .45);
-    box-shadow: 5px 0 18px rgba(15, 42, 82, .12);
+    box-shadow: 4px 0 14px rgba(15, 42, 82, .12);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    overflow: hidden !important;
+    transition: width .14s ease, min-width .14s ease, max-width .14s ease, flex-basis .14s ease !important;
+    z-index: 9999 !important;
 }
-[data-testid="stSidebar"] > div:first-child {
+
+[data-testid="stSidebar"]:hover {
+    width: 242px !important;
+    min-width: 242px !important;
+    max-width: 242px !important;
+    flex: 0 0 242px !important;
+    overflow: hidden !important;
+}
+
+/* Remove ALL Streamlit sidebar header space and native hide/unhide controls. */
+[data-testid="stSidebarHeader"],
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapsedControl"] {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
     padding: 0 !important;
+    margin: 0 !important;
 }
-[data-testid="stSidebar"] [data-testid="stSidebarContent"] {
-    padding: 0 12px 12px !important;
+
+[data-testid="stSidebar"] > div:first-child,
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+    padding-top: 0 !important;
+    margin-top: 0 !important;
 }
+
+[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+    padding-bottom: 10px !important;
+    overflow-x: hidden !important;
+}
+
+[data-testid="stSidebar"]:hover [data-testid="stSidebarContent"],
+[data-testid="stSidebar"]:hover [data-testid="stSidebarUserContent"] {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+}
+
 [data-testid="stSidebar"] * { box-sizing: border-box; }
 
-
-/* ============================================================
-   Highly visible sidebar expand / collapse controls.
-   These selectors cover current and older Streamlit DOM names.
-   Visual-only: no sidebar state or routing logic is changed.
-   ============================================================ */
-[data-testid="stSidebarCollapsedControl"],
-[data-testid="stSidebarCollapseButton"] {
-    z-index: 999999 !important;
-}
-
-[data-testid="stSidebarCollapsedControl"] button,
-[data-testid="stSidebarCollapseButton"] button,
-[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] {
-    width: 38px !important;
-    min-width: 38px !important;
-    height: 38px !important;
-    min-height: 38px !important;
-    padding: 7px !important;
-    border: 2px solid #ffffff !important;
-    border-radius: 10px !important;
-    background: linear-gradient(145deg, #3182f6 0%, #1761d2 62%, #104eae 100%) !important;
-    color: #ffffff !important;
-    box-shadow: 0 4px 0 #0a3c8d, 0 7px 14px rgba(4, 29, 72, .35) !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-    transform: none !important;
-    transition: transform .15s ease, box-shadow .15s ease, background .15s ease !important;
-}
-
-[data-testid="stSidebarCollapsedControl"] button:hover,
-[data-testid="stSidebarCollapseButton"] button:hover,
-[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:hover {
-    background: linear-gradient(145deg, #4d98ff 0%, #1f70e8 62%, #1558c0 100%) !important;
-    transform: translateY(-1px) scale(1.04) !important;
-    box-shadow: 0 5px 0 #0a3c8d, 0 10px 18px rgba(4, 29, 72, .42) !important;
-}
-
-[data-testid="stSidebarCollapsedControl"] button:active,
-[data-testid="stSidebarCollapseButton"] button:active,
-[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:active {
-    transform: translateY(2px) !important;
-    box-shadow: 0 1px 0 #0a3c8d, 0 4px 8px rgba(4, 29, 72, .30) !important;
-}
-
-[data-testid="stSidebarCollapsedControl"] svg,
-[data-testid="stSidebarCollapseButton"] svg,
-[data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg {
-    width: 23px !important;
-    height: 23px !important;
-    color: #ffffff !important;
-    fill: none !important;
-    stroke: #ffffff !important;
-    stroke-width: 3 !important;
-    opacity: 1 !important;
-    filter: drop-shadow(0 1px 1px rgba(0,0,0,.25));
-}
-
-/* Keep the expand button away from the browser edge when sidebar is closed. */
-[data-testid="stSidebarCollapsedControl"] {
-    top: 10px !important;
-    left: 10px !important;
-}
-
-/* ============================================================
-   Full-width dashboard after collapsing the sidebar.
-
-   The sidebar has a custom fixed expanded width above. Without an explicit
-   collapsed-state override, some Streamlit versions keep that width reserved,
-   leaving a blank strip and preventing the dashboard from using the viewport.
-   These rules affect layout only; no navigation or page logic is changed.
-   ============================================================ */
-[data-testid="stSidebar"][aria-expanded="false"],
-[data-testid="stSidebar"]:has([data-testid="stSidebarCollapsedControl"]) {
-    width: 0 !important;
-    min-width: 0 !important;
-    max-width: 0 !important;
-    flex: 0 0 0 !important;
-    border-right: 0 !important;
-    box-shadow: none !important;
-    overflow: visible !important;
-}
-
-/* Remove any width still reserved by the sidebar wrapper in collapsed state. */
-[data-testid="stAppViewContainer"] > section:has(
-    [data-testid="stSidebar"][aria-expanded="false"]
-) {
-    grid-template-columns: 0 minmax(0, 1fr) !important;
-}
-
-/* Let the main dashboard consume all remaining viewport width. */
+/* Keep the dashboard using all remaining width. */
 [data-testid="stAppViewContainer"] > .main,
 [data-testid="stAppViewContainer"] main,
 section.main {
@@ -193,9 +432,6 @@ section.main {
     min-width: 0 !important;
     margin-left: 0 !important;
 }
-
-/* Keep normal wide padding, but prevent the main block from retaining a
-   sidebar-sized offset after collapse. */
 [data-testid="stAppViewContainer"] .main .block-container {
     width: 100% !important;
     max-width: 100% !important;
@@ -203,21 +439,34 @@ section.main {
     margin-right: 0 !important;
 }
 
-/* Brand block matching the shared reference layout. */
+/* ---------------- Brand ---------------- */
 .sugam-logo-wrap {
-    min-height: 78px;
-    margin: 0 -12px 10px;
-    padding: 15px 15px 13px;
+    height: 58px;
+    min-height: 58px;
+    margin: 0 -8px 8px;
+    padding: 0 8px;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 10px;
     background: rgba(5, 28, 63, .36);
     border-bottom: 1px solid rgba(255,255,255,.10);
+    white-space: nowrap;
+    overflow: hidden;
 }
+
+[data-testid="stSidebar"]:hover .sugam-logo-wrap {
+    margin-left: -12px;
+    margin-right: -12px;
+    padding: 0 15px;
+    justify-content: flex-start;
+}
+
 .sugam-logo-mark {
     position: relative;
     width: 35px;
     height: 31px;
+    min-width: 35px;
     flex: 0 0 35px;
 }
 .sugam-logo-mark::before,
@@ -234,78 +483,142 @@ section.main {
 }
 .sugam-logo-mark::before { top: 4px; }
 .sugam-logo-mark::after { top: 17px; left: 6px; width: 25px; }
-.sugam-logo-copy { min-width: 0; line-height: 1; }
+
+.sugam-logo-copy {
+    display: none;
+    min-width: 0;
+    line-height: 1;
+}
+[data-testid="stSidebar"]:hover .sugam-logo-copy {
+    display: block;
+}
 .sugam-logo-name {
     color: #ffffff;
     font-size: 17px;
     font-weight: 800;
     letter-spacing: 1.5px;
 }
-.sugam-logo-sub {
-    margin-top: 4px;
-    color: #cbd8ea;
-    font-size: 8px;
-    font-weight: 700;
-    letter-spacing: 3.1px;
-}
 
-/* Navigation. */
+/* ---------------- Navigation ---------------- */
 .sugam-nav-label {
+    display: none;
+}
+[data-testid="stSidebar"]:hover .sugam-nav-label {
+    display: block;
     margin: 10px 7px 6px;
     color: #91a9c9;
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 1.4px;
     text-transform: uppercase;
+    white-space: nowrap;
 }
+
 [data-testid="stSidebar"] div[role="radiogroup"] {
-    gap: 3px !important;
+    gap: 5px !important;
 }
+
 [data-testid="stSidebar"] div[role="radiogroup"] label {
-    min-height: 39px;
-    margin: 0 !important;
-    padding: 8px 10px !important;
+    min-height: 44px !important;
+    width: 52px !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
     display: flex !important;
     align-items: center !important;
-    border: 1px solid transparent;
-    border-radius: 7px;
-    background: transparent;
-    transition: background .14s ease, border-color .14s ease, transform .14s ease;
+    justify-content: center !important;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    background: transparent !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
 }
+
+[data-testid="stSidebar"]:hover div[role="radiogroup"] label {
+    width: 100% !important;
+    min-height: 39px !important;
+    margin: 0 !important;
+    padding: 8px 10px !important;
+    justify-content: flex-start !important;
+}
+
+/* Hide every native radio circle across Streamlit DOM variants. */
+[data-testid="stSidebar"] div[role="radiogroup"] input[type="radio"],
+[data-testid="stSidebar"] div[role="radiogroup"] label > div:has(input[type="radio"]),
+[data-testid="stSidebar"] div[role="radiogroup"] label [data-baseweb="radio"] > div:first-child,
+[data-testid="stSidebar"] div[role="radiogroup"] label [role="radio"] > div:first-child,
+[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child:not([data-testid="stMarkdownContainer"]) {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
 [data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-    background: rgba(255,255,255,.075);
-    transform: translateX(1px);
+    background: rgba(255,255,255,.075) !important;
 }
 [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
-    background: linear-gradient(90deg, #1f70e8 0%, #1761d2 100%);
-    border-color: rgba(123,184,255,.32);
-    box-shadow: 0 5px 12px rgba(3, 35, 83, .28), inset 0 1px 0 rgba(255,255,255,.15);
+    background: linear-gradient(180deg, #2d82fb 0%, #1761d2 100%) !important;
+    border-color: rgba(123,184,255,.36) !important;
+    box-shadow: 0 5px 12px rgba(3, 35, 83, .28), inset 0 1px 0 rgba(255,255,255,.15) !important;
 }
-[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
-    display: none !important;
-}
+
+/* In rail mode the text itself is clipped to the emoji icon. */
 [data-testid="stSidebar"] div[role="radiogroup"] label p {
+    display: block !important;
+    width: 25px !important;
+    max-width: 25px !important;
     margin: 0 !important;
+    padding: 0 !important;
+    color: #e7eff9 !important;
+    font-size: 18px !important;
+    font-weight: 500 !important;
+    line-height: 1.05 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: clip !important;
+}
+
+[data-testid="stSidebar"]:hover div[role="radiogroup"] label p {
+    width: auto !important;
+    max-width: none !important;
     color: #d9e5f4 !important;
     font-size: 12px !important;
-    font-weight: 500 !important;
     line-height: 1.2 !important;
+    overflow: visible !important;
 }
+
 [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {
     color: #ffffff !important;
     font-weight: 700 !important;
 }
 
-/* Report controls. */
-[data-testid="stSidebar"] input[type="text"] {
-    min-height: 37px;
-    color: #eef5ff !important;
-    background: rgba(255,255,255,.07) !important;
+/* ---------------- Reports controls ---------------- */
+/* Completely remove report/search controls from the rail so nothing is clipped. */
+[data-testid="stSidebar"] [data-testid="stTextInput"],
+[data-testid="stSidebar"] [data-testid="stExpander"] {
+    display: none !important;
+}
+[data-testid="stSidebar"]:hover [data-testid="stTextInput"] {
+    display: block !important;
+}
+[data-testid="stSidebar"]:hover [data-testid="stExpander"] {
+    display: block !important;
+}
+[data-testid="stSidebar"]:hover input[type="text"] {
+    min-height: 37px !important;
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+    background: #ffffff !important;
     border: 1px solid rgba(255,255,255,.12) !important;
     border-radius: 7px !important;
 }
-[data-testid="stSidebar"] input[type="text"]::placeholder { color: #9fb2cc !important; }
-[data-testid="stSidebar"] [data-testid="stExpander"] {
+[data-testid="stSidebar"]:hover input[type="text"]::placeholder {
+    color: #64748b !important;
+    -webkit-text-fill-color: #64748b !important;
+    opacity: 1 !important;
+}
+[data-testid="stSidebar"]:hover [data-testid="stExpander"] {
     border: 1px solid rgba(255,255,255,.10) !important;
     border-radius: 7px !important;
     background: rgba(255,255,255,.045) !important;
@@ -315,9 +628,21 @@ section.main {
     font-size: 11px !important;
 }
 
-/* Bottom operational card. */
-.sugam-sidebar-spacer { height: 12px; }
-.sugam-refresh-card {
+/* ---------------- Bottom content ---------------- */
+.sugam-sidebar-spacer,
+.sugam-refresh-card,
+.sugam-profile-card,
+.sugam-session-meta,
+.sugam-footer {
+    display: none !important;
+}
+
+[data-testid="stSidebar"]:hover .sugam-sidebar-spacer {
+    display: block !important;
+    height: 12px;
+}
+[data-testid="stSidebar"]:hover .sugam-refresh-card {
+    display: block !important;
     margin-top: 12px;
     padding: 11px 11px 9px;
     border: 1px solid rgba(255,255,255,.10);
@@ -377,11 +702,10 @@ section.main {
     box-shadow: 0 1px 3px rgba(0,0,0,.24);
 }
 
-/* Profile card at the foot of the navigation, as in the reference. */
-.sugam-profile-card {
+[data-testid="stSidebar"]:hover .sugam-profile-card {
+    display: flex !important;
     margin-top: 9px;
     padding: 9px;
-    display: flex;
     align-items: center;
     gap: 9px;
     border: 1px solid rgba(255,255,255,.10);
@@ -437,10 +761,32 @@ section.main {
     font-weight: 700;
     text-transform: uppercase;
 }
+[data-testid="stSidebar"]:hover .sugam-session-meta {
+    display: block !important;
+    margin-top: 5px;
+    color: #8095b1;
+    font-size: 8px;
+    text-align: center;
+}
+[data-testid="stSidebar"]:hover .sugam-footer {
+    display: block !important;
+    padding: 7px 0 0;
+    color: #6680a1;
+    font-size: 8px;
+    text-align: center;
+}
 
-/* Sidebar buttons: refresh and logout keep their original Python callbacks. */
-[data-testid="stSidebar"] .stButton > button {
+/* Hide every sidebar action button in rail mode. Reveal them only on hover. */
+[data-testid="stSidebar"] .stButton {
+    display: none !important;
+}
+[data-testid="stSidebar"]:hover .stButton {
+    display: block !important;
+}
+[data-testid="stSidebar"]:hover .stButton > button {
     min-height: 34px;
+    width: 100%;
+    padding: 0 10px !important;
     border-radius: 7px !important;
     border: 1px solid rgba(255,255,255,.12) !important;
     color: #dce8f7 !important;
@@ -449,34 +795,20 @@ section.main {
     font-weight: 600 !important;
     box-shadow: none !important;
 }
-[data-testid="stSidebar"] .stButton > button:hover {
+[data-testid="stSidebar"]:hover .stButton > button:hover {
     border-color: rgba(112,174,255,.55) !important;
     background: rgba(45,127,240,.18) !important;
     color: #ffffff !important;
 }
-[data-testid="stSidebar"] .stButton > button p {
+[data-testid="stSidebar"]:hover .stButton > button p {
     color: inherit !important;
     font-size: inherit !important;
 }
 
-.sugam-session-meta {
-    margin-top: 5px;
-    color: #8095b1;
-    font-size: 8px;
-    text-align: center;
-}
-.sugam-footer {
-    padding: 7px 0 0;
-    color: #6680a1;
-    font-size: 8px;
-    text-align: center;
-}
 [data-testid="stSidebar"] hr {
     margin: 10px 0 !important;
     border-color: rgba(255,255,255,.08) !important;
 }
-
-
 </style>
 """, unsafe_allow_html=True)
 
@@ -487,13 +819,18 @@ section.main {
 FULL_MENU_ITEMS = [
     "🏠 Business Overview",
     "💹 P&L Dashboard",
-    "📌 Non-FTL KPI Dashboard",
     "💰 Net Profit Dashboard",
     "📊 Comparison",
+    "📦 Tariff Rate Dashboard",
     "📈 Outstanding Analysis",
+    "📅 Monthly Trend EDD",
     "👥 Customer Analysis",
+    "🧭 NBD Customer Analysis",
+    "🚚 Bidding Analysis",
     "🚛 Service Analysis",
+    "📦 Stock Operations",
     "📄 Reports",
+    "📊 Usage Analytics",
     "🛠️ User Management",
 ]
 
@@ -508,13 +845,10 @@ REPORTS = {
         "📊 Delivery Summary Turnover": show_delivery_summary_turnover,
         "📊 Branch Wise Booking Turnover": show_branch_wise_booking_turnover,
         "⚖️ Booking Weight Summary": show_booking_weight_summary_turnover,
-        "📅 Monthly Trend EDD": show_monthly_trend_edd,
+        
     },
     "💰 Accounts Reports": {
         "📋 GR Costing Head Wise": show_GrCostingHeadWise,
-    },
-    "📦 Tariff Reports": {
-        "📦 Tariff Rate Dashboard": show_tariff_rate_dashboard,
     },
 }
 
@@ -541,11 +875,59 @@ if not st.session_state["logged_in"]:
 # =========================
 role = st.session_state.get("role", "viewer")
 
-allowed_menu = get_allowed_menu(role)          # e.g. ["🏠 Overview", "📊 Comparison", ...]
+allowed_menu = list(get_allowed_menu(role) or [])  # e.g. ["🏠 Overview", "📊 Comparison", ...]
 allowed_reports = set(get_allowed_reports(role))    # e.g. {"📊 Zone Booking Turnover"}
 # Make the new EDD report immediately available in the Reports menu.
 allowed_reports.add("📅 Monthly Trend EDD")
-allowed_reports.add("📦 Tariff Rate Dashboard")
+
+# Tariff dashboard is a primary navigation page, not a report-folder item.
+# Keep it available to every authenticated role.
+if "📦 Tariff Rate Dashboard" not in allowed_menu:
+    if "📊 Comparison" in allowed_menu:
+        tariff_position = allowed_menu.index("📊 Comparison") + 1
+    else:
+        tariff_position = min(1, len(allowed_menu))
+    allowed_menu.insert(tariff_position, "📦 Tariff Rate Dashboard")
+
+# Stock Operations is a core operational page. Data-scope restrictions are
+# enforced inside the page for branch/circle/zone users.
+if "📦 Stock Operations" not in allowed_menu:
+    stock_position = allowed_menu.index("🏠 Business Overview") + 1 \
+        if "🏠 Business Overview" in allowed_menu else 0
+    allowed_menu.insert(stock_position, "📦 Stock Operations")
+
+
+
+# NBD Customer Analysis is a newly registered primary page. Keep it immediately
+# visible to admins even before the role/menu permission table is re-saved.
+# Other roles can be granted access normally from User Management.
+if role.lower() == "admin" and "🧭 NBD Customer Analysis" not in allowed_menu:
+    if "👥 Customer Analysis" in allowed_menu:
+        nbd_position = allowed_menu.index("👥 Customer Analysis") + 1
+    else:
+        nbd_position = len(allowed_menu)
+    allowed_menu.insert(nbd_position, "🧭 NBD Customer Analysis")
+
+# Bidding Analysis is a newly registered primary page. Keep it immediately
+# visible to admins even before the role/menu permission table is re-saved.
+# Other roles can be granted access normally from User Management.
+if role.lower() == "admin" and "🚚 Bidding Analysis" not in allowed_menu:
+    if "🧭 NBD Customer Analysis" in allowed_menu:
+        bidding_position = allowed_menu.index("🧭 NBD Customer Analysis") + 1
+    elif "👥 Customer Analysis" in allowed_menu:
+        bidding_position = allowed_menu.index("👥 Customer Analysis") + 1
+    else:
+        bidding_position = len(allowed_menu)
+    allowed_menu.insert(bidding_position, "🚚 Bidding Analysis")
+
+# Usage Analytics is a system/admin page and does not require a database permission row.
+if role.lower() == "admin" and "📊 Usage Analytics" not in allowed_menu:
+    analytics_position = allowed_menu.index("🛠️ User Management") \
+        if "🛠️ User Management" in allowed_menu else len(allowed_menu)
+    allowed_menu.insert(analytics_position, "📊 Usage Analytics")
+else:
+    # Defense-in-depth: never expose live employee usage to non-admin roles.
+    allowed_menu = [item for item in allowed_menu if item != "📊 Usage Analytics"]
 
 # Only keep report entries this role is allowed to see, in every department folder
 REPORTS_VISIBLE = {
@@ -608,7 +990,6 @@ with st.sidebar:
             <div class="sugam-logo-mark" aria-hidden="true"></div>
             <div class="sugam-logo-copy">
                 <div class="sugam-logo-name">SUGAM</div>
-                <div class="sugam-logo-sub">LOGISTICS</div>
             </div>
         </div>
         """,
@@ -632,6 +1013,88 @@ with st.sidebar:
 
     # Existing reports search/folder logic is preserved exactly.
     if menu == "📄 Reports":
+
+        # Keep the sidebar fully expanded while the Reports section is selected.
+        # This prevents report search/folders/buttons from disappearing when the
+        # mouse moves away from the sidebar in hover mode.
+        st.markdown(
+            """
+            <style>
+            [data-testid="stSidebar"] {
+                width: 242px !important;
+                min-width: 242px !important;
+                max-width: 242px !important;
+                flex: 0 0 242px !important;
+                overflow: hidden !important;
+            }
+
+            [data-testid="stSidebar"] [data-testid="stSidebarContent"],
+            [data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+                padding-left: 12px !important;
+                padding-right: 12px !important;
+            }
+
+            [data-testid="stSidebar"] .sugam-logo-wrap {
+                margin-left: -12px !important;
+                margin-right: -12px !important;
+                padding: 0 15px !important;
+                justify-content: flex-start !important;
+            }
+
+            [data-testid="stSidebar"] .sugam-logo-copy,
+            [data-testid="stSidebar"] .sugam-nav-label,
+            [data-testid="stSidebar"] [data-testid="stTextInput"],
+            [data-testid="stSidebar"] [data-testid="stExpander"],
+            [data-testid="stSidebar"] .sugam-sidebar-spacer,
+            [data-testid="stSidebar"] .sugam-refresh-card,
+            [data-testid="stSidebar"] .sugam-session-meta,
+            [data-testid="stSidebar"] .sugam-footer,
+            [data-testid="stSidebar"] .stButton {
+                display: block !important;
+            }
+
+            [data-testid="stSidebar"] .sugam-profile-card {
+                display: flex !important;
+            }
+
+            [data-testid="stSidebar"] div[role="radiogroup"] label {
+                width: 100% !important;
+                min-height: 39px !important;
+                margin: 0 !important;
+                padding: 8px 10px !important;
+                justify-content: flex-start !important;
+            }
+
+            [data-testid="stSidebar"] div[role="radiogroup"] label p {
+                width: auto !important;
+                max-width: none !important;
+                color: #d9e5f4 !important;
+                font-size: 12px !important;
+                line-height: 1.2 !important;
+                overflow: visible !important;
+            }
+
+            [data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) p {
+                color: #ffffff !important;
+                font-weight: 700 !important;
+            }
+
+            [data-testid="stSidebar"] .stButton > button {
+                min-height: 34px !important;
+                width: 100% !important;
+                padding: 0 10px !important;
+                border-radius: 7px !important;
+                border: 1px solid rgba(255,255,255,.12) !important;
+                color: #dce8f7 !important;
+                background: rgba(255,255,255,.055) !important;
+                font-size: 10px !important;
+                font-weight: 600 !important;
+                box-shadow: none !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
         # ---------------------------------
         # SEARCH REPORT
@@ -750,6 +1213,7 @@ with st.sidebar:
 
     # Original logout behavior preserved.
     if st.button("🚪 Logout", use_container_width=True, key="sidebar_logout"):
+        unregister_usage_session()
         st.session_state.clear()
         st.rerun()
 
@@ -759,14 +1223,25 @@ with st.sidebar:
     )
 
 
+# ==========================================================
+# Live usage heartbeat / page-open tracking (memory only)
+# ==========================================================
+if menu == "📄 Reports" and st.session_state.get("selected_report"):
+    _current_usage_page = f"📄 Reports › {st.session_state.get('selected_report')}"
+else:
+    _current_usage_page = menu
+
+track_usage(_current_usage_page, count_open=True)
+
+
 if menu == "🏠 Business Overview":
     show_overview()
 
+elif menu == "📦 Stock Operations":
+    show_stock_operations()
+
 elif menu == "💹 P&L Dashboard":
     show_pnl_dashboard()
-
-elif menu == "📌 Non-FTL KPI Dashboard":
-    show_non_ftl_kpi_dashboard()
 
 elif menu == "💰 Net Profit Dashboard":
     show_net_profit_dashboard()
@@ -774,14 +1249,32 @@ elif menu == "💰 Net Profit Dashboard":
 elif menu == "📊 Comparison":
     show_comparison()
 
+elif menu == "📦 Tariff Rate Dashboard":
+    show_tariff_rate_dashboard()
+
 elif menu == "📈 Outstanding Analysis":
     show_OutstandingAnalysis()
 
 elif menu == "👥 Customer Analysis":
     show_CustomerAnalysis()
 
+elif menu == "🧭 NBD Customer Analysis":
+    show_NBDAnalysis()
+
+elif menu == "🚚 Bidding Analysis":
+    show_bidding_analysis()
+
+elif menu == "📅 Monthly Trend EDD":
+    show_monthly_trend_edd()
+
 elif menu == "🚛 Service Analysis":
     show_service_level()
+
+elif menu == "📊 Usage Analytics":
+    if role.lower() == "admin":
+        show_usage_analytics()
+    else:
+        st.error("You do not have access to Usage Analytics.")
 
 elif menu == "🛠️ User Management":
     show_UserManagement()
