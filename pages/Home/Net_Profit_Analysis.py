@@ -2147,59 +2147,81 @@ def show_net_profit_dashboard():
     # --------------------------------------------------------
 
     filter_cols = executive_header.columns(
-        [1.15, 1.05, 1.05, 1, 1.35, 1.2, 1.2, 1.1, 1.0],
+        [1.0, 1.15, 1.05, 1.05, 1, 1.35, 1.2, 1.2, 1.1, 1.0],
         gap="small",
     )
 
     with filter_cols[0]:
+        period_mode = st.selectbox(
+            "Period Mode",
+            ["Financial Year", "Custom Date"],
+            key="np_period_mode",
+        )
+
+    with filter_cols[1]:
         fy = st.selectbox(
             "Financial Year",
             FY_OPTIONS,
             key="np_fy",
+            disabled=period_mode != "Financial Year",
         )
 
-    if fy == "Select FY":
-        st.info("Please select financial year.")
-        return
+    if period_mode == "Financial Year":
+        if fy == "Select FY":
+            st.info("Please select financial year.")
+            return
 
-    # Financial Year remains the master period. From / To dates let the user
-    # analyse any smaller custom period inside the selected FY.
-    fy_start, fy_end = get_date_range(fy)
+        start_date, end_date = get_date_range(fy)
+        prev_fy = get_previous_fy(fy)
+        prev_start, prev_end = get_date_range(prev_fy)
 
-    # Reset the custom date window to the full FY whenever FY changes.
-    # After that, the user can narrow it to any From / To date inside that FY.
-    if st.session_state.get("np_date_filter_fy") != fy:
-        st.session_state["np_from_date"] = fy_start
-        st.session_state["np_to_date"] = fy_end
-        st.session_state["np_date_filter_fy"] = fy
+        with filter_cols[2]:
+            st.date_input(
+                "From Date",
+                value=start_date,
+                disabled=True,
+                key="np_from_date_fy",
+                format="DD/MM/YYYY",
+            )
 
-    with filter_cols[1]:
-        start_date = st.date_input(
-            "From Date",
-            min_value=fy_start,
-            max_value=fy_end,
-            key="np_from_date",
-            format="DD/MM/YYYY",
-        )
+        with filter_cols[3]:
+            st.date_input(
+                "To Date",
+                value=end_date,
+                disabled=True,
+                key="np_to_date_fy",
+                format="DD/MM/YYYY",
+            )
+    else:
+        today = pd.Timestamp.today().date()
+        default_from = today.replace(day=1)
 
-    with filter_cols[2]:
-        end_date = st.date_input(
-            "To Date",
-            min_value=fy_start,
-            max_value=fy_end,
-            key="np_to_date",
-            format="DD/MM/YYYY",
-        )
+        with filter_cols[2]:
+            start_date = st.date_input(
+                "From Date",
+                value=st.session_state.get("np_custom_from_date", default_from),
+                key="np_custom_from_date",
+                format="DD/MM/YYYY",
+            )
 
-    if start_date > end_date:
-        st.warning("From Date cannot be after To Date.")
-        return
+        with filter_cols[3]:
+            end_date = st.date_input(
+                "To Date",
+                value=st.session_state.get("np_custom_to_date", today),
+                key="np_custom_to_date",
+                format="DD/MM/YYYY",
+            )
 
-    prev_fy = get_previous_fy(fy)
+        if start_date > end_date:
+            st.warning("From Date cannot be after To Date.")
+            return
 
-    # LY comparison uses the exact same date window shifted back by one year.
-    prev_start = (pd.Timestamp(start_date) - pd.DateOffset(years=1)).date()
-    prev_end = (pd.Timestamp(end_date) - pd.DateOffset(years=1)).date()
+        prev_start = (pd.Timestamp(start_date) - pd.DateOffset(years=1)).date()
+        prev_end = (pd.Timestamp(end_date) - pd.DateOffset(years=1)).date()
+
+        # Labels are reused by existing CY/LY charts and cards.
+        fy = f"{start_date.strftime('%d-%b-%Y')} to {end_date.strftime('%d-%b-%Y')}"
+        prev_fy = f"{prev_start.strftime('%d-%b-%Y')} to {prev_end.strftime('%d-%b-%Y')}"
 
     # Branch/Agency master is loaded first and becomes the dashboard branch scope.
     branch_master_df = load_net_profit_branch_mast()
@@ -2244,7 +2266,7 @@ def show_net_profit_dashboard():
     )
 
     # Use whichever hierarchy columns are actually available.
-    with filter_cols[3]:
+    with filter_cols[9]:
         zones = st.multiselect(
             "Zone",
             safe_options(df, "zone"),
