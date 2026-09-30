@@ -272,8 +272,8 @@ def calculate_kpis(df):
     }
 
     values["margin"] = (
-        values["net_profit"] / values["total_income"] * 100
-        if values["total_income"]
+        values["net_profit"] / values["business"] * 100
+        if values["business"]
         else 0.0
     )
     values["gp_margin"] = (
@@ -2482,6 +2482,20 @@ def show_net_profit_dashboard():
         )
         previous["gp_margin"] = (
             previous["combined_pnl"] / booking_business_previous * 100
+            if booking_business_previous
+            else 0.0
+        )
+
+        # Net Profit % must use the same Business denominator shown on the dashboard.
+        # In consolidated All-Branches mode, the authoritative business base is the
+        # P&L SP revenue total stored in booking_business_current/previous.
+        current["margin"] = (
+            current["net_profit"] / booking_business_current * 100
+            if booking_business_current
+            else 0.0
+        )
+        previous["margin"] = (
+            previous["net_profit"] / booking_business_previous * 100
             if booking_business_previous
             else 0.0
         )
