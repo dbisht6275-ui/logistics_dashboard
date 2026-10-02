@@ -3617,11 +3617,41 @@ def show_bidding_analysis():
         st.warning("No records match the selected filters.")
         return
 
-    render_kpis(filtered_df)
-    render_query_response_analysis(filtered_df)
-    render_charts(filtered_df)
-    render_vehicle_type_insights(filtered_df)
-    render_vendor_performance(filtered_df)
-    render_exceptions(filtered_df)
-    render_detail_table(filtered_df)
+    # --------------------------------------------------------
+    # SECTION NAVIGATION
+    # Keep the dashboard easy to use by showing one major section at a time.
+    # Filters above continue to apply to every section.
+    # --------------------------------------------------------
+    st.sidebar.markdown("### Dashboard Navigation")
+    dashboard_section = st.sidebar.radio(
+        "Go to section",
+        [
+            "Overview",
+            "Query Response Monitoring",
+            "Management Analysis",
+            "Vehicle Type Insights",
+            "Vendor Performance",
+            "Exceptions & Controls",
+            "Detailed Bid Data",
+        ],
+        key="bidding_dashboard_section",
+        label_visibility="collapsed",
+    )
+
+    st.sidebar.caption("Select a section to avoid scrolling through the full dashboard.")
+
+    if dashboard_section == "Overview":
+        render_kpis(filtered_df)
+    elif dashboard_section == "Query Response Monitoring":
+        render_query_response_analysis(filtered_df)
+    elif dashboard_section == "Management Analysis":
+        render_charts(filtered_df)
+    elif dashboard_section == "Vehicle Type Insights":
+        render_vehicle_type_insights(filtered_df)
+    elif dashboard_section == "Vendor Performance":
+        render_vendor_performance(filtered_df)
+    elif dashboard_section == "Exceptions & Controls":
+        render_exceptions(filtered_df)
+    elif dashboard_section == "Detailed Bid Data":
+        render_detail_table(filtered_df)
 
