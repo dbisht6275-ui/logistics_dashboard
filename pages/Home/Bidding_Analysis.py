@@ -1179,7 +1179,10 @@ def _donut_chart(labels, values, height=265, center_label="Total", colors=None):
             y=-0.02,
             xanchor="center",
             x=0.5,
-            font=dict(size=9, color=CHART_TEXT_COLOR),
+            font=dict(size=8, color=CHART_TEXT_COLOR),
+            entrywidth=62,
+            entrywidthmode="pixels",
+            itemwidth=28,
         ),
         font=dict(family="Arial, sans-serif", size=10, color=CHART_TEXT_COLOR),
         annotations=[
@@ -1967,7 +1970,6 @@ def render_charts(df):
                 colors=["#2563eb", "#60a5fa", "#93c5fd", "#ef4444", "#94a3b8", "#fca5a5"],
             )
             _render_chart_card("Winner Selection Mix", winner_fig)
-            st.caption("L-1, L-2, L-3, Manual and No Winner distribution of unique bids.")
         else:
             with st.container(border=True):
                 st.markdown("<div class='bid-chart-title'>Winner Selection Mix</div>", unsafe_allow_html=True)
@@ -1983,7 +1985,6 @@ def render_charts(df):
                 colors=["#1d4ed8", "#7cc0f2", "#ef4444", "#f5a3a7", "#14b8a6"],
             )
             _render_chart_card("Bidder Participation Mix", participation_fig)
-            st.caption("Shows how many bids had no bidder, one bidder, or competitive participation.")
         else:
             with st.container(border=True):
                 st.markdown("<div class='bid-chart-title'>Bidder Participation Mix</div>", unsafe_allow_html=True)
@@ -1999,7 +2000,6 @@ def render_charts(df):
                 colors=["#2563eb", "#7cc0f2", "#ef4444"],
             )
             _render_chart_card("₹500 Gap Compliance Mix", gap_fig)
-            st.caption("OK vs Issue is evaluated only on comparable bids; non-comparable cases are tracked separately.")
         else:
             with st.container(border=True):
                 st.markdown("<div class='bid-chart-title'>₹500 Gap Compliance Mix</div>", unsafe_allow_html=True)
