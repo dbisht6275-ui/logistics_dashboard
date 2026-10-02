@@ -1491,44 +1491,6 @@ def _render_bid_trend_card(df):
         )
 
 
-def render_overview_charts(df):
-    """Three compact overview charts matching the executive flow mock."""
-    st.markdown("#### Overview Trends & Flow")
-    c1, c2, c3 = st.columns(3, gap="small")
-
-    with c1:
-        trend_data = _bid_trend_data(df, "D")
-        if not trend_data.empty:
-            fig = _line_chart_with_values(
-                trend_data["PERIOD_LABEL"],
-                trend_data["Bids"],
-                height=240,
-            )
-            _render_chart_card("Bid Trend — Daily", fig)
-        else:
-            with st.container(border=True):
-                st.markdown("<div class='bid-chart-title'>Bid Trend — Daily</div>", unsafe_allow_html=True)
-                st.info("No bid trend data available.")
-
-    with c2:
-        source_clean = _clean_text_series(df["SOURCE"]).str.upper()
-        erp = int(df.loc[source_clean.eq("ERP"), "BIDID"].nunique())
-        app = int(df.loc[source_clean.eq("APP"), "BIDID"].nunique())
-        fig = _donut_chart(["ERP Bids", "APP Bids"], [erp, app], height=240, center_label="Total Bids")
-        _render_chart_card("Bid Source Split", fig)
-
-    with c3:
-        winner = int(df.loc[df["HAS_WINNER"], "BIDID"].nunique())
-        created = int(df.loc[df["LHC_STATUS"].eq("LHC Created"), "BIDID"].nunique())
-        pending = max(winner - created, 0)
-        fig = _bar_chart_with_values(
-            ["Winner Bids", "LHC Created", "LHC Pending"],
-            [winner, created, pending],
-            height=240,
-        )
-        _render_chart_card("Winner → LHC Flow", fig)
-
-
 def render_zone_bidding_insights(df):
     """Executive zone-wise bidding view for the Overview tab."""
     st.markdown("#### Zone-wise Bidding Insights")
@@ -1668,7 +1630,7 @@ def render_zone_bidding_insights(df):
                 y=flow_work["Zone"],
                 name="LHC Created",
                 orientation="h",
-                marker=dict(color="#16a34a"),
+                marker=dict(color="#2563eb"),
                 hovertemplate="<b>%{y}</b><br>LHC Created: %{x:,}<extra></extra>",
             )
         )
@@ -1678,7 +1640,7 @@ def render_zone_bidding_insights(df):
                 y=flow_work["Zone"],
                 name="LHC Pending",
                 orientation="h",
-                marker=dict(color="#dc2626"),
+                marker=dict(color="#f59e0b"),
                 hovertemplate="<b>%{y}</b><br>LHC Pending: %{x:,}<extra></extra>",
             )
         )
@@ -3945,7 +3907,6 @@ def show_bidding_analysis():
 
     with tab_overview:
         render_kpis(filtered_df)
-        render_overview_charts(filtered_df)
         render_zone_bidding_insights(filtered_df)
 
     with tab_query:
