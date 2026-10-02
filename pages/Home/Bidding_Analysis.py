@@ -2178,25 +2178,43 @@ def render_vehicle_type_insights(df):
     )
 
     # --------------------------------------------------------
-    # Charts - show every vehicle type inside a fixed-height scroll area.
-    # Both charts scroll together so the page itself does not become too long.
+    # Charts - Top N selector applies to BOTH vehicle charts.
     # --------------------------------------------------------
-    chart_height = min(1400, max(320, 44 * len(vehicle) + 90))
+    topn_label, topn_control = st.columns([8.7, 1.3], gap="small", vertical_alignment="center")
+    with topn_label:
+        st.markdown("#### Vehicle Type Charts")
+    with topn_control:
+        top_n = st.selectbox(
+            "Top N",
+            [10, 20, 30],
+            index=0,
+            key="vehicle_insights_top_n",
+            help="Show Top 10, 20 or 30 vehicle types in both charts.",
+        )
+
+    # Use the same Top N vehicle set for both charts so the comparison stays aligned.
+    chart_vehicle = (
+        vehicle.sort_values(["Bids", "Winner Bids", "Vehicle Type"], ascending=[False, False, True])
+        .head(int(top_n))
+        .copy()
+    )
+
+    chart_height = min(1400, max(320, 44 * len(chart_vehicle) + 90))
 
     with st.container(height=540, border=False):
         chart_left, chart_right = st.columns(2, gap="small")
 
         with chart_left:
             volume_fig = _horizontal_bar_chart(
-                vehicle["Vehicle Type"],
-                vehicle["Bids"],
+                chart_vehicle["Vehicle Type"],
+                chart_vehicle["Bids"],
                 height=chart_height,
                 value_name="Bids",
             )
-            _render_chart_card("Vehicle Type Bid Volume — All Types", volume_fig)
+            _render_chart_card(f"Vehicle Type Bid Volume — Top {top_n}", volume_fig)
 
         with chart_right:
-            winner_mix = vehicle[
+            winner_mix = chart_vehicle[
                 ["Vehicle Type", "L1 Selected", "Manual Selected", "Winner Bids"]
             ].copy()
             winner_mix["Other Winner"] = (
@@ -2255,7 +2273,7 @@ def render_vehicle_type_insights(df):
             )
             mix_fig.update_yaxes(showgrid=False, automargin=True)
             mix_fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
-            _render_chart_card("Vehicle Type Winner Mix — L-1 vs Manual", mix_fig)
+            _render_chart_card(f"Vehicle Type Winner Mix — Top {top_n} • L-1 vs Manual", mix_fig)
 
     # --------------------------------------------------------
     # Detailed insight table for all vehicle types.
@@ -3574,19 +3592,16 @@ def show_bidding_analysis():
             padding-top:.55rem !important;
         }
 
-        /* Same-page navigation buttons matching the reference header. */
+        /* Same-page navigation buttons matching the reference header.
+           IMPORTANT: scoped only to this dashboard nav row so the host app sidebar
+           keeps its own colors/styling. */
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
         div[data-testid="stRadio"] div[role="radiogroup"] {
             display:flex !important;
-            flex-wrap:wrap !important;
+            flex-wrap:nowrap !important;
             gap:4px !important;
-            background:#eef6ff !important;
-            border:1px solid #cfe1f5 !important;
-            border-top:none !important;
-            border-radius:0 0 7px 7px !important;
-            padding:5px 10px 6px !important;
-            min-height:40px !important;
-            box-shadow:0 2px 5px rgba(15,42,67,.06) !important;
         }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
         div[data-testid="stRadio"] div[role="radiogroup"] label {
             display:flex !important;
             align-items:center !important;
@@ -3600,20 +3615,24 @@ def show_bidding_analysis():
             box-shadow:0 1px 3px rgba(15,42,67,.05) !important;
             cursor:pointer !important;
         }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
         div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
             background:linear-gradient(180deg,#173f73 0%,#0f3769 100%) !important;
             border-color:#0f3769 !important;
             box-shadow:0 2px 7px rgba(15,55,105,.24) !important;
         }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
         div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
             display:none !important;
         }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
         div[data-testid="stRadio"] div[role="radiogroup"] label p {
             font-size:10px !important;
             font-weight:750 !important;
             color:#102a43 !important;
             white-space:nowrap !important;
         }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
         div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) p {
             color:#ffffff !important;
         }
