@@ -1182,7 +1182,7 @@ def _donut_chart(labels, values, height=265, center_label="Total", colors=None):
             font=dict(size=8, color=CHART_TEXT_COLOR),
             entrywidth=62,
             entrywidthmode="pixels",
-            itemwidth=28,
+            itemwidth=30,
         ),
         font=dict(family="Arial, sans-serif", size=10, color=CHART_TEXT_COLOR),
         annotations=[
