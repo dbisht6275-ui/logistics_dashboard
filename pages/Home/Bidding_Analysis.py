@@ -1697,9 +1697,11 @@ def render_zone_bidding_insights(df):
                     f"{int(v):,} | {pct:.1f}%"
                     for v, pct in zip(flow_work["LHC Pending"], flow_work["LHC Pending %"])
                 ],
-                textposition="inside",
-                insidetextanchor="middle",
-                textfont=dict(color="#ffffff", size=10),
+                # Pending bars can be very small, so place the value outside
+                # the stacked bar to keep the number + % visible for every zone.
+                textposition="outside",
+                textfont=dict(color=CHART_TEXT_COLOR, size=10),
+                cliponaxis=False,
                 hovertemplate=(
                     "<b>%{y}</b><br>"
                     "LHC Pending: %{x:,}<br>"
@@ -1728,7 +1730,18 @@ def render_zone_bidding_insights(df):
             bargap=0.28,
         )
         flow_fig.update_yaxes(showgrid=False, automargin=True)
-        flow_fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+
+        # Extra right-side headroom keeps the outside pending labels from clipping.
+        flow_total = (flow_work["LHC Created"] + flow_work["LHC Pending"]).max()
+        if pd.notna(flow_total) and flow_total > 0:
+            flow_fig.update_xaxes(
+                showgrid=True,
+                gridcolor="#eef2f7",
+                range=[0, float(flow_total) * 1.16],
+            )
+        else:
+            flow_fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+
         _render_chart_card("Zone-wise Winner → LHC Flow", flow_fig)
 
     with st.expander("📋 Zone-wise Performance Table — expand / collapse", expanded=False):
