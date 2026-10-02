@@ -538,6 +538,9 @@ def prepare_bidding_data(df):
     # --------------------------------------------------------
     # LHC CONTROL / PENDING AGEING
     # --------------------------------------------------------
+    # Winner control: a BID is treated as having a winner when any one of
+    # the three winner indicators is available. The same HAS_WINNER logic
+    # is used for Winner Bids as well as LHC Created / Pending controls.
     is_winner_flag = _clean_text_series(df["ISWINNER"]).str.upper().eq("Y")
     has_winner_name = _clean_text_series(df["WINNER_NAME"]).ne("")
     has_final_rate = df["FINALRATE"].notna()
