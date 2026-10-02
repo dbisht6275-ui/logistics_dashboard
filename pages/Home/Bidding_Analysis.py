@@ -1139,35 +1139,44 @@ def _horizontal_bar_chart(labels, values, height=270, value_name="Bids"):
     return fig
 
 
-def _donut_chart(labels, values, height=245, center_label="Total"):
-    """Clean donut for small part-to-whole comparisons."""
+def _donut_chart(labels, values, height=265, center_label="Total", colors=None):
+    """Enhanced donut for part-to-whole comparisons with count + % labels."""
     labels = [str(x) for x in labels]
     values = [int(v) if pd.notna(v) else 0 for v in values]
     total = sum(values)
+
+    if colors is None:
+        colors = [
+            "#2563eb", "#60a5fa", "#f59e0b", "#ef4444", "#94a3b8", "#cbd5e1"
+        ]
 
     fig = go.Figure(
         go.Pie(
             labels=labels,
             values=values,
-            hole=0.64,
+            hole=0.66,
             sort=False,
-            textinfo="percent",
+            textinfo="none",
+            texttemplate="%{percent:.1%}<br>%{value:,}",
+            textposition="outside",
             textfont=dict(size=10, color=CHART_TEXT_COLOR),
             hovertemplate="<b>%{label}</b><br>Bids: %{value:,}<br>Share: %{percent}<extra></extra>",
-            marker=dict(line=dict(color="#ffffff", width=2)),
+            marker=dict(colors=colors[: len(labels)], line=dict(color="#ffffff", width=2.2)),
+            pull=[0.02 if i == 0 else 0 for i in range(len(labels))],
+            automargin=True,
         )
     )
 
     fig.update_layout(
         height=height,
-        margin=dict(l=12, r=12, t=8, b=8),
+        margin=dict(l=8, r=8, t=8, b=22),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="#ffffff",
         showlegend=True,
         legend=dict(
             orientation="h",
             yanchor="top",
-            y=-0.03,
+            y=-0.02,
             xanchor="center",
             x=0.5,
             font=dict(size=9, color=CHART_TEXT_COLOR),
@@ -1175,7 +1184,10 @@ def _donut_chart(labels, values, height=245, center_label="Total"):
         font=dict(family="Arial, sans-serif", size=10, color=CHART_TEXT_COLOR),
         annotations=[
             dict(
-                text=f"<b>{total:,}</b><br><span style='font-size:9px'>{center_label}</span>",
+                text=(
+                    f"<b style='font-size:18px'>{total:,}</b>"
+                    f"<br><span style='font-size:10px;color:#64748b'>{center_label}</span>"
+                ),
                 x=0.5,
                 y=0.5,
                 showarrow=False,
@@ -1285,6 +1297,28 @@ def _render_chart_card(title, fig):
             },
         )
 
+
+def _insight_highlight_card(title, value, subtitle, accent="#2563eb"):
+    """Small highlight card used above compact composition charts."""
+    st.markdown(
+        f"""
+        <div style="
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            border: 1px solid #dbe4ef;
+            border-left: 4px solid {accent};
+            border-radius: 14px;
+            padding: 12px 14px 10px 14px;
+            min-height: 84px;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+            margin-bottom: 6px;
+        ">
+            <div style="font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px;">{title}</div>
+            <div style="font-size: 24px; font-weight: 800; color: #0f172a; line-height: 1.1; margin-bottom: 5px;">{value}</div>
+            <div style="font-size: 12px; font-weight: 600; color: #2563eb;">{subtitle}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def _ageing_chart_with_values(ageing_df, height=255):
@@ -1825,10 +1859,8 @@ def render_charts(df):
                 st.info("No route data available.")
 
     # --------------------------------------------------------
-    # Row 2: all composition donuts in ONE row
+    # Row 2: composition insights + donuts
     # --------------------------------------------------------
-    d1, d2, d3 = st.columns(3, gap="small")
-
     winner_counts = df.groupby("WINNER_MODE")["BIDID"].nunique()
     preferred_winner_order = [
         "L-1", "L-2", "L-3", "Manual", "Winner Level Not Defined", "No Winner"
@@ -1848,20 +1880,6 @@ def render_charts(df):
     )
     winner_data = winner_data[winner_data["Bids"].gt(0)]
 
-    with d1:
-        if not winner_data.empty:
-            winner_fig = _donut_chart(
-                winner_data["WINNER_MODE"],
-                winner_data["Bids"],
-                height=250,
-                center_label="Winner Bids",
-            )
-            _render_chart_card("Winner Selection Mix", winner_fig)
-        else:
-            with st.container(border=True):
-                st.markdown("<div class='bid-chart-title'>Winner Selection Mix</div>", unsafe_allow_html=True)
-                st.info("No winner data available.")
-
     participation_order = [
         "No Bidder",
         "1 Bidder",
@@ -1880,20 +1898,6 @@ def render_charts(df):
     )
     participation = participation[participation["Bids"].gt(0)]
 
-    with d2:
-        if not participation.empty:
-            participation_fig = _donut_chart(
-                participation["BIDDER_BUCKET"],
-                participation["Bids"],
-                height=250,
-                center_label="Bids",
-            )
-            _render_chart_card("Bidder Participation Mix", participation_fig)
-        else:
-            with st.container(border=True):
-                st.markdown("<div class='bid-chart-title'>Bidder Participation Mix</div>", unsafe_allow_html=True)
-                st.info("No bidder participation data available.")
-
     gap_data = (
         df.groupby("GAP_STATUS")["BIDID"]
         .nunique()
@@ -1905,15 +1909,97 @@ def render_charts(df):
     )
     gap_data = gap_data[gap_data["Bids"].gt(0)]
 
+    total_unique_bids = int(df["BIDID"].nunique()) if "BIDID" in df.columns else 0
+    winner_bids_total = int(winner_counts.drop(labels=["No Winner"], errors="ignore").sum())
+    l1_count = int(winner_counts.get("L-1", 0))
+    manual_count = int(winner_counts.get("Manual", 0))
+    competitive_bids = int(
+        df.loc[pd.to_numeric(df.get("BIDDER_COUNT"), errors="coerce").fillna(0).ge(2), "BIDID"].nunique()
+    )
+    gap_ok_count = int(gap_data.set_index("GAP_STATUS")["Bids"].to_dict().get("OK", 0)) if not gap_data.empty else 0
+    comparable_count = int(gap_data[gap_data["GAP_STATUS"].isin(["OK", "Issue"])]["Bids"].sum()) if not gap_data.empty else 0
+    no_bidder_count = int(participation.set_index("BIDDER_BUCKET")["Bids"].to_dict().get("No Bidder", 0)) if not participation.empty else 0
+    multi_bidder_count = int(participation[participation["BIDDER_BUCKET"].isin(["2 Bidders", "3 Bidders", "4+ Bidders"])]["Bids"].sum()) if not participation.empty else 0
+
+    h1, h2, h3 = st.columns(3, gap="small")
+    with h1:
+        _insight_highlight_card(
+            "Winner Snapshot",
+            f"{winner_bids_total:,}",
+            (
+                f"L-1 {l1_count / winner_bids_total * 100:.1f}% | "
+                f"Manual {manual_count / winner_bids_total * 100:.1f}%"
+                if winner_bids_total else "No winner mix available"
+            ),
+            accent="#2563eb",
+        )
+    with h2:
+        _insight_highlight_card(
+            "Participation Snapshot",
+            f"{multi_bidder_count:,}",
+            (
+                f"{multi_bidder_count / total_unique_bids * 100:.1f}% bids had 2+ bidders | "
+                f"No bidder: {no_bidder_count:,}"
+                if total_unique_bids else "No participation data available"
+            ),
+            accent="#0ea5e9",
+        )
+    with h3:
+        _insight_highlight_card(
+            "₹500 Gap Snapshot",
+            f"{gap_ok_count:,}",
+            (
+                f"{gap_ok_count / comparable_count * 100:.1f}% OK among comparable bids"
+                if comparable_count else "No comparable bids available"
+            ),
+            accent="#f59e0b",
+        )
+
+    d1, d2, d3 = st.columns(3, gap="small")
+
+    with d1:
+        if not winner_data.empty:
+            winner_fig = _donut_chart(
+                winner_data["WINNER_MODE"],
+                winner_data["Bids"],
+                height=275,
+                center_label="Classified Bids",
+                colors=["#2563eb", "#60a5fa", "#93c5fd", "#ef4444", "#94a3b8", "#fca5a5"],
+            )
+            _render_chart_card("Winner Selection Mix", winner_fig)
+            st.caption("L-1, L-2, L-3, Manual and No Winner distribution of unique bids.")
+        else:
+            with st.container(border=True):
+                st.markdown("<div class='bid-chart-title'>Winner Selection Mix</div>", unsafe_allow_html=True)
+                st.info("No winner data available.")
+
+    with d2:
+        if not participation.empty:
+            participation_fig = _donut_chart(
+                participation["BIDDER_BUCKET"],
+                participation["Bids"],
+                height=275,
+                center_label="Unique Bids",
+                colors=["#1d4ed8", "#7cc0f2", "#ef4444", "#f5a3a7", "#14b8a6"],
+            )
+            _render_chart_card("Bidder Participation Mix", participation_fig)
+            st.caption("Shows how many bids had no bidder, one bidder, or competitive participation.")
+        else:
+            with st.container(border=True):
+                st.markdown("<div class='bid-chart-title'>Bidder Participation Mix</div>", unsafe_allow_html=True)
+                st.info("No bidder participation data available.")
+
     with d3:
         if not gap_data.empty:
             gap_fig = _donut_chart(
                 gap_data["GAP_STATUS"],
                 gap_data["Bids"],
-                height=250,
-                center_label="Checked",
+                height=275,
+                center_label="Gap Checked",
+                colors=["#2563eb", "#7cc0f2", "#ef4444"],
             )
             _render_chart_card("₹500 Gap Compliance Mix", gap_fig)
+            st.caption("OK vs Issue is evaluated only on comparable bids; non-comparable cases are tracked separately.")
         else:
             with st.container(border=True):
                 st.markdown("<div class='bid-chart-title'>₹500 Gap Compliance Mix</div>", unsafe_allow_html=True)
