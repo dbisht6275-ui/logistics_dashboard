@@ -3464,10 +3464,6 @@ def show_bidding_analysis():
             align-items:center !important;
             box-shadow:0 2px 7px rgba(15,42,67,.15);
         }
-        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
-        div[data-testid="stElementContainer"]:has(.bid-top-shell-anchor) {
-            display:none !important;
-        }
         .bid-header-title-text {
             color:#ffffff;
             font-size:19px;
@@ -3503,6 +3499,19 @@ def show_bidding_analysis():
             font-weight:700 !important;
             color:#334155 !important;
             background:#ffffff !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
+        div[data-testid="stButton"] button {
+            min-height:32px !important;
+            height:32px !important;
+            padding:0 14px !important;
+            border-radius:7px !important;
+            border:1px solid #8fb7e5 !important;
+            background:#ffffff !important;
+            color:#0f3769 !important;
+            font-size:10px !important;
+            font-weight:850 !important;
+            box-shadow:none !important;
         }
 
         /* Tabs: light-blue navigation strip directly below header */
@@ -3548,6 +3557,50 @@ def show_bidding_analysis():
         }
         div[data-testid="stTabs"] div[role="tabpanel"] {
             padding-top:.55rem !important;
+        }
+
+        /* Same-page navigation buttons matching the reference header. */
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            display:flex !important;
+            flex-wrap:wrap !important;
+            gap:4px !important;
+            background:#eef6ff !important;
+            border:1px solid #cfe1f5 !important;
+            border-top:none !important;
+            border-radius:0 0 7px 7px !important;
+            padding:5px 10px 6px !important;
+            min-height:40px !important;
+            box-shadow:0 2px 5px rgba(15,42,67,.06) !important;
+        }
+        div[data-testid="stRadio"] div[role="radiogroup"] label {
+            display:flex !important;
+            align-items:center !important;
+            justify-content:center !important;
+            min-height:29px !important;
+            padding:0 14px !important;
+            margin:0 !important;
+            border:1px solid #d9e7f6 !important;
+            border-radius:7px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f3f8fd 100%) !important;
+            box-shadow:0 1px 3px rgba(15,42,67,.05) !important;
+            cursor:pointer !important;
+        }
+        div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
+            background:linear-gradient(180deg,#173f73 0%,#0f3769 100%) !important;
+            border-color:#0f3769 !important;
+            box-shadow:0 2px 7px rgba(15,55,105,.24) !important;
+        }
+        div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
+            display:none !important;
+        }
+        div[data-testid="stRadio"] div[role="radiogroup"] label p {
+            font-size:10px !important;
+            font-weight:750 !important;
+            color:#102a43 !important;
+            white-space:nowrap !important;
+        }
+        div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) p {
+            color:#ffffff !important;
         }
 
         div[data-testid="stVerticalBlock"] { gap:.55rem !important; }
@@ -3902,7 +3955,7 @@ def show_bidding_analysis():
         st.session_state["bidding_to_date"] = today
 
     # --------------------------------------------------------
-    # Executive header — compact navy bar + one period selector
+    # Executive header — navy title + period selector + Run button
     # --------------------------------------------------------
     if "bidding_date_range" not in st.session_state:
         st.session_state["bidding_date_range"] = (
@@ -3910,8 +3963,8 @@ def show_bidding_analysis():
             st.session_state["bidding_to_date"],
         )
 
-    title_col, period_col = st.columns(
-        [6.8, 1.35],
+    title_col, period_col, run_col = st.columns(
+        [6.35, 1.55, .50],
         gap="small",
         vertical_alignment="center",
     )
@@ -3932,16 +3985,20 @@ def show_bidding_analysis():
             label_visibility="collapsed",
         )
 
-    # Streamlit range input may temporarily return one date while the user
-    # is selecting the second boundary. Keep the last complete range until then.
-    if isinstance(selected_period, (tuple, list)) and len(selected_period) == 2:
-        from_date, to_date = selected_period
-        st.session_state["bidding_date_range"] = (from_date, to_date)
-    else:
-        from_date = st.session_state["bidding_from_date"]
-        to_date = st.session_state["bidding_to_date"]
+    with run_col:
+        run_clicked = st.button(
+            "Run",
+            key="bidding_run_period",
+            use_container_width=True,
+        )
 
-    if from_date > to_date:
+    if isinstance(selected_period, (tuple, list)) and len(selected_period) == 2:
+        selected_from, selected_to = selected_period
+    else:
+        selected_from = st.session_state["bidding_from_date"]
+        selected_to = st.session_state["bidding_to_date"]
+
+    if selected_from > selected_to:
         st.error("From Date cannot be greater than To Date.")
         return
 
@@ -3952,18 +4009,14 @@ def show_bidding_analysis():
         and "BIDDER_VENDOR_LIST" not in cached_raw.columns
     )
 
-    date_changed = (
-        from_date != st.session_state.get("bidding_from_date")
-        or to_date != st.session_state.get("bidding_to_date")
-    )
-
     should_load = (
         "bidding_raw_data" not in st.session_state
         or needs_schema_refresh
-        or date_changed
+        or run_clicked
     )
 
     if should_load:
+        from_date, to_date = selected_from, selected_to
         st.session_state["bidding_from_date"] = from_date
         st.session_state["bidding_to_date"] = to_date
         st.session_state["bidding_date_range"] = (from_date, to_date)
@@ -3972,10 +4025,8 @@ def show_bidding_analysis():
             with st.spinner("Loading bidding data..."):
                 if needs_schema_refresh:
                     load_bidding_data.clear()
-
                 raw_df = load_bidding_data(from_date, to_date)
                 st.session_state["bidding_raw_data"] = raw_df
-
         except Exception as exc:
             st.error("Unable to load bidding data from SQL Server.")
             st.exception(exc)
@@ -3994,27 +4045,12 @@ def show_bidding_analysis():
         st.warning("No bidding data found for the selected date range.")
         return
 
-    filtered_df = apply_dashboard_filters(raw_df)
-
-    if filtered_df.empty:
-        st.warning("No records match the selected filters.")
-        return
-
     # --------------------------------------------------------
     # SAME-PAGE SECTION NAVIGATION
-    # Use top tabs so users can switch sections on the same page
-    # without scrolling through the complete dashboard or using sidebar navigation.
-    # Filters above continue to apply to every tab.
+    # Selected button stays dark navy, matching the reference.
     # --------------------------------------------------------
-    (
-        tab_overview,
-        tab_query,
-        tab_management,
-        tab_vehicle,
-        tab_vendor,
-        tab_exceptions,
-        tab_detail,
-    ) = st.tabs(
+    selected_section = st.radio(
+        "Dashboard Section",
         [
             "Overview",
             "Query Monitoring",
@@ -4023,28 +4059,32 @@ def show_bidding_analysis():
             "Vendor Performance",
             "Exceptions & Controls",
             "Detailed Data",
-        ]
+        ],
+        horizontal=True,
+        label_visibility="collapsed",
+        key="bidding_section_nav",
     )
 
-    with tab_overview:
+    # Global filters appear below the navigation.
+    filtered_df = apply_dashboard_filters(raw_df)
+
+    if filtered_df.empty:
+        st.warning("No records match the selected filters.")
+        return
+
+    if selected_section == "Overview":
         render_kpis(filtered_df)
         render_zone_bidding_insights(filtered_df)
-
-    with tab_query:
+    elif selected_section == "Query Monitoring":
         render_query_response_analysis(filtered_df)
-
-    with tab_management:
+    elif selected_section == "Management Analysis":
         render_charts(filtered_df)
-
-    with tab_vehicle:
+    elif selected_section == "Vehicle Insights":
         render_vehicle_type_insights(filtered_df)
-
-    with tab_vendor:
+    elif selected_section == "Vendor Performance":
         render_vendor_performance(filtered_df)
-
-    with tab_exceptions:
+    elif selected_section == "Exceptions & Controls":
         render_exceptions(filtered_df)
-
-    with tab_detail:
+    else:
         render_detail_table(filtered_df)
 
