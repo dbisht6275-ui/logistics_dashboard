@@ -3429,6 +3429,127 @@ def show_bidding_analysis():
             padding:.35rem .65rem .9rem !important;
         }
 
+
+        /* =====================================================
+           EXECUTIVE HEADER + TOP NAVIGATION
+           Matches the compact navy/light-blue reference layout.
+           ===================================================== */
+        .bid-top-shell {
+            background:linear-gradient(180deg,#173f73 0%,#0f3769 100%);
+            border:1px solid #0b2f5c;
+            border-radius:7px 7px 0 0;
+            min-height:42px;
+            display:flex;
+            align-items:center;
+            padding:0 12px;
+            box-shadow:0 2px 7px rgba(15,42,67,.15);
+        }
+        .bid-top-title {
+            color:#ffffff;
+            font-size:19px;
+            font-weight:850;
+            line-height:1;
+            letter-spacing:.1px;
+            white-space:nowrap;
+        }
+
+        /* Header row containing title + period selector */
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor) {
+            background:linear-gradient(180deg,#173f73 0%,#0f3769 100%);
+            border:1px solid #0b2f5c;
+            border-radius:7px 7px 0 0;
+            min-height:42px;
+            padding:.20rem .55rem !important;
+            gap:.45rem !important;
+            align-items:center !important;
+            box-shadow:0 2px 7px rgba(15,42,67,.15);
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
+        div[data-testid="stElementContainer"]:has(.bid-top-shell-anchor) {
+            display:none !important;
+        }
+        .bid-header-title-text {
+            color:#ffffff;
+            font-size:19px;
+            font-weight:850;
+            line-height:1.05;
+            padding-left:2px;
+            white-space:nowrap;
+        }
+
+        /* Single period input on the right side of the navy header */
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
+        div[data-testid="stDateInput"] {
+            margin:0 !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
+        div[data-testid="stDateInput"] label {
+            display:none !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
+        div[data-baseweb="input"] {
+            min-height:32px !important;
+            height:32px !important;
+            background:#ffffff !important;
+            border:1px solid #c7d7eb !important;
+            border-radius:7px !important;
+            box-shadow:none !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
+        div[data-testid="stDateInput"] input {
+            min-height:30px !important;
+            height:30px !important;
+            font-size:10px !important;
+            font-weight:700 !important;
+            color:#334155 !important;
+            background:#ffffff !important;
+        }
+
+        /* Tabs: light-blue navigation strip directly below header */
+        div[data-testid="stTabs"] > div[data-baseweb="tab-list"] {
+            background:#eef6ff !important;
+            border:1px solid #cfe1f5 !important;
+            border-top:none !important;
+            border-radius:0 0 7px 7px !important;
+            padding:5px 10px 6px !important;
+            gap:3px !important;
+            min-height:40px !important;
+            box-shadow:0 2px 5px rgba(15,42,67,.06) !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"] {
+            height:29px !important;
+            min-height:29px !important;
+            padding:0 14px !important;
+            border:1px solid #d9e7f6 !important;
+            border-radius:7px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f3f8fd 100%) !important;
+            color:#102a43 !important;
+            font-size:10px !important;
+            font-weight:750 !important;
+            box-shadow:0 1px 3px rgba(15,42,67,.05) !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"] p {
+            font-size:10px !important;
+            font-weight:750 !important;
+            color:inherit !important;
+            white-space:nowrap !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] {
+            background:linear-gradient(180deg,#3288ff 0%,#1f6fe5 100%) !important;
+            color:#ffffff !important;
+            border-color:#1f6fe5 !important;
+            box-shadow:0 2px 7px rgba(37,99,235,.24) !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] p {
+            color:#ffffff !important;
+        }
+        div[data-testid="stTabs"] div[data-baseweb="tab-highlight"] {
+            display:none !important;
+        }
+        div[data-testid="stTabs"] div[role="tabpanel"] {
+            padding-top:.55rem !important;
+        }
+
         div[data-testid="stVerticalBlock"] { gap:.55rem !important; }
         div[data-testid="stHorizontalBlock"] { gap:.45rem !important; }
 
@@ -3780,66 +3901,45 @@ def show_bidding_analysis():
     if "bidding_to_date" not in st.session_state:
         st.session_state["bidding_to_date"] = today
 
-    with st.container(border=True):
-        title_col, dates_col, run_col = st.columns(
-            [4.65, 2.45, 1.35],
-            gap="small",
-            vertical_alignment="bottom",
+    # --------------------------------------------------------
+    # Executive header — compact navy bar + one period selector
+    # --------------------------------------------------------
+    if "bidding_date_range" not in st.session_state:
+        st.session_state["bidding_date_range"] = (
+            st.session_state["bidding_from_date"],
+            st.session_state["bidding_to_date"],
         )
 
-        with title_col:
-            st.markdown(
-                "<div class='bid-header-anchor'></div>"
-                "<div class='bid-title'>🚚 Bidding Analysis</div>",
-                unsafe_allow_html=True,
-            )
+    title_col, period_col = st.columns(
+        [6.8, 1.35],
+        gap="small",
+        vertical_alignment="center",
+    )
 
-        # Keep From / To labels on the LEFT of the date boxes so the header uses
-        # horizontal space instead of adding an extra label row above the inputs.
-        with dates_col:
-            from_lbl, from_box, to_lbl, to_box = st.columns(
-                [0.30, 1.00, 0.20, 1.00],
-                gap="small",
-                vertical_alignment="center",
-            )
+    with title_col:
+        st.markdown(
+            "<span class='bid-top-shell-anchor'></span>"
+            "<div class='bid-header-title-text'>Bidding Analysis Dashboard</div>",
+            unsafe_allow_html=True,
+        )
 
-            with from_lbl:
-                st.markdown(
-                    "<div class='bid-inline-date-label'>From</div>",
-                    unsafe_allow_html=True,
-                )
+    with period_col:
+        selected_period = st.date_input(
+            "Period",
+            value=st.session_state["bidding_date_range"],
+            format="DD/MM/YYYY",
+            key="bidding_date_range_input",
+            label_visibility="collapsed",
+        )
 
-            with from_box:
-                from_date = st.date_input(
-                    "From",
-                    value=st.session_state["bidding_from_date"],
-                    format="DD/MM/YYYY",
-                    key="bidding_from_date_input",
-                    label_visibility="collapsed",
-                )
-
-            with to_lbl:
-                st.markdown(
-                    "<div class='bid-inline-date-label'>To</div>",
-                    unsafe_allow_html=True,
-                )
-
-            with to_box:
-                to_date = st.date_input(
-                    "To",
-                    value=st.session_state["bidding_to_date"],
-                    format="DD/MM/YYYY",
-                    key="bidding_to_date_input",
-                    label_visibility="collapsed",
-                )
-
-        with run_col:
-            load_clicked = st.button(
-                "↻ Load / Refresh",
-                type="primary",
-                use_container_width=True,
-                key="bidding_load_refresh",
-            )
+    # Streamlit range input may temporarily return one date while the user
+    # is selecting the second boundary. Keep the last complete range until then.
+    if isinstance(selected_period, (tuple, list)) and len(selected_period) == 2:
+        from_date, to_date = selected_period
+        st.session_state["bidding_date_range"] = (from_date, to_date)
+    else:
+        from_date = st.session_state["bidding_from_date"]
+        to_date = st.session_state["bidding_to_date"]
 
     if from_date > to_date:
         st.error("From Date cannot be greater than To Date.")
@@ -3852,19 +3952,25 @@ def show_bidding_analysis():
         and "BIDDER_VENDOR_LIST" not in cached_raw.columns
     )
 
+    date_changed = (
+        from_date != st.session_state.get("bidding_from_date")
+        or to_date != st.session_state.get("bidding_to_date")
+    )
+
     should_load = (
-        load_clicked
-        or "bidding_raw_data" not in st.session_state
+        "bidding_raw_data" not in st.session_state
         or needs_schema_refresh
+        or date_changed
     )
 
     if should_load:
         st.session_state["bidding_from_date"] = from_date
         st.session_state["bidding_to_date"] = to_date
+        st.session_state["bidding_date_range"] = (from_date, to_date)
 
         try:
             with st.spinner("Loading bidding data..."):
-                if load_clicked or needs_schema_refresh:
+                if needs_schema_refresh:
                     load_bidding_data.clear()
 
                 raw_df = load_bidding_data(from_date, to_date)
@@ -3888,17 +3994,6 @@ def show_bidding_analysis():
         st.warning("No bidding data found for the selected date range.")
         return
 
-    st.markdown(
-        f"""
-        <div class="bid-period-line">
-            Loaded Period: {st.session_state['bidding_from_date'].strftime('%d/%m/%Y')}
-            to {st.session_state['bidding_to_date'].strftime('%d/%m/%Y')}
-            &nbsp;|&nbsp; {raw_df['BIDID'].nunique():,} unique bids
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
     filtered_df = apply_dashboard_filters(raw_df)
 
     if filtered_df.empty:
@@ -3921,13 +4016,13 @@ def show_bidding_analysis():
         tab_detail,
     ) = st.tabs(
         [
-            "📊 Overview",
-            "💬 Query Monitoring",
-            "📈 Management Analysis",
-            "🚚 Vehicle Insights",
-            "🤝 Vendor Performance",
-            "⚠️ Exceptions",
-            "📋 Detailed Data",
+            "Overview",
+            "Query Monitoring",
+            "Management Analysis",
+            "Vehicle Insights",
+            "Vendor Performance",
+            "Exceptions & Controls",
+            "Detailed Data",
         ]
     )
 
