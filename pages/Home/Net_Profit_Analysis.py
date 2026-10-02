@@ -2843,8 +2843,28 @@ def show_net_profit_dashboard():
             [column for column in detail_columns if column in display.columns]
         ]
 
+        net_profit_display_col = f"Net Profit ({unit})"
+
+        def _highlight_negative_np_row(row):
+            is_negative = (
+                net_profit_display_col in row.index
+                and pd.notna(row[net_profit_display_col])
+                and float(row[net_profit_display_col]) < 0
+            )
+            if is_negative:
+                return [
+                    "background-color:#fff1f2; color:#991b1b; font-weight:600;"
+                    for _ in row.index
+                ]
+            return ["" for _ in row.index]
+
+        styled_display = display.style.apply(
+            _highlight_negative_np_row,
+            axis=1,
+        )
+
         st.dataframe(
-            display,
+            styled_display,
             width="stretch",
             hide_index=True,
             column_config={
