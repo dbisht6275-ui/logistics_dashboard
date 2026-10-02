@@ -490,23 +490,46 @@ def prepare_bidding_data(df):
 
     df["FINAL_HIRE_STATUS"] = df.apply(rate_match_status, axis=1)
 
-    winner_level = _clean_text_series(df["WINNERLEVEL"]).str.lower()
+    winner_level_raw = _clean_text_series(df["WINNERLEVEL"])
+    winner_level = winner_level_raw.str.lower()
     manual_reason = _clean_text_series(df["MANUALBIDREASON"])
     winner_name_text = _clean_text_series(df["WINNER_NAME"])
 
-    # Keep missing winner and missing winner-level as separate management states.
+    # Winner mode must reflect the actual winner level available in source data.
+    # Example: L-2 / L-3 are valid winner levels and must not be labelled as missing.
     df["WINNER_MODE"] = "No Winner"
-    df.loc[winner_name_text.ne(""), "WINNER_MODE"] = "Winner - Level Missing"
-    df.loc[winner_name_text.ne("") & winner_level.eq("l-1"), "WINNER_MODE"] = "L-1"
-    df.loc[winner_name_text.ne("") & winner_level.eq("manual"), "WINNER_MODE"] = "Manual"
+    has_winner_name = winner_name_text.ne("")
 
-    # Some records contain a manual reason even when WINNERLEVEL is inconsistent.
+    # Winner exists but source has no level value.
+    df.loc[has_winner_name & winner_level_raw.eq(""), "WINNER_MODE"] = "Winner Level Not Defined"
+
+    # Explicit manual winner.
+    df.loc[has_winner_name & winner_level.eq("manual"), "WINNER_MODE"] = "Manual"
+
+    # Preserve any L-number level such as L-1, L-2, L-3, etc.
+    level_mask = has_winner_name & winner_level.str.match(r"^l\s*-\s*\d+$", na=False)
+    df.loc[level_mask, "WINNER_MODE"] = (
+        winner_level_raw[level_mask]
+        .str.upper()
+        .str.replace(r"\s+", "", regex=True)
+    )
+
+    # If the level is blank but a manual reason is recorded, classify it as Manual.
     df.loc[
-        winner_name_text.ne("")
+        has_winner_name
         & manual_reason.ne("")
-        & ~winner_level.eq("l-1"),
+        & winner_level_raw.eq(""),
         "WINNER_MODE"
     ] = "Manual"
+
+    # Keep any other non-blank source level visible instead of calling it missing.
+    other_level_mask = (
+        has_winner_name
+        & winner_level_raw.ne("")
+        & ~winner_level.eq("manual")
+        & ~level_mask
+    )
+    df.loc[other_level_mask, "WINNER_MODE"] = winner_level_raw[other_level_mask].str.upper()
 
     l1_name = _clean_text_series(df["L_1_NAME"]).str.upper()
     winner_name = winner_name_text.str.upper()
@@ -1806,10 +1829,18 @@ def render_charts(df):
     # --------------------------------------------------------
     d1, d2, d3 = st.columns(3, gap="small")
 
+    winner_counts = df.groupby("WINNER_MODE")["BIDID"].nunique()
+    preferred_winner_order = [
+        "L-1", "L-2", "L-3", "Manual", "Winner Level Not Defined", "No Winner"
+    ]
+    extra_winner_modes = [
+        mode for mode in winner_counts.index.tolist()
+        if mode not in preferred_winner_order
+    ]
+    winner_order = preferred_winner_order + sorted(extra_winner_modes)
     winner_data = (
-        df.groupby("WINNER_MODE")["BIDID"]
-        .nunique()
-        .reindex(["L-1", "Manual", "Winner - Level Missing", "No Winner"])
+        winner_counts
+        .reindex(winner_order)
         .fillna(0)
         .astype(int)
         .rename("Bids")
@@ -2250,10 +2281,10 @@ def render_vehicle_type_insights(df):
                     go.Bar(
                         x=winner_mix["Other Winner"],
                         y=winner_mix["Vehicle Type"],
-                        name="Winner - Level Missing / Other",
+                        name="L-2 / L-3 / Other",
                         orientation="h",
                         marker=dict(color="#94a3b8"),
-                        hovertemplate="<b>%{y}</b><br>Level Missing / Other Winners: %{x:,}<extra></extra>",
+                        hovertemplate="<b>%{y}</b><br>L-2 / L-3 / Other Winners: %{x:,}<extra></extra>",
                     )
                 )
 
