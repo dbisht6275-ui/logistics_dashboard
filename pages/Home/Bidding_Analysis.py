@@ -45,7 +45,7 @@ def get_bidding_engine():
 
 BIDDING_SQL = text(
     r"""
-    WITH CTE AS
+     WITH CTE AS
     (
         SELECT
             BP.BIDID,
@@ -145,7 +145,8 @@ BIDDING_SQL = text(
             THEN 'APP'
             ELSE 'ERP'
         END AS SOURCE,
-
+        br.zonename as ZONE,
+        br.hubname as CIRCLE,
         BR.STNNAME AS BRANCH,
 
         N.USERNAME AS GENERATEBYUSER,
@@ -211,7 +212,7 @@ BIDDING_SQL = text(
 
     FROM BIDHEAD BH
 
-    INNER JOIN STATIONMAST BR
+    INNER JOIN viewSTATIONMAST BR
         ON BR.STNCODE = BH.BRANCHCODE
 
     /* --------------------------------------------------------
