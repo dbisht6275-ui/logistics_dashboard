@@ -548,8 +548,6 @@ def prepare_bidding_data(df):
     df["HAS_WINNER"] = is_winner_flag | has_winner_name | has_final_rate
 
     lhc_no_text = _clean_text_series(df["LHCNO"])
-    approved_y = _clean_text_series(df["APPROVED"]).str.upper().eq("Y")
-
     df["LHC_STATUS"] = "No Winner"
 
     # LHC already exists.
@@ -568,9 +566,9 @@ def prepare_bidding_data(df):
 
     # There is no separate Winner Selected Date in the current SQL output.
     # Ageing therefore uses:
-    # APPROVEDON -> BIDCLOSEDT -> BIDOPENDT
+    # Ageing uses BIDCLOSEDT -> BIDOPENDT. Approval fields are intentionally ignored.
     ageing_source = (
-        df[["APPROVEDON", "BIDCLOSEDT", "BIDOPENDT"]]
+        df[["BIDCLOSEDT", "BIDOPENDT"]]
         .bfill(axis=1)
         .iloc[:, 0]
     )
@@ -698,14 +696,6 @@ def apply_dashboard_filters(df):
             )
 
         with row2[3]:
-            approved_filter = st.multiselect(
-                "Approved",
-                _sorted_options(df["APPROVED"]),
-                key="bid_filter_approved",
-                placeholder="All",
-            )
-
-        with row2[4]:
             lhc_status_filter = st.multiselect(
                 "LHC Status",
                 ["LHC Created", "Winner - LHC Pending", "No Winner"],
@@ -774,9 +764,6 @@ def apply_dashboard_filters(df):
     if gap_filter:
         filtered = filtered[filtered["GAP_STATUS"].isin(gap_filter)]
 
-    if approved_filter:
-        filtered = filtered[filtered["APPROVED"].isin(approved_filter)]
-
     if lhc_status_filter:
         filtered = filtered[filtered["LHC_STATUS"].isin(lhc_status_filter)]
 
@@ -836,15 +823,21 @@ def _kpi_card(column, label, value, note="", tone="blue"):
     )
 
 
+def _kpi_group_label(column, title, subtitle="", tone="blue"):
+    column.markdown(
+        f"""
+        <div class="bid-kpi-group bid-kpi-group-{tone}">
+            <div class="bid-kpi-group-title">{title}</div>
+            <div class="bid-kpi-group-subtitle">{subtitle}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_kpis(df):
     total_bids = int(df["BIDID"].nunique())
 
-    approved_bids = int(
-        df.loc[
-            _clean_text_series(df["APPROVED"]).str.upper().eq("Y"),
-            "BIDID"
-        ].nunique()
-    )
 
     query_bids = int(
         df.loc[
@@ -869,55 +862,19 @@ def render_kpis(df):
     )
     manual_bids = int(df.loc[df["WINNER_MODE"].eq("Manual"), "BIDID"].nunique())
     single_bidder = int(df.loc[df["BIDDER_COUNT"].eq(1), "BIDID"].nunique())
-    approved_pct = (approved_bids / total_bids * 100) if total_bids else 0
-    query_pct = (query_bids / total_bids * 100) if total_bids else 0
-    erp_pct = (erp_bids / total_bids * 100) if total_bids else 0
-    app_pct = (app_bids / total_bids * 100) if total_bids else 0
-    l1_pct = (l1_bids / total_bids * 100) if total_bids else 0
-    winner_not_l1_pct = (
-        winner_not_l1 / comparable_winner_bids * 100
-        if comparable_winner_bids else 0
-    )
-    manual_pct = (manual_bids / total_bids * 100) if total_bids else 0
-    single_pct = (single_bidder / total_bids * 100) if total_bids else 0
-    k1, k2, k3, k4, k5 = st.columns(5, gap="small")
 
-    _kpi_card(k1, "✅ Approved", f"{approved_bids:,}", f"{approved_pct:.1f}% of bids", "green")
-    _kpi_card(k2, "🥇 L-1 Selected", f"{l1_bids:,}", f"{l1_pct:.1f}% of bids", "teal")
-    _kpi_card(
-        k3,
-        "🚫 Winner Not L1",
-        f"{winner_not_l1:,}",
-        f"{winner_not_l1_pct:.1f}% of comparable winners",
-        "rose",
-    )
-    _kpi_card(k4, "✍️ Manual", f"{manual_bids:,}", f"{manual_pct:.1f}% of bids", "orange")
-    _kpi_card(k5, "👤 Single Bidder", f"{single_bidder:,}", f"{single_pct:.1f}% of bids", "amber")
-
-    # Bid volume / source KPIs in requested order
-    s1, s2, s3, s4 = st.columns(4, gap="small")
-    _kpi_card(s1, "📦 Total Bids", f"{total_bids:,}", "Filtered unique bids", "blue")
-    _kpi_card(s2, "🖥️ ERP Bids", f"{erp_bids:,}", f"{erp_pct:.1f}% of total bids", "blue")
-    _kpi_card(s3, "📱 APP Bids", f"{app_bids:,}", f"{app_pct:.1f}% of total bids", "purple")
-    _kpi_card(s4, "💬 Query Bids", f"{query_bids:,}", f"{query_pct:.1f}% of bids", "purple")
-
-    # LHC operational control KPIs
     winner_bids = int(df.loc[df["HAS_WINNER"], "BIDID"].nunique())
-
     lhc_created = int(
         df.loc[df["LHC_STATUS"].eq("LHC Created"), "BIDID"].nunique()
     )
-    # Direct reconciliation: every winner bid is either LHC Created or LHC Pending.
     lhc_pending = max(winner_bids - lhc_created, 0)
 
     pending_rows = df[df["LHC_STATUS"].eq("Winner - LHC Pending")].copy()
-
     oldest_pending = (
         int(pending_rows["LHC_PENDING_AGE_DAYS"].max())
         if not pending_rows.empty and pending_rows["LHC_PENDING_AGE_DAYS"].notna().any()
         else 0
     )
-
     pending_over_7 = int(
         pending_rows.loc[
             pending_rows["LHC_PENDING_AGE_DAYS"].gt(7),
@@ -925,39 +882,72 @@ def render_kpis(df):
         ].nunique()
     )
 
+    query_pct = (query_bids / total_bids * 100) if total_bids else 0
+    erp_pct = (erp_bids / total_bids * 100) if total_bids else 0
+    app_pct = (app_bids / total_bids * 100) if total_bids else 0
+    l1_pct = (l1_bids / winner_bids * 100) if winner_bids else 0
+    manual_pct = (manual_bids / winner_bids * 100) if winner_bids else 0
+    single_pct = (single_bidder / total_bids * 100) if total_bids else 0
+    winner_not_l1_pct = (
+        winner_not_l1 / comparable_winner_bids * 100
+        if comparable_winner_bids else 0
+    )
     lhc_created_pct = (lhc_created / winner_bids * 100) if winner_bids else 0
     lhc_pending_pct = (lhc_pending / winner_bids * 100) if winner_bids else 0
 
-    l1c, l2c, l3c, l4c = st.columns(4, gap="small")
+    no_winner_bids = max(total_bids - winner_bids, 0)
+    no_winner_pct = (no_winner_bids / total_bids * 100) if total_bids else 0
+    pending_over_15 = int(
+        pending_rows.loc[pending_rows["LHC_PENDING_AGE_DAYS"].gt(15), "BIDID"].nunique()
+    )
 
-    _kpi_card(
-        l1c,
-        "🏆 Winner Bids",
-        f"{winner_bids:,}",
-        "Winner already selected",
-        "navy",
-    )
-    _kpi_card(
-        l2c,
-        "🚚 LHC Created",
-        f"{lhc_created:,}",
-        f"{lhc_created_pct:.1f}% of winner bids",
-        "green",
-    )
-    _kpi_card(
-        l3c,
-        "⏳ LHC Pending",
-        f"{lhc_pending:,}",
-        f"{lhc_pending_pct:.1f}% of winner bids",
-        "red",
-    )
-    _kpi_card(
-        l4c,
-        "🕒 Oldest Pending",
-        f"{oldest_pending:,} days",
-        f"{pending_over_7:,} bids pending > 7 days",
-        "amber",
-    )
+    # --------------------------------------------------------
+    # Row 1 — Bid Volume / Source
+    # --------------------------------------------------------
+    label, content = st.columns([1.25, 8.75], gap="small")
+    _kpi_group_label(label, "1. BIDS VOLUME", "Overall", "blue")
+    with content:
+        c1, c2, c3, c4 = st.columns(4, gap="small")
+        _kpi_card(c1, "📦 Total Bids", f"{total_bids:,}", "Filtered unique bids", "blue")
+        _kpi_card(c2, "🖥️ ERP Bids", f"{erp_bids:,}", f"{erp_pct:.1f}% of total bids", "blue")
+        _kpi_card(c3, "📱 APP Bids", f"{app_bids:,}", f"{app_pct:.1f}% of total bids", "purple")
+        _kpi_card(c4, "💬 Query Bids", f"{query_bids:,}", f"{query_pct:.1f}% of total bids", "purple")
+
+    # --------------------------------------------------------
+    # Row 2 — Decision / Winner / LHC Flow
+    # --------------------------------------------------------
+    label, content = st.columns([1.25, 8.75], gap="small")
+    _kpi_group_label(label, "2. WINNER & LHC FLOW", "Key focus", "green")
+    with content:
+        c1, c2, c3, c4 = st.columns(4, gap="small")
+        _kpi_card(c1, "🏆 Winner Bids", f"{winner_bids:,}", f"{(winner_bids / total_bids * 100 if total_bids else 0):.1f}% of total bids", "navy")
+        _kpi_card(c2, "◻️ No Winner", f"{no_winner_bids:,}", f"{no_winner_pct:.1f}% of total bids", "amber")
+        _kpi_card(c3, "🚚 LHC Created", f"{lhc_created:,}", f"{lhc_created_pct:.1f}% of winner bids", "green")
+        _kpi_card(c4, "⏳ LHC Pending", f"{lhc_pending:,}", f"{lhc_pending_pct:.1f}% of winner bids", "red")
+
+    # --------------------------------------------------------
+    # Row 3 — Winner Quality / Competition
+    # --------------------------------------------------------
+    label, content = st.columns([1.25, 8.75], gap="small")
+    _kpi_group_label(label, "3. CONVERSION & QUALITY", "Winner mix", "purple")
+    with content:
+        c1, c2, c3, c4 = st.columns(4, gap="small")
+        _kpi_card(c1, "🥇 L-1 Selected", f"{l1_bids:,}", f"{l1_pct:.1f}% of winner bids", "teal")
+        _kpi_card(c2, "✍️ Manual", f"{manual_bids:,}", f"{manual_pct:.1f}% of winner bids", "orange")
+        _kpi_card(c3, "↔️ Winner Not L1", f"{winner_not_l1:,}", f"{winner_not_l1_pct:.1f}% of comparable winners", "rose")
+        _kpi_card(c4, "👤 Single Bidder", f"{single_bidder:,}", f"{single_pct:.1f}% of total bids", "amber")
+
+    # --------------------------------------------------------
+    # Row 4 — Timeliness / Execution Control
+    # --------------------------------------------------------
+    label, content = st.columns([1.25, 8.75], gap="small")
+    _kpi_group_label(label, "4. TIMELINESS", "Execution control", "amber")
+    with content:
+        c1, c2, c3, c4 = st.columns(4, gap="small")
+        _kpi_card(c1, "📈 LHC Completion", f"{lhc_created_pct:.1f}%", f"{lhc_created:,} of {winner_bids:,} winner bids", "green")
+        _kpi_card(c2, "🕒 Oldest LHC Pending", f"{oldest_pending:,} days", "Oldest open winner → LHC case", "amber")
+        _kpi_card(c3, "⚠️ > 7 Days Pending", f"{pending_over_7:,}", f"{(pending_over_7 / lhc_pending * 100 if lhc_pending else 0):.1f}% of pending", "red")
+        _kpi_card(c4, "🚨 > 15 Days Pending", f"{pending_over_15:,}", f"{(pending_over_15 / lhc_pending * 100 if lhc_pending else 0):.1f}% of pending", "rose")
 
 
 def _compact_chart_layout(fig, height=245, bottom_margin=48):
@@ -1441,6 +1431,44 @@ def _render_bid_trend_card(df):
         )
 
 
+def render_overview_charts(df):
+    """Three compact overview charts matching the executive flow mock."""
+    st.markdown("#### Overview Trends & Flow")
+    c1, c2, c3 = st.columns(3, gap="small")
+
+    with c1:
+        trend_data = _bid_trend_data(df, "D")
+        if not trend_data.empty:
+            fig = _line_chart_with_values(
+                trend_data["PERIOD_LABEL"],
+                trend_data["Bids"],
+                height=240,
+            )
+            _render_chart_card("Bid Trend — Daily", fig)
+        else:
+            with st.container(border=True):
+                st.markdown("<div class='bid-chart-title'>Bid Trend — Daily</div>", unsafe_allow_html=True)
+                st.info("No bid trend data available.")
+
+    with c2:
+        source_clean = _clean_text_series(df["SOURCE"]).str.upper()
+        erp = int(df.loc[source_clean.eq("ERP"), "BIDID"].nunique())
+        app = int(df.loc[source_clean.eq("APP"), "BIDID"].nunique())
+        fig = _donut_chart(["ERP Bids", "APP Bids"], [erp, app], height=240, center_label="Total Bids")
+        _render_chart_card("Bid Source Split", fig)
+
+    with c3:
+        winner = int(df.loc[df["HAS_WINNER"], "BIDID"].nunique())
+        created = int(df.loc[df["LHC_STATUS"].eq("LHC Created"), "BIDID"].nunique())
+        pending = max(winner - created, 0)
+        fig = _bar_chart_with_values(
+            ["Winner Bids", "LHC Created", "LHC Pending"],
+            [winner, created, pending],
+            height=240,
+        )
+        _render_chart_card("Winner → LHC Flow", fig)
+
+
 def render_charts(df):
     st.markdown("### Management Analysis")
 
@@ -1611,16 +1639,16 @@ def render_charts(df):
                 approved_user_data["APPROVEDBYUSER_CLEAN"],
                 approved_user_data["Bids"],
                 height=300,
-                value_name="Approved Bids",
+                value_name="Handled Bids",
             )
             _render_chart_card(
-                "Approver Workload — Top Users",
+                "Bid Handling Workload — Top Users",
                 approved_user_fig,
             )
         else:
             with st.container(border=True):
                 st.markdown(
-                    "<div class='bid-chart-title'>Approver Workload — Top Users</div>",
+                    "<div class='bid-chart-title'>Bid Handling Workload — Top Users</div>",
                     unsafe_allow_html=True,
                 )
                 st.info("No approver data available.")
@@ -1699,14 +1727,7 @@ def render_vehicle_type_insights(df):
     base["QUERY_FLAG"] = (
         _clean_text_series(base["QUERYBID"]).str.upper().eq("YES")
     ).astype(int)
-    base["APPROVED_FLAG"] = (
-        _clean_text_series(base["APPROVED"]).str.upper().eq("Y")
-    ).astype(int)
     base["WINNER_FLAG"] = base["HAS_WINNER"].fillna(False).astype(int)
-    base["APPROVED_WINNER_FLAG"] = (
-        base["HAS_WINNER"].fillna(False)
-        & _clean_text_series(base["APPROVED"]).str.upper().eq("Y")
-    ).astype(int)
     base["L1_FLAG"] = base["WINNER_MODE"].eq("L-1").astype(int)
     base["MANUAL_FLAG"] = base["WINNER_MODE"].eq("Manual").astype(int)
     base["SINGLE_BIDDER_FLAG"] = (
@@ -1737,9 +1758,7 @@ def render_vehicle_type_insights(df):
             **{
                 "Bids": ("BIDID", "nunique"),
                 "Query Bids": ("QUERY_FLAG", "sum"),
-                "Approved Bids": ("APPROVED_FLAG", "sum"),
                 "Winner Bids": ("WINNER_FLAG", "sum"),
-                "Approved Winner Bids": ("APPROVED_WINNER_FLAG", "sum"),
                 "L1 Selected": ("L1_FLAG", "sum"),
                 "Manual Selected": ("MANUAL_FLAG", "sum"),
                 "Single Bidder": ("SINGLE_BIDDER_FLAG", "sum"),
@@ -1768,9 +1787,6 @@ def render_vehicle_type_insights(df):
     )
     vehicle["Query Rate %"] = (
         vehicle["Query Bids"].div(vehicle["Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
-    )
-    vehicle["Approval Rate %"] = (
-        vehicle["Approved Bids"].div(vehicle["Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
     )
     vehicle["Single Bidder %"] = (
         vehicle["Single Bidder"].div(vehicle["Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
@@ -1982,8 +1998,6 @@ def render_vehicle_type_insights(df):
         "Query Rate %",
         "Query Reply %",
         "Avg Query Response Hrs",
-        "Approved Bids",
-        "Approval Rate %",
         "Avg Bidders",
         "Single Bidder %",
         "Winner Bids",
@@ -2017,8 +2031,6 @@ def render_vehicle_type_insights(df):
                 "Query Rate %": st.column_config.ProgressColumn("Query Rate %", min_value=0, max_value=100, format="%.1f%%"),
                 "Query Reply %": st.column_config.ProgressColumn("Query Reply %", min_value=0, max_value=100, format="%.1f%%"),
                 "Avg Query Response Hrs": st.column_config.NumberColumn("Avg Query TAT (Hrs)", format="%.2f"),
-                "Approved Bids": st.column_config.NumberColumn("Approved", format="%d"),
-                "Approval Rate %": st.column_config.ProgressColumn("Approval %", min_value=0, max_value=100, format="%.1f%%"),
                 "Avg Bidders": st.column_config.NumberColumn("Avg Bidders", format="%.2f"),
                 "Single Bidder %": st.column_config.ProgressColumn("Single Bidder %", min_value=0, max_value=100, format="%.1f%%"),
                 "Winner Bids": st.column_config.NumberColumn("Winner Bids", format="%d"),
@@ -2548,10 +2560,6 @@ def render_vendor_performance(df):
     )
 
     if not winner_df.empty:
-        winner_df["APPROVED_WIN_FLAG"] = (
-            _clean_text_series(winner_df["APPROVED"]).str.upper().eq("Y")
-        ).astype(int)
-
         winner_df["L1_WIN_FLAG"] = (
             winner_df["WINNER_VS_L1"].eq("Winner = L1")
         ).astype(int)
@@ -2578,7 +2586,6 @@ def render_vendor_performance(df):
                 **{
                     "L1 Wins": ("L1_WIN_FLAG", "sum"),
                     "Manual Wins": ("MANUAL_WIN_FLAG", "sum"),
-                    "Approved Wins": ("APPROVED_WIN_FLAG", "sum"),
                     "LHC Created": ("LHC_CREATED_FLAG", "sum"),
                     "LHC Pending": ("LHC_PENDING_FLAG", "sum"),
                     "Single Bidder Wins": ("SINGLE_BIDDER_WIN_FLAG", "sum"),
@@ -2610,7 +2617,6 @@ def render_vendor_performance(df):
     count_cols = [
         "L1 Wins",
         "Manual Wins",
-        "Approved Wins",
         "LHC Created",
         "LHC Pending",
         "Single Bidder Wins",
@@ -2691,7 +2697,6 @@ def render_vendor_performance(df):
         "Win Share %",
         "L1 Wins",
         "Manual Wins",
-        "Approved Wins",
         "LHC Created",
         "LHC Pending",
         "LHC Pending %",
@@ -2759,8 +2764,7 @@ def render_vendor_performance(df):
                 ),
                 "L1 Wins": st.column_config.NumberColumn("L1 Wins", format="%d"),
                 "Manual Wins": st.column_config.NumberColumn("Manual Wins", format="%d"),
-                "Approved Wins": st.column_config.NumberColumn("Approved Wins", format="%d"),
-                "LHC Created": st.column_config.NumberColumn("LHC Created", format="%d"),
+                    "LHC Created": st.column_config.NumberColumn("LHC Created", format="%d"),
                 "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
                 "LHC Pending %": st.column_config.ProgressColumn(
                     "LHC Pending %",
@@ -2932,12 +2936,10 @@ def render_exceptions(df):
                 "BIDID",
                 "BIDOPENDT",
                 "BIDCLOSEDT",
-                "APPROVEDON",
                 "BRANCH",
                 "ROUTE",
                 "VEHICLETYPE",
                 "QUERYBID",
-                "APPROVED",
                 "WINNER_NAME",
                 "WINNER_MODE",
                 "FINALRATE",
@@ -3017,7 +3019,6 @@ def render_detail_table(df):
         "QUERY_REPLY_ON",
         "QUERY_RESPONSE_STATUS",
         "QUERY_RESPONSE_HOURS",
-        "APPROVED",
         "ROUTE",
         "VIA",
         "VEHICLETYPE",
@@ -3285,6 +3286,36 @@ def show_bidding_analysis():
             padding-top:24px;
             white-space:nowrap;
         }
+
+        .bid-kpi-group {
+            box-sizing:border-box;
+            height:64px;
+            min-height:64px;
+            border-radius:9px;
+            padding:8px 10px;
+            display:flex;
+            flex-direction:column;
+            justify-content:center;
+            border:1px solid #dbe4ef;
+            border-left:4px solid var(--group-accent,#2563eb);
+            background:var(--group-bg,#eff6ff);
+        }
+        .bid-kpi-group-title {
+            font-size:10px;
+            font-weight:900;
+            line-height:1.18;
+            color:#0f2744;
+        }
+        .bid-kpi-group-subtitle {
+            font-size:8.5px;
+            font-weight:750;
+            color:#64748b;
+            margin-top:3px;
+        }
+        .bid-kpi-group-blue   { --group-accent:#2563eb; --group-bg:#eff6ff; }
+        .bid-kpi-group-green  { --group-accent:#16a34a; --group-bg:#f0fdf4; }
+        .bid-kpi-group-purple { --group-accent:#7c3aed; --group-bg:#f5f3ff; }
+        .bid-kpi-group-amber  { --group-accent:#d97706; --group-bg:#fffbeb; }
 
         .bid-kpi-card {
             box-sizing:border-box;
@@ -3630,6 +3661,7 @@ def show_bidding_analysis():
 
     with tab_overview:
         render_kpis(filtered_df)
+        render_overview_charts(filtered_df)
 
     with tab_query:
         render_query_response_analysis(filtered_df)
