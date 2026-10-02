@@ -883,26 +883,26 @@ def render_kpis(df):
     )
     manual_pct = (manual_bids / total_bids * 100) if total_bids else 0
     single_pct = (single_bidder / total_bids * 100) if total_bids else 0
-    k1, k2, k3, k4, k5, k6, k7 = st.columns(7, gap="small")
+    k1, k2, k3, k4, k5 = st.columns(5, gap="small")
 
-    _kpi_card(k1, "📦 Total Bids", f"{total_bids:,}", "Filtered unique bids", "blue")
-    _kpi_card(k2, "✅ Approved", f"{approved_bids:,}", f"{approved_pct:.1f}% of bids", "green")
-    _kpi_card(k3, "💬 Query Bids", f"{query_bids:,}", f"{query_pct:.1f}% of bids", "purple")
-    _kpi_card(k4, "🥇 L-1 Selected", f"{l1_bids:,}", f"{l1_pct:.1f}% of bids", "teal")
+    _kpi_card(k1, "✅ Approved", f"{approved_bids:,}", f"{approved_pct:.1f}% of bids", "green")
+    _kpi_card(k2, "🥇 L-1 Selected", f"{l1_bids:,}", f"{l1_pct:.1f}% of bids", "teal")
     _kpi_card(
-        k5,
+        k3,
         "🚫 Winner Not L1",
         f"{winner_not_l1:,}",
         f"{winner_not_l1_pct:.1f}% of comparable winners",
         "rose",
     )
-    _kpi_card(k6, "✍️ Manual", f"{manual_bids:,}", f"{manual_pct:.1f}% of bids", "orange")
-    _kpi_card(k7, "👤 Single Bidder", f"{single_bidder:,}", f"{single_pct:.1f}% of bids", "amber")
+    _kpi_card(k4, "✍️ Manual", f"{manual_bids:,}", f"{manual_pct:.1f}% of bids", "orange")
+    _kpi_card(k5, "👤 Single Bidder", f"{single_bidder:,}", f"{single_pct:.1f}% of bids", "amber")
 
-    # Bid source KPIs
-    s1, s2 = st.columns(2, gap="small")
-    _kpi_card(s1, "🖥️ ERP Bids", f"{erp_bids:,}", f"{erp_pct:.1f}% of total bids", "blue")
-    _kpi_card(s2, "📱 APP Bids", f"{app_bids:,}", f"{app_pct:.1f}% of total bids", "purple")
+    # Bid volume / source KPIs in requested order
+    s1, s2, s3, s4 = st.columns(4, gap="small")
+    _kpi_card(s1, "📦 Total Bids", f"{total_bids:,}", "Filtered unique bids", "blue")
+    _kpi_card(s2, "🖥️ ERP Bids", f"{erp_bids:,}", f"{erp_pct:.1f}% of total bids", "blue")
+    _kpi_card(s3, "📱 APP Bids", f"{app_bids:,}", f"{app_pct:.1f}% of total bids", "purple")
+    _kpi_card(s4, "💬 Query Bids", f"{query_bids:,}", f"{query_pct:.1f}% of bids", "purple")
 
     # LHC operational control KPIs
     winner_bids = int(df.loc[df["HAS_WINNER"], "BIDID"].nunique())
