@@ -4027,11 +4027,13 @@ def show_bidding_analysis():
             st.session_state["bidding_to_date"],
         )
 
-    st.markdown(
-        "<span class='bid-top-shell-anchor'></span>"
-        "<div class='bid-header-title-text'>Bidding Analysis Dashboard</div>",
-        unsafe_allow_html=True,
-    )
+    header_col = st.columns(1, gap="small")[0]
+    with header_col:
+        st.markdown(
+            "<span class='bid-top-shell-anchor'></span>"
+            "<div class='bid-header-title-text'>Bidding Analysis Dashboard</div>",
+            unsafe_allow_html=True,
+        )
 
     # --------------------------------------------------------
     # SAME-PAGE NAVIGATION + PERIOD + RUN
