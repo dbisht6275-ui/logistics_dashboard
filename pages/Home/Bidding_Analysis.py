@@ -3603,6 +3603,70 @@ def show_bidding_analysis():
             color:#ffffff !important;
         }
 
+
+
+        /* Combined navigation + period + run row below the navy title. */
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor) {
+            background:#eef6ff !important;
+            border:1px solid #cfe1f5 !important;
+            border-top:none !important;
+            border-radius:0 0 7px 7px !important;
+            padding:5px 10px 6px !important;
+            gap:6px !important;
+            min-height:40px !important;
+            align-items:center !important;
+            box-shadow:0 2px 5px rgba(15,42,67,.06) !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            background:transparent !important;
+            border:none !important;
+            border-radius:0 !important;
+            padding:0 !important;
+            min-height:29px !important;
+            box-shadow:none !important;
+            flex-wrap:nowrap !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stDateInput"] {
+            margin:0 !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stDateInput"] label {
+            display:none !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stDateInput"] div[data-baseweb="input"] {
+            min-height:29px !important;
+            height:29px !important;
+            border:1px solid #d9e7f6 !important;
+            border-radius:7px !important;
+            background:#ffffff !important;
+            box-shadow:0 1px 3px rgba(15,42,67,.05) !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stDateInput"] input {
+            min-height:27px !important;
+            height:27px !important;
+            font-size:10px !important;
+            font-weight:750 !important;
+            color:#102a43 !important;
+            background:#ffffff !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stButton"] button {
+            min-height:29px !important;
+            height:29px !important;
+            padding:0 12px !important;
+            border:1px solid #d9e7f6 !important;
+            border-radius:7px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f3f8fd 100%) !important;
+            color:#0f3769 !important;
+            font-size:10px !important;
+            font-weight:850 !important;
+            box-shadow:0 1px 3px rgba(15,42,67,.05) !important;
+        }
+
         div[data-testid="stVerticalBlock"] { gap:.55rem !important; }
         div[data-testid="stHorizontalBlock"] { gap:.45rem !important; }
 
@@ -3955,7 +4019,7 @@ def show_bidding_analysis():
         st.session_state["bidding_to_date"] = today
 
     # --------------------------------------------------------
-    # Executive header — navy title + period selector + Run button
+    # Executive header — title only
     # --------------------------------------------------------
     if "bidding_date_range" not in st.session_state:
         st.session_state["bidding_date_range"] = (
@@ -3963,17 +4027,37 @@ def show_bidding_analysis():
             st.session_state["bidding_to_date"],
         )
 
-    title_col, period_col, run_col = st.columns(
-        [6.35, 1.55, .50],
+    st.markdown(
+        "<span class='bid-top-shell-anchor'></span>"
+        "<div class='bid-header-title-text'>Bidding Analysis Dashboard</div>",
+        unsafe_allow_html=True,
+    )
+
+    # --------------------------------------------------------
+    # SAME-PAGE NAVIGATION + PERIOD + RUN
+    # Date selector sits immediately after Detailed Data.
+    # --------------------------------------------------------
+    nav_col, period_col, run_col = st.columns(
+        [7.15, 1.55, .55],
         gap="small",
         vertical_alignment="center",
     )
 
-    with title_col:
-        st.markdown(
-            "<span class='bid-top-shell-anchor'></span>"
-            "<div class='bid-header-title-text'>Bidding Analysis Dashboard</div>",
-            unsafe_allow_html=True,
+    with nav_col:
+        st.markdown("<span class='bid-nav-row-anchor'></span>", unsafe_allow_html=True)
+        selected_section = st.radio(
+            "Dashboard Section",
+            [
+                "Overview",
+                "Query Monitoring",
+                "Vehicle Insights",
+                "Vendor Performance",
+                "Exceptions & Controls",
+                "Detailed Data",
+            ],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="bidding_section_nav",
         )
 
     with period_col:
@@ -4035,8 +4119,6 @@ def show_bidding_analysis():
     raw_df = st.session_state.get("bidding_raw_data", pd.DataFrame())
 
     # Re-run lightweight derived calculations on cached data as well.
-    # This ensures newly added control fields are available immediately
-    # after a code deployment without forcing users to reload SQL first.
     if raw_df is not None and not raw_df.empty:
         raw_df = prepare_bidding_data(raw_df)
         st.session_state["bidding_raw_data"] = raw_df
@@ -4044,25 +4126,6 @@ def show_bidding_analysis():
     if raw_df is None or raw_df.empty:
         st.warning("No bidding data found for the selected date range.")
         return
-
-    # --------------------------------------------------------
-    # SAME-PAGE SECTION NAVIGATION
-    # Selected button stays dark navy, matching the reference.
-    # --------------------------------------------------------
-    selected_section = st.radio(
-        "Dashboard Section",
-        [
-            "Overview",
-            "Query Monitoring",
-            "Vehicle Insights",
-            "Vendor Performance",
-            "Exceptions & Controls",
-            "Detailed Data",
-        ],
-        horizontal=True,
-        label_visibility="collapsed",
-        key="bidding_section_nav",
-    )
 
     # Global filters appear below the navigation.
     filtered_df = apply_dashboard_filters(raw_df)
