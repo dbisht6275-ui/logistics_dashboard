@@ -200,6 +200,12 @@ def _apply_pnl_business_rule(df, all_branches):
         "DESTINATION_TOTAL_INCOME",
         "ORIGIN_DIRECT_EXPENSE",
         "DESTINATION_DIRECT_EXPENSE",
+        "SALARY",
+        "GODOWN RENT",
+        "OVERHEAD EXPENSE",
+        "CLAIM",
+        "BOOKING 6%",
+        "DESTINATION 5%",
         "TOTAL EXPENSE",
     ]:
         if column not in out.columns:
@@ -213,6 +219,18 @@ def _apply_pnl_business_rule(df, all_branches):
         out["DESTINATION_PNL"] = 0.0
         out["DESTINATION_TOTAL_INCOME"] = 0.0
         out["DESTINATION_DIRECT_EXPENSE"] = 0.0
+
+        # Business rule for consolidated All Branches:
+        # deduct only the 6% Booking charge. The 5% Delivery charge must not
+        # reduce consolidated Net Profit.
+        out["DESTINATION 5%"] = 0.0
+        out["TOTAL EXPENSE"] = (
+            out["SALARY"]
+            + out["GODOWN RENT"]
+            + out["OVERHEAD EXPENSE"]
+            + out["CLAIM"]
+            + out["BOOKING 6%"]
+        )
 
     out["BUSINESS"] = out["ORIGIN_BUSINESS"] + out["DESTINATION_BUSINESS"]
     out["TOTAL_INCOME"] = out["ORIGIN_TOTAL_INCOME"] + out["DESTINATION_TOTAL_INCOME"]
@@ -703,15 +721,12 @@ def _apply_same_filters(df, filters):
 
 
 def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_business):
-    """Reconcile consolidated 6% Booking and 5% Delivery charges.
+    """Reconcile consolidated All-Branches percentage charge.
 
-    In a fully consolidated All-Branches view, booking and delivery represent
-    opposite ends of the same shipment population, so their gross business base
-    must reconcile to the same authoritative P&L SP revenue total. Branch-level
-    origin/destination mappings can understate either side. This helper adjusts
-    only the two percentage charges, allocating any difference back across rows,
-    then rebuilds Total Expense and Net Profit so every downstream view remains
-    internally consistent.
+    Business rule: consolidated All Branches deducts only 6% of Booking.
+    The 5% Delivery charge is set to zero in this view. The helper aligns the
+    Booking 6% charge to the authoritative P&L SP revenue total, then rebuilds
+    Total Expense and Net Profit so every downstream view remains consistent.
     """
     if df is None or df.empty or authoritative_business is None:
         return df
@@ -738,20 +753,19 @@ def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_bu
         out[column] = current_series + allocation
 
     _reconcile("BOOKING 6%", 0.06, "ORIGIN_BUSINESS")
-    _reconcile("DESTINATION 5%", 0.05, "DESTINATION_BUSINESS")
 
     for column in ["SALARY", "GODOWN RENT", "OVERHEAD EXPENSE", "CLAIM", "BOOKING 6%", "DESTINATION 5%"]:
         if column not in out.columns:
             out[column] = 0.0
         out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
 
+    out["DESTINATION 5%"] = 0.0
     out["TOTAL EXPENSE"] = (
         out["SALARY"]
         + out["GODOWN RENT"]
         + out["OVERHEAD EXPENSE"]
         + out["CLAIM"]
         + out["BOOKING 6%"]
-        + out["DESTINATION 5%"]
     )
     out["NET_PROFIT"] = pd.to_numeric(out.get("COMBINED_PNL", 0.0), errors="coerce").fillna(0.0) - out["TOTAL EXPENSE"]
     out["NET_PROFIT_MARGIN"] = 0.0
@@ -2567,9 +2581,10 @@ def show_net_profit_dashboard():
         ("Overhead Expense", current["overhead"], previous["overhead"], "▦"),
         ("Claim", current["claim"], previous["claim"], "◆"),
         ("6% of Booking )", current["booking_6"], previous["booking_6"], "▣"),
-        ("5% of Delivery)", current["destination_5"], previous["destination_5"], "●"),
         ("Godown Rent", current["godown"], previous["godown"], "▥"),
     ]
+    if not all_branches:
+        overhead_kpis.insert(4, ("5% of Delivery)", current["destination_5"], previous["destination_5"], "●"))
 
     overhead_items_html = "".join(
         overhead_kpi_item_html(title, cy, ly, conversion_type, icon)
