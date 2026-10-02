@@ -558,19 +558,13 @@ def prepare_bidding_data(df):
         "LHC_STATUS"
     ] = "LHC Created"
 
-    # IMPORTANT CONTROL:
-    # Count Winner -> LHC Pending only when the BID is approved.
+    # Winner -> LHC Pending:
+    # Every winner bid without an LHC is pending, irrespective of approval status.
+    # Therefore, at KPI level: LHC Pending = Winner Bids - LHC Created.
     df.loc[
-        df["HAS_WINNER"] & lhc_no_text.eq("") & approved_y,
+        df["HAS_WINNER"] & lhc_no_text.eq(""),
         "LHC_STATUS"
     ] = "Winner - LHC Pending"
-
-    # Winner exists but approval is still not Y, therefore it is not yet an
-    # approved LHC-pending case.
-    df.loc[
-        df["HAS_WINNER"] & lhc_no_text.eq("") & ~approved_y,
-        "LHC_STATUS"
-    ] = "Winner - Not Approved"
 
     # There is no separate Winner Selected Date in the current SQL output.
     # Ageing therefore uses:
@@ -714,7 +708,7 @@ def apply_dashboard_filters(df):
         with row2[4]:
             lhc_status_filter = st.multiselect(
                 "LHC Status",
-                ["LHC Created", "Winner - LHC Pending", "Winner - Not Approved", "No Winner"],
+                ["LHC Created", "Winner - LHC Pending", "No Winner"],
                 key="bid_filter_lhc_status",
                 placeholder="All LHC statuses",
             )
@@ -910,20 +904,11 @@ def render_kpis(df):
     # LHC operational control KPIs
     winner_bids = int(df.loc[df["HAS_WINNER"], "BIDID"].nunique())
 
-    approved_winner_mask = (
-        df["HAS_WINNER"]
-        & _clean_text_series(df["APPROVED"]).str.upper().eq("Y")
-    )
-    approved_winner_bids = int(
-        df.loc[approved_winner_mask, "BIDID"].nunique()
-    )
-
     lhc_created = int(
         df.loc[df["LHC_STATUS"].eq("LHC Created"), "BIDID"].nunique()
     )
-    lhc_pending = int(
-        df.loc[df["LHC_STATUS"].eq("Winner - LHC Pending"), "BIDID"].nunique()
-    )
+    # Direct reconciliation: every winner bid is either LHC Created or LHC Pending.
+    lhc_pending = max(winner_bids - lhc_created, 0)
 
     pending_rows = df[df["LHC_STATUS"].eq("Winner - LHC Pending")].copy()
 
@@ -941,10 +926,7 @@ def render_kpis(df):
     )
 
     lhc_created_pct = (lhc_created / winner_bids * 100) if winner_bids else 0
-    lhc_pending_pct = (
-        lhc_pending / approved_winner_bids * 100
-        if approved_winner_bids else 0
-    )
+    lhc_pending_pct = (lhc_pending / winner_bids * 100) if winner_bids else 0
 
     l1c, l2c, l3c, l4c = st.columns(4, gap="small")
 
@@ -966,7 +948,7 @@ def render_kpis(df):
         l3c,
         "⏳ LHC Pending",
         f"{lhc_pending:,}",
-        f"{lhc_pending_pct:.1f}% of approved winner bids",
+        f"{lhc_pending_pct:.1f}% of winner bids",
         "red",
     )
     _kpi_card(
@@ -1672,7 +1654,7 @@ def render_charts(df):
                 height=300,
             )
             _render_chart_card(
-                "Approved Winner → LHC Pending Ageing  •  Count + % of Pending",
+                "Winner → LHC Pending Ageing  •  Count + % of Pending",
                 ageing_fig,
             )
         else:
@@ -1803,7 +1785,7 @@ def render_vehicle_type_insights(df):
         vehicle["Gap Issues"].div(vehicle["Gap Checked"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
     )
     vehicle["LHC Pending %"] = (
-        vehicle["LHC Pending"].div(vehicle["Approved Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+        vehicle["LHC Pending"].div(vehicle["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
     )
     vehicle["Query Reply %"] = (
         vehicle["Replied Queries"].div(vehicle["Query Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
@@ -1850,9 +1832,9 @@ def render_vehicle_type_insights(df):
         if not manual_candidates.empty else None
     )
 
-    pending_candidates = vehicle[vehicle["Approved Winner Bids"].ge(3)]
+    pending_candidates = vehicle[vehicle["Winner Bids"].ge(3)]
     if pending_candidates.empty:
-        pending_candidates = vehicle[vehicle["Approved Winner Bids"].gt(0)]
+        pending_candidates = vehicle[vehicle["Winner Bids"].gt(0)]
     highest_pending = (
         pending_candidates.sort_values(["LHC Pending %", "LHC Pending"], ascending=[False, False]).iloc[0]
         if not pending_candidates.empty else None
@@ -1902,7 +1884,7 @@ def render_vehicle_type_insights(df):
         str(highest_pending["Vehicle Type"]) if highest_pending is not None else "-",
         (
             f"{float(highest_pending['LHC Pending %']):.1f}% • {int(highest_pending['LHC Pending']):,} pending"
-            if highest_pending is not None else "No approved winner data"
+            if highest_pending is not None else "No winner data"
         ),
         "red",
     )
@@ -2642,7 +2624,7 @@ def render_vendor_performance(df):
 
     vendor_table["LHC Pending %"] = (
         vendor_table["LHC Pending"]
-        .div(vendor_table["Approved Wins"].replace(0, pd.NA))
+        .div(vendor_table["Winner Bids"].replace(0, pd.NA))
         .mul(100.0)
         .fillna(0.0)
     )
@@ -2884,7 +2866,7 @@ def render_exceptions(df):
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
         [
-            "⏳ Approved Winner → LHC Pending",
+            "⏳ Winner → LHC Pending",
             "₹500 Gap Issues",
             "Manual Winners",
             "Single Bidder",
