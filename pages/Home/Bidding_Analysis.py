@@ -4054,7 +4054,6 @@ def show_bidding_analysis():
         [
             "Overview",
             "Query Monitoring",
-            "Management Analysis",
             "Vehicle Insights",
             "Vendor Performance",
             "Exceptions & Controls",
@@ -4075,10 +4074,9 @@ def show_bidding_analysis():
     if selected_section == "Overview":
         render_kpis(filtered_df)
         render_zone_bidding_insights(filtered_df)
+        render_charts(filtered_df)
     elif selected_section == "Query Monitoring":
         render_query_response_analysis(filtered_df)
-    elif selected_section == "Management Analysis":
-        render_charts(filtered_df)
     elif selected_section == "Vehicle Insights":
         render_vehicle_type_insights(filtered_df)
     elif selected_section == "Vendor Performance":
