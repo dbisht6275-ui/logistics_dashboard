@@ -872,9 +872,6 @@ def render_kpis(df):
     )
     manual_bids = int(df.loc[df["WINNER_MODE"].eq("Manual"), "BIDID"].nunique())
     single_bidder = int(df.loc[df["BIDDER_COUNT"].eq(1), "BIDID"].nunique())
-    gap_violations = int(df.loc[df["GAP_STATUS"].eq("Violation"), "BIDID"].nunique())
-    avg_bidders = df.loc[df["BIDDER_COUNT"].gt(0), "BIDDER_COUNT"].mean()
-
     approved_pct = (approved_bids / total_bids * 100) if total_bids else 0
     query_pct = (query_bids / total_bids * 100) if total_bids else 0
     erp_pct = (erp_bids / total_bids * 100) if total_bids else 0
@@ -886,9 +883,7 @@ def render_kpis(df):
     )
     manual_pct = (manual_bids / total_bids * 100) if total_bids else 0
     single_pct = (single_bidder / total_bids * 100) if total_bids else 0
-    gap_pct = (gap_violations / total_bids * 100) if total_bids else 0
-
-    k1, k2, k3, k4, k5, k6, k7, k8, k9 = st.columns(9, gap="small")
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7, gap="small")
 
     _kpi_card(k1, "📦 Total Bids", f"{total_bids:,}", "Filtered unique bids", "blue")
     _kpi_card(k2, "✅ Approved", f"{approved_bids:,}", f"{approved_pct:.1f}% of bids", "green")
@@ -903,14 +898,6 @@ def render_kpis(df):
     )
     _kpi_card(k6, "✍️ Manual", f"{manual_bids:,}", f"{manual_pct:.1f}% of bids", "orange")
     _kpi_card(k7, "👤 Single Bidder", f"{single_bidder:,}", f"{single_pct:.1f}% of bids", "amber")
-    _kpi_card(k8, "⚠️ Gap Violations", f"{gap_violations:,}", f"{gap_pct:.1f}% of bids", "red")
-    _kpi_card(
-        k9,
-        "👥 Avg Bidders",
-        "-" if pd.isna(avg_bidders) else f"{avg_bidders:.2f}",
-        "Per participating bid",
-        "cyan",
-    )
 
     # Bid source KPIs
     s1, s2 = st.columns(2, gap="small")
@@ -3626,9 +3613,9 @@ def show_bidding_analysis():
         return
 
     render_kpis(filtered_df)
+    render_query_response_analysis(filtered_df)
     render_charts(filtered_df)
     render_vehicle_type_insights(filtered_df)
-    render_query_response_analysis(filtered_df)
     render_vendor_performance(filtered_df)
     render_exceptions(filtered_df)
     render_detail_table(filtered_df)
