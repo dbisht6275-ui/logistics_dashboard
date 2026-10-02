@@ -464,7 +464,7 @@ def prepare_bidding_data(df):
         if abs(gap) <= 0.01:
             return "Same Rate"
         if 0 < gap < 500:
-            return "Violation"
+            return "Issue"
         return "OK"
 
     df["GAP_STATUS"] = df.apply(gap_status, axis=1)
@@ -695,7 +695,7 @@ def apply_dashboard_filters(df):
         with row2[2]:
             gap_filter = st.multiselect(
                 "₹500 Gap Status",
-                ["OK", "Violation", "Same Rate", "Not Comparable"],
+                ["OK", "Issue", "Same Rate", "Not Comparable"],
                 key="bid_filter_gap",
                 placeholder="All statuses",
             )
@@ -1581,7 +1581,7 @@ def render_charts(df):
     gap_data = (
         df.groupby("GAP_STATUS")["BIDID"]
         .nunique()
-        .reindex(["OK", "Violation", "Not Comparable"])
+        .reindex(["OK", "Issue", "Not Comparable"])
         .fillna(0)
         .astype(int)
         .rename("Bids")
@@ -1727,8 +1727,8 @@ def render_vehicle_type_insights(df):
     base["SINGLE_BIDDER_FLAG"] = (
         pd.to_numeric(base["BIDDER_COUNT"], errors="coerce").eq(1)
     ).astype(int)
-    base["GAP_CHECKED_FLAG"] = base["GAP_STATUS"].isin(["OK", "Violation"]).astype(int)
-    base["GAP_VIOLATION_FLAG"] = base["GAP_STATUS"].eq("Violation").astype(int)
+    base["GAP_CHECKED_FLAG"] = base["GAP_STATUS"].isin(["OK", "Issue"]).astype(int)
+    base["GAP_VIOLATION_FLAG"] = base["GAP_STATUS"].eq("Issue").astype(int)
     base["LHC_PENDING_FLAG"] = base["LHC_STATUS"].eq("Winner - LHC Pending").astype(int)
     base["REPLIED_QUERY_FLAG"] = (
         base.get("QUERY_RESPONSE_STATUS", pd.Series(index=base.index, dtype="object"))
@@ -1759,7 +1759,7 @@ def render_vehicle_type_insights(df):
                 "Manual Selected": ("MANUAL_FLAG", "sum"),
                 "Single Bidder": ("SINGLE_BIDDER_FLAG", "sum"),
                 "Gap Checked": ("GAP_CHECKED_FLAG", "sum"),
-                "Gap Violations": ("GAP_VIOLATION_FLAG", "sum"),
+                "Gap Issues": ("GAP_VIOLATION_FLAG", "sum"),
                 "LHC Pending": ("LHC_PENDING_FLAG", "sum"),
                 "Replied Queries": ("REPLIED_QUERY_FLAG", "sum"),
                 "Avg Bidders": ("BIDDERS_FOR_AVG", "mean"),
@@ -1796,8 +1796,8 @@ def render_vehicle_type_insights(df):
     vehicle["Manual Win %"] = (
         vehicle["Manual Selected"].div(vehicle["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
     )
-    vehicle["Gap Violation %"] = (
-        vehicle["Gap Violations"].div(vehicle["Gap Checked"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    vehicle["Gap Issue %"] = (
+        vehicle["Gap Issues"].div(vehicle["Gap Checked"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
     )
     vehicle["LHC Pending %"] = (
         vehicle["LHC Pending"].div(vehicle["Approved Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
@@ -2006,8 +2006,8 @@ def render_vehicle_type_insights(df):
         "L1 Win %",
         "Manual Selected",
         "Manual Win %",
-        "Gap Violations",
-        "Gap Violation %",
+        "Gap Issues",
+        "Gap Issue %",
         "LHC Pending",
         "LHC Pending %",
         "Avg Final Rate",
@@ -2040,8 +2040,8 @@ def render_vehicle_type_insights(df):
             "L1 Win %": st.column_config.ProgressColumn("L-1 Win %", min_value=0, max_value=100, format="%.1f%%"),
             "Manual Selected": st.column_config.NumberColumn("Manual", format="%d"),
             "Manual Win %": st.column_config.ProgressColumn("Manual Win %", min_value=0, max_value=100, format="%.1f%%"),
-            "Gap Violations": st.column_config.NumberColumn("Gap Violations", format="%d"),
-            "Gap Violation %": st.column_config.ProgressColumn("Gap Violation %", min_value=0, max_value=100, format="%.1f%%"),
+            "Gap Issues": st.column_config.NumberColumn("Gap Issues", format="%d"),
+            "Gap Issue %": st.column_config.ProgressColumn("Gap Issue %", min_value=0, max_value=100, format="%.1f%%"),
             "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
             "LHC Pending %": st.column_config.ProgressColumn("LHC Pending %", min_value=0, max_value=100, format="%.1f%%"),
             "Avg Final Rate": st.column_config.NumberColumn("Avg Final Rate", format="₹ %.0f"),
@@ -2878,7 +2878,7 @@ def render_exceptions(df):
     tab1, tab2, tab3, tab4, tab5 = st.tabs(
         [
             "⏳ Approved Winner → LHC Pending",
-            "₹500 Gap Violations",
+            "₹500 Gap Issues",
             "Manual Winners",
             "Single Bidder",
             "Hire vs Final",
@@ -2963,7 +2963,7 @@ def render_exceptions(df):
         )
 
     with tab2:
-        violation_df = df[df["GAP_STATUS"].eq("Violation")].copy()
+        violation_df = df[df["GAP_STATUS"].eq("Issue")].copy()
         _exception_table(violation_df, base_cols)
 
     with tab3:
@@ -3334,7 +3334,8 @@ def show_bidding_analysis():
         }
         .bid-kpi-note {
             font-size:8.5px;
-            color:#64748b;
+            color:#2563eb;
+            font-weight:700;
             margin-top:2px;
             line-height:1.15;
             white-space:nowrap;
