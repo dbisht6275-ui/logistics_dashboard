@@ -45,7 +45,7 @@ def get_bidding_engine():
 
 BIDDING_SQL = text(
     r"""
-     WITH CTE AS
+    WITH CTE AS
     (
         SELECT
             BP.BIDID,
@@ -145,8 +145,9 @@ BIDDING_SQL = text(
             THEN 'APP'
             ELSE 'ERP'
         END AS SOURCE,
-        br.zonename as ZONE,
-        br.hubname as CIRCLE,
+
+        BR.ZONENAME AS ZONE,
+        BR.HUBNAME AS CIRCLE,
         BR.STNNAME AS BRANCH,
 
         N.USERNAME AS GENERATEBYUSER,
@@ -705,6 +706,24 @@ def apply_dashboard_filters(df):
                 placeholder="All LHC statuses",
             )
 
+        row3 = st.columns(2, gap="small")
+
+        with row3[0]:
+            zone_filter = st.multiselect(
+                "Zone",
+                _sorted_options(df["ZONE"]) if "ZONE" in df.columns else [],
+                key="bid_filter_zone",
+                placeholder="All zones",
+            )
+
+        with row3[1]:
+            circle_filter = st.multiselect(
+                "Circle",
+                _sorted_options(df["CIRCLE"]) if "CIRCLE" in df.columns else [],
+                key="bid_filter_circle",
+                placeholder="All circles",
+            )
+
         # Vendor filter uses the all-bidder list so a vendor can be filtered
         # whether it won the bid or only participated.
         vendor_options = []
@@ -768,6 +787,12 @@ def apply_dashboard_filters(df):
 
     if lhc_status_filter:
         filtered = filtered[filtered["LHC_STATUS"].isin(lhc_status_filter)]
+
+    if zone_filter and "ZONE" in filtered.columns:
+        filtered = filtered[filtered["ZONE"].isin(zone_filter)]
+
+    if circle_filter and "CIRCLE" in filtered.columns:
+        filtered = filtered[filtered["CIRCLE"].isin(circle_filter)]
 
     if vendor_filter:
         selected_vendor_keys = {str(v).strip().upper() for v in vendor_filter}
@@ -1502,6 +1527,230 @@ def render_overview_charts(df):
             height=240,
         )
         _render_chart_card("Winner → LHC Flow", fig)
+
+
+def render_zone_bidding_insights(df):
+    """Executive zone-wise bidding view for the Overview tab."""
+    st.markdown("#### Zone-wise Bidding Insights")
+
+    if "ZONE" not in df.columns:
+        st.info("ZONE is not available in the loaded SQL output. Refresh after deploying the updated query.")
+        return
+
+    base = (
+        df.sort_values(["BIDID", "BIDOPENDT"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    base["ZONE_CLEAN"] = _clean_text_series(base["ZONE"]).replace("", "Not Available")
+    base["QUERY_FLAG"] = _clean_text_series(base["QUERYBID"]).str.upper().eq("YES").astype(int)
+    base["WINNER_FLAG"] = base["HAS_WINNER"].fillna(False).astype(int)
+    base["LHC_CREATED_FLAG"] = base["LHC_STATUS"].eq("LHC Created").astype(int)
+    base["LHC_PENDING_FLAG"] = base["LHC_STATUS"].eq("Winner - LHC Pending").astype(int)
+    base["L1_FLAG"] = base["WINNER_MODE"].eq("L-1").astype(int)
+    base["MANUAL_FLAG"] = base["WINNER_MODE"].eq("Manual").astype(int)
+    base["SINGLE_BIDDER_FLAG"] = pd.to_numeric(
+        base["BIDDER_COUNT"], errors="coerce"
+    ).eq(1).astype(int)
+
+    if "CIRCLE" in base.columns:
+        base["CIRCLE_CLEAN"] = _clean_text_series(base["CIRCLE"]).replace("", "Not Available")
+    else:
+        base["CIRCLE_CLEAN"] = "Not Available"
+
+    zone = (
+        base.groupby("ZONE_CLEAN", as_index=False)
+        .agg(
+            **{
+                "Total Bids": ("BIDID", "nunique"),
+                "Query Bids": ("QUERY_FLAG", "sum"),
+                "Winner Bids": ("WINNER_FLAG", "sum"),
+                "LHC Created": ("LHC_CREATED_FLAG", "sum"),
+                "LHC Pending": ("LHC_PENDING_FLAG", "sum"),
+                "L-1 Selected": ("L1_FLAG", "sum"),
+                "Manual": ("MANUAL_FLAG", "sum"),
+                "Single Bidder": ("SINGLE_BIDDER_FLAG", "sum"),
+                "Circles": ("CIRCLE_CLEAN", "nunique"),
+                "Branches": ("BRANCH", "nunique"),
+            }
+        )
+        .rename(columns={"ZONE_CLEAN": "Zone"})
+    )
+
+    if zone.empty:
+        st.info("No zone-wise data available for the selected filters.")
+        return
+
+    zone["Bid Share %"] = (
+        zone["Total Bids"].div(zone["Total Bids"].sum()).mul(100.0).fillna(0.0)
+    )
+    zone["Query Rate %"] = (
+        zone["Query Bids"].div(zone["Total Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    zone["Winner Rate %"] = (
+        zone["Winner Bids"].div(zone["Total Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    zone["LHC Completion %"] = (
+        zone["LHC Created"].div(zone["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    zone["LHC Pending %"] = (
+        zone["LHC Pending"].div(zone["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+
+    # Reconcile pending directly to the dashboard rule: Winner Bids - LHC Created.
+    zone["LHC Pending"] = (zone["Winner Bids"] - zone["LHC Created"]).clip(lower=0)
+    zone["LHC Pending %"] = (
+        zone["LHC Pending"].div(zone["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+
+    zone = zone.sort_values(["Total Bids", "Winner Bids"], ascending=[False, False]).reset_index(drop=True)
+
+    top_volume = zone.iloc[0]
+    query_candidates = zone[zone["Query Bids"].gt(0)]
+    top_query = (
+        query_candidates.sort_values(["Query Bids", "Total Bids"], ascending=[False, False]).iloc[0]
+        if not query_candidates.empty else None
+    )
+    pending_candidates = zone[zone["LHC Pending"].gt(0)]
+    top_pending = (
+        pending_candidates.sort_values(["LHC Pending", "LHC Pending %"], ascending=[False, False]).iloc[0]
+        if not pending_candidates.empty else None
+    )
+
+    k1, k2, k3 = st.columns(3, gap="small")
+    _kpi_card(
+        k1,
+        "🌐 Highest Bid Volume Zone",
+        str(top_volume["Zone"]),
+        f"{int(top_volume['Total Bids']):,} bids • {float(top_volume['Bid Share %']):.1f}% share",
+        "blue",
+    )
+    _kpi_card(
+        k2,
+        "💬 Highest Query Volume Zone",
+        str(top_query["Zone"]) if top_query is not None else "-",
+        (
+            f"{int(top_query['Query Bids']):,} queries • {float(top_query['Query Rate %']):.1f}% query rate"
+            if top_query is not None else "No query bids"
+        ),
+        "purple",
+    )
+    _kpi_card(
+        k3,
+        "⏳ Highest LHC Pending Zone",
+        str(top_pending["Zone"]) if top_pending is not None else "-",
+        (
+            f"{int(top_pending['LHC Pending']):,} pending • {float(top_pending['LHC Pending %']):.1f}% of winners"
+            if top_pending is not None else "No LHC pending"
+        ),
+        "red",
+    )
+
+    left, right = st.columns(2, gap="small")
+
+    with left:
+        volume_work = zone.sort_values("Total Bids", ascending=True)
+        volume_fig = _horizontal_bar_chart(
+            volume_work["Zone"],
+            volume_work["Total Bids"],
+            height=max(285, min(520, 42 * len(volume_work) + 85)),
+            value_name="Bids",
+        )
+        _render_chart_card("Zone-wise Bid Volume", volume_fig)
+
+    with right:
+        flow_work = zone.sort_values("Winner Bids", ascending=True)
+        flow_fig = go.Figure()
+        flow_fig.add_trace(
+            go.Bar(
+                x=flow_work["LHC Created"],
+                y=flow_work["Zone"],
+                name="LHC Created",
+                orientation="h",
+                marker=dict(color="#16a34a"),
+                hovertemplate="<b>%{y}</b><br>LHC Created: %{x:,}<extra></extra>",
+            )
+        )
+        flow_fig.add_trace(
+            go.Bar(
+                x=flow_work["LHC Pending"],
+                y=flow_work["Zone"],
+                name="LHC Pending",
+                orientation="h",
+                marker=dict(color="#dc2626"),
+                hovertemplate="<b>%{y}</b><br>LHC Pending: %{x:,}<extra></extra>",
+            )
+        )
+        _compact_chart_layout(
+            flow_fig,
+            height=max(285, min(520, 42 * len(flow_work) + 85)),
+            bottom_margin=42,
+        )
+        flow_fig.update_layout(
+            barmode="stack",
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.01,
+                xanchor="right",
+                x=1,
+                font=dict(size=9, color=CHART_TEXT_COLOR),
+            ),
+            bargap=0.28,
+        )
+        flow_fig.update_yaxes(showgrid=False, automargin=True)
+        flow_fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+        _render_chart_card("Zone-wise Winner → LHC Flow", flow_fig)
+
+    with st.expander("📋 Zone-wise Performance Table — expand / collapse", expanded=False):
+        zone_display = zone[
+            [
+                "Zone",
+                "Total Bids",
+                "Bid Share %",
+                "Query Bids",
+                "Query Rate %",
+                "Winner Bids",
+                "Winner Rate %",
+                "LHC Created",
+                "LHC Pending",
+                "LHC Completion %",
+                "LHC Pending %",
+                "L-1 Selected",
+                "Manual",
+                "Single Bidder",
+                "Circles",
+                "Branches",
+            ]
+        ].copy()
+
+        st.dataframe(
+            zone_display,
+            use_container_width=True,
+            hide_index=True,
+            height=min(520, 88 + 35 * len(zone_display)),
+            column_config={
+                "Zone": st.column_config.TextColumn("Zone", width="medium"),
+                "Total Bids": st.column_config.NumberColumn("Total Bids", format="%d"),
+                "Bid Share %": st.column_config.ProgressColumn("Bid Share %", min_value=0, max_value=100, format="%.1f%%"),
+                "Query Bids": st.column_config.NumberColumn("Query Bids", format="%d"),
+                "Query Rate %": st.column_config.ProgressColumn("Query Rate %", min_value=0, max_value=100, format="%.1f%%"),
+                "Winner Bids": st.column_config.NumberColumn("Winner Bids", format="%d"),
+                "Winner Rate %": st.column_config.ProgressColumn("Winner Rate %", min_value=0, max_value=100, format="%.1f%%"),
+                "LHC Created": st.column_config.NumberColumn("LHC Created", format="%d"),
+                "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
+                "LHC Completion %": st.column_config.ProgressColumn("LHC Completion %", min_value=0, max_value=100, format="%.1f%%"),
+                "LHC Pending %": st.column_config.ProgressColumn("LHC Pending %", min_value=0, max_value=100, format="%.1f%%"),
+                "L-1 Selected": st.column_config.NumberColumn("L-1", format="%d"),
+                "Manual": st.column_config.NumberColumn("Manual", format="%d"),
+                "Single Bidder": st.column_config.NumberColumn("Single Bidder", format="%d"),
+                "Circles": st.column_config.NumberColumn("Circles", format="%d"),
+                "Branches": st.column_config.NumberColumn("Branches", format="%d"),
+            },
+        )
+
 
 
 def render_charts(df):
@@ -3697,6 +3946,7 @@ def show_bidding_analysis():
     with tab_overview:
         render_kpis(filtered_df)
         render_overview_charts(filtered_df)
+        render_zone_bidding_insights(filtered_df)
 
     with tab_query:
         render_query_response_analysis(filtered_df)
