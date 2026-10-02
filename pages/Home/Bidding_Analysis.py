@@ -3618,40 +3618,49 @@ def show_bidding_analysis():
         return
 
     # --------------------------------------------------------
-    # SECTION NAVIGATION
-    # Keep the dashboard easy to use by showing one major section at a time.
-    # Filters above continue to apply to every section.
+    # SAME-PAGE SECTION NAVIGATION
+    # Use top tabs so users can switch sections on the same page
+    # without scrolling through the complete dashboard or using sidebar navigation.
+    # Filters above continue to apply to every tab.
     # --------------------------------------------------------
-    st.sidebar.markdown("### Dashboard Navigation")
-    dashboard_section = st.sidebar.radio(
-        "Go to section",
+    (
+        tab_overview,
+        tab_query,
+        tab_management,
+        tab_vehicle,
+        tab_vendor,
+        tab_exceptions,
+        tab_detail,
+    ) = st.tabs(
         [
-            "Overview",
-            "Query Response Monitoring",
-            "Management Analysis",
-            "Vehicle Type Insights",
-            "Vendor Performance",
-            "Exceptions & Controls",
-            "Detailed Bid Data",
-        ],
-        key="bidding_dashboard_section",
-        label_visibility="collapsed",
+            "📊 Overview",
+            "💬 Query Monitoring",
+            "📈 Management Analysis",
+            "🚚 Vehicle Insights",
+            "🤝 Vendor Performance",
+            "⚠️ Exceptions",
+            "📋 Detailed Data",
+        ]
     )
 
-    st.sidebar.caption("Select a section to avoid scrolling through the full dashboard.")
-
-    if dashboard_section == "Overview":
+    with tab_overview:
         render_kpis(filtered_df)
-    elif dashboard_section == "Query Response Monitoring":
+
+    with tab_query:
         render_query_response_analysis(filtered_df)
-    elif dashboard_section == "Management Analysis":
+
+    with tab_management:
         render_charts(filtered_df)
-    elif dashboard_section == "Vehicle Type Insights":
+
+    with tab_vehicle:
         render_vehicle_type_insights(filtered_df)
-    elif dashboard_section == "Vendor Performance":
+
+    with tab_vendor:
         render_vendor_performance(filtered_df)
-    elif dashboard_section == "Exceptions & Controls":
+
+    with tab_exceptions:
         render_exceptions(filtered_df)
-    elif dashboard_section == "Detailed Bid Data":
+
+    with tab_detail:
         render_detail_table(filtered_df)
 
