@@ -720,6 +720,63 @@ def _apply_same_filters(df, filters):
     return out
 
 
+def _load_authoritative_revenue_for_time_scope(period_start, period_end, quarters=None, months=None):
+    """Return authoritative P&L SP revenue for the selected time scope.
+
+    When Month/Quarter filters are active in All-Branches mode, using the
+    branch-joined ORIGIN_BUSINESS sum can differ from the stored-procedure
+    revenue total. Build the selected calendar-month slices and sum the SP
+    revenue for those slices so FY+Month/Quarter matches an equivalent
+    Custom Date run.
+    """
+    if period_start is None or period_end is None:
+        return 0.0
+
+    start = pd.Timestamp(period_start).normalize()
+    end = pd.Timestamp(period_end).normalize()
+    if start > end:
+        return 0.0
+
+    selected_months = set(months or [])
+    selected_quarters = set(quarters or [])
+
+    # No time filter: one authoritative call for the whole committed period.
+    if not selected_months and not selected_quarters:
+        return float(load_pnl_sp_revenue_total(start.date(), end.date()) or 0.0)
+
+    month_to_quarter = {
+        "Apr": "Q1", "May": "Q1", "Jun": "Q1",
+        "Jul": "Q2", "Aug": "Q2", "Sep": "Q2",
+        "Oct": "Q3", "Nov": "Q3", "Dec": "Q3",
+        "Jan": "Q4", "Feb": "Q4", "Mar": "Q4",
+    }
+
+    total = 0.0
+    cursor = start.replace(day=1)
+    last_month = end.replace(day=1)
+
+    while cursor <= last_month:
+        month_label = cursor.strftime("%b")
+        quarter_label = month_to_quarter.get(month_label)
+
+        month_selected = (not selected_months) or (month_label in selected_months)
+        quarter_selected = (not selected_quarters) or (quarter_label in selected_quarters)
+
+        if month_selected and quarter_selected:
+            month_start = max(cursor, start)
+            month_end = min(cursor + pd.offsets.MonthEnd(0), end)
+            if month_start <= month_end:
+                total += float(
+                    load_pnl_sp_revenue_total(
+                        month_start.date(), month_end.date()
+                    ) or 0.0
+                )
+
+        cursor = cursor + pd.offsets.MonthBegin(1)
+
+    return total
+
+
 def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_business):
     """Reconcile consolidated All-Branches percentage charge.
 
@@ -2450,21 +2507,23 @@ def show_net_profit_dashboard():
     divisor, unit = get_conversion(conversion_type)
 
     # Business KPI display rule:
-    # - Fully consolidated All Branches (no Branch/Zone/Circle/Quarter/Month filter):
-    #   show the exact P&L SP revenue total in the Booking/Origin KPI. This is the
-    #   authoritative origin-basis consolidated revenue and avoids understatement
-    #   caused by branch joins. Destination KPI stays disabled.
-    # - All Branches with hierarchy/time filters: use filtered ORIGIN_BUSINESS only.
-    # - Explicit branch selection: show Booking and Destination revenue separately.
-    no_business_scope_filters = not (branches or zones or circles or quarters or months)
+    # - All Branches with no Zone/Circle restriction: always use the authoritative
+    #   P&L SP revenue for the active time scope. This includes FY, Quarter and
+    #   Month selections, so FY + Sep reconciles with Custom Date Sep.
+    # - Zone/Circle or explicit Branch selections remain based on the filtered
+    #   Net Profit dataset because the consolidated SP has no hierarchy filter.
+    authoritative_scope = all_branches and not (zones or circles)
 
-    if all_branches and no_business_scope_filters:
-        booking_business_current = float(sp_revenue_total or 0.0)
-        booking_business_previous = float(sp_prev_revenue_total or 0.0)
+    if authoritative_scope:
+        booking_business_current = _load_authoritative_revenue_for_time_scope(
+            start_date, end_date, quarters=quarters, months=months
+        )
+        booking_business_previous = _load_authoritative_revenue_for_time_scope(
+            prev_start, prev_end, quarters=quarters, months=months
+        )
 
-        # In the consolidated view, Booking and Delivery are two sides of the
-        # same shipment population. Reconcile BOTH percentage expenses to the
-        # exact authoritative business base, then rebuild expense / profit.
+        # All Branches business rule: only 6% Booking is deducted. Reconcile that
+        # charge to the same authoritative revenue base and rebuild Net Profit.
         df = _reconcile_percentage_charges_to_authoritative_business(
             df, booking_business_current
         )
@@ -2473,8 +2532,6 @@ def show_net_profit_dashboard():
                 prev_df, booking_business_previous
             )
     else:
-        # Filtered/branch views use the already-aligned P&L business values from
-        # the Net Profit loader. There is no separate consolidated SP override.
         booking_business_current = float(df["ORIGIN_BUSINESS"].sum()) if "ORIGIN_BUSINESS" in df.columns else 0.0
         booking_business_previous = float(prev_df["ORIGIN_BUSINESS"].sum()) if (prev_df is not None and not prev_df.empty and "ORIGIN_BUSINESS" in prev_df.columns) else 0.0
 
