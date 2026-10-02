@@ -543,9 +543,10 @@ def prepare_bidding_data(df):
     # is used for Winner Bids as well as LHC Created / Pending controls.
     is_winner_flag = _clean_text_series(df["ISWINNER"]).str.upper().eq("Y")
     has_winner_name = _clean_text_series(df["WINNER_NAME"]).ne("")
-    has_final_rate = df["FINALRATE"].notna()
 
-    df["HAS_WINNER"] = is_winner_flag | has_winner_name | has_final_rate
+    # Strict winner rule requested by user:
+    # a BID is treated as a winner only when BOTH conditions are met.
+    df["HAS_WINNER"] = is_winner_flag & has_winner_name
 
     lhc_no_text = _clean_text_series(df["LHCNO"])
     df["LHC_STATUS"] = "No Winner"
