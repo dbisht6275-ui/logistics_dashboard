@@ -876,9 +876,22 @@ def render_kpis(df):
         if not pending_rows.empty and pending_rows["LHC_PENDING_AGE_DAYS"].notna().any()
         else 0
     )
-    pending_over_7 = int(
+    # Mutually exclusive LHC pending ageing buckets for clear management review.
+    pending_0_7 = int(
         pending_rows.loc[
-            pending_rows["LHC_PENDING_AGE_DAYS"].gt(7),
+            pending_rows["LHC_PENDING_AGE_DAYS"].between(0, 7, inclusive="both"),
+            "BIDID"
+        ].nunique()
+    )
+    pending_8_15 = int(
+        pending_rows.loc[
+            pending_rows["LHC_PENDING_AGE_DAYS"].between(8, 15, inclusive="both"),
+            "BIDID"
+        ].nunique()
+    )
+    pending_16_plus = int(
+        pending_rows.loc[
+            pending_rows["LHC_PENDING_AGE_DAYS"].gt(15),
             "BIDID"
         ].nunique()
     )
@@ -898,10 +911,6 @@ def render_kpis(df):
 
     no_winner_bids = max(total_bids - winner_bids, 0)
     no_winner_pct = (no_winner_bids / total_bids * 100) if total_bids else 0
-    pending_over_15 = int(
-        pending_rows.loc[pending_rows["LHC_PENDING_AGE_DAYS"].gt(15), "BIDID"].nunique()
-    )
-
     # --------------------------------------------------------
     # Row 1 — Bid Volume / Source
     # --------------------------------------------------------
@@ -939,16 +948,40 @@ def render_kpis(df):
         _kpi_card(c4, "👤 Single Bidder", f"{single_bidder:,}", f"{single_pct:.1f}% of total bids", "amber")
 
     # --------------------------------------------------------
-    # Row 4 — Timeliness / Execution Control
+    # Row 4 — LHC Pending Ageing / Execution Control
     # --------------------------------------------------------
     label, content = st.columns([1.25, 8.75], gap="small")
-    _kpi_group_label(label, "4. TIMELINESS", "Execution control", "amber")
+    _kpi_group_label(label, "4. LHC PENDING AGEING", "Execution control", "amber")
     with content:
         c1, c2, c3, c4 = st.columns(4, gap="small")
-        _kpi_card(c1, "📈 LHC Completion", f"{lhc_created_pct:.1f}%", f"{lhc_created:,} of {winner_bids:,} winner bids", "green")
-        _kpi_card(c2, "🕒 Oldest LHC Pending", f"{oldest_pending:,} days", "Oldest open winner → LHC case", "amber")
-        _kpi_card(c3, "⚠️ > 7 Days Pending", f"{pending_over_7:,}", f"{(pending_over_7 / lhc_pending * 100 if lhc_pending else 0):.1f}% of pending", "red")
-        _kpi_card(c4, "🚨 > 15 Days Pending", f"{pending_over_15:,}", f"{(pending_over_15 / lhc_pending * 100 if lhc_pending else 0):.1f}% of pending", "rose")
+        _kpi_card(
+            c1,
+            "🟢 Pending 0–7 Days",
+            f"{pending_0_7:,}",
+            f"{(pending_0_7 / lhc_pending * 100 if lhc_pending else 0):.1f}% of pending",
+            "green",
+        )
+        _kpi_card(
+            c2,
+            "🟠 Pending 8–15 Days",
+            f"{pending_8_15:,}",
+            f"{(pending_8_15 / lhc_pending * 100 if lhc_pending else 0):.1f}% of pending",
+            "orange",
+        )
+        _kpi_card(
+            c3,
+            "🔴 Pending 16+ Days",
+            f"{pending_16_plus:,}",
+            f"{(pending_16_plus / lhc_pending * 100 if lhc_pending else 0):.1f}% of pending",
+            "red",
+        )
+        _kpi_card(
+            c4,
+            "🕒 Oldest Pending",
+            f"{oldest_pending:,} days",
+            "Oldest open winner → LHC case",
+            "amber",
+        )
 
 
 def _compact_chart_layout(fig, height=245, bottom_margin=48):
