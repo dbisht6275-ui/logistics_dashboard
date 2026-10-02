@@ -1158,8 +1158,9 @@ def _donut_chart(labels, values, height=265, center_label="Total", colors=None):
             sort=False,
             textinfo="none",
             texttemplate="%{percent:.1%}<br>%{value:,}",
-            textposition="outside",
-            textfont=dict(size=10, color=CHART_TEXT_COLOR),
+            textposition="inside",
+            insidetextorientation="horizontal",
+            textfont=dict(size=9, color="#ffffff"),
             hovertemplate="<b>%{label}</b><br>Bids: %{value:,}<br>Share: %{percent}<extra></extra>",
             marker=dict(colors=colors[: len(labels)], line=dict(color="#ffffff", width=2.2)),
             pull=[0.02 if i == 0 else 0 for i in range(len(labels))],
@@ -1169,7 +1170,7 @@ def _donut_chart(labels, values, height=265, center_label="Total", colors=None):
 
     fig.update_layout(
         height=height,
-        margin=dict(l=8, r=8, t=8, b=22),
+        margin=dict(l=8, r=8, t=8, b=30),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="#ffffff",
         showlegend=True,
@@ -1179,12 +1180,13 @@ def _donut_chart(labels, values, height=265, center_label="Total", colors=None):
             y=-0.02,
             xanchor="center",
             x=0.5,
-            font=dict(size=8, color=CHART_TEXT_COLOR),
-            entrywidth=62,
+            font=dict(size=7, color=CHART_TEXT_COLOR),
+            entrywidth=52,
             entrywidthmode="pixels",
             itemwidth=30,
         ),
         font=dict(family="Arial, sans-serif", size=10, color=CHART_TEXT_COLOR),
+        uniformtext=dict(minsize=8, mode="hide"),
         annotations=[
             dict(
                 text=(
@@ -1299,29 +1301,6 @@ def _render_chart_card(title, fig):
                 "responsive": True,
             },
         )
-
-
-def _insight_highlight_card(title, value, subtitle, accent="#2563eb"):
-    """Small highlight card used above compact composition charts."""
-    st.markdown(
-        f"""
-        <div style="
-            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-            border: 1px solid #dbe4ef;
-            border-left: 4px solid {accent};
-            border-radius: 14px;
-            padding: 12px 14px 10px 14px;
-            min-height: 84px;
-            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-            margin-bottom: 6px;
-        ">
-            <div style="font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px;">{title}</div>
-            <div style="font-size: 24px; font-weight: 800; color: #0f172a; line-height: 1.1; margin-bottom: 5px;">{value}</div>
-            <div style="font-size: 12px; font-weight: 600; color: #2563eb;">{subtitle}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def _ageing_chart_with_values(ageing_df, height=255):
@@ -1911,52 +1890,6 @@ def render_charts(df):
         .reset_index()
     )
     gap_data = gap_data[gap_data["Bids"].gt(0)]
-
-    total_unique_bids = int(df["BIDID"].nunique()) if "BIDID" in df.columns else 0
-    winner_bids_total = int(winner_counts.drop(labels=["No Winner"], errors="ignore").sum())
-    l1_count = int(winner_counts.get("L-1", 0))
-    manual_count = int(winner_counts.get("Manual", 0))
-    competitive_bids = int(
-        df.loc[pd.to_numeric(df.get("BIDDER_COUNT"), errors="coerce").fillna(0).ge(2), "BIDID"].nunique()
-    )
-    gap_ok_count = int(gap_data.set_index("GAP_STATUS")["Bids"].to_dict().get("OK", 0)) if not gap_data.empty else 0
-    comparable_count = int(gap_data[gap_data["GAP_STATUS"].isin(["OK", "Issue"])]["Bids"].sum()) if not gap_data.empty else 0
-    no_bidder_count = int(participation.set_index("BIDDER_BUCKET")["Bids"].to_dict().get("No Bidder", 0)) if not participation.empty else 0
-    multi_bidder_count = int(participation[participation["BIDDER_BUCKET"].isin(["2 Bidders", "3 Bidders", "4+ Bidders"])]["Bids"].sum()) if not participation.empty else 0
-
-    h1, h2, h3 = st.columns(3, gap="small")
-    with h1:
-        _insight_highlight_card(
-            "Winner Snapshot",
-            f"{winner_bids_total:,}",
-            (
-                f"L-1 {l1_count / winner_bids_total * 100:.1f}% | "
-                f"Manual {manual_count / winner_bids_total * 100:.1f}%"
-                if winner_bids_total else "No winner mix available"
-            ),
-            accent="#2563eb",
-        )
-    with h2:
-        _insight_highlight_card(
-            "Participation Snapshot",
-            f"{multi_bidder_count:,}",
-            (
-                f"{multi_bidder_count / total_unique_bids * 100:.1f}% bids had 2+ bidders | "
-                f"No bidder: {no_bidder_count:,}"
-                if total_unique_bids else "No participation data available"
-            ),
-            accent="#0ea5e9",
-        )
-    with h3:
-        _insight_highlight_card(
-            "₹500 Gap Snapshot",
-            f"{gap_ok_count:,}",
-            (
-                f"{gap_ok_count / comparable_count * 100:.1f}% OK among comparable bids"
-                if comparable_count else "No comparable bids available"
-            ),
-            accent="#f59e0b",
-        )
 
     d1, d2, d3 = st.columns(3, gap="small")
 
