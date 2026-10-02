@@ -1631,7 +1631,20 @@ def render_zone_bidding_insights(df):
                 name="LHC Created",
                 orientation="h",
                 marker=dict(color="#2563eb"),
-                hovertemplate="<b>%{y}</b><br>LHC Created: %{x:,}<extra></extra>",
+                text=[
+                    f"{int(v):,} | {pct:.1f}%"
+                    for v, pct in zip(flow_work["LHC Created"], flow_work["LHC Completion %"])
+                ],
+                textposition="inside",
+                insidetextanchor="middle",
+                textfont=dict(color="#ffffff", size=10),
+                hovertemplate=(
+                    "<b>%{y}</b><br>"
+                    "LHC Created: %{x:,}<br>"
+                    "Completion: %{customdata:.1f}%"
+                    "<extra></extra>"
+                ),
+                customdata=flow_work["LHC Completion %"],
             )
         )
         flow_fig.add_trace(
@@ -1641,7 +1654,20 @@ def render_zone_bidding_insights(df):
                 name="LHC Pending",
                 orientation="h",
                 marker=dict(color="#f59e0b"),
-                hovertemplate="<b>%{y}</b><br>LHC Pending: %{x:,}<extra></extra>",
+                text=[
+                    f"{int(v):,} | {pct:.1f}%"
+                    for v, pct in zip(flow_work["LHC Pending"], flow_work["LHC Pending %"])
+                ],
+                textposition="inside",
+                insidetextanchor="middle",
+                textfont=dict(color="#ffffff", size=10),
+                hovertemplate=(
+                    "<b>%{y}</b><br>"
+                    "LHC Pending: %{x:,}<br>"
+                    "Pending Share: %{customdata:.1f}%"
+                    "<extra></extra>"
+                ),
+                customdata=flow_work["LHC Pending %"],
             )
         )
         _compact_chart_layout(
