@@ -2018,38 +2018,39 @@ def render_vehicle_type_insights(df):
 
     vehicle_display = vehicle[display_cols].copy()
 
-    st.dataframe(
-        vehicle_display,
-        use_container_width=True,
-        hide_index=True,
-        height=min(620, 88 + 35 * len(vehicle_display)),
-        column_config={
-            "Vehicle Type": st.column_config.TextColumn("Vehicle Type", width="medium"),
-            "Bids": st.column_config.NumberColumn("Bids", format="%d"),
-            "Share %": st.column_config.ProgressColumn("Bid Share %", min_value=0, max_value=100, format="%.1f%%"),
-            "Query Bids": st.column_config.NumberColumn("Query Bids", format="%d"),
-            "Query Rate %": st.column_config.ProgressColumn("Query Rate %", min_value=0, max_value=100, format="%.1f%%"),
-            "Query Reply %": st.column_config.ProgressColumn("Query Reply %", min_value=0, max_value=100, format="%.1f%%"),
-            "Avg Query Response Hrs": st.column_config.NumberColumn("Avg Query TAT (Hrs)", format="%.2f"),
-            "Approved Bids": st.column_config.NumberColumn("Approved", format="%d"),
-            "Approval Rate %": st.column_config.ProgressColumn("Approval %", min_value=0, max_value=100, format="%.1f%%"),
-            "Avg Bidders": st.column_config.NumberColumn("Avg Bidders", format="%.2f"),
-            "Single Bidder %": st.column_config.ProgressColumn("Single Bidder %", min_value=0, max_value=100, format="%.1f%%"),
-            "Winner Bids": st.column_config.NumberColumn("Winner Bids", format="%d"),
-            "L1 Selected": st.column_config.NumberColumn("L-1", format="%d"),
-            "L1 Win %": st.column_config.ProgressColumn("L-1 Win %", min_value=0, max_value=100, format="%.1f%%"),
-            "Manual Selected": st.column_config.NumberColumn("Manual", format="%d"),
-            "Manual Win %": st.column_config.ProgressColumn("Manual Win %", min_value=0, max_value=100, format="%.1f%%"),
-            "Gap Issues": st.column_config.NumberColumn("Gap Issues", format="%d"),
-            "Gap Issue %": st.column_config.ProgressColumn("Gap Issue %", min_value=0, max_value=100, format="%.1f%%"),
-            "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
-            "LHC Pending %": st.column_config.ProgressColumn("LHC Pending %", min_value=0, max_value=100, format="%.1f%%"),
-            "Avg Final Rate": st.column_config.NumberColumn("Avg Final Rate", format="₹ %.0f"),
-            "Avg Saving vs L1": st.column_config.NumberColumn("Avg Saving vs L1", format="₹ %.0f"),
-            "Branches": st.column_config.NumberColumn("Branches", format="%d"),
-            "Routes": st.column_config.NumberColumn("Routes", format="%d"),
-        },
-    )
+    with st.expander("📋 Show / Hide Vehicle-wise Performance Table", expanded=False):
+        st.dataframe(
+            vehicle_display,
+            use_container_width=True,
+            hide_index=True,
+            height=min(620, 88 + 35 * len(vehicle_display)),
+            column_config={
+                "Vehicle Type": st.column_config.TextColumn("Vehicle Type", width="medium"),
+                "Bids": st.column_config.NumberColumn("Bids", format="%d"),
+                "Share %": st.column_config.ProgressColumn("Bid Share %", min_value=0, max_value=100, format="%.1f%%"),
+                "Query Bids": st.column_config.NumberColumn("Query Bids", format="%d"),
+                "Query Rate %": st.column_config.ProgressColumn("Query Rate %", min_value=0, max_value=100, format="%.1f%%"),
+                "Query Reply %": st.column_config.ProgressColumn("Query Reply %", min_value=0, max_value=100, format="%.1f%%"),
+                "Avg Query Response Hrs": st.column_config.NumberColumn("Avg Query TAT (Hrs)", format="%.2f"),
+                "Approved Bids": st.column_config.NumberColumn("Approved", format="%d"),
+                "Approval Rate %": st.column_config.ProgressColumn("Approval %", min_value=0, max_value=100, format="%.1f%%"),
+                "Avg Bidders": st.column_config.NumberColumn("Avg Bidders", format="%.2f"),
+                "Single Bidder %": st.column_config.ProgressColumn("Single Bidder %", min_value=0, max_value=100, format="%.1f%%"),
+                "Winner Bids": st.column_config.NumberColumn("Winner Bids", format="%d"),
+                "L1 Selected": st.column_config.NumberColumn("L-1", format="%d"),
+                "L1 Win %": st.column_config.ProgressColumn("L-1 Win %", min_value=0, max_value=100, format="%.1f%%"),
+                "Manual Selected": st.column_config.NumberColumn("Manual", format="%d"),
+                "Manual Win %": st.column_config.ProgressColumn("Manual Win %", min_value=0, max_value=100, format="%.1f%%"),
+                "Gap Issues": st.column_config.NumberColumn("Gap Issues", format="%d"),
+                "Gap Issue %": st.column_config.ProgressColumn("Gap Issue %", min_value=0, max_value=100, format="%.1f%%"),
+                "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
+                "LHC Pending %": st.column_config.ProgressColumn("LHC Pending %", min_value=0, max_value=100, format="%.1f%%"),
+                "Avg Final Rate": st.column_config.NumberColumn("Avg Final Rate", format="₹ %.0f"),
+                "Avg Saving vs L1": st.column_config.NumberColumn("Avg Saving vs L1", format="₹ %.0f"),
+                "Branches": st.column_config.NumberColumn("Branches", format="%d"),
+                "Routes": st.column_config.NumberColumn("Routes", format="%d"),
+            },
+        )
 
     csv_data = vehicle_display.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
@@ -2298,35 +2299,36 @@ def render_query_response_analysis(df):
         na_position="last",
     )
 
-    st.dataframe(
-        tracker,
-        use_container_width=True,
-        hide_index=True,
-        height=390,
-        column_config={
-            "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
-            "BRANCH": st.column_config.TextColumn("Branch"),
-            "ROUTE": st.column_config.TextColumn("Route", width="large"),
-            "QUERY_RECEIVED_ON": st.column_config.DatetimeColumn(
-                "Query Received On", format="DD/MM/YYYY HH:mm"
-            ),
-            "QUERY_REPLY_ON": st.column_config.DatetimeColumn(
-                "Reply Sent / Updated On", format="DD/MM/YYYY HH:mm"
-            ),
-            "QUERY_RESPONSE_STATUS": st.column_config.TextColumn("Reply Status"),
-            "QUERY_DELAY_STATUS": st.column_config.TextColumn("Delay Band"),
-            "QUERY_RESPONSE_HOURS": st.column_config.NumberColumn(
-                "Response Time (hrs)", format="%.2f"
-            ),
-            "QUERY_PENDING_HOURS": st.column_config.NumberColumn(
-                "Pending Age (hrs)", format="%.1f"
-            ),
-            "APPROVEDBYUSER": st.column_config.TextColumn("Handled / Approved By"),
-            "QUERY_AMOUNT": st.column_config.NumberColumn("Query Amount", format="₹ %.2f"),
-            "WINNER_NAME": st.column_config.TextColumn("Winner"),
-            "FINALRATE": st.column_config.NumberColumn("Final Rate", format="₹ %.2f"),
-        },
-    )
+    with st.expander("📋 Show / Hide Query-wise Response Tracker", expanded=False):
+        st.dataframe(
+            tracker,
+            use_container_width=True,
+            hide_index=True,
+            height=390,
+            column_config={
+                "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
+                "BRANCH": st.column_config.TextColumn("Branch"),
+                "ROUTE": st.column_config.TextColumn("Route", width="large"),
+                "QUERY_RECEIVED_ON": st.column_config.DatetimeColumn(
+                    "Query Received On", format="DD/MM/YYYY HH:mm"
+                ),
+                "QUERY_REPLY_ON": st.column_config.DatetimeColumn(
+                    "Reply Sent / Updated On", format="DD/MM/YYYY HH:mm"
+                ),
+                "QUERY_RESPONSE_STATUS": st.column_config.TextColumn("Reply Status"),
+                "QUERY_DELAY_STATUS": st.column_config.TextColumn("Delay Band"),
+                "QUERY_RESPONSE_HOURS": st.column_config.NumberColumn(
+                    "Response Time (hrs)", format="%.2f"
+                ),
+                "QUERY_PENDING_HOURS": st.column_config.NumberColumn(
+                    "Pending Age (hrs)", format="%.1f"
+                ),
+                "APPROVEDBYUSER": st.column_config.TextColumn("Handled / Approved By"),
+                "QUERY_AMOUNT": st.column_config.NumberColumn("Query Amount", format="₹ %.2f"),
+                "WINNER_NAME": st.column_config.TextColumn("Winner"),
+                "FINALRATE": st.column_config.NumberColumn("Final Rate", format="₹ %.2f"),
+            },
+        )
 
 
 # ============================================================
@@ -2740,63 +2742,64 @@ def render_vendor_performance(df):
             unsafe_allow_html=True,
         )
 
-    st.dataframe(
-        vendor_table,
-        use_container_width=True,
-        hide_index=True,
-        height=470,
-        column_config={
-            "Rank": st.column_config.NumberColumn("Rank", format="%d", width="small"),
-            "Vendor": st.column_config.TextColumn("Vendor", width="large"),
-            "Bid Participations": st.column_config.NumberColumn("Bid Participations", format="%d"),
-            "Winner Bids": st.column_config.NumberColumn("Won Bids", format="%d"),
-            "Lost Bids": st.column_config.NumberColumn("Lost Bids", format="%d"),
-            "Win Rate %": st.column_config.ProgressColumn(
-                "Win Rate %",
-                min_value=0,
-                max_value=100,
-                format="%.1f%%",
-            ),
-            "Loss Rate %": st.column_config.ProgressColumn(
-                "Loss Rate %",
-                min_value=0,
-                max_value=100,
-                format="%.1f%%",
-            ),
-            "Win Share %": st.column_config.ProgressColumn(
-                "Win Share %",
-                min_value=0,
-                max_value=100,
-                format="%.1f%%",
-            ),
-            "L1 Wins": st.column_config.NumberColumn("L1 Wins", format="%d"),
-            "Manual Wins": st.column_config.NumberColumn("Manual Wins", format="%d"),
-            "Approved Wins": st.column_config.NumberColumn("Approved Wins", format="%d"),
-            "LHC Created": st.column_config.NumberColumn("LHC Created", format="%d"),
-            "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
-            "LHC Pending %": st.column_config.ProgressColumn(
-                "LHC Pending %",
-                min_value=0,
-                max_value=100,
-                format="%.1f%%",
-            ),
-            "Single Bidder Wins": st.column_config.NumberColumn(
-                "Single Bidder Wins", format="%d"
-            ),
-            "Avg Bidders": st.column_config.NumberColumn("Avg Bidders", format="%.2f"),
-            "Avg Saving vs L1": st.column_config.NumberColumn(
-                "Avg Saving vs L1", format="₹ %.0f"
-            ),
-            "Branches": st.column_config.NumberColumn("Branches", format="%d"),
-            "Routes": st.column_config.NumberColumn("Routes", format="%d"),
-            "Last Win": st.column_config.DatetimeColumn(
-                "Last Win", format="DD/MM/YYYY"
-            ),
-            "Oldest Pending Days": st.column_config.NumberColumn(
-                "Oldest Pending Days", format="%d"
-            ),
-        },
-    )
+    with st.expander("📋 Show / Hide Vendor Performance Table", expanded=False):
+        st.dataframe(
+            vendor_table,
+            use_container_width=True,
+            hide_index=True,
+            height=470,
+            column_config={
+                "Rank": st.column_config.NumberColumn("Rank", format="%d", width="small"),
+                "Vendor": st.column_config.TextColumn("Vendor", width="large"),
+                "Bid Participations": st.column_config.NumberColumn("Bid Participations", format="%d"),
+                "Winner Bids": st.column_config.NumberColumn("Won Bids", format="%d"),
+                "Lost Bids": st.column_config.NumberColumn("Lost Bids", format="%d"),
+                "Win Rate %": st.column_config.ProgressColumn(
+                    "Win Rate %",
+                    min_value=0,
+                    max_value=100,
+                    format="%.1f%%",
+                ),
+                "Loss Rate %": st.column_config.ProgressColumn(
+                    "Loss Rate %",
+                    min_value=0,
+                    max_value=100,
+                    format="%.1f%%",
+                ),
+                "Win Share %": st.column_config.ProgressColumn(
+                    "Win Share %",
+                    min_value=0,
+                    max_value=100,
+                    format="%.1f%%",
+                ),
+                "L1 Wins": st.column_config.NumberColumn("L1 Wins", format="%d"),
+                "Manual Wins": st.column_config.NumberColumn("Manual Wins", format="%d"),
+                "Approved Wins": st.column_config.NumberColumn("Approved Wins", format="%d"),
+                "LHC Created": st.column_config.NumberColumn("LHC Created", format="%d"),
+                "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
+                "LHC Pending %": st.column_config.ProgressColumn(
+                    "LHC Pending %",
+                    min_value=0,
+                    max_value=100,
+                    format="%.1f%%",
+                ),
+                "Single Bidder Wins": st.column_config.NumberColumn(
+                    "Single Bidder Wins", format="%d"
+                ),
+                "Avg Bidders": st.column_config.NumberColumn("Avg Bidders", format="%.2f"),
+                "Avg Saving vs L1": st.column_config.NumberColumn(
+                    "Avg Saving vs L1", format="₹ %.0f"
+                ),
+                "Branches": st.column_config.NumberColumn("Branches", format="%d"),
+                "Routes": st.column_config.NumberColumn("Routes", format="%d"),
+                "Last Win": st.column_config.DatetimeColumn(
+                    "Last Win", format="DD/MM/YYYY"
+                ),
+                "Oldest Pending Days": st.column_config.NumberColumn(
+                    "Oldest Pending Days", format="%d"
+                ),
+            },
+        )
 
     csv_data = vendor_table.to_csv(index=False).encode("utf-8-sig")
 
@@ -2819,57 +2822,58 @@ def _exception_table(df, columns):
         st.info("No records.")
         return
 
-    st.dataframe(
-        df[available],
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "QUERY_AMOUNT": st.column_config.NumberColumn(
-                "Query Amount",
-                format="₹ %.2f",
-            ),
-            "L_1_AMOUNT": st.column_config.NumberColumn(
-                "L1 Amount",
-                format="₹ %.2f",
-            ),
-            "L_2_AMOUNT": st.column_config.NumberColumn(
-                "L2 Amount",
-                format="₹ %.2f",
-            ),
-            "L_3_AMOUNT": st.column_config.NumberColumn(
-                "L3 Amount",
-                format="₹ %.2f",
-            ),
-            "L1_L2_GAP": st.column_config.NumberColumn(
-                "L1-L2 Gap",
-                format="₹ %.2f",
-            ),
-            "FINALRATE": st.column_config.NumberColumn(
-                "Final Rate",
-                format="₹ %.2f",
-            ),
-            "HIREAMOUNT": st.column_config.NumberColumn(
-                "Hire Amount",
-                format="₹ %.2f",
-            ),
-            "SAVING_VS_L1": st.column_config.NumberColumn(
-                "Saving vs L1",
-                format="₹ %.2f",
-            ),
-            "HIRE_FINAL_DIFF": st.column_config.NumberColumn(
-                "Hire-Final Diff",
-                format="₹ %.2f",
-            ),
-            "LHC_PENDING_AGE_DAYS": st.column_config.NumberColumn(
-                "Ageing Days",
-                format="%d",
-            ),
-            "LHC_AGEING_FROM": st.column_config.DatetimeColumn(
-                "Ageing From",
-                format="DD/MM/YYYY",
-            ),
-        },
-    )
+    with st.expander("📋 Show / Hide Exception Details", expanded=False):
+        st.dataframe(
+            df[available],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "QUERY_AMOUNT": st.column_config.NumberColumn(
+                    "Query Amount",
+                    format="₹ %.2f",
+                ),
+                "L_1_AMOUNT": st.column_config.NumberColumn(
+                    "L1 Amount",
+                    format="₹ %.2f",
+                ),
+                "L_2_AMOUNT": st.column_config.NumberColumn(
+                    "L2 Amount",
+                    format="₹ %.2f",
+                ),
+                "L_3_AMOUNT": st.column_config.NumberColumn(
+                    "L3 Amount",
+                    format="₹ %.2f",
+                ),
+                "L1_L2_GAP": st.column_config.NumberColumn(
+                    "L1-L2 Gap",
+                    format="₹ %.2f",
+                ),
+                "FINALRATE": st.column_config.NumberColumn(
+                    "Final Rate",
+                    format="₹ %.2f",
+                ),
+                "HIREAMOUNT": st.column_config.NumberColumn(
+                    "Hire Amount",
+                    format="₹ %.2f",
+                ),
+                "SAVING_VS_L1": st.column_config.NumberColumn(
+                    "Saving vs L1",
+                    format="₹ %.2f",
+                ),
+                "HIRE_FINAL_DIFF": st.column_config.NumberColumn(
+                    "Hire-Final Diff",
+                    format="₹ %.2f",
+                ),
+                "LHC_PENDING_AGE_DAYS": st.column_config.NumberColumn(
+                    "Ageing Days",
+                    format="%d",
+                ),
+                "LHC_AGEING_FROM": st.column_config.DatetimeColumn(
+                    "Ageing From",
+                    format="DD/MM/YYYY",
+                ),
+            },
+        )
 
 
 def render_exceptions(df):
@@ -3075,69 +3079,70 @@ def render_detail_table(df):
         na_position="last",
     )
 
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True,
-        height=520,
-        column_config={
-            "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
-            "QUERY_RECEIVED_ON": st.column_config.DatetimeColumn(
-                "Query Received On", format="DD/MM/YYYY HH:mm"
-            ),
-            "QUERY_REPLY_ON": st.column_config.DatetimeColumn(
-                "Reply Sent / Updated On", format="DD/MM/YYYY HH:mm"
-            ),
-            "QUERY_RESPONSE_STATUS": st.column_config.TextColumn("Query Reply Status"),
-            "QUERY_RESPONSE_HOURS": st.column_config.NumberColumn(
-                "Query Response Hrs", format="%.2f"
-            ),
-            "QUERY_AMOUNT": st.column_config.NumberColumn(
-                "Query Amount",
-                format="₹ %.2f",
-            ),
-            "L_1_AMOUNT": st.column_config.NumberColumn(
-                "L1 Amount",
-                format="₹ %.2f",
-            ),
-            "L_2_AMOUNT": st.column_config.NumberColumn(
-                "L2 Amount",
-                format="₹ %.2f",
-            ),
-            "L_3_AMOUNT": st.column_config.NumberColumn(
-                "L3 Amount",
-                format="₹ %.2f",
-            ),
-            "L1_L2_GAP": st.column_config.NumberColumn(
-                "L1-L2 Gap",
-                format="₹ %.2f",
-            ),
-            "FINALRATE": st.column_config.NumberColumn(
-                "Final Rate",
-                format="₹ %.2f",
-            ),
-            "SAVING_VS_L1": st.column_config.NumberColumn(
-                "Saving vs L1",
-                format="₹ %.2f",
-            ),
-            "HIREAMOUNT": st.column_config.NumberColumn(
-                "Hire Amount",
-                format="₹ %.2f",
-            ),
-            "HIRE_FINAL_DIFF": st.column_config.NumberColumn(
-                "Hire-Final Diff",
-                format="₹ %.2f",
-            ),
-            "LHC_PENDING_AGE_DAYS": st.column_config.NumberColumn(
-                "Ageing Days",
-                format="%d",
-            ),
-            "LHC_AGEING_FROM": st.column_config.DatetimeColumn(
-                "Ageing From",
-                format="DD/MM/YYYY",
-            ),
-        },
-    )
+    with st.expander("📋 Show / Hide Detailed Bid Data", expanded=False):
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True,
+            height=520,
+            column_config={
+                "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
+                "QUERY_RECEIVED_ON": st.column_config.DatetimeColumn(
+                    "Query Received On", format="DD/MM/YYYY HH:mm"
+                ),
+                "QUERY_REPLY_ON": st.column_config.DatetimeColumn(
+                    "Reply Sent / Updated On", format="DD/MM/YYYY HH:mm"
+                ),
+                "QUERY_RESPONSE_STATUS": st.column_config.TextColumn("Query Reply Status"),
+                "QUERY_RESPONSE_HOURS": st.column_config.NumberColumn(
+                    "Query Response Hrs", format="%.2f"
+                ),
+                "QUERY_AMOUNT": st.column_config.NumberColumn(
+                    "Query Amount",
+                    format="₹ %.2f",
+                ),
+                "L_1_AMOUNT": st.column_config.NumberColumn(
+                    "L1 Amount",
+                    format="₹ %.2f",
+                ),
+                "L_2_AMOUNT": st.column_config.NumberColumn(
+                    "L2 Amount",
+                    format="₹ %.2f",
+                ),
+                "L_3_AMOUNT": st.column_config.NumberColumn(
+                    "L3 Amount",
+                    format="₹ %.2f",
+                ),
+                "L1_L2_GAP": st.column_config.NumberColumn(
+                    "L1-L2 Gap",
+                    format="₹ %.2f",
+                ),
+                "FINALRATE": st.column_config.NumberColumn(
+                    "Final Rate",
+                    format="₹ %.2f",
+                ),
+                "SAVING_VS_L1": st.column_config.NumberColumn(
+                    "Saving vs L1",
+                    format="₹ %.2f",
+                ),
+                "HIREAMOUNT": st.column_config.NumberColumn(
+                    "Hire Amount",
+                    format="₹ %.2f",
+                ),
+                "HIRE_FINAL_DIFF": st.column_config.NumberColumn(
+                    "Hire-Final Diff",
+                    format="₹ %.2f",
+                ),
+                "LHC_PENDING_AGE_DAYS": st.column_config.NumberColumn(
+                    "Ageing Days",
+                    format="%d",
+                ),
+                "LHC_AGEING_FROM": st.column_config.DatetimeColumn(
+                    "Ageing From",
+                    format="DD/MM/YYYY",
+                ),
+            },
+        )
 
     csv_data = display_df.to_csv(index=False).encode("utf-8-sig")
 
@@ -3497,8 +3502,7 @@ def show_bidding_analysis():
         with title_col:
             st.markdown(
                 "<div class='bid-header-anchor'></div>"
-                "<div class='bid-title'>🚚 Bidding Analysis</div>"
-                "<div class='bid-subtitle'>Competition, winner selection, ₹500 gap compliance and LHC hire validation.</div>",
+                "<div class='bid-title'>🚚 Bidding Analysis</div>",
                 unsafe_allow_html=True,
             )
 
