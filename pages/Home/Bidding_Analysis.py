@@ -2359,6 +2359,12 @@ def render_query_response_analysis(df):
     replied_queries = int(
         query_df.loc[query_df["QUERY_RESPONSE_STATUS"].eq("Replied"), "BIDID"].nunique()
     )
+    query_to_bid = int(
+        query_df.loc[
+            _clean_text_series(query_df["QUERYTOBID"]).str.upper().eq("YES"),
+            "BIDID",
+        ].nunique()
+    )
     pending_queries = int(
         query_df.loc[query_df["QUERY_RESPONSE_STATUS"].eq("Pending Reply"), "BIDID"].nunique()
     )
@@ -2371,12 +2377,21 @@ def render_query_response_analysis(df):
         "QUERY_RESPONSE_HOURS",
     ].mean()
 
-    q1, q2, q3, q4 = st.columns(4, gap="small")
+    query_to_bid_pct = (query_to_bid / total_queries * 100.0) if total_queries else 0.0
+
+    q1, q2, q3, q4, q5 = st.columns(5, gap="small")
     _kpi_card(q1, "💬 Query Bids", f"{total_queries:,}", "Queries in selected period", "purple")
     _kpi_card(q2, "✅ Replied", f"{replied_queries:,}", "Reply update available", "green")
-    _kpi_card(q3, "⏳ Pending Reply", f"{pending_queries:,}", "No reply update yet", "red")
     _kpi_card(
-        q4,
+        q3,
+        "➡️ Query → Bid",
+        f"{query_to_bid:,}",
+        f"{query_to_bid_pct:.1f}% of query bids",
+        "blue",
+    )
+    _kpi_card(q4, "⏳ Pending Reply", f"{pending_queries:,}", "No reply update yet", "red")
+    _kpi_card(
+        q5,
         "⏱ Avg Response Time",
         "-" if pd.isna(avg_response) else f"{avg_response:.1f} hrs",
         f"{invalid_dates:,} records need date check" if invalid_dates else "Received → reply update",
