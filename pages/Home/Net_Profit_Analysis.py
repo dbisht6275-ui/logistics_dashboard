@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from services.data_loader import get_date_range
-from services.net_profit_data_loader import load_net_profit_data_pair
+from services.net_profit_data_loader import load_net_profit_data_pair, load_nepal_overhead_detail
 from services.pnl_data_loader import load_pnl_sp_revenue_total, load_pnl_data_pair
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
@@ -2381,6 +2381,9 @@ def show_net_profit_dashboard():
                 selected_prev_start,
                 selected_prev_end,
             )
+            nepal_overhead_detail_loaded = load_nepal_overhead_detail(
+                selected_start, selected_end
+            )
 
             # Consolidated All-Branches booking/origin revenue must come directly
             # from the P&L stored procedure. Keep the period totals in session too.
@@ -2397,6 +2400,7 @@ def show_net_profit_dashboard():
             "raw_df": raw_loaded,
             "raw_prev_df": raw_prev_loaded,
             "branch_master_df": branch_master_loaded,
+            "nepal_overhead_detail_df": nepal_overhead_detail_loaded,
             "sp_revenue_total": float(sp_loaded or 0.0),
             "sp_prev_revenue_total": float(sp_prev_loaded or 0.0),
         }
@@ -2435,6 +2439,9 @@ def show_net_profit_dashboard():
     raw_df = loaded_payload.get("raw_df", pd.DataFrame())
     raw_prev_df = loaded_payload.get("raw_prev_df", pd.DataFrame())
     branch_master_df = loaded_payload.get("branch_master_df", pd.DataFrame())
+    nepal_overhead_detail_df = loaded_payload.get(
+        "nepal_overhead_detail_df", pd.DataFrame()
+    )
     sp_revenue_total = float(loaded_payload.get("sp_revenue_total", 0.0) or 0.0)
     sp_prev_revenue_total = float(loaded_payload.get("sp_prev_revenue_total", 0.0) or 0.0)
 
@@ -2942,10 +2949,11 @@ def show_net_profit_dashboard():
             '<span class="np-bottom-tabs-marker"></span>',
             unsafe_allow_html=True,
         )
-        detail_tab, audit_tab, gr_tab = st.tabs(
+        detail_tab, audit_tab, nepal_detail_tab, gr_tab = st.tabs(
             [
                 "Branch Net Profit Detail",
                 "Monthly Calculation Audit",
+                "Nepal Overhead Detail",
                 "P&L GR Details",
             ]
         )
@@ -3162,7 +3170,93 @@ def show_net_profit_dashboard():
         )
 
     # --------------------------------------------------------
-    # TAB 3: GR P&L DETAILED
+    # TAB 3: NEPAL OVERHEAD LEDGER DETAIL
+    # --------------------------------------------------------
+    with nepal_detail_tab:
+        if nepal_overhead_detail_df is None or nepal_overhead_detail_df.empty:
+            st.info("No Nepal overhead ledger detail is available for the selected period.")
+        else:
+            nep = nepal_overhead_detail_df.copy()
+
+            # Apply the active Month / Quarter filters locally.
+            nep["YEAR"] = pd.to_numeric(nep.get("YEAR"), errors="coerce")
+            nep["MONTHNO"] = pd.to_numeric(nep.get("MONTHNO"), errors="coerce")
+            nep["MONTH"] = nep["MONTHNO"].map({
+                1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
+                7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
+            })
+            nep["FIN_MONTH"] = nep["MONTHNO"].map({
+                4: 1, 5: 2, 6: 3, 7: 4, 8: 5, 9: 6,
+                10: 7, 11: 8, 12: 9, 1: 10, 2: 11, 3: 12,
+            })
+            nep["QUARTER"] = nep["FIN_MONTH"].map({
+                1: "Q1", 2: "Q1", 3: "Q1",
+                4: "Q2", 5: "Q2", 6: "Q2",
+                7: "Q3", 8: "Q3", 9: "Q3",
+                10: "Q4", 11: "Q4", 12: "Q4",
+            })
+
+            if quarters:
+                nep = nep[nep["QUARTER"].isin(quarters)].copy()
+            if months:
+                nep = nep[nep["MONTH"].isin(months)].copy()
+
+            # Branch / Zone / Circle filters are already represented by the
+            # filtered Net Profit dataframe. Use its surviving branch names as
+            # the allowed Nepal branch scope. In unrestricted All-Branches mode
+            # keep all Nepal ledger rows.
+            if branches or zones or circles:
+                allowed_branch_keys = {
+                    _normalise_branch_name(value)
+                    for value in df.get("BRANCH", pd.Series(dtype="object")).dropna().tolist()
+                }
+                nep_branch_keys = nep["BRANCH"].fillna("").map(_normalise_branch_name)
+                nep = nep[nep_branch_keys.isin(allowed_branch_keys)].copy()
+
+            if nep.empty:
+                st.info("No Nepal overhead detail found for the active filters.")
+            else:
+                # The user-facing ledger detail is one row per
+                # Branch + Ledger Code + Ledger Name + Main Group.
+                nep_display = (
+                    nep.groupby(
+                        ["BRANCH", "LEDCODE", "LEDNAME", "MAINGROUP"],
+                        as_index=False,
+                        dropna=False,
+                    )["NETAMT"]
+                    .sum()
+                    .sort_values(["BRANCH", "LEDNAME", "LEDCODE"])
+                    .reset_index(drop=True)
+                )
+                nep_display["NETAMT"] = pd.to_numeric(
+                    nep_display["NETAMT"], errors="coerce"
+                ).fillna(0.0)
+
+                st.dataframe(
+                    nep_display,
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "BRANCH": st.column_config.TextColumn("Branch"),
+                        "LEDCODE": st.column_config.TextColumn("Led Code"),
+                        "LEDNAME": st.column_config.TextColumn("Led Name"),
+                        "MAINGROUP": st.column_config.TextColumn("Main Group"),
+                        "NETAMT": st.column_config.NumberColumn(
+                            "Net Amount", format="₹ %.2f"
+                        ),
+                    },
+                )
+
+                st.download_button(
+                    "Download Nepal Overhead Detail CSV",
+                    data=nep_display.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"nepal_overhead_detail_{fy}.csv",
+                    mime="text/csv",
+                    key="np_download_nepal_overhead_detail",
+                )
+
+    # --------------------------------------------------------
+    # TAB 4: GR P&L DETAILED
     # Same filtered P&L insight source; no LOADTYPE filter is applied.
     # --------------------------------------------------------
     with gr_tab:
