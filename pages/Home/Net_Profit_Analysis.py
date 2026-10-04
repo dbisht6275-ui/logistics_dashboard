@@ -240,11 +240,12 @@ def _apply_pnl_business_rule(df, all_branches):
     out["COMBINED_PNL"] = out["ORIGIN_PNL"] + out["DESTINATION_PNL"]
     out["NET_PROFIT"] = out["COMBINED_PNL"] - out["TOTAL EXPENSE"]
 
+    # Net Profit % must use the same business denominator shown on the dashboard.
     out["NET_PROFIT_MARGIN"] = 0.0
-    valid_income = out["TOTAL_INCOME"].ne(0)
-    out.loc[valid_income, "NET_PROFIT_MARGIN"] = (
-        out.loc[valid_income, "NET_PROFIT"]
-        / out.loc[valid_income, "TOTAL_INCOME"]
+    valid_business = out["BUSINESS"].ne(0)
+    out.loc[valid_business, "NET_PROFIT_MARGIN"] = (
+        out.loc[valid_business, "NET_PROFIT"]
+        / out.loc[valid_business, "BUSINESS"]
         * 100
     )
 
@@ -831,9 +832,9 @@ def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_bu
     )
     out["NET_PROFIT"] = pd.to_numeric(out.get("COMBINED_PNL", 0.0), errors="coerce").fillna(0.0) - out["TOTAL EXPENSE"]
     out["NET_PROFIT_MARGIN"] = 0.0
-    income = pd.to_numeric(out.get("TOTAL_INCOME", 0.0), errors="coerce").fillna(0.0)
-    valid = income.ne(0)
-    out.loc[valid, "NET_PROFIT_MARGIN"] = out.loc[valid, "NET_PROFIT"] / income.loc[valid] * 100
+    business = pd.to_numeric(out.get("BUSINESS", 0.0), errors="coerce").fillna(0.0)
+    valid = business.ne(0)
+    out.loc[valid, "NET_PROFIT_MARGIN"] = out.loc[valid, "NET_PROFIT"] / business.loc[valid] * 100
     return out
 
 
@@ -2766,9 +2767,24 @@ def show_net_profit_dashboard():
             Destination_5=("DESTINATION 5%", "sum"),
             Total_Overhead=("TOTAL EXPENSE", "sum"),
             Net_Profit=("NET_PROFIT", "sum"),
-            Total_Income=("TOTAL_INCOME", "sum"),
         )
     )
+
+    # Rebuild the branch-level accounting from the displayed components so the
+    # detail table always reconciles exactly with the selected branch scope.
+    branch_summary["Total_Overhead"] = (
+        branch_summary["Salary"]
+        + branch_summary["Godown_Rent"]
+        + branch_summary["Overhead_Expense"]
+        + branch_summary["Nepal_Overhead"]
+        + branch_summary["Claim"]
+        + branch_summary["Booking_6"]
+        + branch_summary["Destination_5"]
+    )
+    branch_summary["Net_Profit"] = (
+        branch_summary["Combined_PNL"] - branch_summary["Total_Overhead"]
+    )
+
     branch_summary["P&L %"] = 0.0
     valid_business = branch_summary["Revenue"].ne(0)
     branch_summary.loc[valid_business, "P&L %"] = (
@@ -2776,10 +2792,9 @@ def show_net_profit_dashboard():
         / branch_summary.loc[valid_business, "Revenue"] * 100
     )
     branch_summary["Net Profit Margin %"] = 0.0
-    valid_income = branch_summary["Total_Income"].ne(0)
-    branch_summary.loc[valid_income, "Net Profit Margin %"] = (
-        branch_summary.loc[valid_income, "Net_Profit"]
-        / branch_summary.loc[valid_income, "Total_Income"] * 100
+    branch_summary.loc[valid_business, "Net Profit Margin %"] = (
+        branch_summary.loc[valid_business, "Net_Profit"]
+        / branch_summary.loc[valid_business, "Revenue"] * 100
     )
     branch_summary = branch_summary.sort_values("Net_Profit", ascending=False).reset_index(drop=True)
 
@@ -2952,7 +2967,6 @@ def show_net_profit_dashboard():
             "Destination_5",
             "Total_Overhead",
             "Net_Profit",
-            "Total_Income",
         ]
 
         for column in money_columns:
@@ -2981,7 +2995,6 @@ def show_net_profit_dashboard():
                 "Destination_5": f"Destination 5% ({unit})",
                 "Total_Overhead": f"Total Overhead ({unit})",
                 "Net_Profit": f"Net Profit ({unit})",
-                "Total_Income": f"Total Income ({unit})",
             }
         )
 
@@ -3004,7 +3017,6 @@ def show_net_profit_dashboard():
             f"Destination 5% ({unit})",
             f"Total Overhead ({unit})",
             f"Net Profit ({unit})",
-            f"Total Income ({unit})",
             "Net Profit Margin %",
         ]
         display = display[
