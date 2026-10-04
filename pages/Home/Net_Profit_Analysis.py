@@ -350,6 +350,25 @@ def _inject_css():
         }
         .st-key-np_executive_header > div[data-testid="stVerticalBlockBorderWrapper"] > div {padding:.65rem .8rem .75rem !important;}
         .np-header-badge {padding:5px 10px;border-radius:999px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font:700 10px var(--np-kpi-font);white-space:nowrap;}
+        .np-header-left-only {padding:2px 2px 4px !important;margin:0 !important;}
+        .np-header-badge-action {
+            min-height:34px;display:flex;align-items:center;justify-content:center;
+            padding:0 12px;border-radius:9px;background:#eff6ff;color:#1d4ed8;
+            border:1px solid #bfdbfe;font-size:10px;font-weight:750;
+            box-sizing:border-box;
+        }
+        .st-key-np_reset_filters button,
+        .st-key-np_executive_header div[data-testid="stPopover"] > button {
+            min-height:34px !important;height:34px !important;border-radius:9px !important;
+            border:1px solid #dbe4ef !important;background:#ffffff !important;
+            color:#17324d !important;font-size:10px !important;font-weight:650 !important;
+            box-shadow:0 1px 2px rgba(15,42,67,.04) !important;
+            white-space:nowrap !important;
+        }
+        .st-key-np_reset_filters button:hover,
+        .st-key-np_executive_header div[data-testid="stPopover"] > button:hover {
+            border-color:#b8c8da !important;background:#f8fbff !important;
+        }
         .np-title {
             color:var(--np-text);
             font-family:var(--np-kpi-font);
@@ -2224,18 +2243,94 @@ def show_net_profit_dashboard():
     _inject_css()
 
     executive_header = st.container(key="np_executive_header", border=True)
-    executive_header.markdown(
-        """
-        <div class="np-header">
-            <div>
-                <div class="np-title">Net Profit Analysis</div>
-                <div class="np-subtitle">Business, P&L and indirect expense performance by branch</div>
-            </div>
-            <div class="np-header-badge">MANAGEMENT VIEW</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+
+    # Top header: title on the left, compact action controls on the right.
+    header_left, header_actions = executive_header.columns(
+        [7.2, 2.8], gap="small", vertical_alignment="center"
     )
+
+    with header_left:
+        st.markdown(
+            """
+            <div class="np-header np-header-left-only">
+                <div>
+                    <div class="np-title">Net Profit Analysis</div>
+                    <div class="np-subtitle">Business, P&amp;L and indirect expense performance by branch</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with header_actions:
+        action_cols = st.columns([1.15, 0.95, 1.18], gap="small", vertical_alignment="center")
+
+        with action_cols[0]:
+            if st.button(
+                "⟳  Reset Filters",
+                key="np_reset_filters",
+                use_container_width=True,
+            ):
+                for key in [
+                    "np_zone",
+                    "np_circle",
+                    "np_branch",
+                    "np_quarter",
+                    "np_month",
+                    "np_conversion",
+                    "np_pnl_insight_view_value",
+                    "np_pnl_insight_trend_type",
+                    "np_net_profit_performance_trend_value",
+                ]:
+                    st.session_state.pop(key, None)
+                st.rerun()
+
+        with action_cols[1]:
+            with st.popover("⇩  Export  ▾", use_container_width=True):
+                payload = st.session_state.get("np_loaded_payload") or {}
+                export_current = payload.get("raw_df")
+                export_previous = payload.get("raw_prev_df")
+                export_nepal = payload.get("nepal_overhead_detail_df")
+
+                if export_current is not None and not export_current.empty:
+                    st.download_button(
+                        "Current Period CSV",
+                        data=export_current.to_csv(index=False).encode("utf-8-sig"),
+                        file_name="net_profit_current_period.csv",
+                        mime="text/csv",
+                        key="np_header_export_current",
+                        use_container_width=True,
+                    )
+                if export_previous is not None and not export_previous.empty:
+                    st.download_button(
+                        "Previous Period CSV",
+                        data=export_previous.to_csv(index=False).encode("utf-8-sig"),
+                        file_name="net_profit_previous_period.csv",
+                        mime="text/csv",
+                        key="np_header_export_previous",
+                        use_container_width=True,
+                    )
+                if export_nepal is not None and not export_nepal.empty:
+                    st.download_button(
+                        "Nepal Overhead CSV",
+                        data=export_nepal.to_csv(index=False).encode("utf-8-sig"),
+                        file_name="nepal_overhead_detail.csv",
+                        mime="text/csv",
+                        key="np_header_export_nepal",
+                        use_container_width=True,
+                    )
+                if (
+                    export_current is None or export_current.empty
+                ) and (export_previous is None or export_previous.empty) and (
+                    export_nepal is None or export_nepal.empty
+                ):
+                    st.caption("Run the dashboard first to enable exports.")
+
+        with action_cols[2]:
+            st.markdown(
+                '<div class="np-header-badge np-header-badge-action">MANAGEMENT VIEW</div>',
+                unsafe_allow_html=True,
+            )
 
     # --------------------------------------------------------
     # PRIMARY FILTERS
