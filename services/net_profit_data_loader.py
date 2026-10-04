@@ -1234,6 +1234,131 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
 
 
 # ============================================================
+# NEPAL OVERHEAD LEDGER DETAIL
+# ============================================================
+
+_NEPAL_OVERHEAD_DETAIL_QUERY = text("""
+DECLARE @FROMDATE DATE = :from_date;
+DECLARE @TODATE   DATE = :to_date;
+
+SELECT
+    X.BRANCHCODE,
+    X.BRANCH,
+    X.LEDCODE,
+    X.LEDNAME,
+    X.MAINGROUP,
+    X.[YEAR],
+    X.[MONTHNO],
+    ROUND(SUM(X.NETAMT), 2) AS NETAMT
+FROM
+(
+    /* Nepal Logistics */
+    SELECT
+        VL.BRANCHCODE,
+        VL.BRANCHNAME AS BRANCH,
+        VL.LEDCODE,
+        LL.LEDNAME,
+        LL.MAIN_GROUP AS MAINGROUP,
+        YEAR(VL.VDATE) AS [YEAR],
+        MONTH(VL.VDATE) AS [MONTHNO],
+        SUM(VL.DRAMOUNT - VL.CRAMOUNT) / 1.60 AS NETAMT
+    FROM GREENTRANSSGNL..VIEWVOUCHERDETAILS VL
+    INNER JOIN GREENTRANSSGNL..VIEWLEDGER LL
+        ON LL.LEDCODE = VL.LEDCODE
+    WHERE VL.VDATE >= @FROMDATE
+      AND VL.VDATE < DATEADD(DAY, 1, @TODATE)
+      AND LL.GRPTYPE = 'E'
+      AND VL.CANCEL <> 'Y'
+    GROUP BY
+        VL.BRANCHCODE,
+        VL.BRANCHNAME,
+        VL.LEDCODE,
+        LL.LEDNAME,
+        LL.MAIN_GROUP,
+        YEAR(VL.VDATE),
+        MONTH(VL.VDATE)
+
+    UNION ALL
+
+    /* Nepal Transport */
+    SELECT
+        VT.BRANCHCODE,
+        VT.BRANCHNAME AS BRANCH,
+        VT.LEDCODE,
+        LT.LEDNAME,
+        LT.MAIN_GROUP AS MAINGROUP,
+        YEAR(VT.VDATE) AS [YEAR],
+        MONTH(VT.VDATE) AS [MONTHNO],
+        SUM(VT.DRAMOUNT - VT.CRAMOUNT) / 1.60 AS NETAMT
+    FROM GREENTRANSSGNT..VIEWVOUCHERDETAILS VT
+    INNER JOIN GREENTRANSSGNT..VIEWLEDGER LT
+        ON LT.LEDCODE = VT.LEDCODE
+    WHERE VT.VDATE >= @FROMDATE
+      AND VT.VDATE < DATEADD(DAY, 1, @TODATE)
+      AND LT.GRPTYPE = 'E'
+      AND VT.CANCEL <> 'Y'
+    GROUP BY
+        VT.BRANCHCODE,
+        VT.BRANCHNAME,
+        VT.LEDCODE,
+        LT.LEDNAME,
+        LT.MAIN_GROUP,
+        YEAR(VT.VDATE),
+        MONTH(VT.VDATE)
+) X
+GROUP BY
+    X.BRANCHCODE,
+    X.BRANCH,
+    X.LEDCODE,
+    X.LEDNAME,
+    X.MAINGROUP,
+    X.[YEAR],
+    X.[MONTHNO]
+ORDER BY
+    X.BRANCH,
+    X.LEDNAME,
+    X.[YEAR],
+    X.[MONTHNO];
+""")
+
+
+def _fetch_nepal_overhead_detail(start_date, end_date):
+    engine = get_engine()
+    with engine.connect() as conn:
+        df = pd.read_sql_query(
+            _NEPAL_OVERHEAD_DETAIL_QUERY,
+            conn,
+            params={
+                "from_date": str(start_date),
+                "to_date": str(end_date),
+            },
+        )
+
+    if df is None or df.empty:
+        return pd.DataFrame(
+            columns=[
+                "BRANCHCODE", "BRANCH", "LEDCODE", "LEDNAME",
+                "MAINGROUP", "YEAR", "MONTHNO", "NETAMT",
+            ]
+        )
+
+    out = df.copy()
+    for col in ["BRANCHCODE", "BRANCH", "LEDCODE", "LEDNAME", "MAINGROUP"]:
+        if col in out.columns:
+            out[col] = out[col].fillna("").astype(str).str.strip()
+    out["YEAR"] = pd.to_numeric(out["YEAR"], errors="coerce")
+    out["MONTHNO"] = pd.to_numeric(out["MONTHNO"], errors="coerce")
+    out["NETAMT"] = pd.to_numeric(out["NETAMT"], errors="coerce").fillna(0.0)
+    return out
+
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=2)
+def load_nepal_overhead_detail(start_date, end_date):
+    """Return Nepal overhead ledger detail for the selected reporting period."""
+    return _fetch_nepal_overhead_detail(start_date, end_date)
+
+
+# ============================================================
 # PUBLIC API
 # ============================================================
 
