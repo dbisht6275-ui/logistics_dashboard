@@ -1086,8 +1086,36 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         ]
     ].copy()
 
+    # Nepal overhead can create a second overhead row for the same dashboard
+    # branch/month: one row contains the normal India-side overhead components
+    # and another row contains NEPAL OVERHEAD from the Nepal accounting source.
+    # Collapse those component rows to one unique BRANCH_KEY/YEAR/MONTHNO row
+    # before the one-to-one merge. This keeps every expense component and avoids
+    # pandas MergeError for branches such as BIRGUNJ/BHAIRAHAWA/BIRATNAGAR.
+    overhead_value_columns = [
+        "SALARY",
+        "GODOWN RENT",
+        "OVERHEAD EXPENSE",
+        "NEPAL OVERHEAD",
+        "CLAIM",
+        "BOOKING 6%",
+        "DESTINATION 5%",
+        "TOTAL EXPENSE",
+    ]
+
+    for column in overhead_value_columns:
+        overhead_merge[column] = pd.to_numeric(
+            overhead_merge[column], errors="coerce"
+        ).fillna(0.0)
+
+    overhead_merge = (
+        overhead_merge
+        .groupby(keys, as_index=False, dropna=False)[overhead_value_columns]
+        .sum()
+    )
+
     final = combined.merge(
-        overhead_merge.drop(columns=["BRANCHCODE", "BRANCH"], errors="ignore"),
+        overhead_merge,
         on=keys,
         how="left",
         validate="one_to_one",
