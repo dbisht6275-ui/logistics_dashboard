@@ -2332,6 +2332,11 @@ def show_net_profit_dashboard():
             selected_prev_fy_label = f"{selected_prev_start.strftime('%d-%b-%Y')} to {selected_prev_end.strftime('%d-%b-%Y')}"
 
     with filter_cols[4]:
+        # Keep Run vertically aligned with the input controls above/beside it.
+        st.markdown(
+            '<div style="height:26px;"></div>',
+            unsafe_allow_html=True,
+        )
         run_clicked = st.button(
             "▶ Run",
             key="np_run_period",
