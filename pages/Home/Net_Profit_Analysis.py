@@ -2242,6 +2242,37 @@ def _render_phase1_pnl_insights(
 def show_net_profit_dashboard():
     _inject_css()
 
+    st.markdown(
+        """
+        <style>
+        .np-top-action-link{
+            display:flex;align-items:center;justify-content:center;
+            min-height:34px;padding:0 10px;border:1px solid #dbe5ef;
+            border-radius:8px;background:#fff;color:#19324d!important;
+            font-size:11px;font-weight:650;text-decoration:none!important;
+            white-space:nowrap;box-shadow:0 1px 2px rgba(15,23,42,.04);
+        }
+        .np-top-action-link:hover{background:#f7fbff;border-color:#a8c4e0;}
+        .np-section-nav{
+            display:flex;align-items:center;gap:2px;overflow-x:auto;
+            border:1px solid #dbe5ef;border-radius:9px;background:#fff;
+            padding:3px;margin:7px 0 10px 0;white-space:nowrap;
+        }
+        .np-section-nav a{
+            display:inline-flex;align-items:center;justify-content:center;
+            min-height:34px;padding:0 14px;border-radius:7px;
+            color:#18324e!important;text-decoration:none!important;
+            font-size:11px;font-weight:650;border:1px solid transparent;
+        }
+        .np-section-nav a:hover{background:#f3f8fd;border-color:#d7e4f0;}
+        .np-section-nav a.active{background:#0f5da8;color:#fff!important;}
+        .np-exec-card-title{font-size:13px;font-weight:750;color:#102a43;margin:0 0 2px 0;}
+        .np-exec-card-subtitle{font-size:10px;color:#718096;margin:0 0 4px 0;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     executive_header = st.container(key="np_executive_header", border=True)
 
     # Top header: title on the left, compact action controls on the right.
@@ -2263,7 +2294,7 @@ def show_net_profit_dashboard():
         )
 
     with header_actions:
-        action_cols = st.columns([1.15, 0.95, 1.18], gap="small", vertical_alignment="center")
+        action_cols = st.columns([1.05, 0.85, 1.0, 0.9, 1.08], gap="small", vertical_alignment="center")
 
         with action_cols[0]:
             if st.button(
@@ -2327,6 +2358,18 @@ def show_net_profit_dashboard():
                     st.caption("Run the dashboard first to enable exports.")
 
         with action_cols[2]:
+            st.markdown(
+                '<a href="#np-compare-period" class="np-top-action-link">▥&nbsp; Compare Period</a>',
+                unsafe_allow_html=True,
+            )
+
+        with action_cols[3]:
+            st.markdown(
+                '<a href="#np-branch-performance" class="np-top-action-link">▦&nbsp; Drill Down</a>',
+                unsafe_allow_html=True,
+            )
+
+        with action_cols[4]:
             st.markdown(
                 '<div class="np-header-badge np-header-badge-action">MANAGEMENT VIEW</div>',
                 unsafe_allow_html=True,
@@ -2906,6 +2949,108 @@ def show_net_profit_dashboard():
     branch_summary = branch_summary.sort_values("Net_Profit", ascending=False).reset_index(drop=True)
 
     # --------------------------------------------------------
+    # EXECUTIVE NAVIGATION + SUMMARY VISUALS
+    # --------------------------------------------------------
+    st.markdown(
+        """
+        <div class="np-section-nav">
+          <a class="active" href="#np-summary">▣&nbsp; Summary</a>
+          <a href="#np-branch-performance">▦&nbsp; Branch Performance</a>
+          <a href="#np-business-wise">▤&nbsp; Business Wise</a>
+          <a href="#np-overhead-analysis">⌁&nbsp; Overhead Analysis</a>
+          <a href="#np-nepal-overhead">NP&nbsp; Nepal Overhead Detail</a>
+          <a href="#np-origin-destination">⇄&nbsp; Origin vs Destination</a>
+          <a href="#np-trend-analysis">↗&nbsp; Trend Analysis</a>
+          <a href="#np-zone-circle">◉&nbsp; Zone &amp; Circle</a>
+          <a href="#np-monthly-pnl">▥&nbsp; Monthly P&amp;L</a>
+          <a href="#np-data-table">▦&nbsp; Data Table</a>
+        </div>
+        <span id="np-summary"></span>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Three-card executive summary row, matching the enhanced mock-up.
+    exec_col1, exec_col2, exec_col3 = st.columns([1.08, 0.92, 1.06], gap="small")
+
+    with exec_col1:
+        with st.container(border=True):
+            st.markdown('<div class="np-exec-card-title">Net Profit Trend</div>', unsafe_allow_html=True)
+            st.markdown('<div class="np-exec-card-subtitle">Monthly business, gross P&amp;L and net profit movement</div>', unsafe_allow_html=True)
+            trend_source = df.copy()
+            if not trend_source.empty and "MONTHNO" in trend_source.columns:
+                trend_summary = (
+                    trend_source.groupby(["MONTHNO", "MONTH"], as_index=False, dropna=False)
+                    .agg(
+                        Business=("ORIGIN_BUSINESS", "sum"),
+                        Gross_PNL=("COMBINED_PNL", "sum"),
+                        Net_Profit=("NET_PROFIT", "sum"),
+                    )
+                    .sort_values("MONTHNO")
+                )
+                trend_summary["Business"] = trend_summary["Business"] / divisor
+                trend_summary["Gross_PNL"] = trend_summary["Gross_PNL"] / divisor
+                trend_summary["Net_Profit"] = trend_summary["Net_Profit"] / divisor
+                fig_np_trend = go.Figure()
+                fig_np_trend.add_bar(x=trend_summary["MONTH"], y=trend_summary["Business"], name="Business")
+                fig_np_trend.add_bar(x=trend_summary["MONTH"], y=trend_summary["Gross_PNL"], name="Gross P&L")
+                fig_np_trend.add_scatter(x=trend_summary["MONTH"], y=trend_summary["Net_Profit"], name="Net Profit", mode="lines+markers")
+                fig_np_trend.update_layout(
+                    height=280, margin=dict(l=8, r=8, t=8, b=8),
+                    legend=dict(orientation="h", y=1.08, x=0),
+                    barmode="group",
+                    yaxis_title=unit,
+                    plot_bgcolor="white", paper_bgcolor="white",
+                )
+                st.plotly_chart(fig_np_trend, use_container_width=True, config={"displayModeBar": False})
+
+    with exec_col2:
+        with st.container(border=True):
+            st.markdown('<span id="np-overhead-analysis"></span><div class="np-exec-card-title">Overhead Composition</div>', unsafe_allow_html=True)
+            st.markdown('<div class="np-exec-card-subtitle">Share of indirect expense components</div>', unsafe_allow_html=True)
+            overhead_parts = pd.DataFrame({
+                "Component": ["Salary", "Godown Rent", "Overhead Expense", "Nepal Overhead", "Claim", "6% Booking", "5% Destination"],
+                "Amount": [current["salary"], current["godown"], current["overhead"], current["nepal_overhead"], current["claim"], current["booking_6"], current["destination_5"]],
+            })
+            overhead_parts["Amount"] = pd.to_numeric(overhead_parts["Amount"], errors="coerce").fillna(0.0)
+            overhead_parts = overhead_parts[overhead_parts["Amount"].abs().gt(0)]
+            if not overhead_parts.empty:
+                fig_overhead = px.pie(
+                    overhead_parts, values=overhead_parts["Amount"].abs(), names="Component", hole=.56
+                )
+                fig_overhead.update_traces(textposition="none")
+                fig_overhead.update_layout(
+                    height=280, margin=dict(l=0, r=0, t=8, b=8),
+                    legend=dict(orientation="v", x=1.0, y=.5),
+                    annotations=[dict(text=amount_text(current["total_expense"], conversion_type), x=.5, y=.53, font_size=14, showarrow=False),
+                                 dict(text="Total Overhead", x=.5, y=.43, font_size=9, showarrow=False)],
+                )
+                st.plotly_chart(fig_overhead, use_container_width=True, config={"displayModeBar": False})
+            else:
+                st.info("No overhead data for selected scope.")
+
+    with exec_col3:
+        with st.container(border=True):
+            st.markdown('<span id="np-branch-performance"></span><div class="np-exec-card-title">Top 10 Branches by Net Profit</div>', unsafe_allow_html=True)
+            st.markdown('<div class="np-exec-card-subtitle">Highest net-profit branches in the active scope</div>', unsafe_allow_html=True)
+            top_branch = branch_summary.head(10).copy()
+            if not top_branch.empty:
+                top_branch["Net Profit Display"] = top_branch["Net_Profit"] / divisor
+                fig_top_branch = px.bar(
+                    top_branch.sort_values("Net Profit Display"),
+                    x="Net Profit Display", y="BRANCH", orientation="h", text="Net Profit Display"
+                )
+                fig_top_branch.update_traces(texttemplate="%{text:.2f}", textposition="outside", cliponaxis=False)
+                fig_top_branch.update_layout(
+                    height=280, margin=dict(l=5, r=25, t=5, b=5),
+                    xaxis_title=unit, yaxis_title=None,
+                    plot_bgcolor="white", paper_bgcolor="white", showlegend=False,
+                )
+                st.plotly_chart(fig_top_branch, use_container_width=True, config={"displayModeBar": False})
+
+    st.markdown('<span id="np-origin-destination"></span><span id="np-trend-analysis"></span><span id="np-business-wise"></span><span id="np-zone-circle"></span>', unsafe_allow_html=True)
+
+    # --------------------------------------------------------
     # PHASE 1: P&L INSIGHTS (ISOLATED; EXISTING NET PROFIT KPIs/TABLES UNCHANGED)
     # --------------------------------------------------------
 
@@ -3038,6 +3183,8 @@ def show_net_profit_dashboard():
         """,
         unsafe_allow_html=True,
     )
+
+    st.markdown('<span id="np-data-table"></span><span id="np-monthly-pnl"></span>', unsafe_allow_html=True)
 
     with st.container(key="np_bottom_render_tabs"):
         st.markdown(
@@ -3268,6 +3415,7 @@ def show_net_profit_dashboard():
     # TAB 3: NEPAL OVERHEAD LEDGER DETAIL
     # --------------------------------------------------------
     with nepal_detail_tab:
+        st.markdown('<span id="np-nepal-overhead"></span>', unsafe_allow_html=True)
         if nepal_overhead_detail_df is None or nepal_overhead_detail_df.empty:
             st.info("No Nepal overhead ledger detail is available for the selected period.")
         else:
