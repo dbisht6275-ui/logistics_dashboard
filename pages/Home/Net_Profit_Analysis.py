@@ -1083,14 +1083,32 @@ def _render_phase1_pnl_insights(
                         st.session_state["np_pnl_insight_view_value"] = view_label
                         st.rerun()
 
-    try:
-        with st.spinner(f"Loading {insight_view} P&L insights..."):
-            raw_insight_df, raw_insight_prev_df = load_pnl_data_pair(
-                start_date, end_date, prev_start, prev_end, insight_view
-            )
-    except Exception as exc:
-        st.warning(f"P&L insights could not be loaded: {exc}")
-        return pd.DataFrame(), pd.DataFrame()
+    # Load each P&L insight view only once per committed period. Streamlit reruns
+    # the page for every widget change, but Zone/Circle/Branch/Quarter/Month
+    # filters must reuse the already-loaded data instead of calling the loader.
+    insight_period_key = (
+        str(start_date), str(end_date), str(prev_start), str(prev_end), insight_view
+    )
+    insight_cache_key = f"np_pnl_insight_payload_{insight_view.lower()}"
+    insight_payload = st.session_state.get(insight_cache_key)
+
+    if not insight_payload or insight_payload.get("period_key") != insight_period_key:
+        try:
+            with st.spinner(f"Loading {insight_view} P&L insights..."):
+                raw_insight_df, raw_insight_prev_df = load_pnl_data_pair(
+                    start_date, end_date, prev_start, prev_end, insight_view
+                )
+            st.session_state[insight_cache_key] = {
+                "period_key": insight_period_key,
+                "current": raw_insight_df,
+                "previous": raw_insight_prev_df,
+            }
+        except Exception as exc:
+            st.warning(f"P&L insights could not be loaded: {exc}")
+            return pd.DataFrame(), pd.DataFrame()
+    else:
+        raw_insight_df = insight_payload.get("current", pd.DataFrame())
+        raw_insight_prev_df = insight_payload.get("previous", pd.DataFrame())
 
     insight_df = _normalise_insight_pnl(raw_insight_df)
     insight_prev_df = _normalise_insight_pnl(raw_insight_prev_df)
@@ -2326,7 +2344,7 @@ def show_net_profit_dashboard():
                 st.warning("From Date cannot be after To Date.")
             return
 
-        st.session_state["np_committed_period"] = {
+        committed = {
             "mode": period_mode,
             "start_date": selected_start,
             "end_date": selected_end,
@@ -2335,9 +2353,58 @@ def show_net_profit_dashboard():
             "fy": selected_fy_label,
             "prev_fy": selected_prev_fy_label,
         }
+        period_key = (
+            str(selected_start), str(selected_end),
+            str(selected_prev_start), str(selected_prev_end),
+        )
+
+        # IMPORTANT: Heavy SQL/P&L processing happens only when Run is clicked.
+        # All dashboard filters below operate on these session-state DataFrames.
+        with st.spinner("Loading Origin, Destination and branch overhead..."):
+            branch_master_loaded = load_net_profit_branch_mast()
+            valid_branches_loaded = safe_options(branch_master_loaded, "BRANCH")
+            if not valid_branches_loaded:
+                st.warning("No valid branches found in Branch/Agency Master for selected financial year.")
+                return
+
+            raw_loaded, raw_prev_loaded = load_net_profit_data_pair(
+                selected_start,
+                selected_end,
+                selected_prev_start,
+                selected_prev_end,
+            )
+
+            # Consolidated All-Branches booking/origin revenue must come directly
+            # from the P&L stored procedure. Keep the period totals in session too.
+            sp_loaded = load_pnl_sp_revenue_total(selected_start, selected_end)
+            sp_prev_loaded = load_pnl_sp_revenue_total(selected_prev_start, selected_prev_end)
+
+        if raw_loaded is None or raw_loaded.empty:
+            st.warning("No Net Profit data found for selected financial year.")
+            return
+
+        st.session_state["np_committed_period"] = committed
+        st.session_state["np_loaded_payload"] = {
+            "period_key": period_key,
+            "raw_df": raw_loaded,
+            "raw_prev_df": raw_prev_loaded,
+            "branch_master_df": branch_master_loaded,
+            "sp_revenue_total": float(sp_loaded or 0.0),
+            "sp_prev_revenue_total": float(sp_prev_loaded or 0.0),
+        }
+
+        # A new period invalidates any lazily loaded P&L insight view and
+        # any authoritative month/quarter revenue previously resolved.
+        for key in [
+            "np_pnl_insight_payload_origin",
+            "np_pnl_insight_payload_destination",
+            "np_authoritative_revenue_cache",
+        ]:
+            st.session_state.pop(key, None)
 
     committed_period = st.session_state.get("np_committed_period")
-    if not committed_period:
+    loaded_payload = st.session_state.get("np_loaded_payload")
+    if not committed_period or not loaded_payload:
         st.info("Select Financial Year or Custom Date, then click Run.")
         return
 
@@ -2348,28 +2415,25 @@ def show_net_profit_dashboard():
     fy = committed_period["fy"]
     prev_fy = committed_period["prev_fy"]
 
-    # Branch/Agency master is loaded first and becomes the dashboard branch scope.
-    branch_master_df = load_net_profit_branch_mast()
-    valid_branches = safe_options(branch_master_df, "BRANCH")
+    expected_period_key = (
+        str(start_date), str(end_date), str(prev_start), str(prev_end)
+    )
+    if loaded_payload.get("period_key") != expected_period_key:
+        st.info("Period selection changed. Click Run to load the new period.")
+        return
 
+    # Reuse the exact DataFrames loaded by Run. No SQL call happens here when
+    # Zone/Circle/Branch/Quarter/Month/Conversion widgets rerun the Streamlit page.
+    raw_df = loaded_payload.get("raw_df", pd.DataFrame())
+    raw_prev_df = loaded_payload.get("raw_prev_df", pd.DataFrame())
+    branch_master_df = loaded_payload.get("branch_master_df", pd.DataFrame())
+    sp_revenue_total = float(loaded_payload.get("sp_revenue_total", 0.0) or 0.0)
+    sp_prev_revenue_total = float(loaded_payload.get("sp_prev_revenue_total", 0.0) or 0.0)
+
+    valid_branches = safe_options(branch_master_df, "BRANCH")
     if not valid_branches:
         st.warning("No valid branches found in Branch/Agency Master for selected financial year.")
         return
-
-    with st.spinner("Loading Origin, Destination and branch overhead..."):
-        raw_df, raw_prev_df = load_net_profit_data_pair(
-            start_date,
-            end_date,
-            prev_start,
-            prev_end,
-        )
-
-        # Consolidated All-Branches booking/origin revenue must come directly
-        # from the P&L revenue stored procedure. Summing the branch-joined
-        # ORIGIN_BUSINESS rows can understate revenue because some booking
-        # records may be lost/repeated by branch mapping joins.
-        sp_revenue_total = load_pnl_sp_revenue_total(start_date, end_date)
-        sp_prev_revenue_total = load_pnl_sp_revenue_total(prev_start, prev_end)
 
     if raw_df is None or raw_df.empty:
         st.warning("No Net Profit data found for selected financial year.")
@@ -2520,12 +2584,32 @@ def show_net_profit_dashboard():
     authoritative_scope = all_branches and not (zones or circles)
 
     if authoritative_scope:
-        booking_business_current = _load_authoritative_revenue_for_time_scope(
-            start_date, end_date, quarters=quarters, months=months
-        )
-        booking_business_previous = _load_authoritative_revenue_for_time_scope(
-            prev_start, prev_end, quarters=quarters, months=months
-        )
+        # Full committed period is already stored from the Run click. For
+        # Quarter/Month slices, resolve the authoritative SP total once per
+        # unique filter combination and then keep it in session_state.
+        if not quarters and not months:
+            booking_business_current = sp_revenue_total
+            booking_business_previous = sp_prev_revenue_total
+        else:
+            revenue_cache = st.session_state.setdefault("np_authoritative_revenue_cache", {})
+            filter_key = (
+                str(start_date), str(end_date),
+                tuple(sorted(quarters or [])), tuple(sorted(months or [])),
+            )
+            prev_filter_key = (
+                str(prev_start), str(prev_end),
+                tuple(sorted(quarters or [])), tuple(sorted(months or [])),
+            )
+            if filter_key not in revenue_cache:
+                revenue_cache[filter_key] = _load_authoritative_revenue_for_time_scope(
+                    start_date, end_date, quarters=quarters, months=months
+                )
+            if prev_filter_key not in revenue_cache:
+                revenue_cache[prev_filter_key] = _load_authoritative_revenue_for_time_scope(
+                    prev_start, prev_end, quarters=quarters, months=months
+                )
+            booking_business_current = float(revenue_cache[filter_key] or 0.0)
+            booking_business_previous = float(revenue_cache[prev_filter_key] or 0.0)
 
         # All Branches business rule: only 6% Booking is deducted. Reconcile that
         # charge to the same authoritative revenue base and rebuild Net Profit.
