@@ -2334,7 +2334,7 @@ def show_net_profit_dashboard():
     with filter_cols[4]:
         # Keep Run vertically aligned with the input controls above/beside it.
         st.markdown(
-            '<div style="height:26px;"></div>',
+            '<div style="height:34px;"></div>',
             unsafe_allow_html=True,
         )
         run_clicked = st.button(
