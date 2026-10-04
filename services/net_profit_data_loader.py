@@ -148,6 +148,61 @@ GROUP BY
     MONTH(VM.VDATE);
 
 
+/* ================= NEPAL OVERHEAD ================= */
+
+IF OBJECT_ID('tempdb..#NEPALOVERHEAD') IS NOT NULL
+    DROP TABLE #NEPALOVERHEAD;
+
+SELECT
+    X.BRANCHCODE,
+    X.[YEAR],
+    X.[MONTHNO],
+    ROUND(SUM(X.NETAMT), 2) AS NETAMT
+INTO #NEPALOVERHEAD
+FROM
+(
+    /* -------- NEPAL LOGISTICS DATA -------- */
+    SELECT
+        VL.BRANCHCODE,
+        YEAR(VL.VDATE) AS [YEAR],
+        MONTH(VL.VDATE) AS [MONTHNO],
+        SUM(VL.DRAMOUNT - VL.CRAMOUNT) / 1.60 AS NETAMT
+    FROM GREENTRANSSGNL..VIEWVOUCHERDETAILS VL
+    INNER JOIN GREENTRANSSGNL..VIEWLEDGER LL
+        ON LL.LEDCODE = VL.LEDCODE
+    WHERE VL.VDATE BETWEEN @FROMDATE AND @TODATE
+      AND LL.GRPTYPE = 'E'
+      AND VL.CANCEL <> 'Y'
+    GROUP BY
+        VL.BRANCHCODE,
+        YEAR(VL.VDATE),
+        MONTH(VL.VDATE)
+
+    UNION ALL
+
+    /* -------- NEPAL TRANSPORT DATA -------- */
+    SELECT
+        VT.BRANCHCODE,
+        YEAR(VT.VDATE) AS [YEAR],
+        MONTH(VT.VDATE) AS [MONTHNO],
+        SUM(VT.DRAMOUNT - VT.CRAMOUNT) / 1.60 AS NETAMT
+    FROM GREENTRANSSGNT..VIEWVOUCHERDETAILS VT
+    INNER JOIN GREENTRANSSGNT..VIEWLEDGER LT
+        ON LT.LEDCODE = VT.LEDCODE
+    WHERE VT.VDATE BETWEEN @FROMDATE AND @TODATE
+      AND LT.GRPTYPE = 'E'
+      AND VT.CANCEL <> 'Y'
+    GROUP BY
+        VT.BRANCHCODE,
+        YEAR(VT.VDATE),
+        MONTH(VT.VDATE)
+) X
+GROUP BY
+    X.BRANCHCODE,
+    X.[YEAR],
+    X.[MONTHNO];
+
+
 /* ================= CLAIM ================= */
 
 IF OBJECT_ID('tempdb..#CLAIM') IS NOT NULL
@@ -211,7 +266,8 @@ IF OBJECT_ID('tempdb..#DESTINATION5') IS NOT NULL
     DROP TABLE #DESTINATION5;
 
 SELECT
-COALESCE(MRG.STNCODE, DEST.STNCODE) AS BRANCHCODE,
+
+    COALESCE(MRG.STNCODE, DEST.STNCODE) AS BRANCHCODE,
 
     YEAR(CN.GRDT) AS [YEAR],
     MONTH(CN.GRDT) AS [MONTHNO],
@@ -243,6 +299,7 @@ WHERE CN.GRDT BETWEEN @FROMDATE AND @TODATE
 GROUP BY
 
     COALESCE(MRG.STNCODE, DEST.STNCODE),
+
     YEAR(CN.GRDT),
     MONTH(CN.GRDT);
 
@@ -272,6 +329,11 @@ FROM
 
     SELECT BRANCHCODE, [YEAR], [MONTHNO]
     FROM #VOUCHEREXP
+
+    UNION
+
+    SELECT BRANCHCODE, [YEAR], [MONTHNO]
+    FROM #NEPALOVERHEAD
 
     UNION
 
@@ -319,6 +381,11 @@ SELECT
     ) AS [OVERHEAD EXPENSE],
 
     ROUND(
+        ISNULL(NEP.NETAMT, 0),
+        2
+    ) AS [NEPAL OVERHEAD],
+
+    ROUND(
         ISNULL(CL.NETAMT, 0),
         2
     ) AS [CLAIM],
@@ -337,6 +404,7 @@ SELECT
           ISNULL(SAL.NETAMT, 0)
         + ISNULL(GOD.NETAMT, 0)
         + ISNULL(VEXP.NETAMT, 0)
+        + ISNULL(NEP.NETAMT, 0)
         + ISNULL(CL.NETAMT, 0)
         + ISNULL(BK6.NETAMT, 0)
         + ISNULL(DEST5.NETAMT, 0),
@@ -362,6 +430,11 @@ LEFT JOIN #VOUCHEREXP VEXP
     ON VEXP.BRANCHCODE = M.BRANCHCODE
    AND VEXP.[YEAR] = M.[YEAR]
    AND VEXP.[MONTHNO] = M.[MONTHNO]
+
+LEFT JOIN #NEPALOVERHEAD NEP
+    ON NEP.BRANCHCODE = M.BRANCHCODE
+   AND NEP.[YEAR] = M.[YEAR]
+   AND NEP.[MONTHNO] = M.[MONTHNO]
 
 LEFT JOIN #CLAIM CL
     ON CL.BRANCHCODE = M.BRANCHCODE
@@ -688,6 +761,7 @@ def _prepare_overhead(df):
         "SALARY",
         "GODOWN RENT",
         "OVERHEAD EXPENSE",
+        "NEPAL OVERHEAD",
         "CLAIM",
         "BOOKING 6%",
         "DESTINATION 5%",
@@ -708,6 +782,7 @@ def _prepare_overhead(df):
         "SALARY": ["SALARY"],
         "GODOWN RENT": ["GODOWN RENT", "GODOWN_RENT"],
         "OVERHEAD EXPENSE": ["OVERHEAD EXPENSE", "OVERHEAD_EXPENSE"],
+        "NEPAL OVERHEAD": ["NEPAL OVERHEAD", "NEPAL_OVERHEAD", "NEPALOVERHEAD"],
         "CLAIM": ["CLAIM"],
         "BOOKING 6%": ["BOOKING 6%", "BOOKING_6", "BOOKING6"],
         "DESTINATION 5%": ["DESTINATION 5%", "DESTINATION_5", "DESTINATION5"],
@@ -753,6 +828,7 @@ def _prepare_overhead(df):
         "SALARY",
         "GODOWN RENT",
         "OVERHEAD EXPENSE",
+        "NEPAL OVERHEAD",
         "CLAIM",
         "BOOKING 6%",
         "DESTINATION 5%",
@@ -1011,6 +1087,7 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         "SALARY",
         "GODOWN RENT",
         "OVERHEAD EXPENSE",
+        "NEPAL OVERHEAD",
         "CLAIM",
         "BOOKING 6%",
         "DESTINATION 5%",
@@ -1037,6 +1114,7 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         final["SALARY"]
         + final["GODOWN RENT"]
         + final["OVERHEAD EXPENSE"]
+        + final["NEPAL OVERHEAD"]
         + final["CLAIM"]
         + final["BOOKING 6%"]
         + final["DESTINATION 5%"]
