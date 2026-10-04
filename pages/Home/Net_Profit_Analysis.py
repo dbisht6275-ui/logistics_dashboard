@@ -2494,9 +2494,11 @@ def show_net_profit_dashboard():
         st.warning("No data found for selected filters.")
         return
 
-    # No explicit branch selection means consolidated All Branches mode.
-    # In this mode only Origin-view P&L is used.
-    all_branches = len(branches) == 0
+    # True consolidated All Branches mode only when no hierarchy filter
+    # (Zone / Circle / Branch) is selected.
+    # If Zone or Circle is selected, treat it as a scoped operational view
+    # so Origin + Destination P&L and the applicable overhead are retained.
+    all_branches = not branches and not circles and not zones
     df = _apply_pnl_business_rule(df, all_branches=all_branches)
     prev_df = (
         _apply_pnl_business_rule(prev_df, all_branches=all_branches)
