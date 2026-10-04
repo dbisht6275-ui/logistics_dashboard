@@ -155,6 +155,7 @@ IF OBJECT_ID('tempdb..#NEPALOVERHEAD') IS NOT NULL
 
 SELECT
     X.BRANCHCODE,
+    X.BRANCH,
     X.[YEAR],
     X.[MONTHNO],
     ROUND(SUM(X.NETAMT), 2) AS NETAMT
@@ -164,6 +165,7 @@ FROM
     /* -------- NEPAL LOGISTICS DATA -------- */
     SELECT
         VL.BRANCHCODE,
+        VL.BRANCHNAME AS BRANCH,
         YEAR(VL.VDATE) AS [YEAR],
         MONTH(VL.VDATE) AS [MONTHNO],
         SUM(VL.DRAMOUNT - VL.CRAMOUNT) / 1.60 AS NETAMT
@@ -175,6 +177,7 @@ FROM
       AND VL.CANCEL <> 'Y'
     GROUP BY
         VL.BRANCHCODE,
+        VL.BRANCHNAME,
         YEAR(VL.VDATE),
         MONTH(VL.VDATE)
 
@@ -183,6 +186,7 @@ FROM
     /* -------- NEPAL TRANSPORT DATA -------- */
     SELECT
         VT.BRANCHCODE,
+        VT.BRANCHNAME AS BRANCH,
         YEAR(VT.VDATE) AS [YEAR],
         MONTH(VT.VDATE) AS [MONTHNO],
         SUM(VT.DRAMOUNT - VT.CRAMOUNT) / 1.60 AS NETAMT
@@ -194,11 +198,13 @@ FROM
       AND VT.CANCEL <> 'Y'
     GROUP BY
         VT.BRANCHCODE,
+        VT.BRANCHNAME,
         YEAR(VT.VDATE),
         MONTH(VT.VDATE)
 ) X
 GROUP BY
     X.BRANCHCODE,
+    X.BRANCH,
     X.[YEAR],
     X.[MONTHNO];
 
@@ -356,8 +362,8 @@ FROM
 /* ================= FINAL OUTPUT ================= */
 
 SELECT
-    STN.STNCODE AS BRANCHCODE,
-    STN.STNNAME AS BRANCH,
+    M.BRANCHCODE AS BRANCHCODE,
+    COALESCE(NULLIF(NEP.BRANCH, ''), STN.STNNAME, M.BRANCHCODE) AS BRANCH,
     M.[YEAR],
     M.[MONTHNO] AS [MONTH NO],
     DATENAME(
@@ -413,7 +419,7 @@ SELECT
 
 FROM #MONTHS M
 
-INNER JOIN STATIONMAST STN
+LEFT JOIN STATIONMAST STN
     ON STN.STNCODE = M.BRANCHCODE
 
 LEFT JOIN #SALARY SAL
@@ -452,7 +458,7 @@ LEFT JOIN #DESTINATION5 DEST5
    AND DEST5.[MONTHNO] = M.[MONTHNO]
 
 ORDER BY
-    STN.STNNAME,
+    COALESCE(NULLIF(NEP.BRANCH, ''), STN.STNNAME, M.BRANCHCODE),
     M.[YEAR],
     M.[MONTHNO];
 """)
@@ -916,6 +922,19 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         & master["BRANCH_KEY"].ne("")
         & master["BRANCH_KEY"].ne("nan")
     ][["BRANCH_KEY", "BRANCHCODE", "BRANCH", "zone", "circle", "COMPNAME"]].drop_duplicates("BRANCH_KEY")
+
+    # Prefer Branch Master code mapping for overhead rows. This is important for
+    # Nepal, where the accounting database branch name may differ slightly from
+    # the dashboard Branch Master name.
+    valid_master_codes = master["BRANCHCODE"].astype(str).str.strip().ne("")
+    code_to_branch_key = (
+        master.loc[valid_master_codes, ["BRANCHCODE", "BRANCH_KEY"]]
+        .drop_duplicates("BRANCHCODE")
+        .set_index("BRANCHCODE")["BRANCH_KEY"]
+    )
+    if overhead is not None and not overhead.empty and "BRANCHCODE" in overhead.columns:
+        mapped_key = overhead["BRANCHCODE"].astype(str).str.strip().map(code_to_branch_key)
+        overhead.loc[mapped_key.notna(), "BRANCH_KEY"] = mapped_key.loc[mapped_key.notna()]
 
     # Build branch-month skeleton from the selected reporting period present in
     # Origin, Destination, or Overhead. If a month has only overhead, it still survives.
