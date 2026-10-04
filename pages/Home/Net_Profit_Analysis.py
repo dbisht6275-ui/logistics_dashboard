@@ -2240,8 +2240,10 @@ def show_net_profit_dashboard():
     # PRIMARY FILTERS
     # --------------------------------------------------------
 
+    # Keep every primary filter on one clean row. Hierarchy filters are
+    # ordered Zone -> Circle -> Branch so they cascade naturally.
     filter_cols = executive_header.columns(
-        [1.0, 1.15, 1.05, 1.05, 1, 1.35, 1.2, 1.2, 1.1, 1.0],
+        [1.0, 1.15, 1.05, 1.05, 0.95, 1.0, 1.05, 1.35, 1.1, 1.1, 1.05],
         gap="small",
     )
 
@@ -2455,7 +2457,7 @@ def show_net_profit_dashboard():
     )
 
     # Use whichever hierarchy columns are actually available.
-    with filter_cols[9]:
+    with filter_cols[5]:
         zones = st.multiselect(
             "Zone",
             safe_options(df, "zone"),
@@ -2471,7 +2473,7 @@ def show_net_profit_dashboard():
     circle_scope = apply_multi_filter(circle_scope, "zone", zones)
     circle_options = safe_options(circle_scope, "circle")
 
-    with filter_cols[4]:
+    with filter_cols[6]:
         circles = st.multiselect(
             "Circle",
             circle_options,
@@ -2486,7 +2488,7 @@ def show_net_profit_dashboard():
     branch_scope = apply_multi_filter(branch_scope, "circle", circles)
     branch_options = safe_options(branch_scope, "BRANCH")
 
-    with filter_cols[5]:
+    with filter_cols[7]:
         branches = st.multiselect(
             "Branch",
             branch_options,
@@ -2509,7 +2511,7 @@ def show_net_profit_dashboard():
             if quarter in quarter_options
         ]
 
-    with filter_cols[6]:
+    with filter_cols[8]:
         quarters = st.multiselect(
             "Quarter",
             quarter_options,
@@ -2532,7 +2534,7 @@ def show_net_profit_dashboard():
             if month in month_options
         ]
 
-    with filter_cols[7]:
+    with filter_cols[9]:
         months = st.multiselect(
             "Month",
             month_options,
@@ -2541,7 +2543,7 @@ def show_net_profit_dashboard():
             disabled=not month_options,
         )
 
-    with filter_cols[8]:
+    with filter_cols[10]:
         conversion_type = st.selectbox(
             "₹ Conversion",
             ["Crore", "Lac"],
@@ -2944,6 +2946,7 @@ def show_net_profit_dashboard():
             "Salary",
             "Godown_Rent",
             "Overhead_Expense",
+            "Nepal_Overhead",
             "Claim",
             "Booking_6",
             "Destination_5",
@@ -2972,6 +2975,7 @@ def show_net_profit_dashboard():
                 "Salary": f"Salary ({unit})",
                 "Godown_Rent": f"Godown Rent ({unit})",
                 "Overhead_Expense": f"Overhead Expense ({unit})",
+                "Nepal_Overhead": f"Nepal Overhead ({unit})",
                 "Claim": f"Claim ({unit})",
                 "Booking_6": f"Booking 6% ({unit})",
                 "Destination_5": f"Destination 5% ({unit})",
@@ -2994,6 +2998,7 @@ def show_net_profit_dashboard():
             f"Salary ({unit})",
             f"Godown Rent ({unit})",
             f"Overhead Expense ({unit})",
+            f"Nepal Overhead ({unit})",
             f"Claim ({unit})",
             f"Booking 6% ({unit})",
             f"Destination 5% ({unit})",
@@ -3084,6 +3089,40 @@ def show_net_profit_dashboard():
         ]
 
         audit_display = df[audit_columns].copy()
+
+        # Display the audit in the selected conversion unit, including Nepal Overhead.
+        audit_money_columns = [
+            "BUSINESS",
+            "ORIGIN_BUSINESS",
+            "DESTINATION_BUSINESS",
+            "ORIGIN_PNL",
+            "DESTINATION_PNL",
+            "COMBINED_PNL",
+            "SALARY",
+            "GODOWN RENT",
+            "OVERHEAD EXPENSE",
+            "NEPAL OVERHEAD",
+            "CLAIM",
+            "BOOKING 6%",
+            "DESTINATION 5%",
+            "TOTAL EXPENSE",
+            "NET_PROFIT",
+        ]
+        for column in audit_money_columns:
+            if column in audit_display.columns:
+                audit_display[column] = (
+                    pd.to_numeric(audit_display[column], errors="coerce").fillna(0.0)
+                    / divisor
+                )
+
+        audit_display = audit_display.rename(
+            columns={
+                column: f"{column} ({unit})"
+                for column in audit_money_columns
+                if column in audit_display.columns
+            }
+        )
+
         audit_sort = [
             column
             for column in ["BRANCH", "YEAR", "MONTHNO"]
