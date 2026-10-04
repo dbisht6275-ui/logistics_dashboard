@@ -1045,6 +1045,7 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
             "SALARY",
             "GODOWN RENT",
             "OVERHEAD EXPENSE",
+            "NEPAL OVERHEAD",
             "CLAIM",
             "BOOKING 6%",
             "DESTINATION 5%",
