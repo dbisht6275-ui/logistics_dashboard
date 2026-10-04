@@ -154,14 +154,7 @@ IF OBJECT_ID('tempdb..#NEPALOVERHEAD') IS NOT NULL
     DROP TABLE #NEPALOVERHEAD;
 
 SELECT
-    CASE
-        WHEN X.BRANCHCODE = '704' THEN '602'
-        WHEN X.BRANCHCODE = '705' THEN '601'
-        WHEN X.BRANCHCODE = '708' THEN '603'
-        WHEN X.BRANCHCODE = '712' THEN '171'
-        WHEN X.BRANCHCODE = '709' THEN '607'
-        ELSE X.BRANCHCODE
-    END AS BRANCHCODE,
+    X.BRANCHCODE,
     X.BRANCH,
     X.[YEAR],
     X.[MONTHNO],
@@ -210,14 +203,7 @@ FROM
         MONTH(VT.VDATE)
 ) X
 GROUP BY
-    CASE
-        WHEN X.BRANCHCODE = '704' THEN '602'
-        WHEN X.BRANCHCODE = '705' THEN '601'
-        WHEN X.BRANCHCODE = '708' THEN '603'
-        WHEN X.BRANCHCODE = '712' THEN '171'
-        WHEN X.BRANCHCODE = '709' THEN '607'
-        ELSE X.BRANCHCODE
-    END,
+    X.BRANCHCODE,
     X.BRANCH,
     X.[YEAR],
     X.[MONTHNO];
@@ -353,11 +339,6 @@ FROM
     UNION
 
     SELECT BRANCHCODE, [YEAR], [MONTHNO]
-    FROM #NEPALOVERHEAD
-
-    UNION
-
-    SELECT BRANCHCODE, [YEAR], [MONTHNO]
     FROM #CLAIM
 
     UNION
@@ -375,56 +356,33 @@ FROM
 
 /* ================= FINAL OUTPUT ================= */
 
+/*
+   Keep India overhead and Nepal overhead as separate rows.
+   This is intentional: some Nepal accounting branch codes overlap / map to
+   different India station codes. Combining them in SQL can move India salary,
+   rent or voucher overhead to a Nepal branch name.
+*/
+
+/* -------- INDIA / NORMAL OVERHEAD ROWS -------- */
 SELECT
     M.BRANCHCODE AS BRANCHCODE,
-    COALESCE(NULLIF(NEP.BRANCH, ''), STN.STNNAME, M.BRANCHCODE) AS BRANCH,
+    COALESCE(STN.STNNAME, M.BRANCHCODE) AS BRANCH,
     M.[YEAR],
     M.[MONTHNO] AS [MONTH NO],
-    DATENAME(
-        MONTH,
-        DATEFROMPARTS(M.[YEAR], M.[MONTHNO], 1)
-    ) AS [MONTH],
+    DATENAME(MONTH, DATEFROMPARTS(M.[YEAR], M.[MONTHNO], 1)) AS [MONTH],
 
-    ROUND(
-        ISNULL(SAL.NETAMT, 0),
-        2
-    ) AS [SALARY],
-
-    ROUND(
-        ISNULL(GOD.NETAMT, 0),
-        2
-    ) AS [GODOWN RENT],
-
-    ROUND(
-        ISNULL(VEXP.NETAMT, 0),
-        2
-    ) AS [OVERHEAD EXPENSE],
-
-    ROUND(
-        ISNULL(NEP.NETAMT, 0),
-        2
-    ) AS [NEPAL OVERHEAD],
-
-    ROUND(
-        ISNULL(CL.NETAMT, 0),
-        2
-    ) AS [CLAIM],
-
-    ROUND(
-        ISNULL(BK6.NETAMT, 0),
-        2
-    ) AS [BOOKING 6%],
-
-    ROUND(
-        ISNULL(DEST5.NETAMT, 0),
-        2
-    ) AS [DESTINATION 5%],
+    ROUND(ISNULL(SAL.NETAMT, 0), 2) AS [SALARY],
+    ROUND(ISNULL(GOD.NETAMT, 0), 2) AS [GODOWN RENT],
+    ROUND(ISNULL(VEXP.NETAMT, 0), 2) AS [OVERHEAD EXPENSE],
+    CAST(0.00 AS DECIMAL(18,2)) AS [NEPAL OVERHEAD],
+    ROUND(ISNULL(CL.NETAMT, 0), 2) AS [CLAIM],
+    ROUND(ISNULL(BK6.NETAMT, 0), 2) AS [BOOKING 6%],
+    ROUND(ISNULL(DEST5.NETAMT, 0), 2) AS [DESTINATION 5%],
 
     ROUND(
           ISNULL(SAL.NETAMT, 0)
         + ISNULL(GOD.NETAMT, 0)
         + ISNULL(VEXP.NETAMT, 0)
-        + ISNULL(NEP.NETAMT, 0)
         + ISNULL(CL.NETAMT, 0)
         + ISNULL(BK6.NETAMT, 0)
         + ISNULL(DEST5.NETAMT, 0),
@@ -451,11 +409,6 @@ LEFT JOIN #VOUCHEREXP VEXP
    AND VEXP.[YEAR] = M.[YEAR]
    AND VEXP.[MONTHNO] = M.[MONTHNO]
 
-LEFT JOIN #NEPALOVERHEAD NEP
-    ON NEP.BRANCHCODE = M.BRANCHCODE
-   AND NEP.[YEAR] = M.[YEAR]
-   AND NEP.[MONTHNO] = M.[MONTHNO]
-
 LEFT JOIN #CLAIM CL
     ON CL.BRANCHCODE = M.BRANCHCODE
    AND CL.[YEAR] = M.[YEAR]
@@ -471,10 +424,26 @@ LEFT JOIN #DESTINATION5 DEST5
    AND DEST5.[YEAR] = M.[YEAR]
    AND DEST5.[MONTHNO] = M.[MONTHNO]
 
-ORDER BY
-    COALESCE(NULLIF(NEP.BRANCH, ''), STN.STNNAME, M.BRANCHCODE),
-    M.[YEAR],
-    M.[MONTHNO];
+UNION ALL
+
+/* -------- NEPAL OVERHEAD ONLY ROWS -------- */
+SELECT
+    NEP.BRANCHCODE AS BRANCHCODE,
+    NEP.BRANCH AS BRANCH,
+    NEP.[YEAR],
+    NEP.[MONTHNO] AS [MONTH NO],
+    DATENAME(MONTH, DATEFROMPARTS(NEP.[YEAR], NEP.[MONTHNO], 1)) AS [MONTH],
+
+    CAST(0.00 AS DECIMAL(18,2)) AS [SALARY],
+    CAST(0.00 AS DECIMAL(18,2)) AS [GODOWN RENT],
+    CAST(0.00 AS DECIMAL(18,2)) AS [OVERHEAD EXPENSE],
+    ROUND(ISNULL(NEP.NETAMT, 0), 2) AS [NEPAL OVERHEAD],
+    CAST(0.00 AS DECIMAL(18,2)) AS [CLAIM],
+    CAST(0.00 AS DECIMAL(18,2)) AS [BOOKING 6%],
+    CAST(0.00 AS DECIMAL(18,2)) AS [DESTINATION 5%],
+    ROUND(ISNULL(NEP.NETAMT, 0), 2) AS [TOTAL EXPENSE]
+
+FROM #NEPALOVERHEAD NEP;
 """)
 
 
@@ -949,17 +918,10 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
     if overhead is not None and not overhead.empty and "BRANCHCODE" in overhead.columns:
         mapped_key = overhead["BRANCHCODE"].astype(str).str.strip().map(code_to_branch_key)
 
-        # IMPORTANT FOR NEPAL OVERHEAD:
-        # The Nepal accounting query deliberately maps accounting branch codes
-        # (for example BIRGUNJ 704 -> 602) for the overhead SQL output, while
-        # keeping the original Nepal branch name (for example BIRGUNJ).
-        # If we blindly remap BRANCH_KEY again from the mapped code, BIRGUNJ's
-        # overhead gets attached to the Branch Master row for code 602 instead
-        # of the BIRGUNJ branch selected in the dashboard.
-        #
-        # Therefore:
-        #   - Nepal-overhead rows keep the BRANCH_KEY derived from BRANCH name.
-        #   - Other overhead rows continue to prefer Branch Master code mapping.
+        # Nepal overhead is returned as a separate SQL row with its original
+        # Nepal branch name/code. Keep its name-derived BRANCH_KEY so it can
+        # never absorb India salary/rent/voucher overhead from another station.
+        # Normal India overhead rows continue to use Branch Master code mapping.
         nepal_amount = pd.to_numeric(
             overhead.get("NEPAL OVERHEAD", 0.0),
             errors="coerce",
@@ -1086,12 +1048,10 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         ]
     ].copy()
 
-    # Nepal overhead can create a second overhead row for the same dashboard
-    # branch/month: one row contains the normal India-side overhead components
-    # and another row contains NEPAL OVERHEAD from the Nepal accounting source.
-    # Collapse those component rows to one unique BRANCH_KEY/YEAR/MONTHNO row
-    # before the one-to-one merge. This keeps every expense component and avoids
-    # pandas MergeError for branches such as BIRGUNJ/BHAIRAHAWA/BIRATNAGAR.
+    # SQL intentionally returns India overhead and Nepal overhead separately.
+    # Consolidate only when they genuinely resolve to the same dashboard branch
+    # name/month. This preserves India components on India branches and keeps
+    # Nepal overhead on the Nepal branch.
     overhead_value_columns = [
         "SALARY",
         "GODOWN RENT",
