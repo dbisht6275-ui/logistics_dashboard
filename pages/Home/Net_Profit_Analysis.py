@@ -203,6 +203,7 @@ def _apply_pnl_business_rule(df, all_branches):
         "SALARY",
         "GODOWN RENT",
         "OVERHEAD EXPENSE",
+        "NEPAL OVERHEAD",
         "CLAIM",
         "BOOKING 6%",
         "DESTINATION 5%",
@@ -228,6 +229,7 @@ def _apply_pnl_business_rule(df, all_branches):
             out["SALARY"]
             + out["GODOWN RENT"]
             + out["OVERHEAD EXPENSE"]
+            + out["NEPAL OVERHEAD"]
             + out["CLAIM"]
             + out["BOOKING 6%"]
         )
@@ -258,6 +260,7 @@ def calculate_kpis(df):
             "salary": 0.0,
             "godown": 0.0,
             "overhead": 0.0,
+            "nepal_overhead": 0.0,
             "claim": 0.0,
             "booking_6": 0.0,
             "destination_5": 0.0,
@@ -278,6 +281,7 @@ def calculate_kpis(df):
         "salary": float(df["SALARY"].sum()),
         "godown": float(df["GODOWN RENT"].sum()),
         "overhead": float(df["OVERHEAD EXPENSE"].sum()),
+        "nepal_overhead": float(df["NEPAL OVERHEAD"].sum()) if "NEPAL OVERHEAD" in df.columns else 0.0,
         "claim": float(df["CLAIM"].sum()),
         "booking_6": float(df["BOOKING 6%"].sum()) if "BOOKING 6%" in df.columns else 0.0,
         "destination_5": float(df["DESTINATION 5%"].sum()) if "DESTINATION 5%" in df.columns else 0.0,
@@ -811,7 +815,7 @@ def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_bu
 
     _reconcile("BOOKING 6%", 0.06, "ORIGIN_BUSINESS")
 
-    for column in ["SALARY", "GODOWN RENT", "OVERHEAD EXPENSE", "CLAIM", "BOOKING 6%", "DESTINATION 5%"]:
+    for column in ["SALARY", "GODOWN RENT", "OVERHEAD EXPENSE", "NEPAL OVERHEAD", "CLAIM", "BOOKING 6%", "DESTINATION 5%"]:
         if column not in out.columns:
             out[column] = 0.0
         out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
@@ -821,6 +825,7 @@ def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_bu
         out["SALARY"]
         + out["GODOWN RENT"]
         + out["OVERHEAD EXPENSE"]
+        + out["NEPAL OVERHEAD"]
         + out["CLAIM"]
         + out["BOOKING 6%"]
     )
@@ -2494,10 +2499,8 @@ def show_net_profit_dashboard():
         st.warning("No data found for selected filters.")
         return
 
-    # True consolidated All Branches mode only when no hierarchy filter
-    # (Zone / Circle / Branch) is selected.
-    # If Zone or Circle is selected, treat it as a scoped operational view
-    # so Origin + Destination P&L and the applicable overhead are retained.
+    # No explicit branch selection means consolidated All Branches mode.
+    # In this mode only Origin-view P&L is used.
     all_branches = not branches and not circles and not zones
     df = _apply_pnl_business_rule(df, all_branches=all_branches)
     prev_df = (
@@ -2638,6 +2641,7 @@ def show_net_profit_dashboard():
     overhead_kpis = [
         ("Salary", current["salary"], previous["salary"], "●"),
         ("Overhead Expense", current["overhead"], previous["overhead"], "▦"),
+        ("Nepal Overhead", current["nepal_overhead"], previous["nepal_overhead"], "NP"),
         ("Claim", current["claim"], previous["claim"], "◆"),
         ("6% of Booking )", current["booking_6"], previous["booking_6"], "▣"),
         ("Godown Rent", current["godown"], previous["godown"], "▥"),
@@ -2670,6 +2674,7 @@ def show_net_profit_dashboard():
             Salary=("SALARY", "sum"),
             Godown_Rent=("GODOWN RENT", "sum"),
             Overhead_Expense=("OVERHEAD EXPENSE", "sum"),
+            Nepal_Overhead=("NEPAL OVERHEAD", "sum"),
             Claim=("CLAIM", "sum"),
             Booking_6=("BOOKING 6%", "sum"),
             Destination_5=("DESTINATION 5%", "sum"),
@@ -2981,6 +2986,7 @@ def show_net_profit_dashboard():
             "SALARY",
             "GODOWN RENT",
             "OVERHEAD EXPENSE",
+            "NEPAL OVERHEAD",
             "CLAIM",
             "BOOKING 6%",
             "DESTINATION 5%",
