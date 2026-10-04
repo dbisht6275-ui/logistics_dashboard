@@ -948,7 +948,26 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
     )
     if overhead is not None and not overhead.empty and "BRANCHCODE" in overhead.columns:
         mapped_key = overhead["BRANCHCODE"].astype(str).str.strip().map(code_to_branch_key)
-        overhead.loc[mapped_key.notna(), "BRANCH_KEY"] = mapped_key.loc[mapped_key.notna()]
+
+        # IMPORTANT FOR NEPAL OVERHEAD:
+        # The Nepal accounting query deliberately maps accounting branch codes
+        # (for example BIRGUNJ 704 -> 602) for the overhead SQL output, while
+        # keeping the original Nepal branch name (for example BIRGUNJ).
+        # If we blindly remap BRANCH_KEY again from the mapped code, BIRGUNJ's
+        # overhead gets attached to the Branch Master row for code 602 instead
+        # of the BIRGUNJ branch selected in the dashboard.
+        #
+        # Therefore:
+        #   - Nepal-overhead rows keep the BRANCH_KEY derived from BRANCH name.
+        #   - Other overhead rows continue to prefer Branch Master code mapping.
+        nepal_amount = pd.to_numeric(
+            overhead.get("NEPAL OVERHEAD", 0.0),
+            errors="coerce",
+        ).fillna(0.0)
+        nepal_rows = nepal_amount.ne(0.0)
+
+        use_code_mapping = mapped_key.notna() & ~nepal_rows
+        overhead.loc[use_code_mapping, "BRANCH_KEY"] = mapped_key.loc[use_code_mapping]
 
     # Build branch-month skeleton from the selected reporting period present in
     # Origin, Destination, or Overhead. If a month has only overhead, it still survives.
