@@ -1273,7 +1273,7 @@ FROM
       AND VL.VDATE < DATEADD(DAY, 1, @TODATE)
       AND LL.GRPTYPE = 'E'
       AND VL.CANCEL <> 'Y'
-      AND LL.MAINGRP = 'AM203'
+      AND LL.MAINGRP  IN ('AM203','AM148','AM152','AM205')
       AND LL.isoperationalexpense<>'Y'
     GROUP BY
         VL.BRANCHCODE,
@@ -1303,7 +1303,7 @@ FROM
       AND VT.VDATE < DATEADD(DAY, 1, @TODATE)
       AND LT.GRPTYPE = 'E'
       AND VT.CANCEL <> 'Y'
-      AND LT.MAINGRP = 'AM203'
+      AND LT.MAINGRP  IN ('AM203','AM148','AM152','AM205')
       AND LT.isoperationalexpense<>'Y'
     GROUP BY
         VT.BRANCHCODE,
