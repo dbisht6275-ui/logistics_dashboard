@@ -174,6 +174,7 @@ FROM
         ON LL.LEDCODE = VL.LEDCODE
     WHERE VL.VDATE BETWEEN @FROMDATE AND @TODATE
       AND LL.GRPTYPE = 'E'
+      AND LL.MAINGRP = 'AM203'
       AND VL.CANCEL <> 'Y'
       AND LL.isoperationalexpense<>'Y'
     GROUP BY
@@ -197,6 +198,7 @@ FROM
     WHERE VT.VDATE BETWEEN @FROMDATE AND @TODATE
       AND LT.GRPTYPE = 'E'
       AND VT.CANCEL <> 'Y'
+      AND LT.MAINGRP = 'AM203'
       AND LT.isoperationalexpense<>'Y'
     GROUP BY
         VT.BRANCHCODE,
@@ -1271,6 +1273,7 @@ FROM
       AND VL.VDATE < DATEADD(DAY, 1, @TODATE)
       AND LL.GRPTYPE = 'E'
       AND VL.CANCEL <> 'Y'
+      AND LL.MAINGRP = 'AM203'
       AND LL.isoperationalexpense<>'Y'
     GROUP BY
         VL.BRANCHCODE,
@@ -1300,6 +1303,7 @@ FROM
       AND VT.VDATE < DATEADD(DAY, 1, @TODATE)
       AND LT.GRPTYPE = 'E'
       AND VT.CANCEL <> 'Y'
+      AND LT.MAINGRP = 'AM203'
       AND LT.isoperationalexpense<>'Y'
     GROUP BY
         VT.BRANCHCODE,
