@@ -3502,14 +3502,23 @@ def render_mobile_number_insights(df):
 
     st.markdown("#### Mobile Numbers Linked to Multiple Vendors")
 
-    min_vendor_count = st.slider(
-        "Minimum vendors linked to one mobile",
-        min_value=2,
-        max_value=max(2, int(shared["Vendor Count"].max())),
-        value=2,
-        step=1,
-        key="mobile_insight_min_vendor_count",
-    )
+    max_shared_vendor_count = int(shared["Vendor Count"].max())
+
+    # Streamlit slider requires min_value < max_value.
+    # If every shared mobile is linked to exactly 2 vendors, there is
+    # nothing to filter, so keep the threshold fixed at 2.
+    if max_shared_vendor_count <= 2:
+        min_vendor_count = 2
+        st.caption("Showing mobile numbers linked to 2 or more vendors.")
+    else:
+        min_vendor_count = st.slider(
+            "Minimum vendors linked to one mobile",
+            min_value=2,
+            max_value=max_shared_vendor_count,
+            value=2,
+            step=1,
+            key="mobile_insight_min_vendor_count",
+        )
 
     shared_display = shared[shared["Vendor Count"].ge(min_vendor_count)].copy()
 
