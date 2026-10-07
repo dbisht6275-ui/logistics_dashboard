@@ -51,19 +51,33 @@ BIDDING_SQL = text(
             BP.BIDID,
             BP.VENDCODE,
             MAX(VD.VENDNAME) AS VENDNAME,
+
+            /* Mobile number captured against the vendor for this BID */
+            MAX(
+                NULLIF(
+                    LTRIM(RTRIM(BDD.MOBILENO)),
+                    ''
+                )
+            ) AS MOBILE_NO,
+
             MAX(
                 COALESCE(
                     TRY_CONVERT(DECIMAL(18,2), BP.BIDAMOUNT),
                     0
                 )
             ) AS BIDAMOUNT
+
         FROM BIDAMOUNT BP
+
         INNER JOIN BIDDETAIL BDD
             ON BDD.BIDID = BP.BIDID
            AND BDD.VENDCODE = BP.VENDCODE
+
         INNER JOIN VENDMAST VD
             ON VD.VENDCODE = BP.VENDCODE
+
         WHERE ISNULL(BP.CANCEL,'N') <> 'Y'
+
         GROUP BY
             BP.BIDID,
             BP.VENDCODE
@@ -103,8 +117,10 @@ BIDDING_SQL = text(
     BIDDER_STATS AS
     (
         SELECT
-            BIDID,
+            C1.BIDID,
             COUNT(*) AS BIDDER_COUNT,
+
+            /* Existing structure retained for vendor filters/performance */
             STUFF(
                 (
                     SELECT
@@ -112,17 +128,63 @@ BIDDING_SQL = text(
                             CONCAT(
                                 C2.VENDCODE,
                                 '::',
-                                REPLACE(REPLACE(ISNULL(C2.VENDNAME, ''), '|||', ' '), '::', ' ')
+                                REPLACE(
+                                    REPLACE(ISNULL(C2.VENDNAME, ''), '|||', ' '),
+                                    '::',
+                                    ' '
+                                )
                             ) AS NVARCHAR(MAX)
                         )
                     FROM CTE C2
                     WHERE C2.BIDID = C1.BIDID
+                    ORDER BY C2.BIDAMOUNT ASC, C2.VENDCODE ASC
                     FOR XML PATH(''), TYPE
                 ).value('.', 'NVARCHAR(MAX)'),
                 1,
                 3,
                 ''
-            ) AS BIDDER_VENDOR_LIST
+            ) AS BIDDER_VENDOR_LIST,
+
+            /*
+               New structure:
+               VENDCODE::VENDNAME::MOBILE::BIDAMOUNT
+               separated between bidders with |||
+            */
+            STUFF(
+                (
+                    SELECT
+                        '|||' + CAST(
+                            CONCAT(
+                                C2.VENDCODE,
+                                '::',
+                                REPLACE(
+                                    REPLACE(ISNULL(C2.VENDNAME, ''), '|||', ' '),
+                                    '::',
+                                    ' '
+                                ),
+                                '::',
+                                REPLACE(
+                                    REPLACE(ISNULL(C2.MOBILE_NO, ''), '|||', ' '),
+                                    '::',
+                                    ' '
+                                ),
+                                '::',
+                                CONVERT(
+                                    VARCHAR(50),
+                                    CAST(ISNULL(C2.BIDAMOUNT, 0) AS DECIMAL(18,2))
+                                )
+                            ) AS NVARCHAR(MAX)
+                        )
+                    FROM CTE C2
+                    WHERE C2.BIDID = C1.BIDID
+                    ORDER BY C2.BIDAMOUNT ASC, C2.VENDCODE ASC
+                    FOR XML PATH(''), TYPE
+                ).value('.', 'NVARCHAR(MAX)'),
+                1,
+                3,
+                ''
+            ) AS BIDDER_CONTACT_LIST
+
         FROM CTE C1
         GROUP BY C1.BIDID
     )
@@ -201,6 +263,7 @@ BIDDING_SQL = text(
         /* Bidder participation */
         COALESCE(BS.BIDDER_COUNT, 0) AS BIDDER_COUNT,
         COALESCE(BS.BIDDER_VENDOR_LIST, '') AS BIDDER_VENDOR_LIST,
+        COALESCE(BS.BIDDER_CONTACT_LIST, '') AS BIDDER_CONTACT_LIST,
 
         /* Top 3 */
         TOP3.L_1_NAME,
@@ -315,7 +378,6 @@ BIDDING_SQL = text(
     """
 )
 
-
 # ============================================================
 # DATA LOAD
 # ============================================================
@@ -353,6 +415,153 @@ def _clean_text_series(series):
         .astype(str)
         .str.strip()
     )
+
+
+def _normalize_mobile_number(value):
+    """Normalize Indian-style mobile numbers for duplicate-number analysis."""
+    if value is None or pd.isna(value):
+        return ""
+
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+
+    if not digits:
+        return ""
+
+    # Common stored forms: 098xxxxxxxx, 91xxxxxxxxxx, +91-xxxxxxxxxx.
+    if len(digits) == 11 and digits.startswith("0"):
+        digits = digits[-10:]
+    elif len(digits) == 12 and digits.startswith("91"):
+        digits = digits[-10:]
+
+    return digits
+
+
+def _parse_bidder_contact_list(raw_value):
+    """Parse VENDCODE::VENDOR::MOBILE::AMOUNT bidder-contact payload."""
+    columns = ["Vendor Code", "Vendor", "Mobile Number", "Bid Amount"]
+
+    if raw_value is None or pd.isna(raw_value):
+        return pd.DataFrame(columns=columns)
+
+    raw_value = str(raw_value).strip()
+    if not raw_value:
+        return pd.DataFrame(columns=columns)
+
+    rows = []
+
+    for token in raw_value.split("|||"):
+        token = token.strip()
+        if not token:
+            continue
+
+        parts = token.split("::")
+        vendcode = parts[0].strip() if len(parts) > 0 else ""
+        vendor = parts[1].strip() if len(parts) > 1 else ""
+        mobile = parts[2].strip() if len(parts) > 2 else ""
+        amount_raw = parts[3].strip() if len(parts) > 3 else ""
+
+        try:
+            amount = float(amount_raw)
+        except (TypeError, ValueError):
+            amount = pd.NA
+
+        rows.append(
+            {
+                "Vendor Code": vendcode,
+                "Vendor": vendor,
+                "Mobile Number": mobile,
+                "Bid Amount": amount,
+            }
+        )
+
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _format_bidder_contacts(raw_value):
+    """Human-readable bidder name + mobile + amount for bid-wise tables."""
+    bidder_df = _parse_bidder_contact_list(raw_value)
+    if bidder_df.empty:
+        return ""
+
+    lines = []
+    for _, bidder in bidder_df.iterrows():
+        vendor = str(bidder.get("Vendor", "") or "").strip()
+        mobile = str(bidder.get("Mobile Number", "") or "").strip()
+        amount = pd.to_numeric(bidder.get("Bid Amount"), errors="coerce")
+
+        mobile_display = mobile if mobile else "Mobile Not Available"
+        amount_display = f"₹{amount:,.0f}" if pd.notna(amount) else "Amount Not Available"
+        lines.append(f"{vendor} | {mobile_display} | {amount_display}")
+
+    return "\n".join(lines)
+
+
+def _bidder_contact_rows(df):
+    """Build one normalized row per BID x Vendor for contact/mobile analysis."""
+    columns = [
+        "BIDID",
+        "BIDOPENDT",
+        "BRANCH",
+        "ROUTE",
+        "Vendor Code",
+        "Vendor",
+        "Mobile Number",
+        "Mobile Normalized",
+        "Bid Amount",
+    ]
+
+    if df is None or df.empty or "BIDDER_CONTACT_LIST" not in df.columns:
+        return pd.DataFrame(columns=columns)
+
+    base = (
+        df.sort_values(["BIDID", "BIDOPENDT"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    rows = []
+
+    for _, bid_row in base.iterrows():
+        contacts = _parse_bidder_contact_list(bid_row.get("BIDDER_CONTACT_LIST", ""))
+        if contacts.empty:
+            continue
+
+        for _, bidder in contacts.iterrows():
+            mobile = str(bidder.get("Mobile Number", "") or "").strip()
+            rows.append(
+                {
+                    "BIDID": bid_row.get("BIDID"),
+                    "BIDOPENDT": bid_row.get("BIDOPENDT"),
+                    "BRANCH": bid_row.get("BRANCH"),
+                    "ROUTE": bid_row.get("ROUTE"),
+                    "Vendor Code": str(bidder.get("Vendor Code", "") or "").strip(),
+                    "Vendor": str(bidder.get("Vendor", "") or "").strip(),
+                    "Mobile Number": mobile,
+                    "Mobile Normalized": _normalize_mobile_number(mobile),
+                    "Bid Amount": pd.to_numeric(bidder.get("Bid Amount"), errors="coerce"),
+                }
+            )
+
+    if not rows:
+        return pd.DataFrame(columns=columns)
+
+    contacts_df = pd.DataFrame(rows)
+
+    # Same vendor can occur only once for the same bid in this analysis.
+    contacts_df["Vendor Key"] = (
+        contacts_df["Vendor Code"].where(
+            contacts_df["Vendor Code"].astype(str).str.strip().ne(""),
+            contacts_df["Vendor"].astype(str).str.upper(),
+        )
+    )
+
+    contacts_df = (
+        contacts_df.sort_values(["BIDID", "Vendor Key", "Bid Amount"], na_position="last")
+        .drop_duplicates(subset=["BIDID", "Vendor Key"], keep="first")
+        .copy()
+    )
+
+    return contacts_df
 
 
 def prepare_bidding_data(df):
@@ -632,6 +841,12 @@ def prepare_bidding_data(df):
         return "31+ Days"
 
     df["LHC_AGEING_BUCKET"] = df["LHC_PENDING_AGE_DAYS"].apply(lhc_age_bucket)
+
+    # Readable bidder contact list for bid-wise detail / exceptions.
+    if "BIDDER_CONTACT_LIST" in df.columns:
+        df["BIDDER_CONTACTS"] = df["BIDDER_CONTACT_LIST"].apply(_format_bidder_contacts)
+    else:
+        df["BIDDER_CONTACTS"] = ""
 
     return df
 
@@ -3169,6 +3384,259 @@ def render_vendor_performance(df):
     )
 
 
+
+# ============================================================
+# MOBILE NUMBER / SHARED CONTACT INSIGHTS
+# ============================================================
+
+def render_mobile_number_insights(df):
+    """Identify mobile numbers linked to more than one distinct vendor."""
+    st.markdown("### Mobile Number Insights — Shared Numbers Across Vendors")
+    st.caption(
+        "This analysis uses BIDDETAIL.MOBILENO captured against each BID + VENDCODE. "
+        "Numbers are normalized for common Indian formats such as +91xxxxxxxxxx and 0xxxxxxxxxx."
+    )
+
+    contacts = _bidder_contact_rows(df)
+
+    if contacts.empty:
+        st.info("No bidder mobile-number data is available for the selected filters.")
+        return
+
+    valid = contacts[
+        contacts["Mobile Normalized"].astype(str).str.strip().ne("")
+        & contacts["Vendor"].astype(str).str.strip().ne("")
+    ].copy()
+
+    if valid.empty:
+        st.info("Bidder records are available, but no usable mobile numbers were found.")
+        return
+
+    # Distinct vendor identity: prefer vendor code, otherwise vendor name.
+    valid["Vendor Identity"] = valid["Vendor Code"].where(
+        valid["Vendor Code"].astype(str).str.strip().ne(""),
+        valid["Vendor"].astype(str).str.upper(),
+    )
+
+    # One mobile x vendor combination for vendor-count logic.
+    mobile_vendor = (
+        valid.sort_values(["Mobile Normalized", "Vendor Identity", "BIDOPENDT"], na_position="last")
+        .drop_duplicates(subset=["Mobile Normalized", "Vendor Identity"], keep="last")
+        .copy()
+    )
+
+    # Summary: one row per normalized mobile number.
+    summary = (
+        mobile_vendor.groupby("Mobile Normalized", as_index=False)
+        .agg(
+            **{
+                "Vendor Count": ("Vendor Identity", "nunique"),
+                "Vendors": ("Vendor", lambda s: " | ".join(sorted({str(v).strip() for v in s if str(v).strip()}))),
+                "Vendor Codes": ("Vendor Code", lambda s: " | ".join(sorted({str(v).strip() for v in s if str(v).strip()}))),
+            }
+        )
+    )
+
+    # Participation facts from the full contact history.
+    bid_stats = (
+        valid.groupby("Mobile Normalized", as_index=False)
+        .agg(
+            **{
+                "Bid Participations": ("BIDID", "nunique"),
+                "First Bid Date": ("BIDOPENDT", "min"),
+                "Last Bid Date": ("BIDOPENDT", "max"),
+                "Branches": ("BRANCH", "nunique"),
+                "Routes": ("ROUTE", "nunique"),
+            }
+        )
+    )
+
+    summary = summary.merge(bid_stats, on="Mobile Normalized", how="left")
+    shared = summary[summary["Vendor Count"].gt(1)].copy()
+    shared = shared.sort_values(
+        ["Vendor Count", "Bid Participations", "Last Bid Date"],
+        ascending=[False, False, False],
+        na_position="last",
+    )
+
+    total_mobile_numbers = int(summary["Mobile Normalized"].nunique())
+    shared_mobile_numbers = int(shared["Mobile Normalized"].nunique())
+    vendors_on_shared_numbers = int(
+        mobile_vendor[
+            mobile_vendor["Mobile Normalized"].isin(shared["Mobile Normalized"])
+        ]["Vendor Identity"].nunique()
+    ) if not shared.empty else 0
+    max_vendors_one_mobile = int(shared["Vendor Count"].max()) if not shared.empty else 0
+    shared_pct = (
+        shared_mobile_numbers / total_mobile_numbers * 100.0
+        if total_mobile_numbers else 0.0
+    )
+
+    k1, k2, k3, k4 = st.columns(4, gap="small")
+    _kpi_card(k1, "📱 Unique Mobile Numbers", f"{total_mobile_numbers:,}", "Usable bidder mobiles", "blue")
+    _kpi_card(
+        k2,
+        "⚠️ Shared Mobile Numbers",
+        f"{shared_mobile_numbers:,}",
+        f"{shared_pct:.1f}% linked to >1 vendor",
+        "red" if shared_mobile_numbers else "green",
+    )
+    _kpi_card(
+        k3,
+        "🏢 Vendors on Shared Numbers",
+        f"{vendors_on_shared_numbers:,}",
+        "Distinct vendor identities",
+        "orange" if vendors_on_shared_numbers else "green",
+    )
+    _kpi_card(
+        k4,
+        "🔗 Max Vendors / One Mobile",
+        f"{max_vendors_one_mobile:,}",
+        "Highest vendor count on one number",
+        "purple" if max_vendors_one_mobile > 1 else "green",
+    )
+
+    if shared.empty:
+        st.success("No mobile number is currently linked with more than one vendor in the selected data.")
+        return
+
+    st.markdown("#### Mobile Numbers Linked to Multiple Vendors")
+
+    min_vendor_count = st.slider(
+        "Minimum vendors linked to one mobile",
+        min_value=2,
+        max_value=max(2, int(shared["Vendor Count"].max())),
+        value=2,
+        step=1,
+        key="mobile_insight_min_vendor_count",
+    )
+
+    shared_display = shared[shared["Vendor Count"].ge(min_vendor_count)].copy()
+
+    st.dataframe(
+        shared_display[
+            [
+                "Mobile Normalized",
+                "Vendor Count",
+                "Vendors",
+                "Vendor Codes",
+                "Bid Participations",
+                "Branches",
+                "Routes",
+                "First Bid Date",
+                "Last Bid Date",
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True,
+        height=min(560, 90 + 36 * len(shared_display)),
+        column_config={
+            "Mobile Normalized": st.column_config.TextColumn("Mobile Number", width="medium"),
+            "Vendor Count": st.column_config.NumberColumn("Vendor Count", format="%d"),
+            "Vendors": st.column_config.TextColumn("Vendor Details", width="large"),
+            "Vendor Codes": st.column_config.TextColumn("Vendor Codes", width="large"),
+            "Bid Participations": st.column_config.NumberColumn("Bid Participations", format="%d"),
+            "Branches": st.column_config.NumberColumn("Branches", format="%d"),
+            "Routes": st.column_config.NumberColumn("Routes", format="%d"),
+            "First Bid Date": st.column_config.DatetimeColumn("First Bid Date", format="DD/MM/YYYY"),
+            "Last Bid Date": st.column_config.DatetimeColumn("Last Bid Date", format="DD/MM/YYYY"),
+        },
+    )
+
+    # Detailed drill-down for any shared number.
+    st.markdown("#### Shared Mobile Number — Vendor & Bid Details")
+
+    mobile_options = shared_display["Mobile Normalized"].astype(str).tolist()
+    if mobile_options:
+        selected_mobile = st.selectbox(
+            "Select Mobile Number",
+            mobile_options,
+            key="shared_mobile_detail_select",
+        )
+
+        mobile_detail = valid[
+            valid["Mobile Normalized"].eq(selected_mobile)
+        ].copy()
+
+        mobile_detail = mobile_detail.sort_values(
+            ["Vendor", "BIDOPENDT", "BIDID"],
+            ascending=[True, False, False],
+            na_position="last",
+        )
+
+        vendor_summary = (
+            mobile_detail.groupby(["Vendor Code", "Vendor"], dropna=False, as_index=False)
+            .agg(
+                **{
+                    "Bid Participations": ("BIDID", "nunique"),
+                    "First Bid Date": ("BIDOPENDT", "min"),
+                    "Last Bid Date": ("BIDOPENDT", "max"),
+                    "Branches": ("BRANCH", "nunique"),
+                    "Routes": ("ROUTE", "nunique"),
+                }
+            )
+            .sort_values(["Bid Participations", "Vendor"], ascending=[False, True])
+        )
+
+        left, right = st.columns([1, 1.35], gap="small")
+
+        with left:
+            st.markdown("##### Vendors Using This Mobile")
+            st.dataframe(
+                vendor_summary,
+                use_container_width=True,
+                hide_index=True,
+                height=min(420, 86 + 36 * len(vendor_summary)),
+                column_config={
+                    "Vendor Code": st.column_config.TextColumn("Vendor Code"),
+                    "Vendor": st.column_config.TextColumn("Vendor", width="large"),
+                    "Bid Participations": st.column_config.NumberColumn("Bids", format="%d"),
+                    "First Bid Date": st.column_config.DatetimeColumn("First Bid", format="DD/MM/YYYY"),
+                    "Last Bid Date": st.column_config.DatetimeColumn("Last Bid", format="DD/MM/YYYY"),
+                    "Branches": st.column_config.NumberColumn("Branches", format="%d"),
+                    "Routes": st.column_config.NumberColumn("Routes", format="%d"),
+                },
+            )
+
+        with right:
+            st.markdown("##### Bid-wise History")
+            st.dataframe(
+                mobile_detail[
+                    [
+                        "BIDID",
+                        "BIDOPENDT",
+                        "BRANCH",
+                        "ROUTE",
+                        "Vendor Code",
+                        "Vendor",
+                        "Mobile Number",
+                        "Bid Amount",
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True,
+                height=420,
+                column_config={
+                    "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
+                    "BIDOPENDT": st.column_config.DatetimeColumn("Bid Date", format="DD/MM/YYYY"),
+                    "BRANCH": st.column_config.TextColumn("Branch"),
+                    "ROUTE": st.column_config.TextColumn("Route", width="large"),
+                    "Vendor Code": st.column_config.TextColumn("Vendor Code"),
+                    "Vendor": st.column_config.TextColumn("Vendor", width="large"),
+                    "Mobile Number": st.column_config.TextColumn("Stored Mobile"),
+                    "Bid Amount": st.column_config.NumberColumn("Bid Amount", format="₹ %.0f"),
+                },
+            )
+
+    csv_data = shared_display.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        "⬇️ Download Shared Mobile Number Insights",
+        data=csv_data,
+        file_name="shared_mobile_vendor_insights.csv",
+        mime="text/csv",
+        key="download_shared_mobile_insights",
+    )
+
 # ============================================================
 # EXCEPTIONS
 # ============================================================
@@ -3253,6 +3721,7 @@ def render_exceptions(df):
         "ROUTE",
         "VEHICLETYPE",
         "BIDDER_COUNT",
+        "BIDDER_CONTACTS",
         "L_1_NAME",
         "L_1_AMOUNT",
         "L_2_NAME",
@@ -3343,6 +3812,7 @@ def render_exceptions(df):
                 "ROUTE",
                 "VEHICLETYPE",
                 "BIDDER_COUNT",
+                "BIDDER_CONTACTS",
                 "L_1_NAME",
                 "L_1_AMOUNT",
                 "WINNER_NAME",
@@ -3393,6 +3863,7 @@ def render_detail_table(df):
         "WEIGHT",
         "GWEIGHT",
         "BIDDER_COUNT",
+        "BIDDER_CONTACTS",
         "QUERY_AMOUNT",
         "L_1_NAME",
         "L_1_AMOUNT",
@@ -3441,6 +3912,12 @@ def render_detail_table(df):
             height=520,
             column_config={
                 "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
+                "BIDDER_COUNT": st.column_config.NumberColumn(
+                    "Bidder Count", format="%d", width="small"
+                ),
+                "BIDDER_CONTACTS": st.column_config.TextColumn(
+                    "Bidders / Mobile / Amount", width="large"
+                ),
                 "QUERY_RECEIVED_ON": st.column_config.DatetimeColumn(
                     "Query Received On", format="DD/MM/YYYY HH:mm"
                 ),
@@ -4151,6 +4628,7 @@ def show_bidding_analysis():
                 "Query Monitoring",
                 "Vehicle Insights",
                 "Vendor Performance",
+                "Mobile Insights",
                 "Exceptions & Controls",
                 "Detailed Data",
             ],
@@ -4189,7 +4667,10 @@ def show_bidding_analysis():
     needs_schema_refresh = (
         isinstance(cached_raw, pd.DataFrame)
         and not cached_raw.empty
-        and "BIDDER_VENDOR_LIST" not in cached_raw.columns
+        and (
+            "BIDDER_VENDOR_LIST" not in cached_raw.columns
+            or "BIDDER_CONTACT_LIST" not in cached_raw.columns
+        )
     )
 
     should_load = (
@@ -4243,6 +4724,8 @@ def show_bidding_analysis():
         render_vehicle_type_insights(filtered_df)
     elif selected_section == "Vendor Performance":
         render_vendor_performance(filtered_df)
+    elif selected_section == "Mobile Insights":
+        render_mobile_number_insights(filtered_df)
     elif selected_section == "Exceptions & Controls":
         render_exceptions(filtered_df)
     else:
