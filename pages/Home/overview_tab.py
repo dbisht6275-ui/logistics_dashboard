@@ -3056,146 +3056,164 @@ def show_overview():
         st.session_state.pop("overview_report_prev_df", None)
         st.session_state.pop("overview_report_station_df", None)
 
-    # Direct header controls avoid the large card created by st.form.
+    # ------------------------------------------------------------------
+    # DESIGN 4 - Minimal Executive command area with custom date period.
+    # ------------------------------------------------------------------
+    if "overview_period_type" not in st.session_state:
+        st.session_state["overview_period_type"] = "FY"
+
+    today = pd.Timestamp.today().normalize()
+    current_fy_start_year = today.year if today.month >= 4 else today.year - 1
+    default_custom_from = pd.Timestamp(current_fy_start_year, 4, 1).date()
+    default_custom_to = today.date()
+
     st.markdown(
         """
         <style>
-        /* Compact, high-visibility overview command bar. */
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.overview-header-marker) {
-            padding: 8px 12px !important;
-            border-color: #cbd5e1 !important;
-            border-radius: 10px !important;
-            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%) !important;
-            box-shadow: 0 2px 8px rgba(15, 23, 42, .06) !important;
+        /* ===== Design 4: Minimal Executive ===== */
+        .overview-exec-title-wrap {
+            display:flex; align-items:center; gap:12px; padding:3px 2px 10px 2px;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"]:has(.overview-header-marker)
-        div[data-testid="stVerticalBlock"] {
-            gap: 0 !important;
+        .overview-exec-icon {
+            width:48px; height:48px; border-radius:14px;
+            display:flex; align-items:center; justify-content:center;
+            background:linear-gradient(145deg,#eef6ff 0%,#dbeafe 100%);
+            border:1px solid #d7e7fb;
+            box-shadow:inset 0 1px 0 #fff, 0 5px 12px rgba(37,99,235,.08);
+            color:#0b63e5; font-size:25px; font-weight:900;
         }
-        .overview-header-marker {
-            display: flex;
-            align-items: center;
-            min-height: 36px;
-            padding: 0 0 0 2px;
-            color: #0f2742;
-            font-size: clamp(18px, 1.25vw, 23px);
-            font-weight: 800;
-            line-height: 1.1;
-            white-space: nowrap;
+        .overview-exec-title {color:#0b1f44; font-size:28px; font-weight:850; line-height:1.05; letter-spacing:-.45px;}
+        .overview-exec-subtitle {color:#51627a; font-size:13px; font-weight:500; margin-top:5px;}
+
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.overview-design4-marker) {
+            padding:18px 20px 16px !important;
+            border:1px solid #d9e5f3 !important;
+            border-radius:14px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#fbfdff 100%) !important;
+            box-shadow:0 8px 24px rgba(15,42,67,.055) !important;
         }
-        .overview-inline-label {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            min-height: 34px;
-            color: #334155;
-            font-size: 10px;
-            font-weight: 700;
-            line-height: 1;
-            white-space: nowrap;
+        .overview-design4-marker {height:0; line-height:0; margin:0; padding:0; overflow:hidden;}
+        .overview-section-label {
+            color:#243b5a; font-size:11px; font-weight:750; margin:0 0 6px 2px;
         }
-        .st-key-overview_view_type div[data-testid="stSelectbox"],
-        .st-key-overview_fy div[data-testid="stSelectbox"] {
-            margin: 0 !important;
+        .overview-or {
+            display:flex; align-items:center; justify-content:center;
+            min-height:76px; color:#64748b; font-size:15px; font-weight:850;
+            position:relative;
         }
-        /* Override the shared filter-label rule: these two labels are rendered
-           separately beside the controls, so the native labels must not take
-           any vertical space. */
+        .overview-or:before,.overview-or:after {
+            content:""; position:absolute; left:50%; width:1px; height:24px; background:#d8e2ef;
+        }
+        .overview-or:before {top:0;}.overview-or:after {bottom:0;}
+        .custom-date-caption {
+            color:#1e3a5f; font-size:12px; font-weight:800; margin:0 0 8px 1px;
+        }
+        .custom-date-shell {
+            padding:10px 12px 7px; border:1px solid #e0e8f2; border-radius:11px;
+            background:linear-gradient(180deg,#f8fbff,#f3f8fd);
+        }
+
+        /* View/FY controls */
         .st-key-overview_view_type div[data-testid="stSelectbox"] > label,
-        .st-key-overview_view_type div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"],
-        .st-key-overview_fy div[data-testid="stSelectbox"] > label,
-        .st-key-overview_fy div[data-testid="stSelectbox"] [data-testid="stWidgetLabel"] {
-            display: none !important;
-            height: 0 !important;
-            min-height: 0 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-        .st-key-overview_view_type div[data-testid="stSelectbox"] > label,
-        .st-key-overview_fy div[data-testid="stSelectbox"] > label {
-            display: none !important;
-        }
-        .st-key-overview_view_type div[data-baseweb="select"] > div,
-        .st-key-overview_fy div[data-baseweb="select"] > div,
-        .st-key-overview_run_report button {
-            min-height: 34px !important;
-            height: 34px !important;
-            border-radius: 8px !important;
-        }
+        .st-key-overview_fy div[data-testid="stSelectbox"] > label {display:none !important;}
         .st-key-overview_view_type div[data-baseweb="select"] > div,
         .st-key-overview_fy div[data-baseweb="select"] > div {
-            padding: 0 8px !important;
-            border: 1px solid #7fa6cf !important;
-            background: #ffffff !important;
-            box-shadow: 0 1px 3px rgba(30,64,105,.12) !important;
+            min-height:44px !important; height:44px !important;
+            border:1px solid #cbd8e8 !important; border-radius:10px !important;
+            background:#fff !important; box-shadow:0 1px 3px rgba(15,42,67,.05) !important;
+            padding:0 10px !important;
         }
         .st-key-overview_view_type div[data-baseweb="select"] span,
-        .st-key-overview_fy div[data-baseweb="select"] span {
-            font-size: 11px !important;
-            font-weight: 700 !important;
+        .st-key-overview_fy div[data-baseweb="select"] span {font-size:12px !important; font-weight:650 !important; color:#173b63 !important;}
+
+        /* Period selector buttons: visually one segmented control */
+        div[class*="st-key-overview_period_btn_"] {margin:0 !important; padding:0 !important;}
+        div[class*="st-key-overview_period_btn_"] button {
+            width:100% !important; min-height:44px !important; height:44px !important;
+            margin:0 !important; padding:0 12px !important;
+            border:1px solid #d4deea !important; border-radius:8px !important;
+            background:#f8fafc !important; color:#243b53 !important;
+            box-shadow:none !important; font-size:12px !important; font-weight:750 !important;
         }
+        div[class*="st-key-overview_period_btn_"] button[data-testid="stBaseButton-primary"] {
+            border-color:#0b63e5 !important;
+            background:linear-gradient(180deg,#1478ff 0%,#0865e8 100%) !important;
+            color:#fff !important;
+            box-shadow:0 4px 10px rgba(8,101,232,.20) !important;
+        }
+        div[class*="st-key-overview_period_btn_"] button[data-testid="stBaseButton-primary"] p,
+        div[class*="st-key-overview_period_btn_"] button[data-testid="stBaseButton-primary"] span {color:#fff !important;}
+
+        /* Date inputs */
+        .st-key-overview_custom_from div[data-testid="stDateInput"] > label,
+        .st-key-overview_custom_to div[data-testid="stDateInput"] > label {
+            color:#52667d !important; font-size:10px !important; font-weight:650 !important;
+        }
+        .st-key-overview_custom_from input,
+        .st-key-overview_custom_to input {
+            min-height:42px !important; height:42px !important; border-radius:9px !important;
+            background:#fff !important; font-size:12px !important;
+        }
+
+        /* Run report */
         .st-key-overview_run_report button {
-            white-space: nowrap !important;
-            margin: 0 !important;
-            padding: 0 12px !important;
-            border: 1px solid #174ea6 !important;
-            background: linear-gradient(180deg, #2468c9 0%, #174ea6 100%) !important;
-            color: #ffffff !important;
-            font-size: 11px !important;
-            font-weight: 800 !important;
-            box-shadow: 0 3px 7px rgba(23,78,166,.24) !important;
+            min-height:44px !important; height:44px !important; min-width:190px !important;
+            border:1px solid #075bcf !important; border-radius:10px !important;
+            background:linear-gradient(180deg,#1478ff 0%,#0865e8 100%) !important;
+            color:#fff !important; font-size:13px !important; font-weight:850 !important;
+            box-shadow:0 5px 12px rgba(8,101,232,.22) !important;
         }
-        .st-key-overview_run_report button:hover {
-            background: linear-gradient(180deg, #1d5ebd 0%, #123f8d 100%) !important;
-            color: #ffffff !important;
-        }
-        .st-key-overview_run_report button p,
-        .st-key-overview_run_report button span {
-            color: #ffffff !important;
-        }
+        .st-key-overview_run_report button:hover {background:linear-gradient(180deg,#0f6feF 0%,#0759c9 100%) !important;}
+        .st-key-overview_run_report button p,.st-key-overview_run_report button span {color:#fff !important;}
+
+        /* Initial / refresh information banner */
+        div[data-testid="stAlert"] {border-radius:10px !important; border:1px solid #d8e8fb !important;}
+
+        /* Existing export button remains compatible with the new header. */
         div[class*="st-key-prepare_overview_export_ready"] button,
         div[class*="st-key-download_overview_export_ready"] button {
-            min-height: 34px !important;
-            height: 34px !important;
-            margin-top: 0 !important;
-            padding: 0 13px !important;
-            border: 1px solid #0f766e !important;
-            border-radius: 8px !important;
-            background: linear-gradient(180deg, #14a394 0%, #0f766e 100%) !important;
-            color: #ffffff !important;
-            font-size: 11px !important;
-            font-weight: 800 !important;
-            white-space: nowrap !important;
-            box-shadow: 0 3px 7px rgba(15,118,110,.22) !important;
+            min-height:34px !important; height:34px !important; padding:0 12px !important;
+            border-radius:8px !important; border:1px solid #0f766e !important;
+            background:linear-gradient(180deg,#14a394 0%,#0f766e 100%) !important;
+            color:#fff !important; font-size:10px !important; font-weight:800 !important;
         }
         div[class*="st-key-prepare_overview_export_ready"] button p,
-        div[class*="st-key-download_overview_export_ready"] button p {
-            color: #ffffff !important;
-            font-weight: 800 !important;
+        div[class*="st-key-download_overview_export_ready"] button p {color:#fff !important;}
+
+        @media (max-width: 1100px) {
+            .overview-exec-title {font-size:23px;}
+            .overview-exec-icon {width:42px;height:42px;font-size:21px;}
+            .st-key-overview_run_report button {min-width:150px !important;}
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    
-    with st.container(border=True):
-        header_title, view_label_col, view_col, fy_label_col, fy_col, run_col, header_space, header_right = st.columns(
-            [1.55, 0.45, 0.72, 0.22, 0.82, 0.82, 3.10, 1.05],
-            gap="small",
-            vertical_alignment="center",
+    title_col, export_col = st.columns([7.2, 1.1], gap="small", vertical_alignment="center")
+    with title_col:
+        st.markdown(
+            """
+            <div class="overview-exec-title-wrap">
+                <div class="overview-exec-icon">▥</div>
+                <div>
+                    <div class="overview-exec-title">Business Overview</div>
+                    <div class="overview-exec-subtitle">Financial performance summary.</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
+    with export_col:
+        export_placeholder = st.empty()
 
-        with header_title:
-            st.markdown(
-                '<div class="overview-header-marker">Business Overview</div>',
-                unsafe_allow_html=True,
-            )
+    with st.container(border=True):
+        st.markdown('<div class="overview-design4-marker"></div>', unsafe_allow_html=True)
 
-        with view_label_col:
-            st.markdown('<div class="overview-inline-label">View Type</div>', unsafe_allow_html=True)
+        top_left, top_right = st.columns([1.02, 2.75], gap="large", vertical_alignment="bottom")
 
-        with view_col:
+        with top_left:
+            st.markdown('<div class="overview-section-label">View Type</div>', unsafe_allow_html=True)
             pending_view_type = st.selectbox(
                 "View Type",
                 ["Origin", "Destination"],
@@ -3205,20 +3223,67 @@ def show_overview():
                 label_visibility="collapsed",
             )
 
-        with fy_label_col:
-            st.markdown('<div class="overview-inline-label">F.Y.</div>', unsafe_allow_html=True)
+        with top_right:
+            st.markdown('<div class="overview-section-label">Period</div>', unsafe_allow_html=True)
+            period_cols = st.columns(4, gap="small")
+            for idx, period_name in enumerate(["FY", "YTD", "MTD", "Custom"]):
+                with period_cols[idx]:
+                    if st.button(
+                        period_name,
+                        key=f"overview_period_btn_{idx}",
+                        type="primary" if st.session_state.get("overview_period_type", "FY") == period_name else "secondary",
+                        width="stretch",
+                    ):
+                        if st.session_state.get("overview_period_type") != period_name:
+                            st.session_state["overview_period_type"] = period_name
+                            _invalidate_overview_report()
+                            st.rerun()
+
+        selected_period_type = st.session_state.get("overview_period_type", "FY")
+        compact_spacer(3)
+
+        fy_col, or_col, custom_col = st.columns([1.35, 0.20, 2.0], gap="large", vertical_alignment="center")
 
         with fy_col:
+            st.markdown('<div class="overview-section-label">Financial Year</div>', unsafe_allow_html=True)
             pending_fy = st.selectbox(
                 "Financial Year",
                 ["Select FY", "2026-2027", "2025-2026", "2024-2025", "2023-2024", "2022-2023", "2021-2022", "2020-2021"],
                 key="overview_fy",
-                help="Choose the financial year to run.",
+                help="Choose the financial year for FY, YTD or MTD.",
                 on_change=_invalidate_overview_report,
                 label_visibility="collapsed",
+                disabled=(selected_period_type == "Custom"),
             )
 
-        with run_col:
+        with or_col:
+            st.markdown('<div class="overview-or">OR</div>', unsafe_allow_html=True)
+
+        with custom_col:
+            st.markdown('<div class="custom-date-caption">Custom Date Range</div>', unsafe_allow_html=True)
+            date_from_col, date_to_col = st.columns(2, gap="small")
+            with date_from_col:
+                pending_custom_from = st.date_input(
+                    "From Date",
+                    value=default_custom_from,
+                    key="overview_custom_from",
+                    format="DD/MM/YYYY",
+                    on_change=_invalidate_overview_report,
+                    disabled=(selected_period_type != "Custom"),
+                )
+            with date_to_col:
+                pending_custom_to = st.date_input(
+                    "To Date",
+                    value=default_custom_to,
+                    key="overview_custom_to",
+                    format="DD/MM/YYYY",
+                    on_change=_invalidate_overview_report,
+                    disabled=(selected_period_type != "Custom"),
+                )
+
+        compact_spacer(5)
+        run_left, run_space = st.columns([1.15, 4.2], gap="small")
+        with run_left:
             run_report = st.button(
                 "▶ Run Report",
                 key="overview_run_report",
@@ -3226,24 +3291,58 @@ def show_overview():
                 width="stretch",
             )
 
-        with header_right:
-            export_placeholder = st.empty()
-
-                                                                        
-    compact_spacer(4)
+    compact_spacer(5)
 
     active_fy = st.session_state.get("overview_active_fy")
     active_view_type = st.session_state.get("overview_active_view_type")
+    active_period_type = st.session_state.get("overview_active_period_type")
+    active_start_date = st.session_state.get("overview_active_start_date")
+    active_end_date = st.session_state.get("overview_active_end_date")
+    active_prev_start = st.session_state.get("overview_active_prev_start")
+    active_prev_end = st.session_state.get("overview_active_prev_end")
 
     if run_report:
-        if pending_fy == "Select FY":
+        selected_period_type = st.session_state.get("overview_period_type", "FY")
+
+        if selected_period_type != "Custom" and pending_fy == "Select FY":
             st.warning("Please select a financial year before running the report.")
             return
 
+        # Resolve the current comparison window.
+        if selected_period_type == "Custom":
+            run_start_date = pd.Timestamp(pending_custom_from).normalize()
+            run_end_date = pd.Timestamp(pending_custom_to).normalize()
+            if run_start_date > run_end_date:
+                st.warning("From Date cannot be later than To Date.")
+                return
+            run_fy_label = f"{run_start_date:%d %b %Y} - {run_end_date:%d %b %Y}"
+        else:
+            fy_start_raw, fy_end_raw = get_date_range(pending_fy)
+            fy_start = pd.Timestamp(fy_start_raw).normalize()
+            fy_end = pd.Timestamp(fy_end_raw).normalize()
+
+            if selected_period_type == "FY":
+                run_start_date, run_end_date = fy_start, fy_end
+            elif selected_period_type == "YTD":
+                if today < fy_start:
+                    st.warning("The selected financial year has not started yet.")
+                    return
+                run_start_date = fy_start
+                run_end_date = min(today, fy_end)
+            else:  # MTD
+                if not (fy_start <= today <= fy_end):
+                    st.warning("MTD is available for the financial year containing today's date. Please select the current FY or use Custom.")
+                    return
+                run_start_date = max(pd.Timestamp(today.year, today.month, 1), fy_start)
+                run_end_date = min(today, fy_end)
+
+            run_fy_label = pending_fy
+
+        # Previous-year comparison uses the exact same calendar window shifted back one year.
+        run_prev_start = run_start_date - pd.DateOffset(years=1)
+        run_prev_end = run_end_date - pd.DateOffset(years=1)
+
         st.session_state["overview_report_ready"] = False
-        run_start_date, run_end_date = get_date_range(pending_fy)
-        run_prev_fy = get_previous_fy(pending_fy)
-        run_prev_start, run_prev_end = get_date_range(run_prev_fy)
 
         # These are the only database loader calls on this page.
         with st.spinner("Loading data..."):
@@ -3262,30 +3361,53 @@ def show_overview():
         st.session_state["overview_report_df"] = loaded_df
         st.session_state["overview_report_prev_df"] = loaded_prev_df
         st.session_state["overview_report_station_df"] = loaded_station_df
-        st.session_state["overview_active_fy"] = pending_fy
+        st.session_state["overview_active_fy"] = run_fy_label
         st.session_state["overview_active_view_type"] = pending_view_type
+        st.session_state["overview_active_period_type"] = selected_period_type
+        st.session_state["overview_active_start_date"] = run_start_date
+        st.session_state["overview_active_end_date"] = run_end_date
+        st.session_state["overview_active_prev_start"] = run_prev_start
+        st.session_state["overview_active_prev_end"] = run_prev_end
         st.session_state["overview_report_ready"] = True
-        active_fy = pending_fy
+
+        active_fy = run_fy_label
         active_view_type = pending_view_type
+        active_period_type = selected_period_type
+        active_start_date = run_start_date
+        active_end_date = run_end_date
+        active_prev_start = run_prev_start
+        active_prev_end = run_prev_end
 
     if not st.session_state.get("overview_report_ready", False):
-        st.info("Select a financial year, then click ▶ Run Report.")
+        st.info("Select a financial year or choose a custom period, then click ▶ Run Report.")
         return
 
-    if not active_fy or not active_view_type:
-        st.info("Select a financial year, then click ▶ Run Report.")
+    if not active_fy or not active_view_type or not active_period_type:
+        st.info("Select a financial year or choose a custom period, then click ▶ Run Report.")
         return
 
-    if pending_fy != active_fy or pending_view_type != active_view_type:
+    # Any change to the command controls requires an explicit refresh.
+    current_period_type = st.session_state.get("overview_period_type", "FY")
+    selection_changed = pending_view_type != active_view_type or current_period_type != active_period_type
+    if active_period_type == "Custom":
+        selection_changed = selection_changed or (
+            pd.Timestamp(pending_custom_from).normalize() != pd.Timestamp(active_start_date).normalize()
+            or pd.Timestamp(pending_custom_to).normalize() != pd.Timestamp(active_end_date).normalize()
+        )
+    else:
+        selection_changed = selection_changed or pending_fy != active_fy
+
+    if selection_changed:
         st.info("Selections changed. Click ▶ Run Report to refresh the dashboard.")
         return
 
     fy = active_fy
     view_type = active_view_type
-
-    start_date, end_date = get_date_range(fy)
-    prev_fy = get_previous_fy(fy)
-    prev_start, prev_end = get_date_range(prev_fy)
+    period_type = active_period_type
+    start_date = pd.Timestamp(active_start_date).normalize()
+    end_date = pd.Timestamp(active_end_date).normalize()
+    prev_start = pd.Timestamp(active_prev_start).normalize()
+    prev_end = pd.Timestamp(active_prev_end).normalize()
 
     stored_df = st.session_state.get("overview_report_df")
     stored_prev_df = st.session_state.get("overview_report_prev_df")
@@ -5952,7 +6074,7 @@ def show_overview():
         closed_branches = len(closed_df)
         net_increase = opened_branches - closed_branches
 
-        period_label = f"{fy}"
+        period_label = f"{period_type} | {fy}" if period_type != "FY" else f"{fy}"
         if month != "All":
             period_label = f"{month} {fy}"
         elif quarter != "All":
