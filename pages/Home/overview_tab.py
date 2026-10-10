@@ -3043,31 +3043,13 @@ def _inject_overview_mobile_css():
 
 @st.cache_data(ttl=21600, show_spinner=False)
 def _load_independent_five_year_revenue(financial_years):
-    """Full-year booking revenue, independent of Overview widget selections.
+    """Fetch five annual SUM totals in one SQL query, never full booking rows.
 
-    Pair-load adjacent years to minimise database calls. The loader is fixed to
-    Origin to avoid the user-selected Origin/Destination affecting this chart.
+    Separate service deliberately has no dependency on Overview filters or its
+    loaded report dataframe. Cached results are keyed by the fixed FY range.
     """
-    totals = {}
-    years = list(financial_years)
-    for index in range(0, len(years), 2):
-        current_fy = years[index]
-        current_start, current_end = get_date_range(current_fy)
-        if index + 1 < len(years):
-            other_fy = years[index + 1]
-        else:
-            other_fy = get_previous_fy(current_fy)
-        other_start, other_end = get_date_range(other_fy)
-        current_df, other_df = load_booking_data_pair(
-            current_start, current_end, other_start, other_end, "origin"
-        )
-        for year, data in ((current_fy, current_df), (other_fy, other_df)):
-            if year in years and year not in totals:
-                if data is None or "REVENUE" not in data.columns:
-                    totals[year] = None
-                else:
-                    totals[year] = float(pd.to_numeric(data["REVENUE"], errors="coerce").sum())
-    return totals
+    from services.yearly_revenue import load_five_year_revenue_totals
+    return load_five_year_revenue_totals(tuple(financial_years))
 
 
 def _render_independent_five_year_revenue():
@@ -3796,7 +3778,7 @@ def show_overview():
 
     compact_spacer()
 
-    # Standalone annual revenue uses independently loaded, cached, full-FY data.
+    # One grouped SQL aggregation, cached and independent of every dashboard filter.
     _render_independent_five_year_revenue()
 
     compact_spacer()
