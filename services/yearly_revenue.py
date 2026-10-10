@@ -1,64 +1,62 @@
-"""Independent grouped SQL Server revenue summary for the Overview dashboard.
+"""Independent, aggregated financial-year revenue for Overview.
 
-IMPORTANT: Set YEARLY_REVENUE_SQL to a SELECT whose resulting columns are
-FinancialYear and Revenue. It MUST use the identical booking status, exclusions,
-revenue expression and booking-date logic as services/data_loader.py.
-
-For speed, aggregate in SQL; NEVER return booking-level records.
+Requires Streamlit secrets DB_USER, DB_PASSWORD, DB_SERVER, DB_PORT, DB_NAME
+and YEARLY_REVENUE_SQL. The SQL must use the same revenue rules as
+services/data_loader.py, return FinancialYear and Revenue, and accept
+:start_date (inclusive) and :end_date (exclusive) bind parameters.
 """
-import os
 from datetime import date
 
 import pandas as pd
+import streamlit as st
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
 
 
-def _setting(name):
-    value = os.environ.get(name)
-    if value:
-        return value
-    try:
-        import streamlit as st
-        return st.secrets.get(name)
-    except (FileNotFoundError, KeyError, AttributeError):
-        return None
+@st.cache_resource(show_spinner=False)
+def _build_yearly_revenue_engine():
+    """Reuse the same pymssql/Streamlit-secrets connection convention."""
+    connection_url = URL.create(
+        "mssql+pymssql",
+        username=st.secrets["DB_USER"],
+        password=st.secrets["DB_PASSWORD"],
+        host=st.secrets["DB_SERVER"],
+        port=int(st.secrets["DB_PORT"]),
+        database=st.secrets["DB_NAME"],
+    )
+    return create_engine(connection_url, pool_pre_ping=True)
 
 
 def load_five_year_revenue_totals(financial_years):
-    """Run one parameterized FY-bounded aggregate query returning 5 annual totals."""
-    sql = _setting("YEARLY_REVENUE_SQL")
-    conn_str = _setting("SQL_SERVER_CONNECTION_STRING")
-    if not sql or not conn_str:
-        raise RuntimeError(
-            "Direct SQL setup needed: supply YEARLY_REVENUE_SQL and "
-            "SQL_SERVER_CONNECTION_STRING in Streamlit secrets or environment. "
-            "The revenue expression/table must match services/data_loader.py."
-        )
+    """Get totals for consecutive April-March FYs using one grouped SQL query."""
     years = list(financial_years)
     if not years:
         return {}
-    starts = [int(y.split("-")[0]) for y in years]
+    starts = [int(fy.split("-")[0]) for fy in years]
     if sorted(starts) != list(range(min(starts), max(starts) + 1)):
         raise ValueError("Financial years must be consecutive")
-    start_date = date(min(starts), 4, 1)
-    end_date = date(max(starts) + 1, 4, 1)
-    # SQL must accept two positional parameters: start_date (inclusive),
-    # end_date (exclusive). Example shape (adapt to the actual booking SQL):
-    # SELECT CONCAT(YEAR(DATEADD(month,-3, grdt)), '-',
-    #               YEAR(DATEADD(month,-3, grdt))+1) AS FinancialYear,
-    #        SUM(<EXACT ORIGINAL REVENUE EXPRESSION>) AS Revenue
-    # FROM <ORIGINAL BOOKING SOURCE>
-    # WHERE grdt >= ? AND grdt < ? AND <ORIGINAL STATUS FILTERS>
-    # GROUP BY YEAR(DATEADD(month,-3, grdt))
-    # Never interpolate dates into SQL yourself.
-    import pyodbc
-    with pyodbc.connect(conn_str, timeout=20) as conn:
-        data = pd.read_sql_query(sql, conn, params=(start_date, end_date))
-    needed = {"FinancialYear", "Revenue"}
-    if not needed.issubset(data.columns):
-        raise ValueError("Yearly revenue SQL must return FinancialYear, Revenue columns")
-    result = {}
-    for row in data.itertuples(index=False):
-        fy = str(getattr(row, "FinancialYear"))
+
+    sql = st.secrets.get("YEARLY_REVENUE_SQL")
+    if not sql:
+        raise RuntimeError(
+            "YEARLY_REVENUE_SQL is missing in Streamlit secrets. "
+            "Set an aggregate query matching services/data_loader.py; "
+            "it must return FinancialYear, Revenue and use :start_date/:end_date."
+        )
+
+    params = {
+        "start_date": date(min(starts), 4, 1),
+        "end_date": date(max(starts) + 1, 4, 1),
+    }
+    with _build_yearly_revenue_engine().connect() as conn:
+        data = pd.read_sql_query(text(sql), conn, params=params)
+
+    if not {"FinancialYear", "Revenue"}.issubset(data.columns):
+        raise ValueError("Yearly SQL must return FinancialYear and Revenue columns")
+
+    totals = {}
+    for fy, revenue in zip(data["FinancialYear"], data["Revenue"]):
+        fy = str(fy)
         if fy in years:
-            result[fy] = float(getattr(row, "Revenue") or 0)
-    return result
+            totals[fy] = float(revenue) if pd.notna(revenue) else 0.0
+    return totals
