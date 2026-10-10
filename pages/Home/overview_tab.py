@@ -3087,63 +3087,47 @@ def _render_independent_five_year_revenue():
                 growth.append((float(current) - float(previous)) / float(previous) * 100)
 
         x_positions = list(range(len(years)))
-        valid_values = [v for v in values_cr if v is not None]
-        maximum = max(valid_values + [1.0])
-        oval_half_height = max(maximum * 0.042, 0.035)
+        maximum = max([v for v in values_cr if v is not None] + [1.0])
         fig = go.Figure()
 
-        # Slim lollipop stems instead of broad bars.
-        for x, value in zip(x_positions, values_cr):
-            if value is not None and value > 0:
-                fig.add_shape(type="line", x0=x, x1=x, y0=0, y1=value,
-                              line=dict(color="#5b9af5", width=7), layer="below")
-
-        # Each lollipop's oval contains that year's revenue, not a blank dot.
-        for x, value in zip(x_positions, values_cr):
-            if value is None:
-                label = "N/A"
-                y = oval_half_height * 1.5
-                fill = "#e2e8f0"
-                text_color = "#475569"
-            else:
-                label = f"{value:,.2f} Cr"
-                y = max(value, oval_half_height * 1.5)
-                fill = "#2563eb"
-                text_color = "#ffffff"
-            fig.add_shape(
-                type="circle", xref="x", yref="y",
-                x0=x-0.32, x1=x+0.32,
-                y0=y-oval_half_height, y1=y+oval_half_height,
-                fillcolor=fill, line=dict(color="#1e40af" if value is not None else "#cbd5e1", width=1),
-            )
-            fig.add_annotation(x=x, y=y, xref="x", yref="y", text=f"<b>{label}</b>",
-                               showarrow=False, font=dict(size=10, color=text_color),
-                               xanchor="center", yanchor="middle")
-
+        # Standard vertical bars, with revenue amounts directly above each bar.
+        fig.add_trace(go.Bar(
+            x=x_positions,
+            y=[v if v is not None else 0 for v in values_cr],
+            name="Annual Revenue (Cr)",
+            width=0.52,
+            marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1)),
+            text=[f"{v:,.2f} Cr" if v is not None else "N/A" for v in values_cr],
+            textposition="outside",
+            textfont=dict(color="#173b63", size=10),
+            cliponaxis=False,
+            customdata=labels,
+            hovertemplate="FY %{customdata}<br>Revenue: %{text}<extra></extra>",
+        ))
         fig.add_trace(go.Scatter(
             x=x_positions, y=growth, yaxis="y2", mode="lines+markers",
             name="YoY Growth (%)", connectgaps=False,
             line=dict(color="#f97316", width=2.5),
-            marker=dict(size=9, color="#fff7ed", line=dict(color="#ea580c", width=2.5)),
+            marker=dict(size=8, color="#fff7ed", line=dict(color="#ea580c", width=2.3)),
             customdata=labels,
             hovertemplate="FY %{customdata}<br>YoY Growth: %{y:+.2f}%<extra></extra>",
         ))
         fig.update_layout(
-            height=235,
-            margin=dict(l=12, r=22, t=20, b=12),
+            height=245,
+            margin=dict(l=12, r=24, t=30, b=12),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#f8fafc",
             font=dict(color="#173b63", size=10),
             xaxis=dict(tickmode="array", tickvals=x_positions, ticktext=labels,
-                       range=[-0.5, 4.5], showgrid=False, zeroline=False,
-                       fixedrange=True),
-            yaxis=dict(title="Revenue (₹ Cr)", range=[0, maximum * 1.19 + oval_half_height],
+                       range=[-0.5, 4.5], showgrid=False, zeroline=False, fixedrange=True),
+            yaxis=dict(title="Revenue (₹ Cr)", range=[0, maximum * 1.23],
                        gridcolor="#e5eaf1", zeroline=False, fixedrange=True),
             yaxis2=dict(title="YoY %", overlaying="y", side="right", showgrid=False,
                         zeroline=False, ticksuffix="%", fixedrange=True),
+            bargap=0.32,
             showlegend=False,
         )
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "responsive": True})
-        st.caption("Revenue in oval · Orange line = YoY growth % · Apr–Mar · Unaffected by dashboard filters")
+        st.caption("Blue bars = yearly revenue · Orange line = YoY growth % · Apr–Mar · Not affected by dashboard filters")
 
 
 def show_overview():
