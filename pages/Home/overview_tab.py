@@ -3079,13 +3079,6 @@ def _render_independent_five_year_revenue():
 
         # Independent of dashboard conversion and slicer filters.
         values_cr = [(float(amount) / 10000000) if amount is not None else None for amount in amounts]
-        growth = [None]
-        for previous, current in zip(amounts[:-1], amounts[1:]):
-            if previous is None or current is None or float(previous) <= 0:
-                growth.append(None)  # Missing/zero baseline: YoY is not mathematically defined.
-            else:
-                growth.append((float(current) - float(previous)) / float(previous) * 100)
-
         x_positions = list(range(len(years)))
         maximum = max([v for v in values_cr if v is not None] + [1.0])
         fig = go.Figure()
@@ -3104,30 +3097,20 @@ def _render_independent_five_year_revenue():
             customdata=labels,
             hovertemplate="FY %{customdata}<br>Revenue: %{text}<extra></extra>",
         ))
-        fig.add_trace(go.Scatter(
-            x=x_positions, y=growth, yaxis="y2", mode="lines+markers",
-            name="YoY Growth (%)", connectgaps=False,
-            line=dict(color="#f97316", width=2.5),
-            marker=dict(size=8, color="#fff7ed", line=dict(color="#ea580c", width=2.3)),
-            customdata=labels,
-            hovertemplate="FY %{customdata}<br>YoY Growth: %{y:+.2f}%<extra></extra>",
-        ))
         fig.update_layout(
             height=245,
-            margin=dict(l=12, r=24, t=30, b=12),
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#f8fafc",
+            margin=dict(l=12, r=12, t=30, b=12),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             font=dict(color="#173b63", size=10),
             xaxis=dict(tickmode="array", tickvals=x_positions, ticktext=labels,
                        range=[-0.5, 4.5], showgrid=False, zeroline=False, fixedrange=True),
             yaxis=dict(title="Revenue (₹ Cr)", range=[0, maximum * 1.23],
-                       gridcolor="#e5eaf1", zeroline=False, fixedrange=True),
-            yaxis2=dict(title="YoY %", overlaying="y", side="right", showgrid=False,
-                        zeroline=False, ticksuffix="%", fixedrange=True),
+                       showgrid=False, zeroline=False, showline=False, fixedrange=True),
             bargap=0.32,
             showlegend=False,
         )
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "responsive": True})
-        st.caption("Blue bars = yearly revenue · Orange line = YoY growth % · Apr–Mar · Not affected by dashboard filters")
+        st.caption("Blue bars = yearly revenue · Apr–Mar · Not affected by dashboard filters")
 
 
 def show_overview():
