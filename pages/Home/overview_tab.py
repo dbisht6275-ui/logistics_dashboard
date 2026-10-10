@@ -3041,6 +3041,89 @@ def _inject_overview_mobile_css():
         unsafe_allow_html=True,
     )
 
+@st.cache_data(ttl=21600, show_spinner=False)
+def _load_independent_five_year_revenue(financial_years):
+    """Full-year booking revenue, independent of Overview widget selections.
+
+    Pair-load adjacent years to minimise database calls. The loader is fixed to
+    Origin to avoid the user-selected Origin/Destination affecting this chart.
+    """
+    totals = {}
+    years = list(financial_years)
+    for index in range(0, len(years), 2):
+        current_fy = years[index]
+        current_start, current_end = get_date_range(current_fy)
+        if index + 1 < len(years):
+            other_fy = years[index + 1]
+        else:
+            other_fy = get_previous_fy(current_fy)
+        other_start, other_end = get_date_range(other_fy)
+        current_df, other_df = load_booking_data_pair(
+            current_start, current_end, other_start, other_end, "origin"
+        )
+        for year, data in ((current_fy, current_df), (other_fy, other_df)):
+            if year in years and year not in totals:
+                if data is None or "REVENUE" not in data.columns:
+                    totals[year] = None
+                else:
+                    totals[year] = float(pd.to_numeric(data["REVENUE"], errors="coerce").sum())
+    return totals
+
+
+def _render_independent_five_year_revenue():
+    """Revenue-only historical bar chart: intentionally ignores ALL page slicers."""
+    today = pd.Timestamp.now(tz="Asia/Kolkata")
+    current_fy_start = today.year if today.month >= 4 else today.year - 1
+    years = [f"{year}-{year+1}" for year in range(current_fy_start - 5, current_fy_start)]
+
+    with st.container(border=True):
+        st.markdown(
+            "<div style='font-size:16px;font-weight:650;color:#0f2744;margin:1px 0 5px 2px;'>"
+            "Last 5 Completed Financial Years — Revenue</div>",
+            unsafe_allow_html=True,
+        )
+        try:
+            with st.spinner("Loading five-year revenue..."):
+                totals = _load_independent_five_year_revenue(tuple(years))
+        except Exception as exc:
+            st.warning(f"Five-year revenue could not be loaded: {exc}")
+            return
+
+        labels = [f"{fy[2:4]}-{fy[7:9]}" for fy in years]
+        amounts = [totals.get(fy) for fy in years]
+        if not any(value is not None for value in amounts):
+            st.info("Revenue data is not available for these financial years.")
+            return
+
+        # Fixed crores irrespective of the Overview conversion selector.
+        values_cr = [(amount / 10000000) if amount is not None else None for amount in amounts]
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=labels, y=values_cr,
+            marker=dict(color="#2563eb", line=dict(color="#174a8b", width=1)),
+            text=[f"{v:,.2f} Cr" if v is not None else "" for v in values_cr],
+            textposition="outside",
+            textfont=dict(size=12, color="#173b63"),
+            customdata=amounts,
+            hovertemplate="FY %{x}<br>Revenue: ₹%{customdata:,.2f}<extra></extra>",
+            showlegend=False,
+        ))
+        fig.update_layout(
+            height=300,
+            margin=dict(l=12, r=12, t=32, b=18),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="#f8fafc",
+            yaxis_title="Revenue (₹ Cr)",
+            xaxis_title=None,
+            bargap=0.46,
+            font=dict(color="#173b63"),
+        )
+        fig.update_xaxes(type="category", categoryorder="array", categoryarray=labels, showgrid=False)
+        fig.update_yaxes(rangemode="tozero", gridcolor="#e5eaf1")
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "responsive": True})
+        st.caption("Company-wide annual revenue · Apr–Mar · Fixed historical values · Not affected by dashboard filters")
+
+
 def show_overview():
     """Compact overview dashboard page."""
 
@@ -3710,6 +3793,11 @@ def show_overview():
     with k9:
         create_card("T.B.B", format_revenue(tbb, conversion_type), "#2563eb", "🚚", tbb_growth,
                     format_revenue(prev_kpis["tbb"], conversion_type))
+
+    compact_spacer()
+
+    # Standalone annual revenue uses independently loaded, cached, full-FY data.
+    _render_independent_five_year_revenue()
 
     compact_spacer()
 
