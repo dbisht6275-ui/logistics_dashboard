@@ -1118,6 +1118,13 @@ def render_kpis(df):
     erp_bids = int(df.loc[source_clean.eq("ERP"), "BIDID"].nunique())
     app_bids = int(df.loc[source_clean.eq("APP"), "BIDID"].nunique())
 
+    # Direct = QUERYBID is not YES. Count unique BIDIDs in each segment.
+    query_flag = _clean_text_series(df["QUERYBID"]).str.upper().eq("YES")
+    erp_query_bids = int(df.loc[source_clean.eq("ERP") & query_flag, "BIDID"].nunique())
+    erp_direct_bids = int(df.loc[source_clean.eq("ERP") & ~query_flag, "BIDID"].nunique())
+    app_query_bids = int(df.loc[source_clean.eq("APP") & query_flag, "BIDID"].nunique())
+    app_direct_bids = int(df.loc[source_clean.eq("APP") & ~query_flag, "BIDID"].nunique())
+
     l1_bids = int(df.loc[df["WINNER_MODE"].eq("L-1"), "BIDID"].nunique())
     winner_not_l1 = int(
         df.loc[df["WINNER_VS_L1"].eq("Winner != L1"), "BIDID"].nunique()
@@ -1186,9 +1193,12 @@ def render_kpis(df):
     with content:
         c1, c2, c3, c4 = st.columns(4, gap="small")
         _kpi_card(c1, "📦 Total Bids", f"{total_bids:,}", "Filtered unique bids", "blue")
-        _kpi_card(c2, "🖥️ ERP Bids", f"{erp_bids:,}", f"{erp_pct:.1f}% of total bids", "blue")
-        _kpi_card(c3, "📱 APP Bids", f"{app_bids:,}", f"{app_pct:.1f}% of total bids", "purple")
-        _kpi_card(c4, "💬 Query Bids", f"{query_bids:,}", f"{query_pct:.1f}% of total bids", "purple")
+        _kpi_card(c2, "🖥️ ERP Bids", f"{erp_bids:,}",
+                  f"Direct: {erp_direct_bids:,}  |  Query: {erp_query_bids:,}", "blue")
+        _kpi_card(c3, "📱 APP Bids", f"{app_bids:,}",
+                  f"Direct: {app_direct_bids:,}  |  Query: {app_query_bids:,}", "purple")
+        _kpi_card(c4, "💬 Query Bids", f"{query_bids:,}",
+                  f"ERP: {erp_query_bids:,}  |  APP: {app_query_bids:,}", "purple")
 
     # --------------------------------------------------------
     # Row 2 — Decision / Winner / LHC Flow
