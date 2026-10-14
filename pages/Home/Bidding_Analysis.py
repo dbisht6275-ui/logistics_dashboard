@@ -416,53 +416,68 @@ def load_bidding_data(from_date, to_date):
 
 LINEHAUL_LHC_SQL = text(r"""
     SELECT
+        BR.ZONENAME AS ZONENAME,
+        BR.HUBNAME AS HUBNAME,
+        BR.STNNAME AS LHC_BRANCH,
         LH.LHCNO,
-        MAX(COALESCE(BIDREF.BIDID, 0)) AS BIDID
+        LH.LHCDT,
+        DST.DEST_ZONE,
+        DST.DEST_CIRCLE,
+        DST.TOST,
+        CASE WHEN BIDREF.HAS_LTL = 1 THEN 'LTL' ELSE 'FTL' END AS LHCTYPE,
+        COALESCE(BIDREF.BIDID, 0) AS BIDID,
+        LAMT.LHCAMOUNT
     FROM LHCHEAD LH
-    INNER JOIN VEHICLEMAST REG
-        ON REG.VEHICLECODE = LH.MODECODE
-    INNER JOIN VIEWSTATIONMAST BR
-        ON BR.STNCODE = LH.BRANCHCODE
+    INNER JOIN VEHICLEMAST REG ON REG.VEHICLECODE = LH.MODECODE
+    INNER JOIN VIEWSTATIONMAST BR ON BR.STNCODE = LH.BRANCHCODE
     OUTER APPLY (
-        SELECT MAX(
-            CASE
-                WHEN TRY_CONVERT(BIGINT, LHD.BIDID) > 0
-                THEN TRY_CONVERT(BIGINT, LHD.BIDID)
-                ELSE 0
-            END
-        ) AS BIDID
+        SELECT
+            MAX(CASE WHEN TRY_CONVERT(BIGINT, LHD.BIDID) > 0
+                     THEN TRY_CONVERT(BIGINT, LHD.BIDID) ELSE 0 END) AS BIDID,
+            MAX(CASE WHEN UPPER(LTRIM(RTRIM(LHD.LHCTYPE))) = 'L'
+                     THEN 1 ELSE 0 END) AS HAS_LTL
         FROM LHCHEADDETAIL LHD
         WHERE LHD.LHCNO = LH.LHCNO
     ) BIDREF
+    OUTER APPLY (
+        SELECT MAX(VL.LHCAMOUNT) AS LHCAMOUNT
+        FROM VIEWLHCDETAIL VL
+        WHERE VL.LHCNO = LH.LHCNO
+    ) LAMT
+    OUTER APPLY (
+        SELECT
+            STRING_AGG(CAST(D.TOST AS NVARCHAR(MAX)), ', ') AS TOST,
+            STRING_AGG(CAST(D.DEST_ZONE AS NVARCHAR(MAX)), ', ') AS DEST_ZONE,
+            STRING_AGG(CAST(D.DEST_CIRCLE AS NVARCHAR(MAX)), ', ') AS DEST_CIRCLE
+        FROM (
+            SELECT DISTINCT
+                S.STNNAME AS TOST,
+                S.ZONENAME AS DEST_ZONE,
+                S.HUBNAME AS DEST_CIRCLE
+            FROM LHCDETAIL L
+            INNER JOIN MFDETAIL IM
+                ON IM.MANIFESTNO = L.MANIFESTNO
+               AND ISNULL(IM.CANCEL, 'N') <> 'Y'
+            INNER JOIN MFHEAD IH
+                ON IH.MANIFESTNO = IM.MANIFESTNO
+               AND ISNULL(IH.CANCEL, 'N') <> 'Y'
+            LEFT JOIN VIEWSTATIONMAST S ON S.STNCODE = IH.TOST
+            WHERE L.LHCNO = LH.LHCNO
+              AND L.MANIFESTTYPE = 'O'
+              AND IM.GRNO IS NOT NULL
+        ) D
+    ) DST
     WHERE LH.LHCDT >= :from_date
       AND LH.LHCDT < :to_date_exclusive
       AND ISNULL(LH.CANCEL, 'N') <> 'Y'
-      AND EXISTS (
-          SELECT 1
-          FROM VIEWLHCDETAIL VL
-          WHERE VL.LHCNO = LH.LHCNO
-      )
-      AND EXISTS (
-          SELECT 1
-          FROM LHCDETAIL L
-          INNER JOIN MFDETAIL IM
-              ON IM.MANIFESTNO = L.MANIFESTNO
-             AND ISNULL(IM.CANCEL, 'N') <> 'Y'
-          INNER JOIN MFHEAD IH
-              ON IH.MANIFESTNO = IM.MANIFESTNO
-             AND ISNULL(IH.CANCEL, 'N') <> 'Y'
-          WHERE L.LHCNO = LH.LHCNO
-            AND L.MANIFESTTYPE = 'O'
-            AND IM.GRNO IS NOT NULL
-      )
+      AND LAMT.LHCAMOUNT IS NOT NULL
+      AND DST.TOST IS NOT NULL
       AND EXISTS (
           SELECT 1 FROM LHCHEADDETAIL LHD2
           WHERE LHD2.LHCNO = LH.LHCNO
       )
-    GROUP BY LH.LHCNO
-    ORDER BY LH.LHCNO
+    ORDER BY LH.LHCDT, LH.LHCNO
 """)
-
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_linehaul_lhc_data(from_date, to_date):
@@ -476,6 +491,8 @@ def load_linehaul_lhc_data(from_date, to_date):
             },
         )
     result["BIDID"] = pd.to_numeric(result["BIDID"], errors="coerce").fillna(0)
+    result["LHCDT"] = pd.to_datetime(result["LHCDT"], errors="coerce")
+    result["LHCAMOUNT"] = pd.to_numeric(result["LHCAMOUNT"], errors="coerce")
     return result.drop_duplicates(subset=["LHCNO"])
 
 
@@ -505,15 +522,46 @@ def render_linehaul_lhc_kpis(lhc_df, from_date, to_date):
             + " to " + to_date.strftime("%d/%m/%Y")
             + ". BIDID > 0 = With Bid; zero/blank = Without Bid."
         )
-        details = lhc_df[["LHCNO", "BIDID"]].copy()
+        detail_cols = [
+            "ZONENAME", "HUBNAME", "LHC_BRANCH", "LHCNO", "LHCDT",
+            "DEST_ZONE", "DEST_CIRCLE", "TOST", "LHCTYPE", "BIDID",
+            "LHCAMOUNT",
+        ]
+        details = lhc_df[detail_cols].copy()
         details["Bid Status"] = details["BIDID"].gt(0).map(
             {True: "With Bid", False: "Without Bid"}
         )
-        st.dataframe(details, use_container_width=True, hide_index=True, height=320)
+        status_filter = st.radio(
+            "Show LHC", ["All", "With Bid", "Without Bid"],
+            horizontal=True, key="linehaul_bid_status_filter",
+        )
+        if status_filter != "All":
+            details = details.loc[details["Bid Status"].eq(status_filter)]
+        st.caption(f"Showing {len(details):,} unique LHC records")
+        st.dataframe(
+            details,
+            use_container_width=True,
+            hide_index=True,
+            height=420,
+            column_config={
+                "ZONENAME": st.column_config.TextColumn("Zone"),
+                "HUBNAME": st.column_config.TextColumn("Circle"),
+                "LHC_BRANCH": st.column_config.TextColumn("LHC Branch"),
+                "LHCNO": st.column_config.TextColumn("LHC No."),
+                "LHCDT": st.column_config.DatetimeColumn("LHC Date", format="DD/MM/YYYY"),
+                "DEST_ZONE": st.column_config.TextColumn("Destination Zone", width="medium"),
+                "DEST_CIRCLE": st.column_config.TextColumn("Destination Circle", width="medium"),
+                "TOST": st.column_config.TextColumn("Destinations (TOST)", width="large"),
+                "LHCTYPE": st.column_config.TextColumn("LHC Type"),
+                "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
+                "LHCAMOUNT": st.column_config.NumberColumn("LHC Amount", format="₹ %.2f"),
+                "Bid Status": st.column_config.TextColumn("Bid Status"),
+            },
+        )
         st.download_button(
-            "⬇️ Download Line Haul LHC Details",
+            "⬇️ Download Full Line Haul LHC Details",
             data=details.to_csv(index=False).encode("utf-8-sig"),
-            file_name="linehaul_lhc_bid_breakup.csv",
+            file_name="linehaul_lhc_full_verification.csv",
             mime="text/csv",
             key="download_linehaul_lhc_details",
         )
