@@ -408,6 +408,117 @@ def load_bidding_data(from_date, to_date):
     return prepare_bidding_data(df)
 
 
+
+# ============================================================
+# LINE HAUL LHC: UNIQUE LHCNO / BID-LINKED VS WITHOUT BID
+# This is independently filtered by LHC date, not BID open date.
+# ============================================================
+
+LINEHAUL_LHC_SQL = text(r"""
+    SELECT
+        LH.LHCNO,
+        MAX(COALESCE(BIDREF.BIDID, 0)) AS BIDID
+    FROM LHCHEAD LH
+    INNER JOIN VEHICLEMAST REG
+        ON REG.VEHICLECODE = LH.MODECODE
+    INNER JOIN VIEWSTATIONMAST BR
+        ON BR.STNCODE = LH.BRANCHCODE
+    OUTER APPLY (
+        SELECT MAX(
+            CASE
+                WHEN TRY_CONVERT(BIGINT, LHD.BIDID) > 0
+                THEN TRY_CONVERT(BIGINT, LHD.BIDID)
+                ELSE 0
+            END
+        ) AS BIDID
+        FROM LHCHEADDETAIL LHD
+        WHERE LHD.LHCNO = LH.LHCNO
+    ) BIDREF
+    WHERE LH.LHCDT >= :from_date
+      AND LH.LHCDT < :to_date_exclusive
+      AND ISNULL(LH.CANCEL, 'N') <> 'Y'
+      AND EXISTS (
+          SELECT 1
+          FROM VIEWLHCDETAIL VL
+          WHERE VL.LHCNO = LH.LHCNO
+      )
+      AND EXISTS (
+          SELECT 1
+          FROM LHCDETAIL L
+          INNER JOIN MFDETAIL IM
+              ON IM.MANIFESTNO = L.MANIFESTNO
+             AND ISNULL(IM.CANCEL, 'N') <> 'Y'
+          INNER JOIN MFHEAD IH
+              ON IH.MANIFESTNO = IM.MANIFESTNO
+             AND ISNULL(IH.CANCEL, 'N') <> 'Y'
+          WHERE L.LHCNO = LH.LHCNO
+            AND L.MANIFESTTYPE = 'O'
+            AND IM.GRNO IS NOT NULL
+      )
+      AND EXISTS (
+          SELECT 1 FROM LHCHEADDETAIL LHD2
+          WHERE LHD2.LHCNO = LH.LHCNO
+      )
+    GROUP BY LH.LHCNO
+    ORDER BY LH.LHCNO
+""")
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_linehaul_lhc_data(from_date, to_date):
+    with get_bidding_engine().connect() as conn:
+        result = pd.read_sql(
+            LINEHAUL_LHC_SQL,
+            conn,
+            params={
+                "from_date": from_date,
+                "to_date_exclusive": to_date + timedelta(days=1),
+            },
+        )
+    result["BIDID"] = pd.to_numeric(result["BIDID"], errors="coerce").fillna(0)
+    return result.drop_duplicates(subset=["LHCNO"])
+
+
+def render_linehaul_lhc_kpis(lhc_df, from_date, to_date):
+    """Counts actual LHC numbers; separate from Winner Bid -> LHC KPI."""
+    if lhc_df is None:
+        return
+
+    total = int(lhc_df["LHCNO"].nunique())
+    with_bid = int(lhc_df.loc[lhc_df["BIDID"].gt(0), "LHCNO"].nunique())
+    without_bid = total - with_bid
+
+    label, content = st.columns([1.25, 8.75], gap="small")
+    _kpi_group_label(label, "1. LINE HAUL LHC", "By LHC date", "green")
+    with content:
+        c1, c2, c3 = st.columns(3, gap="small")
+        _kpi_card(c1, "🚛 Total Line Haul LHC", f"{total:,}",
+                  "Unique LHCNO in selected period", "blue")
+        _kpi_card(c2, "✅ LHC With Bid ID", f"{with_bid:,}",
+                  f"{with_bid / total * 100:.1f}% of LHC" if total else "0% of LHC", "green")
+        _kpi_card(c3, "📄 LHC Without Bid ID", f"{without_bid:,}",
+                  f"{without_bid / total * 100:.1f}% of LHC" if total else "0% of LHC", "amber")
+
+    with st.expander("📋 Line Haul LHC-wise BIDID verification", expanded=False):
+        st.caption(
+            "LHC created from " + from_date.strftime("%d/%m/%Y")
+            + " to " + to_date.strftime("%d/%m/%Y")
+            + ". BIDID > 0 = With Bid; zero/blank = Without Bid."
+        )
+        details = lhc_df[["LHCNO", "BIDID"]].copy()
+        details["Bid Status"] = details["BIDID"].gt(0).map(
+            {True: "With Bid", False: "Without Bid"}
+        )
+        st.dataframe(details, use_container_width=True, hide_index=True, height=320)
+        st.download_button(
+            "⬇️ Download Line Haul LHC Details",
+            data=details.to_csv(index=False).encode("utf-8-sig"),
+            file_name="linehaul_lhc_bid_breakup.csv",
+            mime="text/csv",
+            key="download_linehaul_lhc_details",
+        )
+
+
 # ============================================================
 # DATA PREPARATION
 # ============================================================
@@ -1189,7 +1300,7 @@ def render_kpis(df):
     # Row 1 — Bid Volume / Source
     # --------------------------------------------------------
     label, content = st.columns([1.25, 8.75], gap="small")
-    _kpi_group_label(label, "1. BIDS VOLUME", "Overall", "blue")
+    _kpi_group_label(label, "2. BIDS VOLUME", "Overall", "blue")
     with content:
         c1, c2, c3, c4 = st.columns(4, gap="small")
         _kpi_card(c1, "📦 Total Bids", f"{total_bids:,}", "Filtered unique bids", "blue")
@@ -1204,7 +1315,7 @@ def render_kpis(df):
     # Row 2 — Decision / Winner / LHC Flow
     # --------------------------------------------------------
     label, content = st.columns([1.25, 8.75], gap="small")
-    _kpi_group_label(label, "2. WINNER & LHC FLOW", "Key focus", "green")
+    _kpi_group_label(label, "3. WINNER & LHC FLOW", "Key focus", "green")
     with content:
         c1, c2, c3, c4 = st.columns(4, gap="small")
         _kpi_card(c1, "🏆 Winner Bids", f"{winner_bids:,}", f"{(winner_bids / total_bids * 100 if total_bids else 0):.1f}% of total bids", "navy")
@@ -1216,7 +1327,7 @@ def render_kpis(df):
     # Row 3 — Winner Quality / Competition
     # --------------------------------------------------------
     label, content = st.columns([1.25, 8.75], gap="small")
-    _kpi_group_label(label, "3. CONVERSION & QUALITY", "Winner mix", "purple")
+    _kpi_group_label(label, "4. CONVERSION & QUALITY", "Winner mix", "purple")
     with content:
         c1, c2, c3, c4 = st.columns(4, gap="small")
         _kpi_card(c1, "🥇 L-1 Selected", f"{l1_bids:,}", f"{l1_pct:.1f}% of winner bids", "teal")
@@ -1228,7 +1339,7 @@ def render_kpis(df):
     # Row 4 — LHC Pending Ageing / Execution Control
     # --------------------------------------------------------
     label, content = st.columns([1.25, 8.75], gap="small")
-    _kpi_group_label(label, "4. LHC PENDING AGEING", "Execution control", "amber")
+    _kpi_group_label(label, "5. LHC PENDING AGEING", "Execution control", "amber")
     with content:
         c1, c2, c3, c4 = st.columns(4, gap="small")
         _kpi_card(
@@ -4661,6 +4772,21 @@ def show_bidding_analysis():
         return
 
     if selected_section == "Overview":
+        # Line Haul LHC is based on the selected LHC date range,
+        # independently from bidding-data global filters.
+        try:
+            with st.spinner("Loading Line Haul LHC counts..."):
+                linehaul_df = load_linehaul_lhc_data(
+                    st.session_state["bidding_from_date"],
+                    st.session_state["bidding_to_date"],
+                )
+            render_linehaul_lhc_kpis(
+                linehaul_df,
+                st.session_state["bidding_from_date"],
+                st.session_state["bidding_to_date"],
+            )
+        except Exception as exc:
+            st.warning(f"Unable to load Line Haul LHC counts: {exc}")
         render_kpis(filtered_df)
         render_zone_bidding_insights(filtered_df)
         render_charts(filtered_df)
