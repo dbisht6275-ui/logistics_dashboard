@@ -59,6 +59,9 @@ CHANGES IN THIS VERSION
 5. Zone, Circle and Branch now use the same native cascading multiselect
    filters as the Overview page. Customer is also a cascading multiselect,
    allowing several customers to be analysed together.
+
+6. Document Type also supports multiple selections, using the same cascading
+   multiselect pattern. An empty selection includes all document types.
 ------------------------------------------------------------------------------
 """
 
@@ -1221,18 +1224,23 @@ def show_OutstandingAnalysis():
             _match_scope_values(working_df[customer_col], selected_customers)
         ]
 
+    document_options = _sorted_values(working_df, document_col)
     with filter_columns[4]:
-        selected_document = (
-            _safe_selectbox(
+        if document_col:
+            _prune_multiselect_state("oa_filter_document_v5", document_options)
+            selected_documents = st.multiselect(
                 "Document Type",
-                ["All"] + _sorted_values(working_df, document_col),
-                "oa_filter_document_v4",
+                document_options,
+                key="oa_filter_document_v5",
+                placeholder="All document types",
+                disabled=not document_options,
+                help="Select one or more document types. Leave empty to include all document types.",
             )
-            if document_col else "All"
-        )
-    if selected_document != "All" and document_col:
+        else:
+            selected_documents = []
+    if selected_documents and document_col:
         working_df = working_df[
-            _match_scope_value(working_df[document_col], selected_document)
+            _match_scope_values(working_df[document_col], selected_documents)
         ]
 
     with filter_columns[5]:
