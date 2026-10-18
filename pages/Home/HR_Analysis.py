@@ -318,11 +318,11 @@ st.markdown('''<style>
 
 # Presentation-only mapping; SQL, HR logic and calculations remain unchanged.
 HR_KPI_STYLES = {
-    "Active workforce": ("👥", "#075985", "#0ea5e9"),
+    "Active Employees": ("👥", "#075985", "#0ea5e9"),
     "Resigned, still employed": ("📨", "#9a3412", "#f97316"),
     "LWD pending": ("⏳", "#a16207", "#eab308"),
     "Completed exits": ("🚪", "#6d28d9", "#a78bfa"),
-    "Re-joining candidates": ("🔄", "#047857", "#34d399"),
+    "Re-joining Employees": ("🔄", "#047857", "#34d399"),
     "Joined YTD": ("📈", "#0369a1", "#38bdf8"),
     "Exited YTD": ("📉", "#b45309", "#f59e0b"),
     "Net movement YTD": ("⚖️", "#0f766e", "#2dd4bf"),
