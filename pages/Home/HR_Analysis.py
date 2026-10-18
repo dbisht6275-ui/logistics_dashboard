@@ -112,8 +112,8 @@ def prepare_employees(df, asof):
     x["AGE_GROUP"] = pd.cut(x.AGE, bins=[-1,24,30,40,50,np.inf],
                             labels=["<25", "25-30", "31-40", "41-50", "51+"]).astype("object").fillna("UNKNOWN")
     x["SERVICE_GROUP"] = pd.cut(x.SERVICE_MONTHS,
-                                bins=[-1,11,35,59,119,np.inf],
-                                labels=["0-1 Year", "1-3 Years", "3-5 Years", "5-10 Years", "10+ Years"]).astype("object").fillna("UNKNOWN")
+                                bins=[-1,11,35,59,119,179,239,299,np.inf],
+                                labels=["0-1 Year", "1-3 Years", "3-5 Years", "5-10 Years", "10-15 Years", "15-20 Years", "20-25 Years", "25+ Years"]).astype("object").fillna("UNKNOWN")
     x["JOINING_YEAR"] = x.DOJ.dt.year
     x["RESIGNATION_YEAR"] = x.RESIGNDT.dt.year
     x["LEAVING_YEAR"] = x.DATEOFLEAVING.dt.year
@@ -443,60 +443,75 @@ if page=="Overview":
             fig.update_layout(xaxis_title=None,yaxis_title=None,showlegend=False,xaxis=dict(range=[0,max(counts.values)*1.2]))
             hr_plot(fig,370)
         else:st.info("No active zone data")
-    left,right=st.columns([1.6,1],gap="medium")
-    with left:
-        st.markdown('<div class="hr-section-header">Monthly joining vs exits · Last 12 months</div>',unsafe_allow_html=True)
-        end=asof_ts;start=(end.to_period("M")-11).to_timestamp()
-        months=pd.period_range(start.to_period("M"),end.to_period("M"),freq="M")
-        joined=month_series(emp,"DOJ",start,end).reindex(months,fill_value=0)
-        left_dates=month_series(emp,"DATEOFLEAVING",start,end).reindex(months,fill_value=0)
-        monthly=pd.DataFrame({"Month":[str(i) for i in months],"Joined":joined.values,"Exited":left_dates.values})
-        fig=go.Figure()
-        fig.add_bar(x=monthly.Month,y=monthly.Joined,name="Joined",marker_color="#287eae")
-        fig.add_bar(x=monthly.Month,y=monthly.Exited,name="Exited",marker_color="#f19b73")
-        fig.update_layout(barmode="group",yaxis_title=None,legend=dict(orientation="h",x=0,y=1.02,yanchor="bottom"))
-        hr_plot(fig,305)
-    with right:
-        st.markdown('<div class="hr-section-header">People operations · Attention queue</div>',unsafe_allow_html=True)
-        upcoming=int((emp.RESIGNED_NOT_LEFT.eq(1)&emp.NOTICE_DAYS_REMAINING.between(0,30)).sum())
-        missing_doj=int(emp.DOJ.isna().sum())
-        future_lwd=int((emp.ACTIVE_HEADCOUNT.eq(1)&emp.DATEOFLEAVING.between(asof_ts,asof_ts+pd.Timedelta(days=30))).sum())
-        st.markdown(f"""<div class="hr-note" style="line-height:1.95">
-        <b>{upcoming:,}</b> resignation exits due in 30 days<br>
-        <b>{future_lwd:,}</b> scheduled LWDs within 30 days<br>
-        <b>{pending:,}</b> resignations without LWD<br>
-        <b>{review:,}</b> re-joining records requiring review<br>
-        <b>{missing_doj:,}</b> records missing joining date
-        </div>""",unsafe_allow_html=True)
-    left,right=st.columns([1.12,1],gap="medium")
-    with left:
-        st.markdown('<div class="hr-section-header">Workforce profile · Age and service</div>',unsafe_allow_html=True)
-        age=active_emp.AGE_GROUP.value_counts().reindex(["<25","25-30","31-40","41-50","51+"],fill_value=0)
-        tenure=active_emp.SERVICE_GROUP.value_counts().reindex(["0-1 Year","1-3 Years","3-5 Years","5-10 Years","10+ Years"],fill_value=0)
-        c1,c2=st.columns(2,gap="small")
-        with c1:
-            st.caption("Age distribution")
-            fig=px.bar(x=age.index,y=age.values,color_discrete_sequence=["#2e88b2"])
-            fig.update_layout(showlegend=False,xaxis_title=None,yaxis_title=None)
-            hr_plot(fig,255)
-        with c2:
-            st.caption("Service tenure")
-            fig=px.bar(x=tenure.index,y=tenure.values,color_discrete_sequence=["#21a49c"])
-            fig.update_layout(showlegend=False,xaxis_title=None,yaxis_title=None)
-            fig.update_xaxes(tickangle=-35)
-            hr_plot(fig,255)
-    with right:
-        st.markdown('<div class="hr-section-header">Workforce status · Count and share</div>',unsafe_allow_html=True)
-        status=emp.STATUS.value_counts()
-        if not status.empty:
-            colors=["#267eae","#f09a75","#28a9a0","#a6b5cf","#7887a8","#d7e2f1"]
-            fig=go.Figure(go.Bar(x=status.values,y=status.index,orientation="h",marker_color=colors[:len(status)],
-                                text=status.values,textposition="outside",cliponaxis=False))
-            fig.update_layout(showlegend=False,xaxis_title=None,yaxis_title=None,
-                              xaxis=dict(range=[0,max(status.values)*1.25]))
-            hr_plot(fig,290)
-        else:st.info("No employee status data")
-    st.caption("Headcount and ratios depend on selected filters and as-of date. Exit ratio is indicative, not a statutory attrition measure. Re-joining cases are identity matches pending HR verification.")
+    st.markdown('<div class="hr-section-header">Workforce movement · Monthly / Quarterly / Yearly</div>',unsafe_allow_html=True)
+    interval=st.segmented_control("Trend period",options=["M","Q","Y"],default="M",key="hr_growth_period",label_visibility="collapsed") if hasattr(st,"segmented_control") else st.radio("Trend period",["M","Q","Y"],horizontal=True,key="hr_growth_period")
+    period_code={"M":"M","Q":"Q","Y":"Y"}[interval]
+    last_period=asof_ts.to_period(period_code)
+    periods=pd.period_range(end=last_period,periods={"M":12,"Q":8,"Y":6}[interval],freq=period_code)
+    # Counts only events up to the reporting date; omit future exits/joins.
+    start_period=periods[0].start_time
+    valid_join=emp.DOJ.dropna().loc[lambda d:(d>=start_period)&(d<=asof_ts)]
+    valid_exit=emp.DATEOFLEAVING.dropna().loc[lambda d:(d>=start_period)&(d<=asof_ts)]
+    joins=valid_join.dt.to_period(period_code).value_counts().reindex(periods,fill_value=0)
+    exits=valid_exit.dt.to_period(period_code).value_counts().reindex(periods,fill_value=0)
+    movements=pd.DataFrame({"Period":[str(p) for p in periods],"Joined":joins.values,"Exited":exits.values})
+    movements["Net Change"]=movements["Joined"]-movements["Exited"]
+    # Reconstruct closing headcount per period to show workforce growth accurately.
+    closing=[]
+    for period in periods:
+        cutoff=min(period.end_time.normalize(),asof_ts)
+        closing.append(int((emp.DOJ.notna()&(emp.DOJ<=cutoff)&(emp.DATEOFLEAVING.isna()|(emp.DATEOFLEAVING>=cutoff))).sum()))
+    movements["Closing Headcount"]=closing
+    fig=go.Figure()
+    fig.add_trace(go.Scatter(x=movements.Period,y=movements["Closing Headcount"],mode="lines+markers+text",
+        text=movements["Closing Headcount"],textposition="top center",name="Closing headcount",
+        line=dict(color="#136b9c",width=3),marker=dict(size=7,color="#136b9c"),textfont=dict(color="#123B70",size=11)))
+    fig.update_layout(showlegend=False,xaxis_title=None,yaxis_title="Employees",margin=dict(l=20,r=55,t=36,b=45))
+    hr_plot(fig,285)
+    st.markdown('<div class="hr-section-header">Joinings, Exits & Net Change · Selected period</div>',unsafe_allow_html=True)
+    fig=go.Figure()
+    fig.add_bar(x=movements.Period,y=movements.Joined,name="Joined",marker_color="#2786ae")
+    fig.add_bar(x=movements.Period,y=movements.Exited,name="Exited",marker_color="#f59e7c")
+    fig.add_trace(go.Scatter(x=movements.Period,y=movements["Net Change"],name="Net change",mode="lines+markers",
+       line=dict(color="#13436f",width=2),marker=dict(size=6)))
+    fig.update_layout(barmode="group",yaxis_title="Employees")
+    hr_plot(fig,280)
+
+    st.markdown('<div class="hr-section-header">Workforce profile · Age and service</div>',unsafe_allow_html=True)
+    age=active_emp.AGE_GROUP.value_counts().reindex(["<25","25-30","31-40","41-50","51+"],fill_value=0)
+    tenure=active_emp.SERVICE_GROUP.value_counts().reindex(["0-1 Year","1-3 Years","3-5 Years","5-10 Years","10-15 Years","15-20 Years","20-25 Years","25+ Years"],fill_value=0)
+    p1,p2=st.columns(2,gap="medium")
+    with p1:
+        st.markdown('<div class="hr-section-header">Age distribution · Active</div>',unsafe_allow_html=True)
+        fig=px.bar(x=age.index,y=age.values,color_discrete_sequence=["#2e88b2"])
+        fig.update_layout(showlegend=False,xaxis_title=None,yaxis_title="Employees")
+        hr_plot(fig,280)
+    with p2:
+        st.markdown('<div class="hr-section-header">Service tenure · Active</div>',unsafe_allow_html=True)
+        fig=px.bar(x=tenure.index,y=tenure.values,color_discrete_sequence=["#21a49c"])
+        fig.update_layout(showlegend=False,xaxis_title=None,yaxis_title="Employees")
+        fig.update_xaxes(tickangle=-30)
+        hr_plot(fig,280)
+
+    st.markdown('<div class="hr-section-header">Which age groups are leaving?</div>',unsafe_allow_html=True)
+    exited_data=emp.loc[emp.DATEOFLEAVING.notna() & (emp.DATEOFLEAVING<=asof_ts) & emp.DOB.notna()].copy()
+    if not exited_data.empty:
+        leaving=exited_data.DATEOFLEAVING
+        dob=exited_data.DOB
+        exited_data["AGE_AT_EXIT"]=(leaving.dt.year-dob.dt.year)-(
+            (leaving.dt.month<dob.dt.month)|((leaving.dt.month==dob.dt.month)&(leaving.dt.day<dob.dt.day))).astype(int)
+        exited_data=exited_data[(exited_data.AGE_AT_EXIT>=0)&(exited_data.AGE_AT_EXIT<=100)]
+        exited_data["EXIT_AGE_GROUP"]=pd.cut(exited_data.AGE_AT_EXIT,bins=[-1,24,30,40,50,np.inf],
+            labels=["<25","25-30","31-40","41-50","51+"])
+        exit_age=exited_data.EXIT_AGE_GROUP.value_counts().reindex(["<25","25-30","31-40","41-50","51+"],fill_value=0)
+        fig=px.bar(x=exit_age.index,y=exit_age.values,color_discrete_sequence=["#e47b5c"])
+        fig.update_layout(showlegend=False,xaxis_title="Age at exit",yaxis_title="Employees")
+        hr_plot(fig,295)
+        if int(exit_age.sum()):
+            group=exit_age.idxmax()
+            st.markdown(f'<div class="hr-note"><b>Highest exits by count:</b> {escape(str(group))} age group · <b>{int(exit_age.max()):,}</b> employees ({exit_age.max()/exit_age.sum():.1%} of exits with valid DOB). This is exit volume, not age-specific attrition rate.</div>',unsafe_allow_html=True)
+    else:
+        st.info("No employee exits with valid DOB for the selected filters and as-of date.")
 
 elif page=="Resignations & Exits":
     waiting=emp[emp.RESIGNED_NOT_LEFT.eq(1)].copy()
@@ -621,4 +636,3 @@ elif page=="Re-Joining Analysis":
         st.dataframe(shown[cols].sort_values("DOJ",ascending=False),use_container_width=True,hide_index=True)
         download_csv(shown[cols],"hr_rejoining_review")
 
-st.caption("SQL Server live read · Salary estimated until payroll mapping approved · Aadhaar/PAN masked in UI/exports · LWD included in active headcount through that date. Restrict HR dashboard access to authorized roles.")
