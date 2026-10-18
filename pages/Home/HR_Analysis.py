@@ -238,26 +238,53 @@ def download_csv(data, title):
                        file_name=f"{title}.csv", mime="text/csv", key=f"download_{title}")
 
 
-# Compact top header and checkmark-style navigation tabs.
+# Page-wide overrides: overcome the main app's Streamlit container width and padding.
+# Do not modify the shared app.py: these styles are injected only while HR is visible.
 st.markdown("""<style>
-/* Pull the report closer to the top without changing the app's navigation. */
-[data-testid="stMainBlockContainer"] {padding-top: 0.45rem !important;}
-.hr-compact-header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 16px;border-radius:9px;background:linear-gradient(100deg,#12335f,#175f8c);color:white;margin:0 0 5px;box-shadow:0 2px 7px #0c244015}
-.hr-compact-header .eyebrow{font-size:9px;letter-spacing:1.1px;font-weight:750;color:#c2e3ff;white-space:nowrap}
-.hr-compact-header h2{font-size:18px;line-height:1.2;margin:0;color:white;font-weight:750}
-.hr-compact-header .subtitle{font-size:10px;color:#dfedfa;margin:0;white-space:nowrap}
-.hr-mini-caption{font-size:10px;color:#79869a;margin:0 0 5px}
-[data-testid="stTabs"] [data-baseweb="tab-list"]{gap:5px;border-bottom:1px solid #dfe8f3;flex-wrap:wrap}
-[data-testid="stTabs"] button[role="tab"]{padding:7px 12px;font-size:12px;font-weight:650;border-radius:8px 8px 0 0;color:#3b506e;background:#f4f7fc;border:1px solid #e1e8f1;border-bottom:0;min-height:35px}
-[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{background:#e8f4ff;color:#10558e;border-color:#7ab7e8;font-weight:750}
-/* A tick is shown ONLY on the active tab. */
-[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::before{content:"✓";display:inline-grid;place-items:center;background:#178064;color:#fff;width:16px;height:16px;min-width:16px;border-radius:50%;font-size:11px;font-weight:800;margin-right:6px}
-[data-testid="stMetric"]{padding:9px 11px;border-radius:9px;border:1px solid #e2eaf4;background:#fbfdff}
-[data-testid="stMetricValue"]{font-size:22px;color:#143b71}
-[data-testid="stMetricLabel"]{font-size:12px}
-@media(max-width:850px){.hr-compact-header{display:block}.hr-compact-header .subtitle{white-space:normal;margin-top:3px}}
+[data-testid="stAppViewContainer"] main,
+[data-testid="stAppViewContainer"] section.main,
+[data-testid="stAppViewContainer"] .main,
+[data-testid="stMain"],
+[data-testid="stMainBlockContainer"],
+.main .block-container,
+.block-container {
+  width:100% !important;max-width:100% !important;
+  margin-left:0 !important;margin-right:0 !important;
+}
+[data-testid="stMainBlockContainer"], .main .block-container {
+  padding:0.15rem 0.65rem 1rem !important;
+}
+/* Streamlit top block spacing and decoration */
+[data-testid="stMainBlockContainer"] > div:first-child,
+[data-testid="stMainBlockContainer"] [data-testid="stVerticalBlock"] {
+  row-gap:0.45rem !important;
+}
+[data-testid="stMainBlockContainer"] .element-container {margin-bottom:0 !important;}
+.hr-slim-header {
+ display:flex;justify-content:space-between;align-items:center;gap:12px;
+ background:linear-gradient(100deg,#12365f,#16678c);color:#fff;
+ padding:7px 13px;min-height:46px;border-radius:5px;
+ margin:0;box-shadow:none;
+}
+.hr-slim-title {font-size:16px;font-weight:750;color:white;line-height:1.2;margin:0;}
+.hr-slim-sub {font-size:10px;color:#d8e8f7;white-space:nowrap;}
+.hr-mini-caption{font-size:9px;color:#748298;margin:0;}
+[data-testid="stTabs"] [data-baseweb="tab-list"] {gap:3px;border-bottom:1px solid #e1e7ef;flex-wrap:wrap;}
+[data-testid="stTabs"] button[role="tab"] {padding:5px 10px;font-size:12px;font-weight:600;min-height:31px;border-radius:5px 5px 0 0;color:#314969;background:#f6f9fd;border:1px solid #e1e8f1;border-bottom:0;}
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {background:#e8f5ff;color:#13588b;border-color:#89bce7;font-weight:750;}
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::before {content:"✓";display:inline-grid;place-items:center;width:15px;height:15px;min-width:15px;border-radius:50%;font-size:10px;font-weight:800;background:#148667;color:white;margin-right:5px;}
+[data-testid="stMetric"] {padding:8px 11px;border-radius:7px;border:1px solid #e2eaf4;background:#fbfdff;}
+[data-testid="stMetricValue"] {font-size:21px;color:#143b71;}
+[data-testid="stMetricLabel"] {font-size:11px;}
+[data-testid="stMainBlockContainer"] h3 {font-size:1.08rem !important;margin-top:.35rem !important;padding-top:0 !important;}
+.hr-section {font-size:12px;font-weight:700;margin-top:5px;}
+@media(max-width:820px) {
+ [data-testid="stMainBlockContainer"],.main .block-container {padding:0.35rem 0.4rem 1rem !important;}
+ .hr-slim-header{min-height:43px;padding:7px 9px;}
+ .hr-slim-sub{display:none;}
+}
 </style>""", unsafe_allow_html=True)
-st.markdown("""<div class="hr-compact-header"><div><div class="eyebrow">SUGAM GROUP / PEOPLE INTELLIGENCE</div><h2>Human Resources Analytics</h2></div><div class="subtitle">Workforce · Resignations · Re-Joining · Salary &amp; Cost</div></div><div class="hr-mini-caption">Live SQL Server data · Payroll estimates provisional pending verification</div>""", unsafe_allow_html=True)
+st.markdown("""<div class="hr-slim-header"><div class="hr-slim-title">Human Resources Analytics</div><div class="hr-slim-sub">SUGAM GROUP · Workforce · Resignations · Re-Joining · Payroll</div></div><div class="hr-mini-caption">Live SQL Server data · Salary estimates provisional</div>""", unsafe_allow_html=True)
 with st.sidebar:
     st.markdown("**HR Report Controls**")
     asof = st.date_input("Report as of", value=date.today(), max_value=date.today())
