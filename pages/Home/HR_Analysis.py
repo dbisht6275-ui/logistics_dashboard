@@ -22,7 +22,7 @@ SELECT
     BR.STNNAME AS BRANCH, E.EMPNAME, E.GENDER,
     DEPT.DEPTNAME AS DEPARTMENT, E.DOB, E.DOJ,
     E.RESIGNDT, E.DATEOFLEAVING, E.EMAILID,
-    E.RETIREMENTDT
+    E.RETIREMENTDT, E.AADHARNO, E.PAN
 FROM EMPLOYEEMAST E
 INNER JOIN STATIONMAST BR ON BR.STNCODE = E.BRANCHCODE
 LEFT JOIN ZONEMAST ZONE ON ZONE.ZONECODE = BR.ZONECODE
@@ -119,6 +119,69 @@ def prepare_employees(df, asof):
     return x
 
 
+
+def prepare_rejoining(employees):
+    """Find sequential employment spells linked by valid Aadhaar or PAN."""
+    x = employees.copy()
+    aadhaar = x["AADHARNO"].fillna("").astype(str).str.replace(r"\D", "", regex=True)
+    pan = x["PAN"].fillna("").astype(str).str.upper().str.replace(r"\s+", "", regex=True)
+    x["_aadhaar"] = aadhaar.where(aadhaar.str.fullmatch(r"[2-9][0-9]{11}").fillna(False))
+    x["_pan"] = pan.where(pan.str.fullmatch(r"[A-Z]{5}[0-9]{4}[A-Z]").fillna(False))
+    x = x[x.DOJ.notna() & x.EMPLOYEEID.notna()].copy()
+    x = x.sort_values("DOJ").drop_duplicates("EMPLOYEEID", keep="last")
+    # Build every qualifying pair, then deduplicate pairs matching via both identifiers.
+    pairs = {}
+    for identifier in ("_aadhaar", "_pan"):
+        valid = x[x[identifier].notna()]
+        for _, group in valid.groupby(identifier, sort=False):
+            ordered = group.sort_values(["DOJ", "EMPLOYEEID"])
+            rows = list(ordered.iterrows())
+            for j in range(1, len(rows)):
+                current_idx, current = rows[j]
+                earlier = [(idx, prior) for idx, prior in rows[:j]
+                           if str(prior.EMPLOYEEID) != str(current.EMPLOYEEID)]
+                if not earlier:
+                    continue
+                # Most recent earlier employment for each matched current ID.
+                prev_idx, previous = earlier[-1]
+                key = (str(previous.EMPLOYEEID), str(current.EMPLOYEEID))
+                pairs[key] = (prev_idx, current_idx)
+    output_columns = ["EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "STATUS", "PREVIOUS_EMPCODE", "PREVIOUS_DOJ", "PREVIOUS_LWD", "DAYS_BETWEEN", "REJOINING_STATUS", "MATCH_METHOD", "AADHAAR_MASKED", "PAN_MASKED", "EMPLOYEEID"]
+    output = []
+    for prev_idx, current_idx in pairs.values():
+        previous, current = x.loc[prev_idx], x.loc[current_idx]
+        aadhaar_match = (pd.notna(previous["_aadhaar"]) and previous["_aadhaar"] == current["_aadhaar"])
+        pan_match = (pd.notna(previous["_pan"]) and previous["_pan"] == current["_pan"])
+        if not (aadhaar_match or pan_match):
+            continue
+        method = "BOTH" if aadhaar_match and pan_match else "AADHAAR" if aadhaar_match else "PAN"
+        aadhaar_conflict = (pd.notna(previous["_aadhaar"]) and pd.notna(current["_aadhaar"]) and not aadhaar_match)
+        pan_conflict = (pd.notna(previous["_pan"]) and pd.notna(current["_pan"]) and not pan_match)
+        if aadhaar_conflict or pan_conflict:
+            status = "REVIEW - IDENTITY CONFLICT"
+        elif pd.isna(previous.DATEOFLEAVING):
+            status = "REVIEW - PRIOR LWD MISSING"
+        elif current.DOJ <= previous.DATEOFLEAVING:
+            status = "REVIEW - OVERLAPPING EMPLOYMENT"
+        else:
+            status = "REJOINED - PRIOR EXIT RECORDED"
+        rec = {
+            "EMPCODE": current.EMPCODE, "EMPNAME": current.EMPNAME,
+            "ZONE": current.ZONE, "BRANCH": current.BRANCH,
+            "DEPARTMENT": current.DEPARTMENT, "DOJ": current.DOJ,
+            "STATUS": current.STATUS, "EMPLOYEEID": current.EMPLOYEEID,
+            "PREVIOUS_EMPCODE": previous.EMPCODE,
+            "PREVIOUS_DOJ": previous.DOJ,
+            "PREVIOUS_LWD": previous.DATEOFLEAVING,
+            "DAYS_BETWEEN": (current.DOJ - previous.DATEOFLEAVING).days if pd.notna(previous.DATEOFLEAVING) else np.nan,
+            "REJOINING_STATUS": status, "MATCH_METHOD": method,
+            "AADHAAR_MASKED": "XXXX-XXXX-" + str(current["_aadhaar"])[-4:] if pd.notna(current["_aadhaar"]) else "-",
+            "PAN_MASKED": str(current["_pan"])[:2] + "******" + str(current["_pan"])[-2:] if pd.notna(current["_pan"]) else "-",
+        }
+        output.append(rec)
+    return pd.DataFrame(output, columns=output_columns)
+
+
 def prepare_salary(df):
     x = df.copy()
     for col in ["FROMDT", "TODT"]:
@@ -175,25 +238,20 @@ def download_csv(data, title):
                        file_name=f"{title}.csv", mime="text/csv", key=f"download_{title}")
 
 
-# Full-width enterprise dashboard design (contained within existing Sugam app)
+# Compact HR-specific heading. Do not override the parent app's global spacing.
 st.markdown("""<style>
-.main .block-container{max-width:100%!important;padding:1.0rem 2.1rem 2rem!important}
-.hr-hero{padding:25px 30px;border-radius:18px;background:linear-gradient(110deg,#102c56,#174b85 65%,#137b91);color:white;margin-bottom:20px;box-shadow:0 8px 25px #0c244026}
-.hr-eyebrow{font-size:11px;letter-spacing:2px;font-weight:700;color:#a5d8ff}
-.hr-hero h1{font-size:30px;margin:7px 0;color:#fff;font-weight:800}
-.hr-hero p{color:#d6e9ff;font-size:13px;margin:0}
-.hr-section{font-size:18px;font-weight:750;color:#15355e;margin:20px 0 10px}
-[data-testid="stMetric"]{border:1px solid #e1e9f3;background:linear-gradient(150deg,#ffffff,#f4f8ff);padding:17px 19px;border-radius:14px;box-shadow:0 3px 12px #12375a0b}
-[data-testid="stMetricLabel"]{color:#61758e;font-size:13px}
-[data-testid="stMetricValue"]{color:#123b71;font-weight:800}
-[data-testid="stTabs"] [data-baseweb="tab-list"]{gap:8px;border-bottom:1px solid #e3eaf4}
-[data-testid="stTabs"] button[role="tab"]{border-radius:10px 10px 0 0;padding:11px 18px;font-weight:650}
-[data-testid="stDataFrame"]{border:1px solid #e1e9f3;border-radius:12px;overflow:hidden}
-[data-testid="stPlotlyChart"]{border:1px solid #e7edf5;border-radius:15px;padding:12px;background:white}
+.hr-compact-header{padding:12px 19px;border-radius:12px;background:linear-gradient(105deg,#102c56,#19588c 75%,#167b93);color:white;margin:0 0 8px;box-shadow:0 4px 12px #0c244016}
+.hr-compact-header .eyebrow{font-size:9px;letter-spacing:1.45px;font-weight:700;color:#b6dfff}
+.hr-compact-header h2{font-size:21px;line-height:1.2;margin:3px 0 2px;color:white;font-weight:750}
+.hr-compact-header .subtitle{font-size:11px;color:#dceeff;margin:0}
+.hr-mini-caption{font-size:11px;color:#79869a;margin:0 0 6px}
+[data-testid="stTabs"] [data-baseweb="tab-list"]{gap:3px;border-bottom:1px solid #dfe8f3}
+[data-testid="stTabs"] button[role="tab"]{padding:6px 11px;font-size:12px;font-weight:600}
+[data-testid="stMetric"]{padding:10px 13px;border-radius:10px;border:1px solid #e2eaf4;background:#fbfdff}
+[data-testid="stMetricValue"]{font-size:23px;color:#143b71}
+[data-testid="stMetricLabel"]{font-size:12px}
 </style>""",unsafe_allow_html=True)
-st.markdown("""<div class='hr-hero'><div class='hr-eyebrow'>SUGAM GROUP  /  PEOPLE INTELLIGENCE</div><h1>Human Resources Analytics</h1><p>Workforce overview · Talent movement · Notice period tracking · Payroll intelligence</p></div>""",unsafe_allow_html=True)
-
-st.caption("Live SQL Server data  •  Payroll estimates provisional pending verification")
+st.markdown("""<div class="hr-compact-header"><div class="eyebrow">SUGAM GROUP · PEOPLE INTELLIGENCE</div><h2>Human Resources Analytics</h2><div class="subtitle">Workforce · Resignations · Re-Joining · Salary & Cost</div></div><div class="hr-mini-caption">Live SQL Server data · Payroll estimates provisional pending verification</div>""",unsafe_allow_html=True)
 with st.sidebar:
     st.markdown("**HR Report Controls**")
     asof = st.date_input("Report as of", value=date.today(), max_value=date.today())
@@ -210,6 +268,7 @@ except Exception as exc:
     raise RuntimeError("HR data loading failed; see SQL error above")
 
 emp_all = prepare_employees(employees_raw, asof)
+rejoining_all = prepare_rejoining(emp_all)
 sal_all = prepare_salary(salary_raw)
 with st.sidebar:
     def choose(label, frame, col):
@@ -227,18 +286,20 @@ emp_ids = set(emp.EMPLOYEEID.dropna())
 salary = sal_all[sal_all.EMPLOYEEID.isin(emp_ids)].copy()
 snapshot = salary_snapshot(salary, asof)
 
-p1, p2, p3, p4, p5 = st.tabs([
+p1, p2, p3, p4, p5, p6 = st.tabs([
     "Overview", "Resignations & Exits", "Workforce Demographics",
-    "Salary & Cost (Provisional)", "Employee Explorer"])
+    "Salary & Cost (Provisional)", "Employee Explorer", "Re-Joining Analysis"])
 
 with p1:
     active = int(emp.ACTIVE_HEADCOUNT.sum())
     serving = int(emp.RESIGNED_NOT_LEFT.sum())
     left_count = int((emp.STATUS == "LEFT").sum())
     pending = int((emp.STATUS == "RESIGNED - LWD PENDING").sum())
+    rejoining_filtered = rejoining_all[rejoining_all.EMPLOYEEID.isin(emp_ids)]
     metrics = [("Active Headcount", active), ("Resigned, Not Left", serving),
-               ("LWD Pending", pending), ("Already Left", left_count)]
-    cols = st.columns(4)
+               ("LWD Pending", pending), ("Already Left", left_count),
+               ("Re-Joining Records", len(rejoining_filtered))]
+    cols = st.columns(5)
     for c, (label, value) in zip(cols, metrics):
         c.metric(label, f"{value:,}")
     st.markdown("<div class='hr-section'>Workforce distribution</div>", unsafe_allow_html=True)
@@ -364,5 +425,25 @@ with p5:
         st.write("Resignation date after leaving date:", int(((emp_all.RESIGNDT > emp_all.DATEOFLEAVING) & emp_all.RESIGNDT.notna()).sum()))
         st.write("Salary rows missing FROMDT:", int(sal_all.FROMDT.isna().sum()))
 
+with p6:
+    st.subheader("Re-Joining Analysis · Aadhaar / PAN matching")
+    st.caption("Matches use valid Aadhaar and/or PAN (BOTH when both match). Conflicting IDs and uncertain exits are flagged for HR review. Full IDs are not shown or exported.")
+    found = rejoining_all[rejoining_all.EMPLOYEEID.isin(emp_ids)].copy()
+    k1, k2, k3 = st.columns(3)
+    k1.metric("Potential rejoining records", len(found))
+    k2.metric("Prior exit recorded", int(found.REJOINING_STATUS.eq("REJOINED - PRIOR EXIT RECORDED").sum()) if not found.empty else 0)
+    k3.metric("Needs HR verification", int(found.REJOINING_STATUS.str.startswith("REVIEW").sum()) if not found.empty else 0)
+    if found.empty:
+        st.info("No matching re-joining records found within these filters. Check Aadhaar and PAN completeness in Employee Master.")
+    else:
+        state = st.multiselect("Rejoining status", sorted(found.REJOINING_STATUS.unique().tolist()), key="hr_rejoin_status")
+        if state:
+            found = found[found.REJOINING_STATUS.isin(state)]
+        columns = ["EMPCODE", "EMPNAME", "MATCH_METHOD", "AADHAAR_MASKED", "PAN_MASKED", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "PREVIOUS_EMPCODE", "PREVIOUS_DOJ", "PREVIOUS_LWD", "DAYS_BETWEEN", "REJOINING_STATUS", "STATUS"]
+        shown = found[columns].sort_values("DOJ", ascending=False)
+        st.dataframe(shown, use_container_width=True, hide_index=True)
+        download_csv(shown, "hr_rejoining_review")
+        st.caption("Aadhaar / PAN matching is a review signal, not proof of identity. Contradictory identity numbers, missing prior LWD and overlapping employment are flagged.")
+
 st.divider()
-st.caption("Privacy: Aadhaar and PAN are deliberately excluded. Restrict dashboard access because names, salary and resignation data are sensitive. LWD is treated as the final working day (employee exits next day).")
+st.caption("Privacy: Full Aadhaar and PAN are excluded from visualizations and exports. Restrict dashboard access because names, salary and resignation data are sensitive. LWD is treated as the final working day (employee exits next day).")
