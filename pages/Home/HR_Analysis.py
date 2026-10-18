@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from io import BytesIO
 import calendar
+from html import escape
 
 import numpy as np
 import pandas as pd
@@ -255,10 +256,20 @@ st.markdown('''<style>
 .hr-topbar strong{font-size:17px;letter-spacing:-.3px;color:#fff;}
 .hr-topbar .hr-top-caption{font-size:11px;color:#c9dbed;}
 .hr-kicker{font-size:10px;font-weight:700;letter-spacing:1.4px;color:#8eddd8;}
-.hr-chip{border:1px solid #dde6f0;border-radius:9px;background:#fff;padding:10px 12px;min-height:87px;}
-.hr-chip .lbl{font-size:11px;color:#64748b;font-weight:650;}
-.hr-chip .val{font-size:28px;color:#172e50;font-weight:780;line-height:1.45;}
-.hr-chip .foot{font-size:10px;color:#78909f;}
+.hr-chip{position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.24);border-radius:13px;
+  background:linear-gradient(135deg,var(--kpi-a,#1465b8),var(--kpi-b,#26a4db));
+  padding:12px 14px;min-height:113px;box-shadow:0 5px 14px rgba(18,45,82,.12);color:#fff;}
+.hr-chip:after{content:"";position:absolute;width:110px;height:110px;right:-38px;bottom:-55px;
+  background:rgba(255,255,255,.10);border-radius:50%;pointer-events:none;}
+.hr-chip .hr-chip-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.hr-chip .lbl{font-size:11px;color:rgba(255,255,255,.96);font-weight:700;line-height:1.3;}
+.hr-chip .hr-kpi-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 33px;
+  width:33px;height:33px;border-radius:10px;background:rgba(255,255,255,.22);
+  border:1px solid rgba(255,255,255,.27);font-size:18px;line-height:1;}
+.hr-chip .val{font-size:27px;color:white;font-weight:800;line-height:1.25;margin-top:3px;letter-spacing:-.6px;}
+.hr-chip .foot{font-size:10px;color:rgba(255,255,255,.83);margin-top:5px;line-height:1.28;}
+@media(max-width:1100px){.hr-chip{min-height:104px;padding:10px 11px;}.hr-chip .val{font-size:24px;}}
+
 .hr-section-header{font-size:14px !important;font-weight:750;color:#172e50;margin:18px 0 12px !important;padding:0 0 6px;line-height:1.45;clear:both;border-bottom:1px solid #e9eef6;}
 .hr-note{padding:10px 13px;background:#eff7ff;border:1px solid #dceafa;border-radius:9px;color:#34516f;font-size:12px;}
 .hr-small{font-size:11px;color:#64748b;}
@@ -278,8 +289,33 @@ st.markdown('''<style>
 </style>''',unsafe_allow_html=True)
 
 
+# Presentation-only mapping; SQL, HR logic and calculations remain unchanged.
+HR_KPI_STYLES = {
+    "Active workforce": ("👥", "#075985", "#0ea5e9"),
+    "Resigned, still employed": ("📨", "#9a3412", "#f97316"),
+    "LWD pending": ("⏳", "#a16207", "#eab308"),
+    "Completed exits": ("🚪", "#6d28d9", "#a78bfa"),
+    "Re-joining candidates": ("🔄", "#047857", "#34d399"),
+    "Re-joining to review": ("🛡️", "#be123c", "#fb7185"),
+    "Joined YTD": ("📈", "#0369a1", "#38bdf8"),
+    "Exited YTD": ("📉", "#b45309", "#f59e0b"),
+    "Net movement YTD": ("⚖️", "#0f766e", "#2dd4bf"),
+    "Indicative exit ratio": ("📊", "#7c3aed", "#a78bfa"),
+    "Confirmed re-joining": ("✅", "#15803d", "#4ade80"),
+}
+HR_KPI_FALLBACK = ("📌", "#1d4ed8", "#60a5fa")
+
+
 def hr_metric(label, value, subtitle=""):
-    st.markdown(f'<div class="hr-chip"><div class="lbl">{label}</div><div class="val">{value}</div><div class="foot">{subtitle}</div></div>', unsafe_allow_html=True)
+    icon, color_a, color_b = HR_KPI_STYLES.get(label, HR_KPI_FALLBACK)
+    st.markdown(
+        f'<div class="hr-chip" style="--kpi-a:{color_a};--kpi-b:{color_b}">'
+        f'<div class="hr-chip-top"><div class="lbl">{escape(str(label))}</div>'
+        f'<span class="hr-kpi-icon" aria-hidden="true">{icon}</span></div>'
+        f'<div class="val">{escape(str(value))}</div>'
+        f'<div class="foot">{escape(str(subtitle))}</div></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def hr_plot(fig, height=300):
