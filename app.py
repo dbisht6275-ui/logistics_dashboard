@@ -827,6 +827,7 @@ FULL_MENU_ITEMS = [
     "👥 Customer Analysis",
     "🧭 NBD Customer Analysis",
     "🚚 Bidding Analysis",
+    "👥 HR Analysis",
     "🚛 Service Analysis",
     "📦 Stock Operations",
     "📄 Reports",
@@ -919,6 +920,12 @@ if role.lower() == "admin" and "🚚 Bidding Analysis" not in allowed_menu:
     else:
         bidding_position = len(allowed_menu)
     allowed_menu.insert(bidding_position, "🚚 Bidding Analysis")
+
+# HR payroll data is sensitive. Default access is admin only.
+# Other roles may be explicitly granted the menu permission via User Management.
+if role.lower() == "admin" and "👥 HR Analysis" not in allowed_menu:
+    hr_position = allowed_menu.index("🚚 Bidding Analysis") + 1 if "🚚 Bidding Analysis" in allowed_menu else len(allowed_menu)
+    allowed_menu.insert(hr_position, "👥 HR Analysis")
 
 # Usage Analytics is a system/admin page and does not require a database permission row.
 if role.lower() == "admin" and "📊 Usage Analytics" not in allowed_menu:
@@ -1263,6 +1270,13 @@ elif menu == "🧭 NBD Customer Analysis":
 
 elif menu == "🚚 Bidding Analysis":
     show_bidding_analysis()
+
+elif menu == "👥 HR Analysis":
+    hr_dashboard_file = Path(__file__).resolve().parent / "pages" / "Home" / "HR_Analysis.py"
+    if hr_dashboard_file.is_file():
+        runpy.run_path(str(hr_dashboard_file), run_name="hr_analysis_dashboard")
+    else:
+        st.error(f"HR dashboard file not found: {hr_dashboard_file}")
 
 elif menu == "📅 Monthly Trend EDD":
     show_monthly_trend_edd()
