@@ -259,7 +259,7 @@ st.markdown('''<style>
 .hr-chip .lbl{font-size:11px;color:#64748b;font-weight:650;}
 .hr-chip .val{font-size:28px;color:#172e50;font-weight:780;line-height:1.45;}
 .hr-chip .foot{font-size:10px;color:#78909f;}
-.hr-section-header{font-size:15px;font-weight:760;color:#172e50;margin:6px 0 0;}
+.hr-section-header{font-size:14px !important;font-weight:750;color:#172e50;margin:18px 0 12px !important;padding:0 0 6px;line-height:1.45;clear:both;border-bottom:1px solid #e9eef6;}
 .hr-note{padding:10px 13px;background:#eff7ff;border:1px solid #dceafa;border-radius:9px;color:#34516f;font-size:12px;}
 .hr-small{font-size:11px;color:#64748b;}
 .st-key-hr_nav_row button {min-height:35px !important;border-radius:9px !important;font-size:11.5px !important;
@@ -284,9 +284,10 @@ def hr_metric(label, value, subtitle=""):
 
 def hr_plot(fig, height=300):
     fig.update_layout(template="plotly_white", height=height,
-        margin=dict(l=12,r=14,t=35,b=18),font=dict(family="Arial",size=11,color="#38506b"),
+        margin=dict(l=22,r=50,t=55,b=48),font=dict(family="Arial",size=11,color="#38506b"),
         paper_bgcolor="white",plot_bgcolor="white",showlegend=True,
-        legend=dict(orientation="h",y=1.12,x=0))
+        legend=dict(orientation="h",y=1.02,x=0,xanchor="left",yanchor="bottom"),
+        autosize=True)
     fig.update_xaxes(showgrid=True,gridcolor="#edf2f7",zeroline=False)
     fig.update_yaxes(showgrid=False,zeroline=False)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar":False})
@@ -346,58 +347,109 @@ if page=="Overview":
     pending=int(emp.STATUS.eq("RESIGNED - LWD PENDING").sum())
     exited=int(emp.STATUS.eq("LEFT").sum())
     confirmed=int(rejoining.REJOINING_STATUS.eq("REJOINED - PRIOR EXIT RECORDED").sum())
+    review=int(rejoining.REJOINING_STATUS.str.startswith("REVIEW",na=False).sum())
+    asof_ts=pd.Timestamp(asof)
+    month_start=asof_ts.replace(day=1)
+    year_start=asof_ts.replace(month=1,day=1)
+    join_ytd=int(emp.DOJ.between(year_start,asof_ts).sum())
+    exit_ytd=int(emp.DATEOFLEAVING.between(year_start,asof_ts).sum())
+    net_ytd=join_ytd-exit_ytd
+    base_headcount=int(((emp.DOJ.notna()) & (emp.DOJ<year_start) &
+       (emp.DATEOFLEAVING.isna() | (emp.DATEOFLEAVING>=year_start))).sum())
+    attrition=(exit_ytd / ((base_headcount+active)/2)*100) if (base_headcount+active)>0 else 0
+    kpis=[
+       ("Active workforce",active,"As of selected date"),
+       ("Resigned, still employed",resigned,"Includes notice & LWD pending"),
+       ("LWD pending",pending,"HR follow-up required"),
+       ("Completed exits",exited,"Cumulative exits"),
+       ("Re-joining candidates",len(rejoining),"Aadhaar/PAN linked"),
+       ("Re-joining to review",review,"Identity/history validation"),
+    ]
     metric_cols=st.columns(6,gap="small")
-    for c,label,val,detail in zip(metric_cols,
-        ["Active workforce","On notice / resigned","LWD not recorded","Former employees","Re-join candidates","Verified prior exits"],
-        [active,resigned,pending,exited,len(rejoining),confirmed],
-        ["As of report date","Still in headcount","Action required","Exited by report date","Aadhaar / PAN linked","Prior LWD confirmed"]):
-        with c:hr_metric(label,f"{val:,}",detail)
-    a,b=st.columns([1.2,1],gap="medium")
+    for c,(label,val,detail) in zip(metric_cols,kpis):
+        with c: hr_metric(label,f"{val:,}",detail)
+    st.markdown('<div class="hr-section-header">People movement · Year to date</div>',unsafe_allow_html=True)
+    summary_cols=st.columns(5,gap="small")
+    for c,(name,value,desc) in zip(summary_cols,[
+       ("Joined YTD",f"{join_ytd:,}","Recorded joining dates"),
+       ("Exited YTD",f"{exit_ytd:,}","Recorded last working dates"),
+       ("Net movement YTD",f"{net_ytd:+,}","Joinings less exits"),
+       ("Indicative exit ratio",f"{attrition:.1f}%","YTD exits / avg headcount"),
+       ("Confirmed re-joining",f"{confirmed:,}","Prior exit recorded")]):
+        with c:hr_metric(name,value,desc)
+    a,b=st.columns([1.15,1],gap="medium")
     with a:
-        st.markdown('<div class="hr-section-header">Department strength · Top 12</div>',unsafe_allow_html=True)
+        st.markdown('<div class="hr-section-header">Active employees · Top 12 departments</div>',unsafe_allow_html=True)
         counts=active_emp.DEPARTMENT.fillna("Unknown").value_counts().head(12).sort_values()
-        fig=px.bar(x=counts.values,y=counts.index,orientation="h",text=counts.values,
-                   color_discrete_sequence=["#236a95"])
-        fig.update_traces(textposition="outside",marker_line_width=0)
-        fig.update_layout(xaxis_title="Employees",yaxis_title=None,showlegend=False)
-        hr_plot(fig,330)
+        if not counts.empty:
+            fig=px.bar(x=counts.values,y=counts.index,orientation="h",text=counts.values,color_discrete_sequence=["#246c9b"])
+            fig.update_traces(textposition="outside",cliponaxis=False,marker_line_width=0)
+            fig.update_layout(xaxis_title=None,yaxis_title=None,showlegend=False,margin=dict(l=22,r=60,t=20,b=35),xaxis=dict(range=[0,max(counts.values)*1.18]))
+            hr_plot(fig,370)
+        else:st.info("No active department data")
     with b:
-        st.markdown('<div class="hr-section-header">Zone-wise strength</div>',unsafe_allow_html=True)
+        st.markdown('<div class="hr-section-header">Active employees · Zone distribution</div>',unsafe_allow_html=True)
         counts=active_emp.ZONE.fillna("Unknown").value_counts().head(10).sort_values()
-        fig=px.bar(x=counts.values,y=counts.index,orientation="h",text=counts.values,
-                   color_discrete_sequence=["#17a8a1"])
-        fig.update_traces(textposition="outside")
-        fig.update_layout(xaxis_title="Employees",yaxis_title=None,showlegend=False)
-        hr_plot(fig,330)
-    left,right=st.columns([1.65,1],gap="medium")
+        if not counts.empty:
+            fig=px.bar(x=counts.values,y=counts.index,orientation="h",text=counts.values,color_discrete_sequence=["#13a49c"])
+            fig.update_traces(textposition="outside",cliponaxis=False)
+            fig.update_layout(xaxis_title=None,yaxis_title=None,showlegend=False,xaxis=dict(range=[0,max(counts.values)*1.2]))
+            hr_plot(fig,370)
+        else:st.info("No active zone data")
+    left,right=st.columns([1.6,1],gap="medium")
     with left:
-        st.markdown('<div class="hr-section-header">Workforce movement · Last 12 months</div>',unsafe_allow_html=True)
-        end=pd.Timestamp(asof);start=(end.to_period("M")-11).to_timestamp()
+        st.markdown('<div class="hr-section-header">Monthly joining vs exits · Last 12 months</div>',unsafe_allow_html=True)
+        end=asof_ts;start=(end.to_period("M")-11).to_timestamp()
         months=pd.period_range(start.to_period("M"),end.to_period("M"),freq="M")
         joined=month_series(emp,"DOJ",start,end).reindex(months,fill_value=0)
-        left=month_series(emp,"DATEOFLEAVING",start,end).reindex(months,fill_value=0)
-        monthly=pd.DataFrame({"Month":[str(i) for i in months],"Joined":joined.values,"Exited":left.values})
+        left_dates=month_series(emp,"DATEOFLEAVING",start,end).reindex(months,fill_value=0)
+        monthly=pd.DataFrame({"Month":[str(i) for i in months],"Joined":joined.values,"Exited":left_dates.values})
         fig=go.Figure()
-        fig.add_bar(x=monthly.Month,y=monthly.Joined,name="Joined",marker_color="#1c85a8")
-        fig.add_bar(x=monthly.Month,y=monthly.Exited,name="Exited",marker_color="#f59e70")
-        fig.update_layout(barmode="group",yaxis_title="Employees")
-        hr_plot(fig,290)
+        fig.add_bar(x=monthly.Month,y=monthly.Joined,name="Joined",marker_color="#287eae")
+        fig.add_bar(x=monthly.Month,y=monthly.Exited,name="Exited",marker_color="#f19b73")
+        fig.update_layout(barmode="group",yaxis_title=None,legend=dict(orientation="h",x=0,y=1.02,yanchor="bottom"))
+        hr_plot(fig,305)
     with right:
-        st.markdown('<div class="hr-section-header">HR attention needed</div>',unsafe_allow_html=True)
-        upcoming=int(((emp.RESIGNED_NOT_LEFT.eq(1)) & (emp.NOTICE_DAYS_REMAINING.between(0,30))).sum())
-        review=int(rejoining.REJOINING_STATUS.str.startswith("REVIEW",na=False).sum())
+        st.markdown('<div class="hr-section-header">People operations · Attention queue</div>',unsafe_allow_html=True)
+        upcoming=int((emp.RESIGNED_NOT_LEFT.eq(1)&emp.NOTICE_DAYS_REMAINING.between(0,30)).sum())
         missing_doj=int(emp.DOJ.isna().sum())
-        st.markdown(f'''<div class="hr-note"><b>{upcoming}</b> employees leaving within next 30 days<br>
-        <b>{pending}</b> resignations have LWD pending<br>
-        <b>{review}</b> re-joining cases need identity/history review<br>
-        <b>{missing_doj}</b> records have missing joining date</div>''',unsafe_allow_html=True)
-        st.markdown('<div class="hr-section-header">Employment status split</div>',unsafe_allow_html=True)
+        future_lwd=int((emp.ACTIVE_HEADCOUNT.eq(1)&emp.DATEOFLEAVING.between(asof_ts,asof_ts+pd.Timedelta(days=30))).sum())
+        st.markdown(f"""<div class="hr-note" style="line-height:1.95">
+        <b>{upcoming:,}</b> resignation exits due in 30 days<br>
+        <b>{future_lwd:,}</b> scheduled LWDs within 30 days<br>
+        <b>{pending:,}</b> resignations without LWD<br>
+        <b>{review:,}</b> re-joining records requiring review<br>
+        <b>{missing_doj:,}</b> records missing joining date
+        </div>""",unsafe_allow_html=True)
+    left,right=st.columns([1.12,1],gap="medium")
+    with left:
+        st.markdown('<div class="hr-section-header">Workforce profile · Age and service</div>',unsafe_allow_html=True)
+        age=active_emp.AGE_GROUP.value_counts().reindex(["<25","25-30","31-40","41-50","51+"],fill_value=0)
+        tenure=active_emp.SERVICE_GROUP.value_counts().reindex(["0-1 Year","1-3 Years","3-5 Years","5-10 Years","10+ Years"],fill_value=0)
+        c1,c2=st.columns(2,gap="small")
+        with c1:
+            st.caption("Age distribution")
+            fig=px.bar(x=age.index,y=age.values,color_discrete_sequence=["#2e88b2"])
+            fig.update_layout(showlegend=False,xaxis_title=None,yaxis_title=None)
+            hr_plot(fig,255)
+        with c2:
+            st.caption("Service tenure")
+            fig=px.bar(x=tenure.index,y=tenure.values,color_discrete_sequence=["#21a49c"])
+            fig.update_layout(showlegend=False,xaxis_title=None,yaxis_title=None)
+            fig.update_xaxes(tickangle=-35)
+            hr_plot(fig,255)
+    with right:
+        st.markdown('<div class="hr-section-header">Workforce status · Count and share</div>',unsafe_allow_html=True)
         status=emp.STATUS.value_counts()
-        fig=px.pie(names=status.index,values=status.values,hole=.67,
-             color_discrete_sequence=["#24779c","#f39a64","#44b6a7","#9cb6cf","#687da7"])
-        fig.update_traces(textinfo="percent",hovertemplate="%{label}: %{value}<extra></extra>")
-        fig.update_layout(showlegend=False)
-        hr_plot(fig,220)
+        if not status.empty:
+            colors=["#267eae","#f09a75","#28a9a0","#a6b5cf","#7887a8","#d7e2f1"]
+            fig=go.Figure(go.Bar(x=status.values,y=status.index,orientation="h",marker_color=colors[:len(status)],
+                                text=status.values,textposition="outside",cliponaxis=False))
+            fig.update_layout(showlegend=False,xaxis_title=None,yaxis_title=None,
+                              xaxis=dict(range=[0,max(status.values)*1.25]))
+            hr_plot(fig,290)
+        else:st.info("No employee status data")
+    st.caption("Headcount and ratios depend on selected filters and as-of date. Exit ratio is indicative, not a statutory attrition measure. Re-joining cases are identity matches pending HR verification.")
 
 elif page=="Resignations & Exits":
     waiting=emp[emp.RESIGNED_NOT_LEFT.eq(1)].copy()
