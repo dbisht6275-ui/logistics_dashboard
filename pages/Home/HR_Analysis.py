@@ -319,8 +319,19 @@ def hr_metric(label, value, subtitle=""):
 
 
 def hr_plot(fig, height=300):
+    # Show readable dark-blue values on every horizontal / vertical bar chart.
+    # Pie and other chart traces remain unchanged.
+    for trace in fig.data:
+        if trace.type == "bar":
+            horizontal = getattr(trace, "orientation", None) == "h"
+            trace.update(
+                texttemplate="%{x:,.0f}" if horizontal else "%{y:,.0f}",
+                textposition="outside",
+                textfont=dict(color="#123B70", size=12, family="Arial Black"),
+                cliponaxis=False,
+            )
     fig.update_layout(template="plotly_white", height=height,
-        margin=dict(l=22,r=50,t=55,b=48),font=dict(family="Arial",size=11,color="#38506b"),
+        margin=dict(l=22,r=72,t=65,b=52),font=dict(family="Arial",size=11,color="#38506b"),
         paper_bgcolor="white",plot_bgcolor="white",showlegend=True,
         legend=dict(orientation="h",y=1.02,x=0,xanchor="left",yanchor="bottom"),
         autosize=True)
