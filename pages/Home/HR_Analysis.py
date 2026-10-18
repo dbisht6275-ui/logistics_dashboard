@@ -238,20 +238,26 @@ def download_csv(data, title):
                        file_name=f"{title}.csv", mime="text/csv", key=f"download_{title}")
 
 
-# Compact HR-specific heading. Do not override the parent app's global spacing.
+# Compact top header and checkmark-style navigation tabs.
 st.markdown("""<style>
-.hr-compact-header{padding:12px 19px;border-radius:12px;background:linear-gradient(105deg,#102c56,#19588c 75%,#167b93);color:white;margin:0 0 8px;box-shadow:0 4px 12px #0c244016}
-.hr-compact-header .eyebrow{font-size:9px;letter-spacing:1.45px;font-weight:700;color:#b6dfff}
-.hr-compact-header h2{font-size:21px;line-height:1.2;margin:3px 0 2px;color:white;font-weight:750}
-.hr-compact-header .subtitle{font-size:11px;color:#dceeff;margin:0}
-.hr-mini-caption{font-size:11px;color:#79869a;margin:0 0 6px}
-[data-testid="stTabs"] [data-baseweb="tab-list"]{gap:3px;border-bottom:1px solid #dfe8f3}
-[data-testid="stTabs"] button[role="tab"]{padding:6px 11px;font-size:12px;font-weight:600}
-[data-testid="stMetric"]{padding:10px 13px;border-radius:10px;border:1px solid #e2eaf4;background:#fbfdff}
-[data-testid="stMetricValue"]{font-size:23px;color:#143b71}
+/* Pull the report closer to the top without changing the app's navigation. */
+[data-testid="stMainBlockContainer"] {padding-top: 0.45rem !important;}
+.hr-compact-header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 16px;border-radius:9px;background:linear-gradient(100deg,#12335f,#175f8c);color:white;margin:0 0 5px;box-shadow:0 2px 7px #0c244015}
+.hr-compact-header .eyebrow{font-size:9px;letter-spacing:1.1px;font-weight:750;color:#c2e3ff;white-space:nowrap}
+.hr-compact-header h2{font-size:18px;line-height:1.2;margin:0;color:white;font-weight:750}
+.hr-compact-header .subtitle{font-size:10px;color:#dfedfa;margin:0;white-space:nowrap}
+.hr-mini-caption{font-size:10px;color:#79869a;margin:0 0 5px}
+[data-testid="stTabs"] [data-baseweb="tab-list"]{gap:5px;border-bottom:1px solid #dfe8f3;flex-wrap:wrap}
+[data-testid="stTabs"] button[role="tab"]{padding:7px 12px;font-size:12px;font-weight:650;border-radius:8px 8px 0 0;color:#3b506e;background:#f4f7fc;border:1px solid #e1e8f1;border-bottom:0;min-height:35px}
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"]{background:#e8f4ff;color:#10558e;border-color:#7ab7e8;font-weight:750}
+/* A tick is shown ONLY on the active tab. */
+[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::before{content:"✓";display:inline-grid;place-items:center;background:#178064;color:#fff;width:16px;height:16px;min-width:16px;border-radius:50%;font-size:11px;font-weight:800;margin-right:6px}
+[data-testid="stMetric"]{padding:9px 11px;border-radius:9px;border:1px solid #e2eaf4;background:#fbfdff}
+[data-testid="stMetricValue"]{font-size:22px;color:#143b71}
 [data-testid="stMetricLabel"]{font-size:12px}
-</style>""",unsafe_allow_html=True)
-st.markdown("""<div class="hr-compact-header"><div class="eyebrow">SUGAM GROUP · PEOPLE INTELLIGENCE</div><h2>Human Resources Analytics</h2><div class="subtitle">Workforce · Resignations · Re-Joining · Salary & Cost</div></div><div class="hr-mini-caption">Live SQL Server data · Payroll estimates provisional pending verification</div>""",unsafe_allow_html=True)
+@media(max-width:850px){.hr-compact-header{display:block}.hr-compact-header .subtitle{white-space:normal;margin-top:3px}}
+</style>""", unsafe_allow_html=True)
+st.markdown("""<div class="hr-compact-header"><div><div class="eyebrow">SUGAM GROUP / PEOPLE INTELLIGENCE</div><h2>Human Resources Analytics</h2></div><div class="subtitle">Workforce · Resignations · Re-Joining · Salary &amp; Cost</div></div><div class="hr-mini-caption">Live SQL Server data · Payroll estimates provisional pending verification</div>""", unsafe_allow_html=True)
 with st.sidebar:
     st.markdown("**HR Report Controls**")
     asof = st.date_input("Report as of", value=date.today(), max_value=date.today())
