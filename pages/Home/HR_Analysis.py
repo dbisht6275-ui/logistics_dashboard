@@ -1,6 +1,6 @@
 """HR & Salary Analytics | SQL Server + Streamlit.
 Run: streamlit run app.py
-Salary figures are indicative until payroll-head mapping and effective-date rules are approved.
+Current gross salary uses only earning heads with TODT IS NULL. No deductions are calculated.
 """
 from __future__ import annotations
 
@@ -199,25 +199,49 @@ def prepare_salary(df):
 
 
 def salary_snapshot(salary, asof):
-    """One tentative effective record per employee+head at report date.
+    """Current gross salary: open-ended (TODT NULL) earnings only.
 
-    If a monthly override (newer FROMDT) overlaps an open-ended salary structure,
-    use latest FROMDT. Ties are flagged as ambiguous, not silently summed.
+    Keep latest FROMDT per employee and earning head for duplicate open-ended revisions.
+    Flag conflicting rows with the same latest FROMDT rather than summing them.
     """
     ref = pd.Timestamp(asof)
-    x = salary[salary.FROMDT.notna() & (salary.FROMDT <= ref) &
-               (salary.TODT.isna() | (salary.TODT >= ref))].copy()
+    x = salary[
+        salary["TODT"].isna()
+        & salary["FROMDT"].notna()
+        & salary["FROMDT"].le(ref)
+        & salary["SALARY_HEAD_CLEAN"].isin(EARNING_HEADS)
+    ].copy()
     if x.empty:
-        return x.assign(AMBIGUOUS_RECORD=False)
-    x = x.sort_values(["EMPLOYEEID", "SALARY_HEAD_CLEAN", "FROMDT", "TODT"],
-                      ascending=[True, True, False, True], na_position="last")
+        return x.assign(AMBIGUOUS_RECORD=pd.Series(dtype=bool))
     keys = ["EMPLOYEEID", "SALARY_HEAD_CLEAN"]
-    latest_from = x.groupby(keys, dropna=False).FROMDT.transform("max")
-    contenders = x[x.FROMDT.eq(latest_from)].copy()
-    ties = contenders.groupby(keys, dropna=False).size().rename("TIE_COUNT")
-    x = x.drop_duplicates(keys, keep="first").merge(ties, on=keys, how="left")
-    x["AMBIGUOUS_RECORD"] = x.TIE_COUNT.fillna(1).gt(1)
-    return x
+    x = x.sort_values("FROMDT", ascending=False)
+    newest = x.groupby(keys, dropna=False)["FROMDT"].transform("max")
+    top = x.loc[x["FROMDT"].eq(newest)].copy()
+    conflicts = top.groupby(keys, dropna=False)["AMOUNT"].nunique(dropna=False).gt(1)
+    # Identical repeated records are safely reduced to one component.
+    top = top.drop_duplicates(keys, keep="first")
+    top["AMBIGUOUS_RECORD"] = [bool(conflicts.get(tuple(vals), False))
+                                    for vals in top[keys].itertuples(index=False, name=None)]
+    return top
+
+
+def gross_salary_history(salary):
+    """Period-wise earnings, with each original FROMDT/TODT retained separately."""
+    x = salary[salary["SALARY_HEAD_CLEAN"].isin(EARNING_HEADS)].copy()
+    if x.empty:
+        return pd.DataFrame(columns=["EMPLOYEEID", "FROMDT", "TODT", "GROSS_SALARY"])
+    keys = ["EMPLOYEEID", "FROMDT", "TODT"]
+    # pandas pivot_table(dropna=False) can generate a cross product of periods;
+    # instead aggregate by actual observed periods, including NULL TODT.
+    observed = x.groupby(keys + ["SALARY_HEAD_CLEAN"], dropna=False, as_index=False)["AMOUNT"].sum()
+    rows = []
+    for (employee_id, start, end), group in observed.groupby(keys, dropna=False):
+        record = {"EMPLOYEEID": employee_id, "FROMDT": start, "TODT": end}
+        for head in EARNING_HEADS:
+            record[head] = float(group.loc[group.SALARY_HEAD_CLEAN.eq(head), "AMOUNT"].sum())
+        record["GROSS_SALARY"] = sum(record[h] for h in EARNING_HEADS)
+        rows.append(record)
+    return pd.DataFrame(rows)
 
 
 def employee_filtered(df, zones, branches, departments, genders):
@@ -546,48 +570,95 @@ elif page=="Resignations & Exits":
     else:st.info("No recorded exits for selected filters.")
 
 elif page=="Salary & Cost (Provisional)":
-    st.warning("Payroll calculations are provisional. Salary structure and monthly overrides overlap; deductions and employer contributions require confirmation.")
-    if snapshot.empty: st.info("No salary records effective on the selected reporting date.")
-    else:
-        ambiguities=int(snapshot.AMBIGUOUS_RECORD.sum())
-        safe=snapshot[~snapshot.AMBIGUOUS_RECORD & snapshot.SALARY_CATEGORY.ne("UNCLASSIFIED")].copy()
-        pivot=safe.pivot_table(index="EMPLOYEEID",columns="SALARY_CATEGORY",values="AMOUNT",aggfunc="sum",fill_value=0).reset_index()
-        for col in ["EARNINGS","EMPLOYEE DEDUCTION","EMPLOYER COST"]:
-            if col not in pivot:pivot[col]=0
-        pivot["INDICATIVE_NET"]=pivot["EARNINGS"]-pivot["EMPLOYEE DEDUCTION"]
-        pivot["INDICATIVE_EMPLOYER_COST"]=pivot["EARNINGS"]+pivot["EMPLOYER COST"]
-        current_ids=set(active_emp.EMPLOYEEID.dropna()); current=pivot[pivot.EMPLOYEEID.isin(current_ids)]
-        k=st.columns(4)
-        for c,title,col in zip(k,["Gross earnings","Employee deductions","Indicative take-home","Indicative employer cost"],
-                                ["EARNINGS","EMPLOYEE DEDUCTION","INDICATIVE_NET","INDICATIVE_EMPLOYER_COST"]):
-            with c:hr_metric(title,f'₹{current[col].sum():,.0f}',"Provisional total")
-        if ambiguities:st.error(f"{ambiguities} employee/head records have ambiguous effective-date overlaps; omitted from these totals.")
-        others=int(snapshot.SALARY_CATEGORY.eq("UNCLASSIFIED").sum())
-        if others:st.warning(f"{others} salary records have unclassified heads and are excluded from totals.")
-        names=emp[["EMPLOYEEID","EMPCODE","EMPNAME","ZONE","BRANCH","DEPARTMENT"]].drop_duplicates("EMPLOYEEID")
-        details=pivot.merge(names,on="EMPLOYEEID",how="left")
-        left,right=st.columns([1.2,1])
-        with left:
-            st.markdown('<div class="hr-section-header">Highest indicative payroll by department</div>',unsafe_allow_html=True)
-            dep=details[details.EMPLOYEEID.isin(current_ids)].groupby("DEPARTMENT",dropna=False)["INDICATIVE_EMPLOYER_COST"].sum().nlargest(10).sort_values()
-            fig=px.bar(x=dep.values,y=dep.index,orientation="h",color_discrete_sequence=["#23769c"])
-            fig.update_layout(xaxis_title="₹ employer cost",yaxis_title=None,showlegend=False)
-            hr_plot(fig,310)
-        with right:
-            st.markdown('<div class="hr-section-header">Salary head classification</div>',unsafe_allow_html=True)
-            audit=snapshot.SALARY_CATEGORY.value_counts()
-            fig=px.pie(names=audit.index,values=audit.values,hole=.65,
-                       color_discrete_sequence=["#28779c","#f4a56c","#31a99e","#9aa9be"])
-            hr_plot(fig,310)
-        st.markdown('<div class="hr-section-header">Employee-wise provisional salary</div>',unsafe_allow_html=True)
-        st.dataframe(details,use_container_width=True,hide_index=True)
-        download_csv(details,"provisional_salary_summary")
-        option=names.copy();option["CHOICE"]=option.EMPCODE.fillna("").astype(str)+" | "+option.EMPNAME.fillna("").astype(str)
-        choice=st.selectbox("Explore an employee's salary history",option.CHOICE.tolist() if len(option) else ["No employees"])
-        if len(option):
-            eid=option.loc[option.CHOICE.eq(choice),"EMPLOYEEID"].iloc[0]
-            st.dataframe(salary.loc[salary.EMPLOYEEID.eq(eid),["SALARY_HEAD_CLEAN","SALARY_CATEGORY","AMOUNT","PCTG","FROMDT","TODT"]].sort_values(["SALARY_HEAD_CLEAN","FROMDT"]),hide_index=True,use_container_width=True)
-            st.caption("Historical percentage-based PF amounts are not estimated without a confirmed wage base.")
+    st.markdown('<div class="hr-section-header">Current Gross Salary · TODT is NULL</div>', unsafe_allow_html=True)
+    st.caption("Current salary uses open-ended Basic, HRA and allowances only. PF, ESI, gratuity and all deductions are excluded.")
+    names = emp[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "ACTIVE_HEADCOUNT"]].drop_duplicates("EMPLOYEEID")
+    clean = snapshot.loc[~snapshot.AMBIGUOUS_RECORD].copy()
+    conflicted_ids = set(snapshot.loc[snapshot.AMBIGUOUS_RECORD, "EMPLOYEEID"])
+    clean = clean.loc[~clean.EMPLOYEEID.isin(conflicted_ids)].copy()
+    employee_gross = clean.groupby("EMPLOYEEID", as_index=False)["AMOUNT"].sum().rename(columns={"AMOUNT": "GROSS_SALARY"})
+    details = names.merge(employee_gross, on="EMPLOYEEID", how="left")
+    details["HAS_CURRENT_STRUCTURE"] = details.GROSS_SALARY.notna()
+    details["GROSS_SALARY"] = details.GROSS_SALARY.astype(float)
+    current = details.loc[details.ACTIVE_HEADCOUNT.eq(1)].copy()
+    valid = current.loc[current.HAS_CURRENT_STRUCTURE].copy()
+    total = float(valid.GROSS_SALARY.sum())
+    st.markdown('<div class="hr-kpi-grid">' + ''.join([
+        hr_metric_html("Current gross / month", f"₹{total:,.0f}", "Active employees with mapped structure"),
+        hr_metric_html("Annualized gross", f"₹{total * 12:,.0f}", "Monthly gross × 12"),
+        hr_metric_html("Average gross", f"₹{valid.GROSS_SALARY.mean():,.0f}" if len(valid) else "—", "Per salary-mapped active employee"),
+        hr_metric_html("Salary-mapped employees", f"{len(valid):,}", f"{len(current):,} active employees"),
+        hr_metric_html("Missing gross structure", f"{len(current)-len(valid):,}", "Requires salary-data review"),
+    ]) + '</div>', unsafe_allow_html=True)
+    conflicts = snapshot.loc[snapshot.AMBIGUOUS_RECORD]
+    if not conflicts.empty:
+        st.warning(f"{len(conflicts)} employee/head combinations have conflicting open-ended amounts with the same FROMDT. Affected employees are excluded from gross totals until reviewed.")
+
+    left, right = st.columns(2, gap="medium")
+    with left:
+        st.markdown('<div class="hr-section-header">Department-wise Monthly Gross</div>', unsafe_allow_html=True)
+        if not valid.empty:
+            d = valid.groupby("DEPARTMENT", dropna=False).GROSS_SALARY.sum().nlargest(10).sort_values()
+            fig = px.bar(x=d.values, y=d.index.astype(str), orientation="h", color_discrete_sequence=["#1682ae"])
+            fig.update_layout(xaxis_title="Monthly gross (₹)", yaxis_title=None, showlegend=False)
+            hr_plot(fig, 330)
+        else:
+            st.info("No active employees with an open-ended gross structure.")
+    with right:
+        st.markdown('<div class="hr-section-header">Branch-wise Monthly Gross</div>', unsafe_allow_html=True)
+        if not valid.empty:
+            d = valid.groupby("BRANCH", dropna=False).GROSS_SALARY.sum().nlargest(10).sort_values()
+            fig = px.bar(x=d.values, y=d.index.astype(str), orientation="h", color_discrete_sequence=["#20a79e"])
+            fig.update_layout(xaxis_title="Monthly gross (₹)", yaxis_title=None, showlegend=False)
+            hr_plot(fig, 330)
+        else:
+            st.info("No branch-level salary data available.")
+
+    left, right = st.columns(2, gap="medium")
+    with left:
+        st.markdown('<div class="hr-section-header">Gross Salary Distribution · Active Workforce</div>', unsafe_allow_html=True)
+        if not valid.empty:
+            ranges = [0, 15000, 25000, 40000, 60000, 100000, float("inf")]
+            labels = ["Under 15k", "15–25k", "25–40k", "40–60k", "60k–1L", "1L+"]
+            band = pd.cut(valid.GROSS_SALARY, bins=ranges, labels=labels, include_lowest=True, right=False)
+            counts = band.value_counts().reindex(labels, fill_value=0)
+            fig = px.bar(x=counts.index.astype(str), y=counts.values, color_discrete_sequence=["#4567ba"])
+            fig.update_layout(xaxis_title="Monthly gross band (₹)", yaxis_title="Employees")
+            hr_plot(fig, 300)
+    with right:
+        st.markdown('<div class="hr-section-header">Current Gross · Earning Components</div>', unsafe_allow_html=True)
+        if not clean.empty:
+            components = clean.loc[clean.EMPLOYEEID.isin(set(valid.EMPLOYEEID))].groupby("SALARY_HEAD_CLEAN").AMOUNT.sum().sort_values(ascending=False)
+            fig = px.bar(x=components.index, y=components.values, color_discrete_sequence=["#6e64b5"])
+            fig.update_layout(xaxis_title=None, yaxis_title="Monthly gross (₹)")
+            hr_plot(fig, 300)
+
+    st.markdown('<div class="hr-section-header">Employee-wise Current Gross Salary</div>', unsafe_allow_html=True)
+    table = details[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "ACTIVE_HEADCOUNT", "GROSS_SALARY", "HAS_CURRENT_STRUCTURE"]].sort_values("GROSS_SALARY", ascending=False)
+    st.dataframe(table, hide_index=True, use_container_width=True)
+    download_csv(table, "employee_current_gross_salary")
+
+    st.markdown('<div class="hr-section-header">Employee Salary History · FROMDT to TODT</div>', unsafe_allow_html=True)
+    options = names[["EMPLOYEEID", "EMPCODE", "EMPNAME"]].copy()
+    options["DISPLAY"] = options.EMPCODE.fillna("").astype(str) + " | " + options.EMPNAME.fillna("").astype(str)
+    selected = st.selectbox("Select an employee", options.DISPLAY.tolist() if len(options) else ["No employees"], key="salary_history_employee")
+    if len(options):
+        selected_id = options.loc[options.DISPLAY.eq(selected), "EMPLOYEEID"].iloc[0]
+        periods = gross_salary_history(salary.loc[salary.EMPLOYEEID.eq(selected_id)])
+        if not periods.empty:
+            periods = periods.sort_values(["FROMDT", "TODT"], na_position="last")
+            st.dataframe(periods, hide_index=True, use_container_width=True)
+            download_csv(periods, "employee_gross_salary_history")
+            fig = px.line(periods, x="FROMDT", y="GROSS_SALARY", markers=True,
+                          color_discrete_sequence=["#19659b"])
+            fig.update_layout(xaxis_title="Period start", yaxis_title="Gross salary (₹)", height=280,
+                              margin=dict(l=25, r=35, t=20, b=30))
+            fig.update_traces(text=periods.GROSS_SALARY.round(0), textposition="top center", mode="lines+markers+text",
+                              textfont=dict(color="#123B70", size=11))
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.caption("History shows each original FROMDT–TODT period separately, including overlapping closed periods; only TODT NULL records define current gross.")
+        else:
+            st.info("This employee has no mapped salary earnings history.")
 
 elif page=="Employee Explorer":
     st.markdown('<div class="hr-section-header">Employee directory</div>',unsafe_allow_html=True)
