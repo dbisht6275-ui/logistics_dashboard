@@ -258,18 +258,21 @@ st.markdown('''<style>
 .hr-kicker{font-size:10px;font-weight:700;letter-spacing:1.4px;color:#8eddd8;}
 .hr-chip{position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.24);border-radius:13px;
   background:linear-gradient(135deg,var(--kpi-a,#1465b8),var(--kpi-b,#26a4db));
-  padding:12px 14px;min-height:113px;box-shadow:0 5px 14px rgba(18,45,82,.12);color:#fff;}
+  padding:9px 11px;min-height:88px;box-shadow:0 5px 14px rgba(18,45,82,.12);color:#fff;}
 .hr-chip:after{content:"";position:absolute;width:110px;height:110px;right:-38px;bottom:-55px;
   background:rgba(255,255,255,.10);border-radius:50%;pointer-events:none;}
 .hr-chip .hr-chip-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
-.hr-chip .lbl{font-size:11px;color:rgba(255,255,255,.96);font-weight:700;line-height:1.3;}
-.hr-chip .hr-kpi-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 33px;
-  width:33px;height:33px;border-radius:10px;background:rgba(255,255,255,.22);
-  border:1px solid rgba(255,255,255,.27);font-size:18px;line-height:1;}
-.hr-chip .val{font-size:27px;color:white;font-weight:800;line-height:1.25;margin-top:3px;letter-spacing:-.6px;}
-.hr-chip .foot{font-size:10px;color:rgba(255,255,255,.83);margin-top:5px;line-height:1.28;}
-@media(max-width:1100px){.hr-chip{min-height:104px;padding:10px 11px;}.hr-chip .val{font-size:24px;}}
+.hr-chip .lbl{font-size:10.5px;color:rgba(255,255,255,.96);font-weight:700;line-height:1.3;}
+.hr-chip .hr-kpi-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 27px;
+  width:27px;height:27px;border-radius:8px;background:rgba(255,255,255,.22);
+  border:1px solid rgba(255,255,255,.27);font-size:15px;line-height:1;}
+.hr-chip .val{font-size:24px;color:white;font-weight:800;line-height:1.25;margin-top:3px;letter-spacing:-.6px;}
+.hr-chip .foot{font-size:10px;color:rgba(255,255,255,.83);margin-top:3px;line-height:1.2;}
+@media(max-width:1100px){.hr-chip{min-height:82px;padding:8px 9px;}.hr-chip .val{font-size:22px;}}
 
+.hr-kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,205px));gap:10px;align-items:stretch;margin:2px 0 7px;}
+.hr-kpi-grid .hr-chip{height:100%;}
+@media(max-width:600px){.hr-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;}}
 .hr-section-header{font-size:14px !important;font-weight:750;color:#172e50;margin:18px 0 12px !important;padding:0 0 6px;line-height:1.45;clear:both;border-bottom:1px solid #e9eef6;}
 .hr-note{padding:10px 13px;background:#eff7ff;border:1px solid #dceafa;border-radius:9px;color:#34516f;font-size:12px;}
 .hr-small{font-size:11px;color:#64748b;}
@@ -304,6 +307,23 @@ HR_KPI_STYLES = {
     "Confirmed re-joining": ("✅", "#15803d", "#4ade80"),
 }
 HR_KPI_FALLBACK = ("📌", "#1d4ed8", "#60a5fa")
+
+
+def hr_metric_html(label, value, subtitle=""):
+    icon, color_a, color_b = HR_KPI_STYLES.get(label, HR_KPI_FALLBACK)
+    return (
+        f'<div class="hr-chip" style="--kpi-a:{color_a};--kpi-b:{color_b}">'
+        f'<div class="hr-chip-top"><div class="lbl">{escape(str(label))}</div>'
+        f'<span class="hr-kpi-icon" aria-hidden="true">{icon}</span></div>'
+        f'<div class="val">{escape(str(value))}</div>'
+        f'<div class="foot">{escape(str(subtitle))}</div></div>'
+    )
+
+
+def hr_metric_grid(items):
+    st.markdown('<div class="hr-kpi-grid">' + ''.join(
+        hr_metric_html(label, value, subtitle) for label, value, subtitle in items
+    ) + '</div>', unsafe_allow_html=True)
 
 
 def hr_metric(label, value, subtitle=""):
@@ -412,18 +432,15 @@ if page=="Overview":
        ("Re-joining candidates",len(rejoining),"Aadhaar/PAN linked"),
        ("Re-joining to review",review,"Identity/history validation"),
     ]
-    metric_cols=st.columns(6,gap="small")
-    for c,(label,val,detail) in zip(metric_cols,kpis):
-        with c: hr_metric(label,f"{val:,}",detail)
+    hr_metric_grid([(label, f"{val:,}", detail) for label, val, detail in kpis])
     st.markdown('<div class="hr-section-header">People movement · Year to date</div>',unsafe_allow_html=True)
-    summary_cols=st.columns(5,gap="small")
-    for c,(name,value,desc) in zip(summary_cols,[
+    hr_metric_grid([
        ("Joined YTD",f"{join_ytd:,}","Recorded joining dates"),
        ("Exited YTD",f"{exit_ytd:,}","Recorded last working dates"),
        ("Net movement YTD",f"{net_ytd:+,}","Joinings less exits"),
        ("Indicative exit ratio",f"{attrition:.1f}%","YTD exits / avg headcount"),
-       ("Confirmed re-joining",f"{confirmed:,}","Prior exit recorded")]):
-        with c:hr_metric(name,value,desc)
+       ("Confirmed re-joining",f"{confirmed:,}","Prior exit recorded")
+    ])
     a,b=st.columns([1.15,1],gap="medium")
     with a:
         st.markdown('<div class="hr-section-header">Active employees · Top 12 departments</div>',unsafe_allow_html=True)
