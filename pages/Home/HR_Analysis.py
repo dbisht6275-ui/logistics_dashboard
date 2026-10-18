@@ -646,15 +646,36 @@ elif page=="Salary & Cost (Provisional)":
         selected_id = options.loc[options.DISPLAY.eq(selected), "EMPLOYEEID"].iloc[0]
         periods = gross_salary_history(salary.loc[salary.EMPLOYEEID.eq(selected_id)])
         if not periods.empty:
-            periods = periods.sort_values(["FROMDT", "TODT"], na_position="last")
-            st.dataframe(periods, hide_index=True, use_container_width=True)
-            download_csv(periods, "employee_gross_salary_history")
-            fig = px.line(periods, x="FROMDT", y="GROSS_SALARY", markers=True,
-                          color_discrete_sequence=["#19659b"])
-            fig.update_layout(xaxis_title="Period start", yaxis_title="Gross salary (₹)", height=280,
-                              margin=dict(l=25, r=35, t=20, b=30))
-            fig.update_traces(text=periods.GROSS_SALARY.round(0), textposition="top center", mode="lines+markers+text",
-                              textfont=dict(color="#123B70", size=11))
+            periods = periods.sort_values(["FROMDT", "TODT"], na_position="last").copy()
+            # Compare each recorded gross structure with its immediately preceding period.
+            periods["INCREASE_AMOUNT"] = periods["GROSS_SALARY"].diff()
+            periods["INCREASE_PERCENT"] = periods["GROSS_SALARY"].pct_change(fill_method=None).mul(100)
+            periods.loc[periods["GROSS_SALARY"].shift().eq(0), "INCREASE_PERCENT"] = np.nan
+            periods["CHANGE_LABEL"] = [
+                "First record" if pd.isna(change) else
+                (f"+₹{change:,.0f}" if change > 0 else
+                 f"-₹{abs(change):,.0f}" if change < 0 else "No change")
+                for change in periods["INCREASE_AMOUNT"]
+            ]
+            st.dataframe(periods.drop(columns=["CHANGE_LABEL"]), hide_index=True, use_container_width=True)
+            download_csv(periods.drop(columns=["CHANGE_LABEL"]), "employee_gross_salary_history")
+            labels = [
+                f"₹{gross:,.0f}<br>({change})" if i else f"₹{gross:,.0f}<br>(First record)"
+                for i, (gross, change) in enumerate(zip(periods["GROSS_SALARY"], periods["CHANGE_LABEL"]))
+            ]
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=periods["FROMDT"], y=periods["GROSS_SALARY"],
+                mode="lines+markers+text", text=labels, textposition="top center",
+                name="Gross salary", line=dict(color="#19659b", width=3),
+                marker=dict(size=9, color="#19659b"),
+                textfont=dict(color="#123B70", size=11),
+                customdata=periods[["CHANGE_LABEL"]].to_numpy(),
+                hovertemplate="Date: %{x|%d %b %Y}<br>Gross salary: ₹%{y:,.0f}<br>Change: %{customdata[0]}<extra></extra>"
+            ))
+            fig.update_layout(xaxis_title="Period start", yaxis_title="Gross salary (₹)",
+                              height=350, margin=dict(l=25, r=35, t=65, b=35),
+                              showlegend=False)
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
             st.caption("History shows each original FROMDT–TODT period separately, including overlapping closed periods; only TODT NULL records define current gross.")
         else:
