@@ -299,12 +299,10 @@ HR_KPI_STYLES = {
     "LWD pending": ("⏳", "#a16207", "#eab308"),
     "Completed exits": ("🚪", "#6d28d9", "#a78bfa"),
     "Re-joining candidates": ("🔄", "#047857", "#34d399"),
-    "Re-joining to review": ("🛡️", "#be123c", "#fb7185"),
     "Joined YTD": ("📈", "#0369a1", "#38bdf8"),
     "Exited YTD": ("📉", "#b45309", "#f59e0b"),
     "Net movement YTD": ("⚖️", "#0f766e", "#2dd4bf"),
     "Indicative exit ratio": ("📊", "#7c3aed", "#a78bfa"),
-    "Confirmed re-joining": ("✅", "#15803d", "#4ade80"),
 }
 HR_KPI_FALLBACK = ("📌", "#1d4ed8", "#60a5fa")
 
@@ -413,8 +411,6 @@ if page=="Overview":
     resigned=int(emp.RESIGNED_NOT_LEFT.sum())
     pending=int(emp.STATUS.eq("RESIGNED - LWD PENDING").sum())
     exited=int(emp.STATUS.eq("LEFT").sum())
-    confirmed=int(rejoining.REJOINING_STATUS.eq("REJOINED - PRIOR EXIT RECORDED").sum())
-    review=int(rejoining.REJOINING_STATUS.str.startswith("REVIEW",na=False).sum())
     asof_ts=pd.Timestamp(asof)
     month_start=asof_ts.replace(day=1)
     year_start=asof_ts.replace(month=1,day=1)
@@ -430,7 +426,6 @@ if page=="Overview":
        ("LWD pending",pending,"HR follow-up required"),
        ("Completed exits",exited,"Cumulative exits"),
        ("Re-joining candidates",len(rejoining),"Aadhaar/PAN linked"),
-       ("Re-joining to review",review,"Identity/history validation"),
     ]
     hr_metric_grid([(label, f"{val:,}", detail) for label, val, detail in kpis])
     st.markdown('<div class="hr-section-header">People movement · Year to date</div>',unsafe_allow_html=True)
@@ -438,8 +433,7 @@ if page=="Overview":
        ("Joined YTD",f"{join_ytd:,}","Recorded joining dates"),
        ("Exited YTD",f"{exit_ytd:,}","Recorded last working dates"),
        ("Net movement YTD",f"{net_ytd:+,}","Joinings less exits"),
-       ("Indicative exit ratio",f"{attrition:.1f}%","YTD exits / avg headcount"),
-       ("Confirmed re-joining",f"{confirmed:,}","Prior exit recorded")
+       ("Indicative exit ratio",f"{attrition:.1f}%","YTD exits / avg headcount")
     ])
     a,b=st.columns([1.15,1],gap="medium")
     with a:
