@@ -269,10 +269,18 @@ st.markdown("""<style>
 .hr-slim-title {font-size:16px;font-weight:750;color:white;line-height:1.2;margin:0;}
 .hr-slim-sub {font-size:10px;color:#d8e8f7;white-space:nowrap;}
 .hr-mini-caption{font-size:9px;color:#748298;margin:0;}
-[data-testid="stTabs"] [data-baseweb="tab-list"] {gap:3px;border-bottom:1px solid #e1e7ef;flex-wrap:wrap;}
-[data-testid="stTabs"] button[role="tab"] {padding:5px 10px;font-size:12px;font-weight:600;min-height:31px;border-radius:5px 5px 0 0;color:#314969;background:#f6f9fd;border:1px solid #e1e8f1;border-bottom:0;}
-[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {background:#e8f5ff;color:#13588b;border-color:#89bce7;font-weight:750;}
-[data-testid="stTabs"] button[role="tab"][aria-selected="true"]::before {content:"✓";display:inline-grid;place-items:center;width:15px;height:15px;min-width:15px;border-radius:50%;font-size:10px;font-weight:800;background:#148667;color:white;margin-right:5px;}
+/* Navigation buttons: compact, highlighted selection with check mark. */
+.st-key-hr_navigation_buttons [data-testid="stHorizontalBlock"] {gap:6px !important;}
+.st-key-hr_navigation_buttons button[kind="secondary"] {
+ background:#f5f8fc !important;border:1px solid #dce6f1 !important;
+ color:#244564 !important;border-radius:6px !important;
+}
+.st-key-hr_navigation_buttons button[kind="primary"] {
+ background:#146b99 !important;border:1px solid #146b99 !important;
+ color:white !important;border-radius:6px !important;
+}
+.st-key-hr_navigation_buttons button {min-height:32px !important;padding:3px 7px !important;font-size:12px !important;font-weight:650 !important;}
+.st-key-hr_navigation_buttons button p {font-size:12px !important;white-space:nowrap;}
 [data-testid="stMetric"] {padding:8px 11px;border-radius:7px;border:1px solid #e2eaf4;background:#fbfdff;}
 [data-testid="stMetricValue"] {font-size:21px;color:#143b71;}
 [data-testid="stMetricLabel"] {font-size:11px;}
@@ -319,11 +327,33 @@ emp_ids = set(emp.EMPLOYEEID.dropna())
 salary = sal_all[sal_all.EMPLOYEEID.isin(emp_ids)].copy()
 snapshot = salary_snapshot(salary, asof)
 
-p1, p2, p3, p4, p5, p6 = st.tabs([
-    "Overview", "Resignations & Exits", "Workforce Demographics",
-    "Salary & Cost (Provisional)", "Employee Explorer", "Re-Joining Analysis"])
+# Button-based report navigation (selected button stays highlighted across reruns).
+HR_SECTIONS = [
+    ("Overview", "Overview"),
+    ("Resignations & Exits", "Resignations & Exits"),
+    ("Workforce Demographics", "Workforce Demographics"),
+    ("Salary & Cost (Provisional)", "Salary & Cost"),
+    ("Employee Explorer", "Employee Explorer"),
+    ("Re-Joining Analysis", "Re-Joining Analysis"),
+]
+if st.session_state.get("hr_selected_section") not in [x[0] for x in HR_SECTIONS]:
+    st.session_state["hr_selected_section"] = "Overview"
 
-with p1:
+with st.container(key="hr_navigation_buttons"):
+    nav_columns = st.columns([1, 1.48, 1.65, 1.34, 1.28, 1.35], gap="small")
+    for nav_col, (section_key, section_label) in zip(nav_columns, HR_SECTIONS):
+        selected = st.session_state["hr_selected_section"] == section_key
+        with nav_col:
+            if st.button(
+                ("✓  " if selected else "") + section_label,
+                key="hr_nav_" + section_key,
+                type="primary" if selected else "secondary",
+                use_container_width=True,
+            ):
+                st.session_state["hr_selected_section"] = section_key
+                st.rerun()
+
+if st.session_state["hr_selected_section"] == "Overview":
     active = int(emp.ACTIVE_HEADCOUNT.sum())
     serving = int(emp.RESIGNED_NOT_LEFT.sum())
     left_count = int((emp.STATUS == "LEFT").sum())
@@ -357,7 +387,7 @@ with p1:
     growth = pd.DataFrame({"Month": index.astype(str), "Joined": new.values, "Left": exit_.values})
     st.plotly_chart(px.line(growth, x="Month", y=["Joined", "Left"], markers=True, color_discrete_sequence=["#1466b8", "#ef7e47"]), use_container_width=True)
 
-with p2:
+if st.session_state["hr_selected_section"] == "Resignations & Exits":
     st.subheader("Resignations and Notice Period")
     waiting = emp[emp.RESIGNED_NOT_LEFT.eq(1)].copy()
     cols = st.columns(3)
@@ -382,7 +412,7 @@ with p2:
     else:
         st.info("No completed exits in selected employee data.")
 
-with p3:
+if st.session_state["hr_selected_section"] == "Workforce Demographics":
     active_only = emp[emp.ACTIVE_HEADCOUNT.eq(1)]
     for field, label in [("GENDER", "Gender"), ("AGE_GROUP", "Age groups"),
                          ("SERVICE_GROUP", "Service bands"), ("STATUS", "Current status")]:
@@ -392,7 +422,7 @@ with p3:
         st.plotly_chart(px.bar(grp, x=label, y="Employees"), use_container_width=True)
     st.caption("Age and tenure are evaluated as of the selected reporting date.")
 
-with p4:
+if st.session_state["hr_selected_section"] == "Salary & Cost (Provisional)":
     st.warning("Payroll estimates are PROVISIONAL. This source mixes effective salary structures and dated monthly overrides. Gross, deductions, employer cost and net figures require confirmation.")
     if snapshot.empty:
         st.info("No salary records effective on selected report date for the selected employees.")
@@ -439,7 +469,7 @@ with p4:
         audit = salary.groupby(["SALARY_HEAD_CLEAN", "SALARY_CATEGORY"], dropna=False).size().reset_index(name="Rows")
         st.dataframe(audit, use_container_width=True, hide_index=True)
 
-with p5:
+if st.session_state["hr_selected_section"] == "Employee Explorer":
     st.subheader("Employee Master")
     term = st.text_input("Find by employee name or code").strip()
     display = emp.copy()
@@ -458,7 +488,7 @@ with p5:
         st.write("Resignation date after leaving date:", int(((emp_all.RESIGNDT > emp_all.DATEOFLEAVING) & emp_all.RESIGNDT.notna()).sum()))
         st.write("Salary rows missing FROMDT:", int(sal_all.FROMDT.isna().sum()))
 
-with p6:
+if st.session_state["hr_selected_section"] == "Re-Joining Analysis":
     st.subheader("Re-Joining Analysis · Aadhaar / PAN matching")
     st.caption("Matches use valid Aadhaar and/or PAN (BOTH when both match). Conflicting IDs and uncertain exits are flagged for HR review. Full IDs are not shown or exported.")
     found = rejoining_all[rejoining_all.EMPLOYEEID.isin(emp_ids)].copy()
