@@ -15,7 +15,6 @@ import streamlit as st
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
-st.set_page_config(page_title="HR Analytics", page_icon="👥", layout="wide")
 
 EMPLOYEE_SQL = """
 SELECT
@@ -176,10 +175,27 @@ def download_csv(data, title):
                        file_name=f"{title}.csv", mime="text/csv", key=f"download_{title}")
 
 
-st.title("👥 HR & Payroll Analytics")
-st.caption("SQL Server live data · Payroll estimates provisional until salary logic is verified")
+# Full-width enterprise dashboard design (contained within existing Sugam app)
+st.markdown("""<style>
+.main .block-container{max-width:100%!important;padding:1.0rem 2.1rem 2rem!important}
+.hr-hero{padding:25px 30px;border-radius:18px;background:linear-gradient(110deg,#102c56,#174b85 65%,#137b91);color:white;margin-bottom:20px;box-shadow:0 8px 25px #0c244026}
+.hr-eyebrow{font-size:11px;letter-spacing:2px;font-weight:700;color:#a5d8ff}
+.hr-hero h1{font-size:30px;margin:7px 0;color:#fff;font-weight:800}
+.hr-hero p{color:#d6e9ff;font-size:13px;margin:0}
+.hr-section{font-size:18px;font-weight:750;color:#15355e;margin:20px 0 10px}
+[data-testid="stMetric"]{border:1px solid #e1e9f3;background:linear-gradient(150deg,#ffffff,#f4f8ff);padding:17px 19px;border-radius:14px;box-shadow:0 3px 12px #12375a0b}
+[data-testid="stMetricLabel"]{color:#61758e;font-size:13px}
+[data-testid="stMetricValue"]{color:#123b71;font-weight:800}
+[data-testid="stTabs"] [data-baseweb="tab-list"]{gap:8px;border-bottom:1px solid #e3eaf4}
+[data-testid="stTabs"] button[role="tab"]{border-radius:10px 10px 0 0;padding:11px 18px;font-weight:650}
+[data-testid="stDataFrame"]{border:1px solid #e1e9f3;border-radius:12px;overflow:hidden}
+[data-testid="stPlotlyChart"]{border:1px solid #e7edf5;border-radius:15px;padding:12px;background:white}
+</style>""",unsafe_allow_html=True)
+st.markdown("""<div class='hr-hero'><div class='hr-eyebrow'>SUGAM GROUP  /  PEOPLE INTELLIGENCE</div><h1>Human Resources Analytics</h1><p>Workforce overview · Talent movement · Notice period tracking · Payroll intelligence</p></div>""",unsafe_allow_html=True)
+
+st.caption("Live SQL Server data  •  Payroll estimates provisional pending verification")
 with st.sidebar:
-    st.header("Report Controls")
+    st.markdown("**HR Report Controls**")
     asof = st.date_input("Report as of", value=date.today(), max_value=date.today())
     if st.button("Refresh from SQL Server"):
         load_data.clear()
@@ -191,7 +207,7 @@ except Exception as exc:
     st.error("Could not load data from SQL Server. Check DB secrets, network access, pymssql, and database permissions.")
     with st.expander("Technical details"):
         st.code(f"{type(exc).__name__}: {str(exc)}")
-    st.stop()
+    raise RuntimeError("HR data loading failed; see SQL error above")
 
 emp_all = prepare_employees(employees_raw, asof)
 sal_all = prepare_salary(salary_raw)
@@ -225,17 +241,19 @@ with p1:
     cols = st.columns(4)
     for c, (label, value) in zip(cols, metrics):
         c.metric(label, f"{value:,}")
+    st.markdown("<div class='hr-section'>Workforce distribution</div>", unsafe_allow_html=True)
     plot_emp = emp[emp.ACTIVE_HEADCOUNT.eq(1)]
     a, b = st.columns(2)
     with a:
         st.subheader("Active headcount by department")
         grp = plot_emp.groupby("DEPARTMENT", dropna=False).size().reset_index(name="Employees")
-        st.plotly_chart(px.bar(grp, x="DEPARTMENT", y="Employees"), use_container_width=True)
+        st.plotly_chart(px.bar(grp.sort_values("Employees"), x="Employees", y="DEPARTMENT", orientation="h", color="Employees", color_continuous_scale="Blues"), use_container_width=True)
     with b:
         st.subheader("Active headcount by zone")
         grp = plot_emp.groupby("ZONE", dropna=False).size().reset_index(name="Employees")
-        st.plotly_chart(px.bar(grp, x="ZONE", y="Employees"), use_container_width=True)
+        st.plotly_chart(px.bar(grp.sort_values("Employees"), x="Employees", y="ZONE", orientation="h", color="Employees", color_continuous_scale="Teal"), use_container_width=True)
 
+    st.markdown("<div class='hr-section'>Talent movement</div>", unsafe_allow_html=True)
     st.subheader("Monthly joining and actual exits — latest 24 months")
     end = pd.Timestamp(asof)
     start = (end.to_period("M") - 23).to_timestamp()
@@ -243,7 +261,7 @@ with p1:
     new = month_series(emp, "DOJ", start, end).reindex(index, fill_value=0)
     exit_ = month_series(emp, "DATEOFLEAVING", start, end).reindex(index, fill_value=0)
     growth = pd.DataFrame({"Month": index.astype(str), "Joined": new.values, "Left": exit_.values})
-    st.plotly_chart(px.line(growth, x="Month", y=["Joined", "Left"], markers=True), use_container_width=True)
+    st.plotly_chart(px.line(growth, x="Month", y=["Joined", "Left"], markers=True, color_discrete_sequence=["#1466b8", "#ef7e47"]), use_container_width=True)
 
 with p2:
     st.subheader("Resignations and Notice Period")
