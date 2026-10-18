@@ -373,12 +373,12 @@ emp_ids=set(emp.EMPLOYEEID.dropna())
 salary=sal_all[sal_all.EMPLOYEEID.isin(emp_ids)].copy()
 snapshot=salary_snapshot(salary,asof)
 rejoining=rejoining_all[rejoining_all.EMPLOYEEID.isin(emp_ids)].copy()
-sections=[("Overview","Overview"),("Resignations & Exits","Resignations"),("Workforce Demographics","Demographics"),
+sections=[("Overview","Overview"),("Resignations & Exits","Resignations"),
           ("Salary & Cost (Provisional)","Salary & Cost"),("Employee Explorer","Employees"),("Re-Joining Analysis","Re-Joining")]
 if st.session_state.get("hr_selected_section") not in [k for k,_ in sections]:
     st.session_state["hr_selected_section"]="Overview"
 with st.container(key="hr_nav_row"):
-    cols=st.columns(6,gap="small")
+    cols=st.columns(len(sections),gap="small")
     for c,(key,label) in zip(cols,sections):
         chosen=st.session_state.hr_selected_section==key
         if c.button(("✓ " if chosen else "")+label,key="hr_nav_exec_"+label,
@@ -533,23 +533,6 @@ elif page=="Resignations & Exits":
                    labels={"x":"Month","y":"Exits"},color_discrete_sequence=["#ee8966"])
         hr_plot(fig,270)
     else:st.info("No recorded exits for selected filters.")
-
-elif page=="Workforce Demographics":
-    k=st.columns(4)
-    for c,field,title in zip(k,["GENDER","AGE_GROUP","SERVICE_GROUP","STATUS"],["Gender mix","Age bands","Tenure bands","Status breakdown"]):
-        with c:
-            st.markdown(f'<div class="hr-section-header">{title}</div>',unsafe_allow_html=True)
-            group=active_emp[field].fillna("Unknown").value_counts()
-            fig=px.pie(names=group.index,values=group.values,hole=.6,
-                       color_discrete_sequence=["#216a9e","#17a5a8","#ffb474","#86a1bf","#c1d0df"])
-            fig.update_layout(showlegend=False);fig.update_traces(textinfo="label+percent")
-            hr_plot(fig,265)
-    st.caption("Age and tenure reflect the selected as-of date; active employees only.")
-    st.markdown('<div class="hr-section-header">Workforce composition by department</div>',unsafe_allow_html=True)
-    top=active_emp.DEPARTMENT.value_counts().head(15).sort_values()
-    fig=px.bar(x=top.values,y=top.index,orientation="h",color_discrete_sequence=["#236a95"])
-    fig.update_layout(xaxis_title="Employees",yaxis_title=None,showlegend=False)
-    hr_plot(fig,400)
 
 elif page=="Salary & Cost (Provisional)":
     st.warning("Payroll calculations are provisional. Salary structure and monthly overrides overlap; deductions and employer contributions require confirmation.")
