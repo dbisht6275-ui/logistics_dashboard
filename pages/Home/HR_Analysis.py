@@ -40,6 +40,8 @@ LEFT JOIN DEPARTMENTMAST DEP ON DEP.DEPTID = S.DEPARTMENTID
 LEFT JOIN DESIGNATIONMAST DESG ON DESG.DESIGNATIONID = S.DESIGNATIONID
 """
 
+DUMMY_EMP_CODES = {"2383", "2001", "2000", "2344"}
+
 EARNING_HEADS = {"BASIC SALARY", "HRA", "MED. ALLW.", "TRPT. ALLW.", "SPECIAL ALLOWNCES"}
 DEDUCTION_HEADS = {"EMPLOYEE PF"}
 EMPLOYER_HEADS = {"EMPLOYER PF", "GRATUITY", "ADMIN CHARGES FOR PF. ACCT 2"}
@@ -66,6 +68,14 @@ def load_data():
     with engine.connect() as con:
         emps = pd.read_sql_query(text(EMPLOYEE_SQL), con)
         salary = pd.read_sql_query(text(SALARY_SQL), con)
+    # Exclude dummy employees before all KPIs, charts, tables and downloads.
+    valid_emps = ~emps["EMPCODE"].astype("string").str.strip().isin(DUMMY_EMP_CODES)
+    emps = emps.loc[valid_emps].copy()
+    valid_ids = set(emps["EMPLOYEEID"].dropna())
+    salary = salary.loc[
+        salary["EMPLOYEEID"].isin(valid_ids)
+        & ~salary["EMPCODE"].astype("string").str.strip().isin(DUMMY_EMP_CODES)
+    ].copy()
     return emps, salary
 
 
@@ -462,7 +472,7 @@ salary=sal_all[sal_all.EMPLOYEEID.isin(emp_ids)].copy()
 snapshot=salary_snapshot(salary,asof)
 rejoining=rejoining_all[rejoining_all.EMPLOYEEID.isin(emp_ids)].copy()
 sections=[("Overview","Overview"),
-          ("Salary & Costs","Salary & Costs"),("Employee List","Employees"),("Rejoining Details","Rejoining")]
+          ("Salary & Costs","Salary & Costs"),("Missing Salary Details","Missing Salary"),("Employee List","Employees"),("Rejoining Details","Rejoining")]
 if st.session_state.get("hr_selected_section") not in [k for k,_ in sections]:
     st.session_state["hr_selected_section"]="Overview"
 with st.container(key="hr_nav_row"):
@@ -603,7 +613,7 @@ if page=="Overview":
 elif page=="Salary & Costs":
     st.markdown('<div class="hr-section-header">Current Gross Salary · TODT is NULL</div>', unsafe_allow_html=True)
     st.caption("Current gross salary includes Basic, HRA and allowances only. PF, ESI, gratuity and other deductions are not included.")
-    names = emp[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "ACTIVE_HEADCOUNT"]].drop_duplicates("EMPLOYEEID")
+    names = emp[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "ACTIVE_HEADCOUNT"]].drop_duplicates("EMPLOYEEID")
     clean = snapshot.loc[~snapshot.AMBIGUOUS_RECORD].copy()
     conflicted_ids = set(snapshot.loc[snapshot.AMBIGUOUS_RECORD, "EMPLOYEEID"])
     clean = clean.loc[~clean.EMPLOYEEID.isin(conflicted_ids)].copy()
@@ -621,46 +631,6 @@ elif page=="Salary & Costs":
         hr_metric_html("Employees With Salary Details", indian_number(len(valid)), f"{len(current):,} active employees"),
         hr_metric_html("Employees Missing Salary Details", indian_number(len(current)-len(valid)), "Salary details need to be checked"),
     ]) + '</div>', unsafe_allow_html=True)
-    # Employees who have no usable current gross salary record.
-    # This includes records missing salary and records with conflicting salary amounts.
-    missing_salary = current.loc[~current.HAS_CURRENT_STRUCTURE].copy()
-    missing_salary["SALARY_ISSUE"] = np.where(
-        missing_salary.EMPLOYEEID.isin(conflicted_ids),
-        "Conflicting Salary Amounts", "Salary Details Not Filled"
-    )
-    st.markdown('<div class="hr-section-header">Salary Details Not Filled - Employee Insights</div>', unsafe_allow_html=True)
-    st.caption("Active employees without a usable current salary structure. Historical or expired salary records are not counted as current salary details.")
-    insight_cols = st.columns(3)
-    with insight_cols[0]:
-        hr_metric("Salary Details Not Filled", indian_number(int((missing_salary.SALARY_ISSUE == "Salary Details Not Filled").sum())), "Active employees without current salary details")
-    with insight_cols[1]:
-        hr_metric("Salary Records Need Review", indian_number(int((missing_salary.SALARY_ISSUE == "Conflicting Salary Amounts").sum())), "Different amounts on the same start date")
-    with insight_cols[2]:
-        coverage = (len(valid) / len(current) * 100) if len(current) else 0
-        hr_metric("Salary Details Completed", f"{coverage:.1f}%", "Share of active employees with valid salary details")
-
-    if missing_salary.empty:
-        st.success("All active employees have usable current salary details.")
-    else:
-        by_branch, by_department = st.columns(2, gap="medium")
-        with by_branch:
-            st.markdown('<div class="hr-section-header">Missing Salary Details by Branch</div>', unsafe_allow_html=True)
-            counts = missing_salary.BRANCH.fillna("Unknown").value_counts().head(10).sort_values()
-            fig = px.bar(x=counts.values, y=counts.index, orientation="h", color_discrete_sequence=["#e18e54"])
-            fig.update_layout(xaxis_title="Employees", yaxis_title=None, showlegend=False)
-            hr_plot(fig, 300)
-        with by_department:
-            st.markdown('<div class="hr-section-header">Missing Salary Details by Department</div>', unsafe_allow_html=True)
-            counts = missing_salary.DEPARTMENT.fillna("Unknown").value_counts().head(10).sort_values()
-            fig = px.bar(x=counts.values, y=counts.index, orientation="h", color_discrete_sequence=["#d78a46"])
-            fig.update_layout(xaxis_title="Employees", yaxis_title=None, showlegend=False)
-            hr_plot(fig, 300)
-        st.markdown('<div class="hr-section-header">Employees With Missing Salary Details</div>', unsafe_allow_html=True)
-        missing_table = missing_salary[["EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "SALARY_ISSUE"]].copy()
-        missing_table = missing_table.rename(columns={"SALARY_ISSUE": "Issue"})
-        show_employee_table(missing_table)
-        download_csv(missing_table, "employees_missing_salary_details")
-
     conflicts = snapshot.loc[snapshot.AMBIGUOUS_RECORD]
     if not conflicts.empty:
         st.warning(f"{len(conflicts)} employee salary records have different amounts for the same start date. These employees are not included in gross salary totals until checked.")
@@ -705,7 +675,7 @@ elif page=="Salary & Costs":
             hr_plot(fig, 300)
 
     st.markdown('<div class="hr-section-header">Employee-wise Current Gross Salary</div>', unsafe_allow_html=True)
-    table = details[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "ACTIVE_HEADCOUNT", "GROSS_SALARY", "HAS_CURRENT_STRUCTURE"]].sort_values("GROSS_SALARY", ascending=False)
+    table = details[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "ACTIVE_HEADCOUNT", "GROSS_SALARY", "HAS_CURRENT_STRUCTURE"]].sort_values("GROSS_SALARY", ascending=False)
     show_employee_table(table)
     download_csv(table, "employee_current_gross_salary")
 
@@ -751,6 +721,56 @@ elif page=="Salary & Costs":
             st.caption("Each salary period is shown separately. Current gross salary uses only salary records without an end date.")
         else:
             st.info("This employee has no mapped salary earnings history.")
+
+elif page=="Missing Salary Details":
+    names = emp[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "ACTIVE_HEADCOUNT"]].drop_duplicates("EMPLOYEEID")
+    conflicted_ids = set(snapshot.loc[snapshot.AMBIGUOUS_RECORD, "EMPLOYEEID"])
+    clean = snapshot.loc[~snapshot.AMBIGUOUS_RECORD & ~snapshot.EMPLOYEEID.isin(conflicted_ids)].copy()
+    employee_gross = clean.groupby("EMPLOYEEID", as_index=False)["AMOUNT"].sum().rename(columns={"AMOUNT": "GROSS_SALARY"})
+    details = names.merge(employee_gross, on="EMPLOYEEID", how="left")
+    details["HAS_CURRENT_STRUCTURE"] = details.GROSS_SALARY.notna()
+    current = details.loc[details.ACTIVE_HEADCOUNT.eq(1)].copy()
+    valid = current.loc[current.HAS_CURRENT_STRUCTURE].copy()
+    # Employees who have no usable current gross salary record.
+    # This includes records missing salary and records with conflicting salary amounts.
+    missing_salary = current.loc[~current.HAS_CURRENT_STRUCTURE].copy()
+    missing_salary["SALARY_ISSUE"] = np.where(
+        missing_salary.EMPLOYEEID.isin(conflicted_ids),
+        "Conflicting Salary Amounts", "Salary Details Not Filled"
+    )
+    st.markdown('<div class="hr-section-header">Missing Salary Details - Employee Insights</div>', unsafe_allow_html=True)
+    st.caption("Active employees without a usable current salary structure. Historical or expired salary records are not counted as current salary details.")
+    insight_cols = st.columns(3)
+    with insight_cols[0]:
+        hr_metric("Salary Details Not Filled", indian_number(int((missing_salary.SALARY_ISSUE == "Salary Details Not Filled").sum())), "Active employees without current salary details")
+    with insight_cols[1]:
+        hr_metric("Salary Records Need Review", indian_number(int((missing_salary.SALARY_ISSUE == "Conflicting Salary Amounts").sum())), "Different amounts on the same start date")
+    with insight_cols[2]:
+        coverage = (len(valid) / len(current) * 100) if len(current) else 0
+        hr_metric("Salary Details Completed", f"{coverage:.1f}%", "Share of active employees with valid salary details")
+
+    if missing_salary.empty:
+        st.success("All active employees have usable current salary details.")
+    else:
+        by_branch, by_department = st.columns(2, gap="medium")
+        with by_branch:
+            st.markdown('<div class="hr-section-header">Missing Salary Details by Branch</div>', unsafe_allow_html=True)
+            counts = missing_salary.BRANCH.fillna("Unknown").value_counts().head(10).sort_values()
+            fig = px.bar(x=counts.values, y=counts.index, orientation="h", color_discrete_sequence=["#e18e54"])
+            fig.update_layout(xaxis_title="Employees", yaxis_title=None, showlegend=False)
+            hr_plot(fig, 300)
+        with by_department:
+            st.markdown('<div class="hr-section-header">Missing Salary Details by Department</div>', unsafe_allow_html=True)
+            counts = missing_salary.DEPARTMENT.fillna("Unknown").value_counts().head(10).sort_values()
+            fig = px.bar(x=counts.values, y=counts.index, orientation="h", color_discrete_sequence=["#d78a46"])
+            fig.update_layout(xaxis_title="Employees", yaxis_title=None, showlegend=False)
+            hr_plot(fig, 300)
+        st.markdown('<div class="hr-section-header">Employees With Missing Salary Details</div>', unsafe_allow_html=True)
+        missing_table = missing_salary[["EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "SALARY_ISSUE"]].copy()
+        missing_table = missing_table.rename(columns={"SALARY_ISSUE": "Issue"})
+        show_employee_table(missing_table)
+        download_csv(missing_table, "employees_missing_salary_details")
+
 
 elif page=="Employee List":
     st.markdown('<div class="hr-section-header">Employee directory</div>',unsafe_allow_html=True)
