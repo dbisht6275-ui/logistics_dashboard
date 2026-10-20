@@ -40,7 +40,7 @@ LEFT JOIN DEPARTMENTMAST DEP ON DEP.DEPTID = S.DEPARTMENTID
 LEFT JOIN DESIGNATIONMAST DESG ON DESG.DESIGNATIONID = S.DESIGNATIONID
 """
 
-DUMMY_EMP_CODES = {"2383", "2001", "2000", "2344"}
+DUMMY_EMP_CODES = {"2383", "2001", "2000", "2344", "1993"}
 
 EARNING_HEADS = {"BASIC SALARY", "HRA", "MED. ALLW.", "TRPT. ALLW.", "SPECIAL ALLOWNCES"}
 DEDUCTION_HEADS = {"EMPLOYEE PF"}
@@ -514,6 +514,47 @@ if page=="Overview":
                   f"{indian_number(male_count)} / {indian_number(female_count)}",
                   "Male / Female (selected employees)")
     hr_metric_grid([(label, indian_number(val), detail) for label, val, detail in kpis] + [gender_kpi])
+    # Overview salary: same current-gross method as Salary & Costs.
+    # Include only active employees and valid open-ended earning records.
+    salary_clean = snapshot.loc[~snapshot.AMBIGUOUS_RECORD].copy()
+    salary_conflict_ids = set(snapshot.loc[snapshot.AMBIGUOUS_RECORD, "EMPLOYEEID"])
+    salary_clean = salary_clean.loc[~salary_clean.EMPLOYEEID.isin(salary_conflict_ids)]
+    salary_totals = salary_clean.groupby("EMPLOYEEID", as_index=False)["AMOUNT"].sum()
+    overview_salary = active_emp[["EMPLOYEEID", "DEPARTMENT", "BRANCH"]].drop_duplicates("EMPLOYEEID").merge(
+        salary_totals, on="EMPLOYEEID", how="left"
+    )
+    overview_salary_valid = overview_salary.loc[overview_salary.AMOUNT.notna()].copy()
+    monthly_gross = float(overview_salary_valid.AMOUNT.sum())
+    salary_filled = len(overview_salary_valid)
+    salary_missing = len(overview_salary) - salary_filled
+    salary_coverage = (100 * salary_filled / len(overview_salary)) if len(overview_salary) else 0
+
+    st.markdown('<div class="hr-section-header">Salary Overview · Active Employees</div>', unsafe_allow_html=True)
+    hr_metric_grid([
+        ("Monthly Gross Salary", "₹" + indian_number(monthly_gross), "Basic, HRA and allowances only"),
+        ("Estimated Yearly Gross Salary", "₹" + indian_number(monthly_gross * 12), "Monthly salary × 12"),
+        ("Average Monthly Salary", "₹" + indian_number(overview_salary_valid.AMOUNT.mean()) if salary_filled else "—", "Employees with valid salary records"),
+        ("Salary Details Filled", indian_number(salary_filled), f"{salary_coverage:.1f}% of active employees"),
+        ("Salary Details Missing / Review", indian_number(salary_missing), "Includes employees with conflicting salary records"),
+    ])
+    left_sal, right_sal = st.columns(2, gap="medium")
+    with left_sal:
+        st.markdown('<div class="hr-section-header">Highest Salary Cost by Department · Top 8</div>', unsafe_allow_html=True)
+        if not overview_salary_valid.empty:
+            dept_sal = overview_salary_valid.groupby("DEPARTMENT", dropna=False)["AMOUNT"].sum().nlargest(8).sort_values()
+            fig = px.bar(x=dept_sal.values, y=dept_sal.index.fillna("Unknown").astype(str), orientation="h", color_discrete_sequence=["#1682ae"])
+            fig.update_layout(xaxis_title="Monthly Gross Salary (₹)", yaxis_title=None, showlegend=False)
+            hr_plot(fig, 310)
+        else:
+            st.info("No salary details available for active employees.")
+    with right_sal:
+        st.markdown('<div class="hr-section-header">Salary Details · Filled vs Missing</div>', unsafe_allow_html=True)
+        fig = px.bar(x=["Filled", "Missing / Review"], y=[salary_filled, salary_missing],
+                     color=["Filled", "Missing / Review"], color_discrete_map={"Filled":"#13a49c", "Missing / Review":"#eaa06a"})
+        fig.update_layout(xaxis_title=None, yaxis_title="Employees", showlegend=False)
+        hr_plot(fig, 310)
+    st.caption("Salary figures are indicative gross earnings from open-ended salary records (TODT NULL); deductions and employer costs are excluded. Employees with conflicting entries are excluded from salary totals.")
+
     st.markdown('<div class="hr-section-header">People movement · Year to date</div>',unsafe_allow_html=True)
     hr_metric_grid([
        ("Joined This Year",indian_number(join_ytd),"Based on joining dates"),
