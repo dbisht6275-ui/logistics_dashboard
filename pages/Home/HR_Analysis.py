@@ -258,8 +258,29 @@ def month_series(data, col, beginning, ending):
     return dates.dt.to_period("M").value_counts().sort_index()
 
 
+DISPLAY_COLUMNS = {
+    "EMPLOYEEID": "Employee ID", "EMPCODE": "Employee Code", "EMPNAME": "Employee Name",
+    "ZONE": "Zone", "BRANCH": "Branch", "DEPARTMENT": "Department", "GENDER": "Gender",
+    "DOJ": "Joining Date", "DOB": "Date of Birth", "AGE": "Age",
+    "SERVICE_YEARS": "Years Worked", "RESIGNDT": "Resignation Date",
+    "DATEOFLEAVING": "Last Working Date", "STATUS": "Employee Status",
+    "NOTICE_DAYS_REMAINING": "Notice Days Left", "ACTIVE_HEADCOUNT": "Active Employee",
+    "GROSS_SALARY": "Monthly Gross Salary", "HAS_CURRENT_STRUCTURE": "Salary Details Available",
+    "FROMDT": "Salary Start Date", "TODT": "Salary End Date",
+    "INCREASE_AMOUNT": "Salary Change (Amount)", "INCREASE_PERCENT": "Salary Change (%)",
+    "PREVIOUS_EMPCODE": "Previous Employee Code", "PREVIOUS_DOJ": "Previous Joining Date",
+    "PREVIOUS_LWD": "Previous Last Working Date", "DAYS_BETWEEN": "Days Between Jobs",
+    "REJOINING_STATUS": "Rejoining Status", "MATCH_METHOD": "Matched Using",
+    "AADHAAR_MASKED": "Aadhaar (Hidden)", "PAN_MASKED": "PAN (Hidden)",
+}
+
+
+def show_employee_table(data):
+    st.dataframe(data.rename(columns=DISPLAY_COLUMNS), use_container_width=True, hide_index=True)
+
+
 def download_csv(data, title):
-    st.download_button("Download CSV", data.to_csv(index=False).encode("utf-8-sig"),
+    st.download_button("Download CSV", data.rename(columns=DISPLAY_COLUMNS).to_csv(index=False).encode("utf-8-sig"),
                        file_name=f"{title}.csv", mime="text/csv", key=f"download_{title}")
 
 
@@ -319,14 +340,14 @@ st.markdown('''<style>
 # Presentation-only mapping; SQL, HR logic and calculations remain unchanged.
 HR_KPI_STYLES = {
     "Active Employees": ("👥", "#075985", "#0ea5e9"),
-    "Resigned, still employed": ("📨", "#9a3412", "#f97316"),
-    "LWD pending": ("⏳", "#a16207", "#eab308"),
-    "Completed exits": ("🚪", "#6d28d9", "#a78bfa"),
-    "Re-joining Employees": ("🔄", "#047857", "#34d399"),
-    "Joined YTD": ("📈", "#0369a1", "#38bdf8"),
-    "Exited YTD": ("📉", "#b45309", "#f59e0b"),
-    "Net movement YTD": ("⚖️", "#0f766e", "#2dd4bf"),
-    "Indicative exit ratio": ("📊", "#7c3aed", "#a78bfa"),
+    "Resigned Employees Still Working": ("📨", "#9a3412", "#f97316"),
+    "Leaving Date Not Updated": ("⏳", "#a16207", "#eab308"),
+    "Employees Left": ("🚪", "#6d28d9", "#a78bfa"),
+    "Rejoining Employees": ("🔄", "#047857", "#34d399"),
+    "Joined This Year": ("📈", "#0369a1", "#38bdf8"),
+    "Left This Year": ("📉", "#b45309", "#f59e0b"),
+    "Net Employee Change This Year": ("⚖️", "#0f766e", "#2dd4bf"),
+    "Employee Leaving Rate (Estimate)": ("📊", "#7c3aed", "#a78bfa"),
 }
 HR_KPI_FALLBACK = ("📌", "#1d4ed8", "#60a5fa")
 
@@ -382,8 +403,8 @@ def hr_plot(fig, height=300):
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar":False})
 
 
-st.markdown('''<div class="hr-topbar"><div><div class="hr-kicker">SUGAM  /  PEOPLE INTELLIGENCE</div>
-<strong>HR Command Center</strong></div><div class="hr-top-caption">Workforce &nbsp;•&nbsp; Retention &nbsp;•&nbsp; Re-Joining &nbsp;•&nbsp; Payroll</div></div>''',unsafe_allow_html=True)
+st.markdown('''<div class="hr-topbar"><div><div class="hr-kicker">SUGAM  /  EMPLOYEE REPORTS</div>
+<strong>HR Dashboard</strong></div><div class="hr-top-caption">Employees &nbsp;•&nbsp; Resignations &nbsp;•&nbsp; Rejoining &nbsp;•&nbsp; Salary</div></div>''',unsafe_allow_html=True)
 
 try:
     employees_raw, salary_raw = load_data()
@@ -395,7 +416,7 @@ except Exception as exc:
 
 with st.container(key="hr_filter_bar"):
     filter_cols = st.columns([1,1.1,1.1,1.25,1,.68],gap="small")
-    asof = filter_cols[0].date_input("As of date",value=date.today(),max_value=date.today(),key="hr_asof_exec")
+    asof = filter_cols[0].date_input("Report Date",value=date.today(),max_value=date.today(),key="hr_asof_exec")
     emp_all = prepare_employees(employees_raw,asof)
     rejoining_all = prepare_rejoining(emp_all)
     sal_all = prepare_salary(salary_raw)
@@ -415,8 +436,8 @@ emp_ids=set(emp.EMPLOYEEID.dropna())
 salary=sal_all[sal_all.EMPLOYEEID.isin(emp_ids)].copy()
 snapshot=salary_snapshot(salary,asof)
 rejoining=rejoining_all[rejoining_all.EMPLOYEEID.isin(emp_ids)].copy()
-sections=[("Overview","Overview"),("Resignations & Exits","Resignations"),
-          ("Salary & Cost (Provisional)","Salary & Cost"),("Employee Explorer","Employees"),("Re-Joining Analysis","Re-Joining")]
+sections=[("Overview","Overview"),("Resignations & Employees Left","Resignations"),
+          ("Salary & Costs","Salary & Costs"),("Employee List","Employees"),("Rejoining Details","Rejoining")]
 if st.session_state.get("hr_selected_section") not in [k for k,_ in sections]:
     st.session_state["hr_selected_section"]="Overview"
 with st.container(key="hr_nav_row"):
@@ -445,19 +466,19 @@ if page=="Overview":
        (emp.DATEOFLEAVING.isna() | (emp.DATEOFLEAVING>=year_start))).sum())
     attrition=(exit_ytd / ((base_headcount+active)/2)*100) if (base_headcount+active)>0 else 0
     kpis=[
-       ("Active workforce",active,"As of selected date"),
-       ("Resigned, still employed",resigned,"Includes notice & LWD pending"),
-       ("LWD pending",pending,"HR follow-up required"),
-       ("Completed exits",exited,"Cumulative exits"),
-       ("Re-joining candidates",len(rejoining),"Aadhaar/PAN linked"),
+       ("Active Employees",active,"On the selected report date"),
+       ("Resigned Employees Still Working",resigned,"Includes notice period and missing leaving dates"),
+       ("Leaving Date Not Updated",pending,"HR needs to update leaving date"),
+       ("Employees Left",exited,"Total employees who left"),
+       ("Possible Rejoining Employees",len(rejoining),"Matched using Aadhaar or PAN"),
     ]
     hr_metric_grid([(label, f"{val:,}", detail) for label, val, detail in kpis])
     st.markdown('<div class="hr-section-header">People movement · Year to date</div>',unsafe_allow_html=True)
     hr_metric_grid([
-       ("Joined YTD",f"{join_ytd:,}","Recorded joining dates"),
-       ("Exited YTD",f"{exit_ytd:,}","Recorded last working dates"),
-       ("Net movement YTD",f"{net_ytd:+,}","Joinings less exits"),
-       ("Indicative exit ratio",f"{attrition:.1f}%","YTD exits / avg headcount")
+       ("Joined This Year",f"{join_ytd:,}","Based on joining dates"),
+       ("Left This Year",f"{exit_ytd:,}","Based on recorded leaving dates"),
+       ("Net Employee Change This Year",f"{net_ytd:+,}","Joined minus left"),
+       ("Employee Leaving Rate (Estimate)",f"{attrition:.1f}%","Left this year / average employees")
     ])
     a,b=st.columns([1.15,1],gap="medium")
     with a:
@@ -468,7 +489,7 @@ if page=="Overview":
             fig.update_traces(textposition="outside",cliponaxis=False,marker_line_width=0)
             fig.update_layout(xaxis_title=None,yaxis_title=None,showlegend=False,margin=dict(l=22,r=60,t=20,b=35),xaxis=dict(range=[0,max(counts.values)*1.18]))
             hr_plot(fig,370)
-        else:st.info("No active department data")
+        else:st.info("No active employee data by department")
     with b:
         st.markdown('<div class="hr-section-header">Active employees · Zone distribution</div>',unsafe_allow_html=True)
         counts=active_emp.ZONE.fillna("Unknown").value_counts().head(10).sort_values()
@@ -477,9 +498,9 @@ if page=="Overview":
             fig.update_traces(textposition="outside",cliponaxis=False)
             fig.update_layout(xaxis_title=None,yaxis_title=None,showlegend=False,xaxis=dict(range=[0,max(counts.values)*1.2]))
             hr_plot(fig,370)
-        else:st.info("No active zone data")
+        else:st.info("No active employee data by zone")
     st.markdown('<div class="hr-section-header">Workforce movement · Monthly / Quarterly / Yearly</div>',unsafe_allow_html=True)
-    interval=st.segmented_control("Trend period",options=["M","Q","Y"],default="M",key="hr_growth_period",label_visibility="collapsed") if hasattr(st,"segmented_control") else st.radio("Trend period",["M","Q","Y"],horizontal=True,key="hr_growth_period")
+    interval=st.segmented_control("Show Data By",options=["M","Q","Y"],default="M",key="hr_growth_period",label_visibility="collapsed") if hasattr(st,"segmented_control") else st.radio("Show Data By",["M","Q","Y"],horizontal=True,key="hr_growth_period")
     period_code={"M":"M","Q":"Q","Y":"Y"}[interval]
     last_period=asof_ts.to_period(period_code)
     periods=pd.period_range(end=last_period,periods={"M":12,"Q":8,"Y":6}[interval],freq=period_code)
@@ -499,7 +520,7 @@ if page=="Overview":
     movements["Closing Headcount"]=closing
     fig=go.Figure()
     fig.add_trace(go.Scatter(x=movements.Period,y=movements["Closing Headcount"],mode="lines+markers+text",
-        text=movements["Closing Headcount"],textposition="top center",name="Closing headcount",
+        text=movements["Closing Headcount"],textposition="top center",name="Total Employees at Period End",
         line=dict(color="#136b9c",width=3),marker=dict(size=7,color="#136b9c"),textfont=dict(color="#123B70",size=11)))
     fig.update_layout(showlegend=False,xaxis_title=None,yaxis_title="Employees",margin=dict(l=20,r=55,t=36,b=45))
     hr_plot(fig,285)
@@ -507,7 +528,7 @@ if page=="Overview":
     fig=go.Figure()
     fig.add_bar(x=movements.Period,y=movements.Joined,name="Joined",marker_color="#2786ae")
     fig.add_bar(x=movements.Period,y=movements.Exited,name="Exited",marker_color="#f59e7c")
-    fig.add_trace(go.Scatter(x=movements.Period,y=movements["Net Change"],name="Net change",mode="lines+markers",
+    fig.add_trace(go.Scatter(x=movements.Period,y=movements["Net Change"],name="Net Change",mode="lines+markers",
        line=dict(color="#13436f",width=2),marker=dict(size=6)))
     fig.update_layout(barmode="group",yaxis_title="Employees")
     hr_plot(fig,280)
@@ -540,38 +561,38 @@ if page=="Overview":
             labels=["<25","25-30","31-40","41-50","51+"])
         exit_age=exited_data.EXIT_AGE_GROUP.value_counts().reindex(["<25","25-30","31-40","41-50","51+"],fill_value=0)
         fig=px.bar(x=exit_age.index,y=exit_age.values,color_discrete_sequence=["#e47b5c"])
-        fig.update_layout(showlegend=False,xaxis_title="Age at exit",yaxis_title="Employees")
+        fig.update_layout(showlegend=False,xaxis_title="Age When Leaving",yaxis_title="Employees")
         hr_plot(fig,295)
         if int(exit_age.sum()):
             group=exit_age.idxmax()
-            st.markdown(f'<div class="hr-note"><b>Highest exits by count:</b> {escape(str(group))} age group · <b>{int(exit_age.max()):,}</b> employees ({exit_age.max()/exit_age.sum():.1%} of exits with valid DOB). This is exit volume, not age-specific attrition rate.</div>',unsafe_allow_html=True)
+            st.markdown(f'<div class="hr-note"><b>Highest number of employees who left:</b> {escape(str(group))} age group · <b>{int(exit_age.max()):,}</b> employees ({exit_age.max()/exit_age.sum():.1%} of exits with valid DOB). This is the number who left, not the percentage of each age group.</div>',unsafe_allow_html=True)
     else:
         st.info("No employee exits with valid DOB for the selected filters and as-of date.")
 
-elif page=="Resignations & Exits":
+elif page=="Resignations & Employees Left":
     waiting=emp[emp.RESIGNED_NOT_LEFT.eq(1)].copy()
     k=st.columns(4)
-    for c,label,value,desc in zip(k,["Resigned, still employed","LWD confirmed","LWD pending","Leaving in 30 days"],
+    for c,label,value,desc in zip(k,["Resigned Employees Still Working","Leaving Date Confirmed","Leaving Date Not Updated","Leaving Within 30 Days"],
         [len(waiting),waiting.STATUS.eq("SERVING NOTICE PERIOD").sum(),waiting.STATUS.eq("RESIGNED - LWD PENDING").sum(),waiting.NOTICE_DAYS_REMAINING.between(0,30).sum()],
-        ["Includes notice period","Future exit planned","Needs HR update","Priority handover"]):
+        ["Includes notice period","Leaving date is recorded","HR needs to update this","Plan work handover"]):
         with c:hr_metric(label,f"{int(value):,}",desc)
     st.markdown('<div class="hr-section-header">Notice period tracker</div>',unsafe_allow_html=True)
     cols=["EMPCODE","EMPNAME","ZONE","BRANCH","DEPARTMENT","RESIGNDT","DATEOFLEAVING","NOTICE_DAYS_REMAINING","STATUS"]
-    st.dataframe(waiting[cols].sort_values("RESIGNDT",ascending=False),use_container_width=True,hide_index=True)
+    show_employee_table(waiting[cols].sort_values("RESIGNDT",ascending=False))
     download_csv(waiting[cols],"resigned_not_left")
     st.markdown('<div class="hr-section-header">Monthly completed exits</div>',unsafe_allow_html=True)
     years=sorted(emp.DATEOFLEAVING.dropna().dt.year.unique().tolist())
     if years:
-        year=st.selectbox("Exit year",years,index=len(years)-1)
+        year=st.selectbox("Year Employees Left",years,index=len(years)-1)
         months=emp.loc[(emp.DATEOFLEAVING.dt.year==year)&(emp.DATEOFLEAVING<=pd.Timestamp(asof)),"DATEOFLEAVING"].dt.month.value_counts().reindex(range(1,13),fill_value=0)
         fig=px.bar(x=[calendar.month_abbr[i] for i in range(1,13)],y=months.values,
-                   labels={"x":"Month","y":"Exits"},color_discrete_sequence=["#ee8966"])
+                   labels={"x":"Month","y":"Employees Left"},color_discrete_sequence=["#ee8966"])
         hr_plot(fig,270)
-    else:st.info("No recorded exits for selected filters.")
+    else:st.info("No employees left under these filters.")
 
-elif page=="Salary & Cost (Provisional)":
+elif page=="Salary & Costs":
     st.markdown('<div class="hr-section-header">Current Gross Salary · TODT is NULL</div>', unsafe_allow_html=True)
-    st.caption("Current salary uses open-ended Basic, HRA and allowances only. PF, ESI, gratuity and all deductions are excluded.")
+    st.caption("Current gross salary includes Basic, HRA and allowances only. PF, ESI, gratuity and other deductions are not included.")
     names = emp[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "ACTIVE_HEADCOUNT"]].drop_duplicates("EMPLOYEEID")
     clean = snapshot.loc[~snapshot.AMBIGUOUS_RECORD].copy()
     conflicted_ids = set(snapshot.loc[snapshot.AMBIGUOUS_RECORD, "EMPLOYEEID"])
@@ -584,15 +605,15 @@ elif page=="Salary & Cost (Provisional)":
     valid = current.loc[current.HAS_CURRENT_STRUCTURE].copy()
     total = float(valid.GROSS_SALARY.sum())
     st.markdown('<div class="hr-kpi-grid">' + ''.join([
-        hr_metric_html("Current gross / month", f"₹{total:,.0f}", "Active employees with mapped structure"),
-        hr_metric_html("Annualized gross", f"₹{total * 12:,.0f}", "Monthly gross × 12"),
-        hr_metric_html("Average gross", f"₹{valid.GROSS_SALARY.mean():,.0f}" if len(valid) else "—", "Per salary-mapped active employee"),
-        hr_metric_html("Salary-mapped employees", f"{len(valid):,}", f"{len(current):,} active employees"),
-        hr_metric_html("Missing gross structure", f"{len(current)-len(valid):,}", "Requires salary-data review"),
+        hr_metric_html("Monthly Gross Salary", f"₹{total:,.0f}", "Active employees with salary records"),
+        hr_metric_html("Yearly Gross Salary", f"₹{total * 12:,.0f}", "Monthly gross multiplied by 12"),
+        hr_metric_html("Average Monthly Gross", f"₹{valid.GROSS_SALARY.mean():,.0f}" if len(valid) else "—", "Per active employee with salary details"),
+        hr_metric_html("Employees With Salary Details", f"{len(valid):,}", f"{len(current):,} active employees"),
+        hr_metric_html("Employees Missing Salary Details", f"{len(current)-len(valid):,}", "Salary details need to be checked"),
     ]) + '</div>', unsafe_allow_html=True)
     conflicts = snapshot.loc[snapshot.AMBIGUOUS_RECORD]
     if not conflicts.empty:
-        st.warning(f"{len(conflicts)} employee/head combinations have conflicting open-ended amounts with the same FROMDT. Affected employees are excluded from gross totals until reviewed.")
+        st.warning(f"{len(conflicts)} employee salary records have different amounts for the same start date. These employees are not included in gross salary totals until checked.")
 
     left, right = st.columns(2, gap="medium")
     with left:
@@ -600,7 +621,7 @@ elif page=="Salary & Cost (Provisional)":
         if not valid.empty:
             d = valid.groupby("DEPARTMENT", dropna=False).GROSS_SALARY.sum().nlargest(10).sort_values()
             fig = px.bar(x=d.values, y=d.index.astype(str), orientation="h", color_discrete_sequence=["#1682ae"])
-            fig.update_layout(xaxis_title="Monthly gross (₹)", yaxis_title=None, showlegend=False)
+            fig.update_layout(xaxis_title="Monthly Gross Salary (₹)", yaxis_title=None, showlegend=False)
             hr_plot(fig, 330)
         else:
             st.info("No active employees with an open-ended gross structure.")
@@ -609,7 +630,7 @@ elif page=="Salary & Cost (Provisional)":
         if not valid.empty:
             d = valid.groupby("BRANCH", dropna=False).GROSS_SALARY.sum().nlargest(10).sort_values()
             fig = px.bar(x=d.values, y=d.index.astype(str), orientation="h", color_discrete_sequence=["#20a79e"])
-            fig.update_layout(xaxis_title="Monthly gross (₹)", yaxis_title=None, showlegend=False)
+            fig.update_layout(xaxis_title="Monthly Gross Salary (₹)", yaxis_title=None, showlegend=False)
             hr_plot(fig, 330)
         else:
             st.info("No branch-level salary data available.")
@@ -623,25 +644,25 @@ elif page=="Salary & Cost (Provisional)":
             band = pd.cut(valid.GROSS_SALARY, bins=ranges, labels=labels, include_lowest=True, right=False)
             counts = band.value_counts().reindex(labels, fill_value=0)
             fig = px.bar(x=counts.index.astype(str), y=counts.values, color_discrete_sequence=["#4567ba"])
-            fig.update_layout(xaxis_title="Monthly gross band (₹)", yaxis_title="Employees")
+            fig.update_layout(xaxis_title="Monthly Gross Salary Range (₹)", yaxis_title="Employees")
             hr_plot(fig, 300)
     with right:
         st.markdown('<div class="hr-section-header">Current Gross · Earning Components</div>', unsafe_allow_html=True)
         if not clean.empty:
             components = clean.loc[clean.EMPLOYEEID.isin(set(valid.EMPLOYEEID))].groupby("SALARY_HEAD_CLEAN").AMOUNT.sum().sort_values(ascending=False)
             fig = px.bar(x=components.index, y=components.values, color_discrete_sequence=["#6e64b5"])
-            fig.update_layout(xaxis_title=None, yaxis_title="Monthly gross (₹)")
+            fig.update_layout(xaxis_title=None, yaxis_title="Monthly Gross Salary (₹)")
             hr_plot(fig, 300)
 
     st.markdown('<div class="hr-section-header">Employee-wise Current Gross Salary</div>', unsafe_allow_html=True)
     table = details[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "ACTIVE_HEADCOUNT", "GROSS_SALARY", "HAS_CURRENT_STRUCTURE"]].sort_values("GROSS_SALARY", ascending=False)
-    st.dataframe(table, hide_index=True, use_container_width=True)
+    show_employee_table(table)
     download_csv(table, "employee_current_gross_salary")
 
     st.markdown('<div class="hr-section-header">Employee Salary History · FROMDT to TODT</div>', unsafe_allow_html=True)
     options = names[["EMPLOYEEID", "EMPCODE", "EMPNAME"]].copy()
     options["DISPLAY"] = options.EMPCODE.fillna("").astype(str) + " | " + options.EMPNAME.fillna("").astype(str)
-    selected = st.selectbox("Select an employee", options.DISPLAY.tolist() if len(options) else ["No employees"], key="salary_history_employee")
+    selected = st.selectbox("Select an employee", options.DISPLAY.tolist() if len(options) else ["No Employees Found"], key="salary_history_employee")
     if len(options):
         selected_id = options.loc[options.DISPLAY.eq(selected), "EMPLOYEEID"].iloc[0]
         periods = gross_salary_history(salary.loc[salary.EMPLOYEEID.eq(selected_id)])
@@ -657,7 +678,7 @@ elif page=="Salary & Cost (Provisional)":
                  f"-₹{abs(change):,.0f}" if change < 0 else "No change")
                 for change in periods["INCREASE_AMOUNT"]
             ]
-            st.dataframe(periods.drop(columns=["CHANGE_LABEL"]), hide_index=True, use_container_width=True)
+            show_employee_table(periods.drop(columns=["CHANGE_LABEL"]))
             download_csv(periods.drop(columns=["CHANGE_LABEL"]), "employee_gross_salary_history")
             labels = [
                 f"₹{gross:,.0f}<br>({change})" if i else f"₹{gross:,.0f}<br>(First record)"
@@ -667,58 +688,58 @@ elif page=="Salary & Cost (Provisional)":
             fig.add_trace(go.Scatter(
                 x=periods["FROMDT"], y=periods["GROSS_SALARY"],
                 mode="lines+markers+text", text=labels, textposition="top center",
-                name="Gross salary", line=dict(color="#19659b", width=3),
+                name="Gross Salary", line=dict(color="#19659b", width=3),
                 marker=dict(size=9, color="#19659b"),
                 textfont=dict(color="#123B70", size=11),
                 customdata=periods[["CHANGE_LABEL"]].to_numpy(),
                 hovertemplate="Date: %{x|%d %b %Y}<br>Gross salary: ₹%{y:,.0f}<br>Change: %{customdata[0]}<extra></extra>"
             ))
-            fig.update_layout(xaxis_title="Period start", yaxis_title="Gross salary (₹)",
+            fig.update_layout(xaxis_title="Salary Start Date", yaxis_title="Gross Salary (₹)",
                               height=350, margin=dict(l=25, r=35, t=65, b=35),
                               showlegend=False)
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-            st.caption("History shows each original FROMDT–TODT period separately, including overlapping closed periods; only TODT NULL records define current gross.")
+            st.caption("Each salary period is shown separately. Current gross salary uses only salary records without an end date.")
         else:
             st.info("This employee has no mapped salary earnings history.")
 
-elif page=="Employee Explorer":
+elif page=="Employee List":
     st.markdown('<div class="hr-section-header">Employee directory</div>',unsafe_allow_html=True)
     q=st.text_input("Search employee code or name",placeholder="Type employee code or name…")
     shown=emp.copy()
     if q.strip():shown=shown[shown.EMPNAME.fillna("").astype(str).str.contains(q,case=False,regex=False)|shown.EMPCODE.fillna("").astype(str).str.contains(q,case=False,regex=False)]
     col=["EMPLOYEEID","EMPCODE","EMPNAME","ZONE","BRANCH","DEPARTMENT","GENDER","DOJ","AGE","SERVICE_YEARS","RESIGNDT","DATEOFLEAVING","STATUS"]
-    st.dataframe(shown[col],use_container_width=True,hide_index=True)
+    show_employee_table(shown[col])
     download_csv(shown[col],"employees_dashboard")
-    with st.expander("Data quality monitor"):
+    with st.expander("Check Missing or Incorrect Data"):
         st.write("Duplicate employee IDs:",int(emp_all.EMPLOYEEID.duplicated().sum()))
         st.write("Missing DOJ:",int(emp_all.DOJ.isna().sum()))
         st.write("LWD before joining:",int(((emp_all.DATEOFLEAVING<emp_all.DOJ)&emp_all.DATEOFLEAVING.notna()).sum()))
         st.write("Resignation date after leaving:",int(((emp_all.RESIGNDT>emp_all.DATEOFLEAVING)&emp_all.RESIGNDT.notna()).sum()))
         st.write("Salary lines without FROMDT:",int(sal_all.FROMDT.isna().sum()))
 
-elif page=="Re-Joining Analysis":
+elif page=="Rejoining Details":
     confirmed=rejoining.REJOINING_STATUS.eq("REJOINED - PRIOR EXIT RECORDED")
     review=rejoining.REJOINING_STATUS.str.startswith("REVIEW",na=False)
     c=st.columns(4)
-    for box,label,num,sub in zip(c,["Potential re-joins","Confirmed previous exits","Require review","Matched by PAN only"],
+    for box,label,num,sub in zip(c,["Possible Rejoining Employees","Previous Leaving Date Available","Need Checking","Matched Using PAN Only"],
                                  [len(rejoining),int(confirmed.sum()),int(review.sum()),int(rejoining.MATCH_METHOD.eq("PAN").sum())],
-                                 ["Multiple employee IDs","Previous LWD before new DOJ","History or identity anomaly","Aadhaar match unavailable"]):
+                                 ["Employees with more than one ID","Previous leaving date is before joining again","Employee details need checking","Only PAN matched"]):
         with box:hr_metric(label,f"{num:,}",sub)
-    st.markdown('<div class="hr-note">Matching priority: Aadhaar and PAN; both identifiers matching gives higher confidence. Conflicting identifiers, missing prior LWD or overlapping employment must be reviewed. Full identity numbers are never displayed.</div>',unsafe_allow_html=True)
-    if rejoining.empty:st.info("No candidate re-joining records under the current filters.")
+    st.markdown('<div class="hr-note">Employees are matched using Aadhaar and PAN. If both match, the result is more reliable. Check differences in IDs, missing leaving dates, or overlapping job dates. Full ID numbers are hidden.</div>',unsafe_allow_html=True)
+    if rejoining.empty:st.info("No possible rejoining employees found for these filters.")
     else:
         a,b=st.columns(2)
         with a:
             cat=rejoining.MATCH_METHOD.value_counts()
-            fig=px.bar(x=cat.index,y=cat.values,labels={"x":"Match method","y":"Records"},color_discrete_sequence=["#1e799d"])
+            fig=px.bar(x=cat.index,y=cat.values,labels={"x":"Matched Using","y":"Employees"},color_discrete_sequence=["#1e799d"])
             fig.update_layout(showlegend=False);hr_plot(fig,225)
         with b:
             cat=rejoining.REJOINING_STATUS.value_counts()
             fig=px.bar(x=cat.values,y=cat.index,orientation="h",color_discrete_sequence=["#eaa06a"])
-            fig.update_layout(xaxis_title="Records",yaxis_title=None,showlegend=False);hr_plot(fig,225)
-        status=st.multiselect("Review status",sorted(rejoining.REJOINING_STATUS.unique()),key="hr_exec_rejoin_status")
+            fig.update_layout(xaxis_title="Employees",yaxis_title=None,showlegend=False);hr_plot(fig,225)
+        status=st.multiselect("Checking Status",sorted(rejoining.REJOINING_STATUS.unique()),key="hr_exec_rejoin_status")
         shown=rejoining[rejoining.REJOINING_STATUS.isin(status)] if status else rejoining
         cols=["EMPCODE","EMPNAME","MATCH_METHOD","AADHAAR_MASKED","PAN_MASKED","ZONE","BRANCH","DEPARTMENT","DOJ","PREVIOUS_EMPCODE","PREVIOUS_DOJ","PREVIOUS_LWD","DAYS_BETWEEN","REJOINING_STATUS","STATUS"]
-        st.dataframe(shown[cols].sort_values("DOJ",ascending=False),use_container_width=True,hide_index=True)
+        show_employee_table(shown[cols].sort_values("DOJ",ascending=False))
         download_csv(shown[cols],"hr_rejoining_review")
 
