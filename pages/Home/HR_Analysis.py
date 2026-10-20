@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from io import BytesIO
-import calendar
 from html import escape
 
 import numpy as np
@@ -275,8 +274,31 @@ DISPLAY_COLUMNS = {
 }
 
 
+def indian_number(value, decimals=0):
+    """Format numeric display using Indian grouping: 12,34,567."""
+    if pd.isna(value):
+        return "—"
+    sign = "-" if float(value) < 0 else ""
+    regular = f"{abs(float(value)):.{decimals}f}"
+    whole, dot, fraction = regular.partition(".")
+    if len(whole) > 3:
+        last_three = whole[-3:]
+        prefix = whole[:-3]
+        groups = []
+        while prefix:
+            groups.insert(0, prefix[-2:])
+            prefix = prefix[:-2]
+        whole = ",".join(groups + [last_three])
+    return sign + whole + ("." + fraction if dot else "")
+
+
 def show_employee_table(data):
-    st.dataframe(data.rename(columns=DISPLAY_COLUMNS), use_container_width=True, hide_index=True)
+    shown = data.rename(columns=DISPLAY_COLUMNS).copy()
+    for col in ["Monthly Gross Salary", "Salary Change (Amount)", "BASIC SALARY", "HRA",
+                "MED. ALLW.", "TRPT. ALLW.", "SPECIAL ALLOWNCES"]:
+        if col in shown.columns:
+            shown[col] = shown[col].apply(lambda x: indian_number(x, 2))
+    st.dataframe(shown, use_container_width=True, hide_index=True)
 
 
 def download_csv(data, title):
@@ -388,7 +410,9 @@ def hr_plot(fig, height=300):
         if trace.type == "bar":
             horizontal = getattr(trace, "orientation", None) == "h"
             trace.update(
-                texttemplate="%{x:,.0f}" if horizontal else "%{y:,.0f}",
+                text=[indian_number(v) for v in (trace.x if horizontal else trace.y)],
+                texttemplate="%{text}",
+                hovertemplate=("%{y}<br>%{text}<extra></extra>" if horizontal else "%{x}<br>%{text}<extra></extra>"),
                 textposition="outside",
                 textfont=dict(color="#123B70", size=12, family="Arial Black"),
                 cliponaxis=False,
@@ -404,7 +428,7 @@ def hr_plot(fig, height=300):
 
 
 st.markdown('''<div class="hr-topbar"><div><div class="hr-kicker">SUGAM  /  EMPLOYEE REPORTS</div>
-<strong>HR Dashboard</strong></div><div class="hr-top-caption">Employees &nbsp;•&nbsp; Resignations &nbsp;•&nbsp; Rejoining &nbsp;•&nbsp; Salary</div></div>''',unsafe_allow_html=True)
+<strong>HR Dashboard</strong></div><div class="hr-top-caption">Employees &nbsp;•&nbsp; Rejoining &nbsp;•&nbsp; Salary</div></div>''',unsafe_allow_html=True)
 
 try:
     employees_raw, salary_raw = load_data()
@@ -436,7 +460,7 @@ emp_ids=set(emp.EMPLOYEEID.dropna())
 salary=sal_all[sal_all.EMPLOYEEID.isin(emp_ids)].copy()
 snapshot=salary_snapshot(salary,asof)
 rejoining=rejoining_all[rejoining_all.EMPLOYEEID.isin(emp_ids)].copy()
-sections=[("Overview","Overview"),("Resignations & Employees Left","Resignations"),
+sections=[("Overview","Overview"),
           ("Salary & Costs","Salary & Costs"),("Employee List","Employees"),("Rejoining Details","Rejoining")]
 if st.session_state.get("hr_selected_section") not in [k for k,_ in sections]:
     st.session_state["hr_selected_section"]="Overview"
@@ -472,12 +496,12 @@ if page=="Overview":
        ("Employees Left",exited,"Total employees who left"),
        ("Possible Rejoining Employees",len(rejoining),"Matched using Aadhaar or PAN"),
     ]
-    hr_metric_grid([(label, f"{val:,}", detail) for label, val, detail in kpis])
+    hr_metric_grid([(label, indian_number(val), detail) for label, val, detail in kpis])
     st.markdown('<div class="hr-section-header">People movement · Year to date</div>',unsafe_allow_html=True)
     hr_metric_grid([
-       ("Joined This Year",f"{join_ytd:,}","Based on joining dates"),
-       ("Left This Year",f"{exit_ytd:,}","Based on recorded leaving dates"),
-       ("Net Employee Change This Year",f"{net_ytd:+,}","Joined minus left"),
+       ("Joined This Year",indian_number(join_ytd),"Based on joining dates"),
+       ("Left This Year",indian_number(exit_ytd),"Based on recorded leaving dates"),
+       ("Net Employee Change This Year",("+" if net_ytd > 0 else "") + indian_number(net_ytd),"Joined minus left"),
        ("Employee Leaving Rate (Estimate)",f"{attrition:.1f}%","Left this year / average employees")
     ])
     a,b=st.columns([1.15,1],gap="medium")
@@ -520,7 +544,7 @@ if page=="Overview":
     movements["Closing Headcount"]=closing
     fig=go.Figure()
     fig.add_trace(go.Scatter(x=movements.Period,y=movements["Closing Headcount"],mode="lines+markers+text",
-        text=movements["Closing Headcount"],textposition="top center",name="Total Employees at Period End",
+        text=[indian_number(v) for v in movements["Closing Headcount"]],textposition="top center",name="Total Employees at Period End",
         line=dict(color="#136b9c",width=3),marker=dict(size=7,color="#136b9c"),textfont=dict(color="#123B70",size=11)))
     fig.update_layout(showlegend=False,xaxis_title=None,yaxis_title="Employees",margin=dict(l=20,r=55,t=36,b=45))
     hr_plot(fig,285)
@@ -565,30 +589,9 @@ if page=="Overview":
         hr_plot(fig,295)
         if int(exit_age.sum()):
             group=exit_age.idxmax()
-            st.markdown(f'<div class="hr-note"><b>Highest number of employees who left:</b> {escape(str(group))} age group · <b>{int(exit_age.max()):,}</b> employees ({exit_age.max()/exit_age.sum():.1%} of exits with valid DOB). This is the number who left, not the percentage of each age group.</div>',unsafe_allow_html=True)
+            st.markdown(f'<div class="hr-note"><b>Highest number of employees who left:</b> {escape(str(group))} age group · <b>{indian_number(int(exit_age.max()))}</b> employees ({exit_age.max()/exit_age.sum():.1%} of exits with valid DOB). This is the number who left, not the percentage of each age group.</div>',unsafe_allow_html=True)
     else:
         st.info("No employee exits with valid DOB for the selected filters and as-of date.")
-
-elif page=="Resignations & Employees Left":
-    waiting=emp[emp.RESIGNED_NOT_LEFT.eq(1)].copy()
-    k=st.columns(4)
-    for c,label,value,desc in zip(k,["Resigned Employees Still Working","Leaving Date Confirmed","Leaving Date Not Updated","Leaving Within 30 Days"],
-        [len(waiting),waiting.STATUS.eq("SERVING NOTICE PERIOD").sum(),waiting.STATUS.eq("RESIGNED - LWD PENDING").sum(),waiting.NOTICE_DAYS_REMAINING.between(0,30).sum()],
-        ["Includes notice period","Leaving date is recorded","HR needs to update this","Plan work handover"]):
-        with c:hr_metric(label,f"{int(value):,}",desc)
-    st.markdown('<div class="hr-section-header">Notice period tracker</div>',unsafe_allow_html=True)
-    cols=["EMPCODE","EMPNAME","ZONE","BRANCH","DEPARTMENT","RESIGNDT","DATEOFLEAVING","NOTICE_DAYS_REMAINING","STATUS"]
-    show_employee_table(waiting[cols].sort_values("RESIGNDT",ascending=False))
-    download_csv(waiting[cols],"resigned_not_left")
-    st.markdown('<div class="hr-section-header">Monthly completed exits</div>',unsafe_allow_html=True)
-    years=sorted(emp.DATEOFLEAVING.dropna().dt.year.unique().tolist())
-    if years:
-        year=st.selectbox("Year Employees Left",years,index=len(years)-1)
-        months=emp.loc[(emp.DATEOFLEAVING.dt.year==year)&(emp.DATEOFLEAVING<=pd.Timestamp(asof)),"DATEOFLEAVING"].dt.month.value_counts().reindex(range(1,13),fill_value=0)
-        fig=px.bar(x=[calendar.month_abbr[i] for i in range(1,13)],y=months.values,
-                   labels={"x":"Month","y":"Employees Left"},color_discrete_sequence=["#ee8966"])
-        hr_plot(fig,270)
-    else:st.info("No employees left under these filters.")
 
 elif page=="Salary & Costs":
     st.markdown('<div class="hr-section-header">Current Gross Salary · TODT is NULL</div>', unsafe_allow_html=True)
@@ -605,11 +608,11 @@ elif page=="Salary & Costs":
     valid = current.loc[current.HAS_CURRENT_STRUCTURE].copy()
     total = float(valid.GROSS_SALARY.sum())
     st.markdown('<div class="hr-kpi-grid">' + ''.join([
-        hr_metric_html("Monthly Gross Salary", f"₹{total:,.0f}", "Active employees with salary records"),
-        hr_metric_html("Yearly Gross Salary", f"₹{total * 12:,.0f}", "Monthly gross multiplied by 12"),
-        hr_metric_html("Average Monthly Gross", f"₹{valid.GROSS_SALARY.mean():,.0f}" if len(valid) else "—", "Per active employee with salary details"),
-        hr_metric_html("Employees With Salary Details", f"{len(valid):,}", f"{len(current):,} active employees"),
-        hr_metric_html("Employees Missing Salary Details", f"{len(current)-len(valid):,}", "Salary details need to be checked"),
+        hr_metric_html("Monthly Gross Salary", "₹" + indian_number(total), "Active employees with salary records"),
+        hr_metric_html("Yearly Gross Salary", "₹" + indian_number(total * 12), "Monthly gross multiplied by 12"),
+        hr_metric_html("Average Monthly Gross", "₹" + indian_number(valid.GROSS_SALARY.mean()) if len(valid) else "—", "Per active employee with salary details"),
+        hr_metric_html("Employees With Salary Details", indian_number(len(valid)), f"{len(current):,} active employees"),
+        hr_metric_html("Employees Missing Salary Details", indian_number(len(current)-len(valid)), "Salary details need to be checked"),
     ]) + '</div>', unsafe_allow_html=True)
     conflicts = snapshot.loc[snapshot.AMBIGUOUS_RECORD]
     if not conflicts.empty:
@@ -674,14 +677,14 @@ elif page=="Salary & Costs":
             periods.loc[periods["GROSS_SALARY"].shift().eq(0), "INCREASE_PERCENT"] = np.nan
             periods["CHANGE_LABEL"] = [
                 "First record" if pd.isna(change) else
-                (f"+₹{change:,.0f}" if change > 0 else
-                 f"-₹{abs(change):,.0f}" if change < 0 else "No change")
+                ("+₹" + indian_number(change) if change > 0 else
+                 "-₹" + indian_number(abs(change)) if change < 0 else "No change")
                 for change in periods["INCREASE_AMOUNT"]
             ]
             show_employee_table(periods.drop(columns=["CHANGE_LABEL"]))
             download_csv(periods.drop(columns=["CHANGE_LABEL"]), "employee_gross_salary_history")
             labels = [
-                f"₹{gross:,.0f}<br>({change})" if i else f"₹{gross:,.0f}<br>(First record)"
+                f"₹{indian_number(gross)}<br>({change})" if i else f"₹{indian_number(gross)}<br>(First record)"
                 for i, (gross, change) in enumerate(zip(periods["GROSS_SALARY"], periods["CHANGE_LABEL"]))
             ]
             fig = go.Figure()
@@ -691,8 +694,8 @@ elif page=="Salary & Costs":
                 name="Gross Salary", line=dict(color="#19659b", width=3),
                 marker=dict(size=9, color="#19659b"),
                 textfont=dict(color="#123B70", size=11),
-                customdata=periods[["CHANGE_LABEL"]].to_numpy(),
-                hovertemplate="Date: %{x|%d %b %Y}<br>Gross salary: ₹%{y:,.0f}<br>Change: %{customdata[0]}<extra></extra>"
+                customdata=np.column_stack(([indian_number(v) for v in periods["GROSS_SALARY"]], periods["CHANGE_LABEL"])),
+                hovertemplate="Date: %{x|%d %b %Y}<br>Gross salary: ₹%{customdata[0]}<br>Change: %{customdata[1]}<extra></extra>"
             ))
             fig.update_layout(xaxis_title="Salary Start Date", yaxis_title="Gross Salary (₹)",
                               height=350, margin=dict(l=25, r=35, t=65, b=35),
@@ -724,7 +727,7 @@ elif page=="Rejoining Details":
     for box,label,num,sub in zip(c,["Possible Rejoining Employees","Previous Leaving Date Available","Need Checking","Matched Using PAN Only"],
                                  [len(rejoining),int(confirmed.sum()),int(review.sum()),int(rejoining.MATCH_METHOD.eq("PAN").sum())],
                                  ["Employees with more than one ID","Previous leaving date is before joining again","Employee details need checking","Only PAN matched"]):
-        with box:hr_metric(label,f"{num:,}",sub)
+        with box:hr_metric(label,indian_number(num),sub)
     st.markdown('<div class="hr-note">Employees are matched using Aadhaar and PAN. If both match, the result is more reliable. Check differences in IDs, missing leaving dates, or overlapping job dates. Full ID numbers are hidden.</div>',unsafe_allow_html=True)
     if rejoining.empty:st.info("No possible rejoining employees found for these filters.")
     else:
