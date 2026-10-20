@@ -520,9 +520,13 @@ if page=="Overview":
     salary_conflict_ids = set(snapshot.loc[snapshot.AMBIGUOUS_RECORD, "EMPLOYEEID"])
     salary_clean = salary_clean.loc[~salary_clean.EMPLOYEEID.isin(salary_conflict_ids)]
     salary_totals = salary_clean.groupby("EMPLOYEEID", as_index=False)["AMOUNT"].sum()
-    overview_salary = active_emp[["EMPLOYEEID", "DEPARTMENT", "BRANCH"]].drop_duplicates("EMPLOYEEID").merge(
-        salary_totals, on="EMPLOYEEID", how="left"
-    )
+    # The latest valid salary row supplies designation without changing salary totals.
+    salary_designations = (salary_clean.sort_values("FROMDT", ascending=False)
+                           .drop_duplicates("EMPLOYEEID")[["EMPLOYEEID", "DESIGNATION"]])
+    overview_salary = (active_emp[["EMPLOYEEID", "ZONE", "BRANCH", "DEPARTMENT"]]
+                       .drop_duplicates("EMPLOYEEID")
+                       .merge(salary_totals, on="EMPLOYEEID", how="left")
+                       .merge(salary_designations, on="EMPLOYEEID", how="left"))
     overview_salary_valid = overview_salary.loc[overview_salary.AMOUNT.notna()].copy()
     monthly_gross = float(overview_salary_valid.AMOUNT.sum())
     salary_filled = len(overview_salary_valid)
@@ -539,12 +543,51 @@ if page=="Overview":
     ])
     left_sal, right_sal = st.columns(2, gap="medium")
     with left_sal:
-        st.markdown('<div class="hr-section-header">Highest Salary Cost by Department · Top 8</div>', unsafe_allow_html=True)
+        st.markdown('<div class="hr-section-header">Highest Monthly Salary Cost</div>', unsafe_allow_html=True)
+        salary_group_by = st.selectbox(
+            "Group salary by", ["Zone", "Branch", "Department", "Designation"],
+            index=2, key="overview_salary_group_by"
+        )
+        top_choices = [10, 20, 30, 40, 50]
+        if hasattr(st, "segmented_control"):
+            top_n = st.segmented_control(
+                "Show top", top_choices, default=10,
+                key="overview_salary_top_n"
+            )
+        else:
+            top_n = st.radio(
+                "Show top", top_choices, index=0, horizontal=True,
+                key="overview_salary_top_n"
+            )
+        top_n = top_n or 10
         if not overview_salary_valid.empty:
-            dept_sal = overview_salary_valid.groupby("DEPARTMENT", dropna=False)["AMOUNT"].sum().nlargest(8).sort_values()
-            fig = px.bar(x=dept_sal.values, y=dept_sal.index.fillna("Unknown").astype(str), orientation="h", color_discrete_sequence=["#1682ae"])
-            fig.update_layout(xaxis_title="Monthly Gross Salary (₹)", yaxis_title=None, showlegend=False)
-            hr_plot(fig, 310)
+            group_column = salary_group_by.upper()
+            grouped_salary = (
+                overview_salary_valid.assign(
+                    GROUP_NAME=overview_salary_valid[group_column].fillna("Not Available")
+                                                 .astype(str).replace("", "Not Available")
+                )
+                .groupby("GROUP_NAME", dropna=False)["AMOUNT"]
+                .sum().nlargest(top_n).sort_values()
+            )
+            fig = px.bar(
+                x=grouped_salary.values,
+                y=grouped_salary.index.astype(str),
+                orientation="h", color_discrete_sequence=["#1682ae"],
+                text=["₹" + indian_number(n) for n in grouped_salary.values]
+            )
+            fig.update_traces(texttemplate="%{text}", textposition="outside", cliponaxis=False)
+            fig.update_layout(
+                height=max(310, 36 * len(grouped_salary) + 90),
+                xaxis_title="Monthly Gross Salary (₹)", yaxis_title=None,
+                showlegend=False, margin=dict(l=20, r=100, t=15, b=40),
+                yaxis=dict(automargin=True)
+            )
+            # Fixed-height viewport: Top 20/30/40/50 scrolls instead of expanding the page.
+            with st.container(height=365, border=False):
+                st.plotly_chart(fig, use_container_width=True,
+                                config={"displayModeBar": False})
+            st.caption(f"Showing top {min(top_n, len(grouped_salary))} {salary_group_by.lower()} groups by monthly gross salary.")
         else:
             st.info("No salary details available for active employees.")
     with right_sal:
