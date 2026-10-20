@@ -513,7 +513,14 @@ if page=="Overview":
     gender_kpi = ("Male / Female Employees",
                   f"{indian_number(male_count)} / {indian_number(female_count)}",
                   "Male / Female (active employees only)")
-    hr_metric_grid([(label, indian_number(val), detail) for label, val, detail in kpis] + [gender_kpi])
+    people_movement_kpis = [
+        ("Joined This Year", indian_number(join_ytd), "Based on joining dates"),
+        ("Left This Year", indian_number(exit_ytd), "Based on recorded leaving dates"),
+        ("Net Employee Change This Year", ("+" if net_ytd > 0 else "") + indian_number(net_ytd), "Joined minus left"),
+        ("Employee Leaving Rate (Estimate)", f"{attrition:.1f}%", "Left this year / average employees"),
+    ]
+    hr_metric_grid([(label, indian_number(val), detail) for label, val, detail in kpis]
+                   + [gender_kpi] + people_movement_kpis)
     # Overview salary: same current-gross method as Salary & Costs.
     # Include only active employees and valid open-ended earning records.
     salary_clean = snapshot.loc[~snapshot.AMBIGUOUS_RECORD].copy()
@@ -590,13 +597,6 @@ if page=="Overview":
         hr_plot(fig, 310)
     st.caption("Salary figures are indicative gross earnings from open-ended salary records (TODT NULL); deductions and employer costs are excluded. Employees with conflicting entries are excluded from salary totals.")
 
-    st.markdown('<div class="hr-section-header">People movement · Year to date</div>',unsafe_allow_html=True)
-    hr_metric_grid([
-       ("Joined This Year",indian_number(join_ytd),"Based on joining dates"),
-       ("Left This Year",indian_number(exit_ytd),"Based on recorded leaving dates"),
-       ("Net Employee Change This Year",("+" if net_ytd > 0 else "") + indian_number(net_ytd),"Joined minus left"),
-       ("Employee Leaving Rate (Estimate)",f"{attrition:.1f}%","Left this year / average employees")
-    ])
     a,b=st.columns([1.15,1],gap="medium")
     with a:
         st.markdown('<div class="hr-section-header">Active employees · Top 12 departments</div>',unsafe_allow_html=True)
