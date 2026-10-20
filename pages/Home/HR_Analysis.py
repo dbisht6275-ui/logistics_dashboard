@@ -4,13 +4,13 @@ Current gross salary uses only earning heads with TODT IS NULL. No deductions ar
 """
 from __future__ import annotations
 
-from datetime import date, datetime
-from io import BytesIO
+from datetime import date
 from html import escape
 
 import numpy as np
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
@@ -21,8 +21,7 @@ SELECT
     E.EMPLOYEEID, E.EMPCODE, ZONE.ZONENAME AS ZONE,
     BR.STNNAME AS BRANCH, E.EMPNAME, E.GENDER,
     DEPT.DEPTNAME AS DEPARTMENT, E.DOB, E.DOJ,
-    E.RESIGNDT, E.DATEOFLEAVING, E.EMAILID,
-    E.RETIREMENTDT, E.AADHARNO, E.PAN
+    E.RESIGNDT, E.DATEOFLEAVING, E.AADHARNO, E.PAN
 FROM EMPLOYEEMAST E
 INNER JOIN STATIONMAST BR ON BR.STNCODE = E.BRANCHCODE
 LEFT JOIN ZONEMAST ZONE ON ZONE.ZONECODE = BR.ZONECODE
@@ -32,24 +31,20 @@ LEFT JOIN DEPARTMENTMAST DEPT ON DEPT.DEPTID = E.DEPTID
 SALARY_SQL = """
 SELECT
     S.EMPLOYEEID, S.EMPCODE, S.EMPNAME,
-    S.BRANCHCODE, S.DEPARTMENTID, DEP.DEPTNAME AS SALARY_DEPARTMENT,
-    S.DESIGNATIONID, DESG.DESIGNATION,
-    S.SALARYHEAD, S.AMOUNT, S.PCTG, S.FROMDT, S.TODT
+    DESG.DESIGNATION,
+    S.SALARYHEAD, S.AMOUNT, S.FROMDT, S.TODT
 FROM VIEWEMPLOYEESALARYDETAIL S
-LEFT JOIN DEPARTMENTMAST DEP ON DEP.DEPTID = S.DEPARTMENTID
 LEFT JOIN DESIGNATIONMAST DESG ON DESG.DESIGNATIONID = S.DESIGNATIONID
 """
 
 DUMMY_EMP_CODES = {"2383", "2001", "2000", "2344", "1993"}
 
 EARNING_HEADS = {"BASIC SALARY", "HRA", "MED. ALLW.", "TRPT. ALLW.", "SPECIAL ALLOWNCES"}
-DEDUCTION_HEADS = {"EMPLOYEE PF"}
-EMPLOYER_HEADS = {"EMPLOYER PF", "GRATUITY", "ADMIN CHARGES FOR PF. ACCT 2"}
 
 
 @st.cache_resource(show_spinner=False)
-def get_bidding_engine():
-    """The exact secrets-backed SQLAlchemy + pymssql engine pattern supplied."""
+def get_hr_engine():
+    """Reuse the SQL Server connection pool across Streamlit reruns."""
     connection_url = URL.create(
         "mssql+pymssql",
         username=st.secrets["DB_USER"],
@@ -62,9 +57,11 @@ def get_bidding_engine():
                          pool_size=2, max_overflow=1)
 
 
-@st.cache_data(ttl=900, show_spinner="Loading HR records...")
+# SQL runs only on cache miss (first load, 1-hour expiry, or explicit Refresh).
+# Tab changes and widget filters reuse the cached employee and salary DataFrames.
+@st.cache_data(ttl=3600, show_spinner="Loading HR records...")
 def load_data():
-    engine = get_bidding_engine()
+    engine = get_hr_engine()
     with engine.connect() as con:
         emps = pd.read_sql_query(text(EMPLOYEE_SQL), con)
         salary = pd.read_sql_query(text(SALARY_SQL), con)
@@ -85,7 +82,7 @@ def dt(series):
 
 def prepare_employees(df, asof):
     x = df.copy()
-    for col in ["DOB", "DOJ", "RESIGNDT", "DATEOFLEAVING", "RETIREMENTDT"]:
+    for col in ["DOB", "DOJ", "RESIGNDT", "DATEOFLEAVING"]:
         x[col] = dt(x[col]).dt.normalize()
     ref = pd.Timestamp(asof)
     joined = x.DOJ.notna() & (x.DOJ <= ref)
@@ -102,12 +99,6 @@ def prepare_employees(df, asof):
     )
     x["ACTIVE_HEADCOUNT"] = active.astype(int)
     x["RESIGNED_NOT_LEFT"] = (resigned & active).astype(int)
-    x["NOTICE_DAYS_REMAINING"] = np.where(
-        resigned & active & x.DATEOFLEAVING.notna(),
-        (x.DATEOFLEAVING - ref).dt.days, np.nan)
-    x["NOTICE_PERIOD_DAYS"] = np.where(
-        x.RESIGNDT.notna() & x.DATEOFLEAVING.notna(),
-        (x.DATEOFLEAVING - x.RESIGNDT).dt.days, np.nan)
     x["AGE"] = ((ref.year - x.DOB.dt.year) -
                 ((ref.month < x.DOB.dt.month) |
                  ((ref.month == x.DOB.dt.month) & (ref.day < x.DOB.dt.day))).fillna(False).astype(int))
@@ -123,9 +114,6 @@ def prepare_employees(df, asof):
     x["SERVICE_GROUP"] = pd.cut(x.SERVICE_MONTHS,
                                 bins=[-1,11,35,59,119,179,239,299,np.inf],
                                 labels=["0-1 Year", "1-3 Years", "3-5 Years", "5-10 Years", "10-15 Years", "15-20 Years", "20-25 Years", "25+ Years"]).astype("object").fillna("UNKNOWN")
-    x["JOINING_YEAR"] = x.DOJ.dt.year
-    x["RESIGNATION_YEAR"] = x.RESIGNDT.dt.year
-    x["LEAVING_YEAR"] = x.DATEOFLEAVING.dt.year
     return x
 
 
@@ -198,12 +186,6 @@ def prepare_salary(df):
         x[col] = dt(x[col]).dt.normalize()
     x["SALARY_HEAD_CLEAN"] = x.SALARYHEAD.fillna("").astype(str).str.strip().str.upper()
     x["AMOUNT"] = pd.to_numeric(x.AMOUNT, errors="coerce").fillna(0)
-    x["PCTG"] = pd.to_numeric(x.PCTG, errors="coerce").fillna(0)
-    x["SALARY_CATEGORY"] = np.select(
-        [x.SALARY_HEAD_CLEAN.isin(EARNING_HEADS),
-         x.SALARY_HEAD_CLEAN.isin(DEDUCTION_HEADS),
-         x.SALARY_HEAD_CLEAN.isin(EMPLOYER_HEADS)],
-        ["EARNINGS", "EMPLOYEE DEDUCTION", "EMPLOYER COST"], default="UNCLASSIFIED")
     return x
 
 
@@ -261,19 +243,13 @@ def employee_filtered(df, zones, branches, departments, genders):
     return df
 
 
-def month_series(data, col, beginning, ending):
-    dates = data[col].dropna()
-    dates = dates[(dates >= pd.Timestamp(beginning)) & (dates <= pd.Timestamp(ending))]
-    return dates.dt.to_period("M").value_counts().sort_index()
-
-
 DISPLAY_COLUMNS = {
     "EMPLOYEEID": "Employee ID", "EMPCODE": "Employee Code", "EMPNAME": "Employee Name",
     "ZONE": "Zone", "BRANCH": "Branch", "DEPARTMENT": "Department", "GENDER": "Gender",
     "DOJ": "Joining Date", "DOB": "Date of Birth", "AGE": "Age",
     "SERVICE_YEARS": "Years Worked", "RESIGNDT": "Resignation Date",
     "DATEOFLEAVING": "Last Working Date", "STATUS": "Employee Status",
-    "NOTICE_DAYS_REMAINING": "Notice Days Left", "ACTIVE_HEADCOUNT": "Active Employee",
+    "ACTIVE_HEADCOUNT": "Active Employee",
     "GROSS_SALARY": "Monthly Gross Salary", "HAS_CURRENT_STRUCTURE": "Salary Details Available",
     "FROMDT": "Salary Start Date", "TODT": "Salary End Date",
     "INCREASE_AMOUNT": "Salary Change (Amount)", "INCREASE_PERCENT": "Salary Change (%)",
@@ -317,8 +293,7 @@ def download_csv(data, title):
 
 
 
-# ----------------- Executive HR dashboard presentation -----------------
-import plotly.graph_objects as go
+# ----------------- HR dashboard presentation -----------------
 
 st.markdown('''<style>
 /* Scoped to this HR page. Leave the shared app/sidebar intact. */
@@ -464,7 +439,8 @@ with st.container(key="hr_filter_bar"):
     with filter_cols[5]:
         st.write("")
         if st.button("↻ Refresh",key="hr_exec_refresh",use_container_width=True):
-            load_data.clear();st.rerun()
+            load_data.clear()  # Force a fresh SQL load on the next rerun.
+            st.rerun()
 
 emp=employee_filtered(emp_all,zones,branches,departments,genders)
 emp_ids=set(emp.EMPLOYEEID.dropna())
@@ -492,7 +468,6 @@ if page=="Overview":
     pending=int(emp.STATUS.eq("RESIGNED - LWD PENDING").sum())
     exited=int(emp.STATUS.eq("LEFT").sum())
     asof_ts=pd.Timestamp(asof)
-    month_start=asof_ts.replace(day=1)
     year_start=asof_ts.replace(month=1,day=1)
     join_ytd=int(emp.DOJ.between(year_start,asof_ts).sum())
     exit_ytd=int(emp.DATEOFLEAVING.between(year_start,asof_ts).sum())
@@ -535,10 +510,8 @@ if page=="Overview":
                        .merge(salary_totals, on="EMPLOYEEID", how="left")
                        .merge(salary_designations, on="EMPLOYEEID", how="left"))
     overview_salary_valid = overview_salary.loc[overview_salary.AMOUNT.notna()].copy()
-    monthly_gross = float(overview_salary_valid.AMOUNT.sum())
     salary_filled = len(overview_salary_valid)
     salary_missing = len(overview_salary) - salary_filled
-    salary_coverage = (100 * salary_filled / len(overview_salary)) if len(overview_salary) else 0
 
     left_sal, right_sal = st.columns(2, gap="medium")
     with left_sal:
