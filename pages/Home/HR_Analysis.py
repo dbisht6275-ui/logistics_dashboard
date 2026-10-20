@@ -507,12 +507,12 @@ if page=="Overview":
        ("Employees Left",exited,"Total employees who left"),
        ("Possible Rejoining Employees",len(rejoining),"Matched using Aadhaar or PAN"),
     ]
-    gender_values = emp.GENDER.fillna("").astype(str).str.strip().str.upper()
+    gender_values = active_emp.GENDER.fillna("").astype(str).str.strip().str.upper()
     male_count = int(gender_values.isin(["M", "MALE"]).sum())
     female_count = int(gender_values.isin(["F", "FEMALE"]).sum())
     gender_kpi = ("Male / Female Employees",
                   f"{indian_number(male_count)} / {indian_number(female_count)}",
-                  "Male / Female (selected employees)")
+                  "Male / Female (active employees only)")
     hr_metric_grid([(label, indian_number(val), detail) for label, val, detail in kpis] + [gender_kpi])
     # Overview salary: same current-gross method as Salary & Costs.
     # Include only active employees and valid open-ended earning records.
@@ -533,14 +533,6 @@ if page=="Overview":
     salary_missing = len(overview_salary) - salary_filled
     salary_coverage = (100 * salary_filled / len(overview_salary)) if len(overview_salary) else 0
 
-    st.markdown('<div class="hr-section-header">Salary Overview · Active Employees</div>', unsafe_allow_html=True)
-    hr_metric_grid([
-        ("Monthly Gross Salary", "₹" + indian_number(monthly_gross), "Basic, HRA and allowances only"),
-        ("Estimated Yearly Gross Salary", "₹" + indian_number(monthly_gross * 12), "Monthly salary × 12"),
-        ("Average Monthly Salary", "₹" + indian_number(overview_salary_valid.AMOUNT.mean()) if salary_filled else "—", "Employees with valid salary records"),
-        ("Salary Details Filled", indian_number(salary_filled), f"{salary_coverage:.1f}% of active employees"),
-        ("Salary Details Missing / Review", indian_number(salary_missing), "Includes employees with conflicting salary records"),
-    ])
     left_sal, right_sal = st.columns(2, gap="medium")
     with left_sal:
         st.markdown('<div class="hr-section-header">Highest Monthly Salary Cost</div>', unsafe_allow_html=True)
