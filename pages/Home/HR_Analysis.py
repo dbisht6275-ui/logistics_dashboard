@@ -362,6 +362,7 @@ st.markdown('''<style>
 # Presentation-only mapping; SQL, HR logic and calculations remain unchanged.
 HR_KPI_STYLES = {
     "Active Employees": ("👥", "#075985", "#0ea5e9"),
+    "Male / Female Employees": ("👫", "#155e75", "#0d9488"),
     "Resigned Employees Still Working": ("📨", "#9a3412", "#f97316"),
     "Leaving Date Not Updated": ("⏳", "#a16207", "#eab308"),
     "Employees Left": ("🚪", "#6d28d9", "#a78bfa"),
@@ -439,7 +440,7 @@ except Exception as exc:
     st.stop()
 
 with st.container(key="hr_filter_bar"):
-    filter_cols = st.columns([1,1.1,1.1,1.25,1,.68],gap="small")
+    filter_cols = st.columns([1,1.05,1.05,1.2,.85,1.2,.68],gap="small")
     asof = filter_cols[0].date_input("Report Date",value=date.today(),max_value=date.today(),key="hr_asof_exec")
     emp_all = prepare_employees(employees_raw,asof)
     rejoining_all = prepare_rejoining(emp_all)
@@ -450,12 +451,20 @@ with st.container(key="hr_filter_bar"):
     branches=selector(filter_cols[2],"Branch","BRANCH")
     departments=selector(filter_cols[3],"Department","DEPARTMENT")
     genders=selector(filter_cols[4],"Gender","GENDER")
-    with filter_cols[5]:
+    employee_status = filter_cols[5].selectbox(
+        "Employee Status", ["Active", "Inactive", "All Employees"],
+        index=0, key="hr_employee_status"
+    )
+    with filter_cols[6]:
         st.write("")
         if st.button("↻ Refresh",key="hr_exec_refresh",use_container_width=True):
             load_data.clear();st.rerun()
 
 emp=employee_filtered(emp_all,zones,branches,departments,genders)
+if employee_status == "Active":
+    emp = emp.loc[emp.ACTIVE_HEADCOUNT.eq(1)].copy()
+elif employee_status == "Inactive":
+    emp = emp.loc[emp.ACTIVE_HEADCOUNT.eq(0)].copy()
 emp_ids=set(emp.EMPLOYEEID.dropna())
 salary=sal_all[sal_all.EMPLOYEEID.isin(emp_ids)].copy()
 snapshot=salary_snapshot(salary,asof)
@@ -496,7 +505,13 @@ if page=="Overview":
        ("Employees Left",exited,"Total employees who left"),
        ("Possible Rejoining Employees",len(rejoining),"Matched using Aadhaar or PAN"),
     ]
-    hr_metric_grid([(label, indian_number(val), detail) for label, val, detail in kpis])
+    gender_values = emp.GENDER.fillna("").astype(str).str.strip().str.upper()
+    male_count = int(gender_values.isin(["M", "MALE"]).sum())
+    female_count = int(gender_values.isin(["F", "FEMALE"]).sum())
+    gender_kpi = ("Male / Female Employees",
+                  f"{indian_number(male_count)} / {indian_number(female_count)}",
+                  "Male / Female (selected employees)")
+    hr_metric_grid([(label, indian_number(val), detail) for label, val, detail in kpis] + [gender_kpi])
     st.markdown('<div class="hr-section-header">People movement · Year to date</div>',unsafe_allow_html=True)
     hr_metric_grid([
        ("Joined This Year",indian_number(join_ytd),"Based on joining dates"),
