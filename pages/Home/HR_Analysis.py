@@ -1,5 +1,5 @@
 """HR & Salary Analytics | SQL Server + Streamlit.
-Run: streamlit run HR_Analysis_company_chart.py
+Run: streamlit run HR_Analysis_sql_filters.py
 Current gross salary uses only earning heads with TODT IS NULL. No deductions are calculated.
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ FROM GREENTRANSSUGAMPARIVAHAN..EMPLOYEEMAST E
 INNER JOIN STATIONMAST BR ON BR.STNCODE = E.BRANCHCODE
 LEFT JOIN ZONEMAST ZONE ON ZONE.ZONECODE = BR.ZONECODE
 LEFT JOIN DEPARTMENTMAST DEPT ON DEPT.DEPTID = E.DEPTID
-where e.empcode not in ('2383', '2001', '2000', '2344', '1993', '2567'
+where e.empcode not in ('2383', '2001', '2000', '2344', '1993', '2567')
 UNION ALL
 
 SELECT
@@ -111,8 +111,6 @@ COMPANY_OPTIONS = (
     "SUGAM PARIVAHAN", "SUGAM EXPRESS", "SUGAM SUPPLY CHAIN", "KNM TRANS",
 )
 
-DUMMY_EMP_CODES = {"2383", "2001", "2000", "2344", "1993"}
-
 EARNING_HEADS = {"BASIC SALARY", "HRA", "MED. ALLW.", "TRPT. ALLW.", "SPECIAL ALLOWNCES"}
 
 
@@ -148,13 +146,9 @@ def load_data():
     with engine.connect() as con:
         emps = pd.read_sql_query(text(EMPLOYEE_SQL), con)
         salary = pd.read_sql_query(text(SALARY_SQL), con)
-    # Exclude dummy employees before all KPIs, charts, tables and downloads.
-    valid_emps = ~emps["EMPCODE"].astype("string").str.strip().isin(DUMMY_EMP_CODES)
-    emps = emps.loc[valid_emps].copy()
-    salary = salary.loc[
-        employee_key_mask(salary, emps)
-        & ~salary["EMPCODE"].astype("string").str.strip().isin(DUMMY_EMP_CODES)
-    ].copy()
+    # Employee-code exclusions are maintained only in EMPLOYEE_SQL.
+    # Keep salary rows only for company/employee pairs returned by that query.
+    salary = salary.loc[employee_key_mask(salary, emps)].copy()
     return emps, salary
 
 
