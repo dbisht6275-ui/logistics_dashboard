@@ -1,5 +1,5 @@
 """HR & Salary Analytics | SQL Server + Streamlit.
-Run: streamlit run HR_Analysis_updated.py
+Run: streamlit run HR_Analysis_company_chart.py
 Current gross salary uses only earning heads with TODT IS NULL. No deductions are calculated.
 """
 from __future__ import annotations
@@ -599,8 +599,6 @@ if page=="Overview":
                        .merge(salary_totals, on=EMPLOYEE_KEYS, how="left")
                        .merge(salary_designations, on=EMPLOYEE_KEYS, how="left"))
     overview_salary_valid = overview_salary.loc[overview_salary.AMOUNT.notna()].copy()
-    salary_filled = len(overview_salary_valid)
-    salary_missing = len(overview_salary) - salary_filled
 
     left_sal, right_sal = st.columns(2, gap="medium")
     with left_sal:
@@ -652,11 +650,74 @@ if page=="Overview":
         else:
             st.info("No salary details available for active employees.")
     with right_sal:
-        st.markdown('<div class="hr-section-header">Salary Details · Filled vs Missing</div>', unsafe_allow_html=True)
-        fig = px.bar(x=["Filled", "Missing / Review"], y=[salary_filled, salary_missing],
-                     color=["Filled", "Missing / Review"], color_discrete_map={"Filled":"#13a49c", "Missing / Review":"#eaa06a"})
-        fig.update_layout(xaxis_title=None, yaxis_title="Employees", showlegend=False)
-        hr_plot(fig, 310)
+        st.markdown('<div class="hr-section-header">Company-wise Employees · Active</div>', unsafe_allow_html=True)
+        # Use filtered active employees, independently of salary availability.
+        # Company + Employee ID prevents cross-company ID collisions and double counting.
+        company_people = active_emp[EMPLOYEE_KEYS].drop_duplicates(EMPLOYEE_KEYS).copy()
+        company_people["COMPANY"] = (
+            company_people["COMPANY"].fillna("Unknown").astype(str).str.strip()
+            .replace("", "Unknown")
+        )
+        company_counts = company_people.groupby("COMPANY", sort=False).size()
+        # Keep selected companies in a consistent order, including zero headcounts.
+        chart_companies = [c for c in COMPANY_OPTIONS if not companies or c in companies]
+        chart_companies += sorted(set(company_counts.index) - set(chart_companies))
+        company_counts = company_counts.reindex(chart_companies, fill_value=0)
+        company_total = int(company_counts.sum())
+
+        if company_total:
+            count_labels = [indian_number(int(n)) for n in company_counts.values]
+            legend_labels = [
+                f"{company} | {count}"
+                for company, count in zip(company_counts.index, count_labels)
+            ]
+            fig = go.Figure(go.Pie(
+                labels=legend_labels,
+                values=company_counts.values,
+                text=count_labels,
+                customdata=list(zip(company_counts.index, count_labels)),
+                hole=0.58,
+                sort=False,
+                direction="clockwise",
+                textposition="outside",
+                texttemplate="<b>%{text}</b><br>%{percent:.1%}",
+                textfont=dict(size=13),
+                automargin=True,
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b><br>"
+                    "Active employees: %{customdata[1]}<br>"
+                    "Share of filtered total: %{percent:.1%}<extra></extra>"
+                ),
+            ))
+            fig.update_layout(
+                template="plotly_white",
+                height=425,
+                margin=dict(l=35, r=35, t=35, b=115),
+                font=dict(family="Arial", size=11),
+                showlegend=True,
+                legend=dict(
+                    orientation="h", x=0.5, xanchor="center",
+                    y=-0.12, yanchor="top", font=dict(size=11),
+                    # Keep the centre total and percentages consistent with the slices.
+                    itemclick=False, itemdoubleclick=False,
+                ),
+                annotations=[dict(
+                    x=0.5, y=0.5, xref="paper", yref="paper",
+                    text=(f"<b>{indian_number(company_total)}</b><br>"
+                          '<span style="font-size:11px">Active Employees</span>'),
+                    showarrow=False, align="center", font=dict(size=26),
+                )],
+            )
+            st.plotly_chart(
+                fig, use_container_width=True,
+                config={"displayModeBar": False}, key="overview_company_employees",
+            )
+        else:
+            st.info("No active employees found for the selected filters and report date.")
+        st.caption(
+            "Unique active employees by company on the selected report date. "
+            "All filters apply; employees with missing salary details are included."
+        )
     st.caption("Salary figures are indicative gross earnings from open-ended salary records (TODT NULL); deductions and employer costs are excluded. Employees with conflicting entries are excluded from salary totals.")
 
     a,b=st.columns([1.15,1],gap="medium")
