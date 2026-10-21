@@ -1,5 +1,5 @@
 """HR & Salary Analytics | SQL Server + Streamlit.
-Run: streamlit run app.py
+Run: streamlit run HR_Analysis_updated.py
 Current gross salary uses only earning heads with TODT IS NULL. No deductions are calculated.
 """
 from __future__ import annotations
@@ -16,26 +16,99 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL
 
 
+# Preserve the supplied master-table joins: unqualified master names use DB_NAME.
+# All four company databases must be accessible to the configured SQL login.
 EMPLOYEE_SQL = """
 SELECT
-    E.EMPLOYEEID, E.EMPCODE, ZONE.ZONENAME AS ZONE,
+    'SUGAM PARIVAHAN' AS COMPANY, E.EMPLOYEEID, E.EMPCODE, ZONE.ZONENAME AS ZONE,
     BR.STNNAME AS BRANCH, E.EMPNAME, E.GENDER,
     DEPT.DEPTNAME AS DEPARTMENT, E.DOB, E.DOJ,
     E.RESIGNDT, E.DATEOFLEAVING, E.AADHARNO, E.PAN
-FROM EMPLOYEEMAST E
+FROM GREENTRANSSUGAMPARIVAHAN..EMPLOYEEMAST E
+INNER JOIN STATIONMAST BR ON BR.STNCODE = E.BRANCHCODE
+LEFT JOIN ZONEMAST ZONE ON ZONE.ZONECODE = BR.ZONECODE
+LEFT JOIN DEPARTMENTMAST DEPT ON DEPT.DEPTID = E.DEPTID
+
+UNION ALL
+
+SELECT
+    'SUGAM EXPRESS' AS COMPANY, E.EMPLOYEEID, E.EMPCODE, ZONE.ZONENAME AS ZONE,
+    BR.STNNAME AS BRANCH, E.EMPNAME, E.GENDER,
+    DEPT.DEPTNAME AS DEPARTMENT, E.DOB, E.DOJ,
+    E.RESIGNDT, E.DATEOFLEAVING, E.AADHARNO, E.PAN
+FROM GREENTRANSSUGAMEXPRESS..EMPLOYEEMAST E
+INNER JOIN STATIONMAST BR ON BR.STNCODE = E.BRANCHCODE
+LEFT JOIN ZONEMAST ZONE ON ZONE.ZONECODE = BR.ZONECODE
+LEFT JOIN DEPARTMENTMAST DEPT ON DEPT.DEPTID = E.DEPTID
+
+UNION ALL
+
+SELECT
+    'SUGAM SUPPLY CHAIN' AS COMPANY, E.EMPLOYEEID, E.EMPCODE, ZONE.ZONENAME AS ZONE,
+    BR.STNNAME AS BRANCH, E.EMPNAME, E.GENDER,
+    DEPT.DEPTNAME AS DEPARTMENT, E.DOB, E.DOJ,
+    E.RESIGNDT, E.DATEOFLEAVING, E.AADHARNO, E.PAN
+FROM GREENTRANSSUPPLYCHAIN..EMPLOYEEMAST E
+INNER JOIN STATIONMAST BR ON BR.STNCODE = E.BRANCHCODE
+LEFT JOIN ZONEMAST ZONE ON ZONE.ZONECODE = BR.ZONECODE
+LEFT JOIN DEPARTMENTMAST DEPT ON DEPT.DEPTID = E.DEPTID
+
+UNION ALL
+
+SELECT
+    'KNM TRANS' AS COMPANY, E.EMPLOYEEID, E.EMPCODE, ZONE.ZONENAME AS ZONE,
+    BR.STNNAME AS BRANCH, E.EMPNAME, E.GENDER,
+    DEPT.DEPTNAME AS DEPARTMENT, E.DOB, E.DOJ,
+    E.RESIGNDT, E.DATEOFLEAVING, E.AADHARNO, E.PAN
+FROM greentransknm..EMPLOYEEMAST E
 INNER JOIN STATIONMAST BR ON BR.STNCODE = E.BRANCHCODE
 LEFT JOIN ZONEMAST ZONE ON ZONE.ZONECODE = BR.ZONECODE
 LEFT JOIN DEPARTMENTMAST DEPT ON DEPT.DEPTID = E.DEPTID
 """
 
+# Salary assumption: this view exists with the same columns in every company DB.
+# DESIGNATIONMAST remains in the configured DB_NAME, as in the original code.
 SALARY_SQL = """
 SELECT
-    S.EMPLOYEEID, S.EMPCODE, S.EMPNAME,
+    'SUGAM PARIVAHAN' AS COMPANY, S.EMPLOYEEID, S.EMPCODE, S.EMPNAME,
     DESG.DESIGNATION,
     S.SALARYHEAD, S.AMOUNT, S.FROMDT, S.TODT
-FROM VIEWEMPLOYEESALARYDETAIL S
+FROM GREENTRANSSUGAMPARIVAHAN..VIEWEMPLOYEESALARYDETAIL S
+LEFT JOIN DESIGNATIONMAST DESG ON DESG.DESIGNATIONID = S.DESIGNATIONID
+
+UNION ALL
+
+SELECT
+    'SUGAM EXPRESS' AS COMPANY, S.EMPLOYEEID, S.EMPCODE, S.EMPNAME,
+    DESG.DESIGNATION,
+    S.SALARYHEAD, S.AMOUNT, S.FROMDT, S.TODT
+FROM GREENTRANSSUGAMEXPRESS..VIEWEMPLOYEESALARYDETAIL S
+LEFT JOIN DESIGNATIONMAST DESG ON DESG.DESIGNATIONID = S.DESIGNATIONID
+
+UNION ALL
+
+SELECT
+    'SUGAM SUPPLY CHAIN' AS COMPANY, S.EMPLOYEEID, S.EMPCODE, S.EMPNAME,
+    DESG.DESIGNATION,
+    S.SALARYHEAD, S.AMOUNT, S.FROMDT, S.TODT
+FROM GREENTRANSSUPPLYCHAIN..VIEWEMPLOYEESALARYDETAIL S
+LEFT JOIN DESIGNATIONMAST DESG ON DESG.DESIGNATIONID = S.DESIGNATIONID
+
+UNION ALL
+
+SELECT
+    'KNM TRANS' AS COMPANY, S.EMPLOYEEID, S.EMPCODE, S.EMPNAME,
+    DESG.DESIGNATION,
+    S.SALARYHEAD, S.AMOUNT, S.FROMDT, S.TODT
+FROM greentransknm..VIEWEMPLOYEESALARYDETAIL S
 LEFT JOIN DESIGNATIONMAST DESG ON DESG.DESIGNATIONID = S.DESIGNATIONID
 """
+
+# Employee IDs can repeat across databases; never join or group on ID alone.
+EMPLOYEE_KEYS = ["COMPANY", "EMPLOYEEID"]
+COMPANY_OPTIONS = (
+    "SUGAM PARIVAHAN", "SUGAM EXPRESS", "SUGAM SUPPLY CHAIN", "KNM TRANS",
+)
 
 DUMMY_EMP_CODES = {"2383", "2001", "2000", "2344", "1993"}
 
@@ -57,6 +130,15 @@ def get_hr_engine():
                          pool_size=2, max_overflow=1)
 
 
+def employee_key_mask(records: pd.DataFrame, employees: pd.DataFrame) -> pd.Series:
+    """Match company/employee pairs without multiplying rows or matching NULL IDs."""
+    valid_keys = employees[EMPLOYEE_KEYS].dropna().drop_duplicates()
+    record_index = pd.MultiIndex.from_frame(records[EMPLOYEE_KEYS])
+    valid_index = pd.MultiIndex.from_frame(valid_keys)
+    matched = pd.Series(record_index.isin(valid_index), index=records.index)
+    return records[EMPLOYEE_KEYS].notna().all(axis=1) & matched
+
+
 # SQL runs only on cache miss (first load, 1-hour expiry, or explicit Refresh).
 # Tab changes and widget filters reuse the cached employee and salary DataFrames.
 @st.cache_data(ttl=3600, show_spinner="Loading HR records...")
@@ -68,9 +150,8 @@ def load_data():
     # Exclude dummy employees before all KPIs, charts, tables and downloads.
     valid_emps = ~emps["EMPCODE"].astype("string").str.strip().isin(DUMMY_EMP_CODES)
     emps = emps.loc[valid_emps].copy()
-    valid_ids = set(emps["EMPLOYEEID"].dropna())
     salary = salary.loc[
-        salary["EMPLOYEEID"].isin(valid_ids)
+        employee_key_mask(salary, emps)
         & ~salary["EMPCODE"].astype("string").str.strip().isin(DUMMY_EMP_CODES)
     ].copy()
     return emps, salary
@@ -120,31 +201,32 @@ def prepare_employees(df, asof):
 
 def prepare_rejoining(employees):
     """Find sequential employment spells linked by valid Aadhaar or PAN."""
-    x = employees.copy()
+    x = employees.copy().reset_index(drop=True)
     aadhaar = x["AADHARNO"].fillna("").astype(str).str.replace(r"\D", "", regex=True)
     pan = x["PAN"].fillna("").astype(str).str.upper().str.replace(r"\s+", "", regex=True)
     x["_aadhaar"] = aadhaar.where(aadhaar.str.fullmatch(r"[2-9][0-9]{11}").fillna(False))
     x["_pan"] = pan.where(pan.str.fullmatch(r"[A-Z]{5}[0-9]{4}[A-Z]").fillna(False))
     x = x[x.DOJ.notna() & x.EMPLOYEEID.notna()].copy()
-    x = x.sort_values("DOJ").drop_duplicates("EMPLOYEEID", keep="last")
+    x = x.sort_values("DOJ").drop_duplicates(EMPLOYEE_KEYS, keep="last")
     # Build every qualifying pair, then deduplicate pairs matching via both identifiers.
     pairs = {}
     for identifier in ("_aadhaar", "_pan"):
         valid = x[x[identifier].notna()]
         for _, group in valid.groupby(identifier, sort=False):
-            ordered = group.sort_values(["DOJ", "EMPLOYEEID"])
+            ordered = group.sort_values(["DOJ", "COMPANY", "EMPLOYEEID"])
             rows = list(ordered.iterrows())
             for j in range(1, len(rows)):
                 current_idx, current = rows[j]
+                current_key = (current.COMPANY, current.EMPLOYEEID)
                 earlier = [(idx, prior) for idx, prior in rows[:j]
-                           if str(prior.EMPLOYEEID) != str(current.EMPLOYEEID)]
+                           if (prior.COMPANY, prior.EMPLOYEEID) != current_key]
                 if not earlier:
                     continue
                 # Most recent earlier employment for each matched current ID.
                 prev_idx, previous = earlier[-1]
-                key = (str(previous.EMPLOYEEID), str(current.EMPLOYEEID))
+                key = ((previous.COMPANY, previous.EMPLOYEEID), current_key)
                 pairs[key] = (prev_idx, current_idx)
-    output_columns = ["EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "STATUS", "PREVIOUS_EMPCODE", "PREVIOUS_DOJ", "PREVIOUS_LWD", "DAYS_BETWEEN", "REJOINING_STATUS", "MATCH_METHOD", "AADHAAR_MASKED", "PAN_MASKED", "EMPLOYEEID"]
+    output_columns = ["COMPANY", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "STATUS", "PREVIOUS_COMPANY", "PREVIOUS_EMPCODE", "PREVIOUS_DOJ", "PREVIOUS_LWD", "DAYS_BETWEEN", "REJOINING_STATUS", "MATCH_METHOD", "AADHAAR_MASKED", "PAN_MASKED", "EMPLOYEEID"]
     output = []
     for prev_idx, current_idx in pairs.values():
         previous, current = x.loc[prev_idx], x.loc[current_idx]
@@ -164,10 +246,12 @@ def prepare_rejoining(employees):
         else:
             status = "REJOINED - PRIOR EXIT RECORDED"
         rec = {
+            "COMPANY": current.COMPANY,
             "EMPCODE": current.EMPCODE, "EMPNAME": current.EMPNAME,
             "ZONE": current.ZONE, "BRANCH": current.BRANCH,
             "DEPARTMENT": current.DEPARTMENT, "DOJ": current.DOJ,
             "STATUS": current.STATUS, "EMPLOYEEID": current.EMPLOYEEID,
+            "PREVIOUS_COMPANY": previous.COMPANY,
             "PREVIOUS_EMPCODE": previous.EMPCODE,
             "PREVIOUS_DOJ": previous.DOJ,
             "PREVIOUS_LWD": previous.DATEOFLEAVING,
@@ -204,7 +288,7 @@ def salary_snapshot(salary, asof):
     ].copy()
     if x.empty:
         return x.assign(AMBIGUOUS_RECORD=pd.Series(dtype=bool))
-    keys = ["EMPLOYEEID", "SALARY_HEAD_CLEAN"]
+    keys = EMPLOYEE_KEYS + ["SALARY_HEAD_CLEAN"]
     x = x.sort_values("FROMDT", ascending=False)
     newest = x.groupby(keys, dropna=False)["FROMDT"].transform("max")
     top = x.loc[x["FROMDT"].eq(newest)].copy()
@@ -220,14 +304,14 @@ def gross_salary_history(salary):
     """Period-wise earnings, with each original FROMDT/TODT retained separately."""
     x = salary[salary["SALARY_HEAD_CLEAN"].isin(EARNING_HEADS)].copy()
     if x.empty:
-        return pd.DataFrame(columns=["EMPLOYEEID", "FROMDT", "TODT", "GROSS_SALARY"])
-    keys = ["EMPLOYEEID", "FROMDT", "TODT"]
+        return pd.DataFrame(columns=EMPLOYEE_KEYS + ["FROMDT", "TODT", "GROSS_SALARY"])
+    keys = EMPLOYEE_KEYS + ["FROMDT", "TODT"]
     # pandas pivot_table(dropna=False) can generate a cross product of periods;
     # instead aggregate by actual observed periods, including NULL TODT.
     observed = x.groupby(keys + ["SALARY_HEAD_CLEAN"], dropna=False, as_index=False)["AMOUNT"].sum()
     rows = []
-    for (employee_id, start, end), group in observed.groupby(keys, dropna=False):
-        record = {"EMPLOYEEID": employee_id, "FROMDT": start, "TODT": end}
+    for (company, employee_id, start, end), group in observed.groupby(keys, dropna=False):
+        record = {"COMPANY": company, "EMPLOYEEID": employee_id, "FROMDT": start, "TODT": end}
         for head in EARNING_HEADS:
             record[head] = float(group.loc[group.SALARY_HEAD_CLEAN.eq(head), "AMOUNT"].sum())
         record["GROSS_SALARY"] = sum(record[h] for h in EARNING_HEADS)
@@ -235,8 +319,8 @@ def gross_salary_history(salary):
     return pd.DataFrame(rows)
 
 
-def employee_filtered(df, zones, branches, departments, genders):
-    for col, chosen in [("ZONE", zones), ("BRANCH", branches),
+def employee_filtered(df, zones, branches, departments, genders, companies=None):
+    for col, chosen in [("COMPANY", companies), ("ZONE", zones), ("BRANCH", branches),
                         ("DEPARTMENT", departments), ("GENDER", genders)]:
         if chosen:
             df = df[df[col].fillna("Unknown").astype(str).isin(chosen)]
@@ -244,6 +328,7 @@ def employee_filtered(df, zones, branches, departments, genders):
 
 
 DISPLAY_COLUMNS = {
+    "COMPANY": "Company", "PREVIOUS_COMPANY": "Previous Company",
     "EMPLOYEEID": "Employee ID", "EMPCODE": "Employee Code", "EMPNAME": "Employee Name",
     "ZONE": "Zone", "BRANCH": "Branch", "DEPARTMENT": "Department", "GENDER": "Gender",
     "DOJ": "Joining Date", "DOB": "Date of Birth", "AGE": "Age",
@@ -419,34 +504,38 @@ st.markdown('''<div class="hr-topbar"><div><div class="hr-kicker">SUGAM  /  EMPL
 try:
     employees_raw, salary_raw = load_data()
 except Exception as exc:
-    st.error("SQL Server se HR data load nahi ho raha. DB credentials, network aur database permissions check karein.")
+    st.error("SQL Server se HR data load nahi ho raha. DB credentials, network, chaaron databases ki SELECT permissions aur salary views check karein.")
     with st.expander("Technical error"):
         st.code(f"{type(exc).__name__}: {exc}")
     st.stop()
 
 with st.container(key="hr_filter_bar"):
-    filter_cols = st.columns([1,1.1,1.1,1.25,1,.68],gap="small")
+    filter_cols = st.columns([1,1.65,1.1,1.1,1.25,.8,.68],gap="small")
     asof = filter_cols[0].date_input("Report Date",value=date.today(),max_value=date.today(),key="hr_asof_exec")
     emp_all = prepare_employees(employees_raw,asof)
     rejoining_all = prepare_rejoining(emp_all)
     sal_all = prepare_salary(salary_raw)
     def selector(where, label, field):
         return where.multiselect(label, sorted(emp_all[field].dropna().astype(str).unique()),key=f"hr_exec_{field}")
-    zones=selector(filter_cols[1],"Zone","ZONE")
-    branches=selector(filter_cols[2],"Branch","BRANCH")
-    departments=selector(filter_cols[3],"Department","DEPARTMENT")
-    genders=selector(filter_cols[4],"Gender","GENDER")
-    with filter_cols[5]:
+    companies=filter_cols[1].multiselect(
+        "Company", COMPANY_OPTIONS, key="hr_exec_COMPANY",
+        help="Leave blank for all companies. Select one or more companies to filter every report.",
+    )
+    zones=selector(filter_cols[2],"Zone","ZONE")
+    branches=selector(filter_cols[3],"Branch","BRANCH")
+    departments=selector(filter_cols[4],"Department","DEPARTMENT")
+    genders=selector(filter_cols[5],"Gender","GENDER")
+    with filter_cols[6]:
         st.write("")
         if st.button("↻ Refresh",key="hr_exec_refresh",use_container_width=True):
             load_data.clear()  # Force a fresh SQL load on the next rerun.
             st.rerun()
 
-emp=employee_filtered(emp_all,zones,branches,departments,genders)
-emp_ids=set(emp.EMPLOYEEID.dropna())
-salary=sal_all[sal_all.EMPLOYEEID.isin(emp_ids)].copy()
+emp=employee_filtered(emp_all,zones,branches,departments,genders,companies=companies)
+salary=sal_all.loc[employee_key_mask(sal_all,emp)].copy()
 snapshot=salary_snapshot(salary,asof)
-rejoining=rejoining_all[rejoining_all.EMPLOYEEID.isin(emp_ids)].copy()
+# Filter on current employment; previous employment may be in another company.
+rejoining=rejoining_all.loc[employee_key_mask(rejoining_all,emp)].copy()
 sections=[("Overview","Overview"),
           ("Salary & Costs","Salary & Costs"),("Missing Salary Details","Missing Salary"),("Employee List","Employees"),("Rejoining Details","Rejoining")]
 if st.session_state.get("hr_selected_section") not in [k for k,_ in sections]:
@@ -499,16 +588,16 @@ if page=="Overview":
     # Overview salary: same current-gross method as Salary & Costs.
     # Include only active employees and valid open-ended earning records.
     salary_clean = snapshot.loc[~snapshot.AMBIGUOUS_RECORD].copy()
-    salary_conflict_ids = set(snapshot.loc[snapshot.AMBIGUOUS_RECORD, "EMPLOYEEID"])
-    salary_clean = salary_clean.loc[~salary_clean.EMPLOYEEID.isin(salary_conflict_ids)]
-    salary_totals = salary_clean.groupby("EMPLOYEEID", as_index=False)["AMOUNT"].sum()
+    salary_conflict_keys = snapshot.loc[snapshot.AMBIGUOUS_RECORD, EMPLOYEE_KEYS]
+    salary_clean = salary_clean.loc[~employee_key_mask(salary_clean, salary_conflict_keys)]
+    salary_totals = salary_clean.groupby(EMPLOYEE_KEYS, as_index=False)["AMOUNT"].sum()
     # The latest valid salary row supplies designation without changing salary totals.
     salary_designations = (salary_clean.sort_values("FROMDT", ascending=False)
-                           .drop_duplicates("EMPLOYEEID")[["EMPLOYEEID", "DESIGNATION"]])
-    overview_salary = (active_emp[["EMPLOYEEID", "ZONE", "BRANCH", "DEPARTMENT"]]
-                       .drop_duplicates("EMPLOYEEID")
-                       .merge(salary_totals, on="EMPLOYEEID", how="left")
-                       .merge(salary_designations, on="EMPLOYEEID", how="left"))
+                           .drop_duplicates(EMPLOYEE_KEYS)[EMPLOYEE_KEYS + ["DESIGNATION"]])
+    overview_salary = (active_emp[EMPLOYEE_KEYS + ["ZONE", "BRANCH", "DEPARTMENT"]]
+                       .drop_duplicates(EMPLOYEE_KEYS)
+                       .merge(salary_totals, on=EMPLOYEE_KEYS, how="left")
+                       .merge(salary_designations, on=EMPLOYEE_KEYS, how="left"))
     overview_salary_valid = overview_salary.loc[overview_salary.AMOUNT.notna()].copy()
     salary_filled = len(overview_salary_valid)
     salary_missing = len(overview_salary) - salary_filled
@@ -662,12 +751,12 @@ if page=="Overview":
 elif page=="Salary & Costs":
     st.markdown('<div class="hr-section-header">Current Gross Salary · TODT is NULL</div>', unsafe_allow_html=True)
     st.caption("Current gross salary includes Basic, HRA and allowances only. PF, ESI, gratuity and other deductions are not included.")
-    names = emp[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "ACTIVE_HEADCOUNT"]].drop_duplicates("EMPLOYEEID")
+    names = emp[["COMPANY", "EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "ACTIVE_HEADCOUNT"]].drop_duplicates(EMPLOYEE_KEYS)
     clean = snapshot.loc[~snapshot.AMBIGUOUS_RECORD].copy()
-    conflicted_ids = set(snapshot.loc[snapshot.AMBIGUOUS_RECORD, "EMPLOYEEID"])
-    clean = clean.loc[~clean.EMPLOYEEID.isin(conflicted_ids)].copy()
-    employee_gross = clean.groupby("EMPLOYEEID", as_index=False)["AMOUNT"].sum().rename(columns={"AMOUNT": "GROSS_SALARY"})
-    details = names.merge(employee_gross, on="EMPLOYEEID", how="left")
+    conflicted_keys = snapshot.loc[snapshot.AMBIGUOUS_RECORD, EMPLOYEE_KEYS]
+    clean = clean.loc[~employee_key_mask(clean, conflicted_keys)].copy()
+    employee_gross = clean.groupby(EMPLOYEE_KEYS, as_index=False)["AMOUNT"].sum().rename(columns={"AMOUNT": "GROSS_SALARY"})
+    details = names.merge(employee_gross, on=EMPLOYEE_KEYS, how="left")
     details["HAS_CURRENT_STRUCTURE"] = details.GROSS_SALARY.notna()
     details["GROSS_SALARY"] = details.GROSS_SALARY.astype(float)
     current = details.loc[details.ACTIVE_HEADCOUNT.eq(1)].copy()
@@ -717,24 +806,29 @@ elif page=="Salary & Costs":
             hr_plot(fig, 300)
     with right:
         st.markdown('<div class="hr-section-header">Current Gross · Earning Components</div>', unsafe_allow_html=True)
-        if not clean.empty:
-            components = clean.loc[clean.EMPLOYEEID.isin(set(valid.EMPLOYEEID))].groupby("SALARY_HEAD_CLEAN").AMOUNT.sum().sort_values(ascending=False)
+        if not valid.empty:
+            components = clean.loc[employee_key_mask(clean, valid)].groupby("SALARY_HEAD_CLEAN").AMOUNT.sum().sort_values(ascending=False)
             fig = px.bar(x=components.index, y=components.values, color_discrete_sequence=["#6e64b5"])
             fig.update_layout(xaxis_title=None, yaxis_title="Monthly Gross Salary (₹)")
             hr_plot(fig, 300)
 
     st.markdown('<div class="hr-section-header">Employee-wise Current Gross Salary</div>', unsafe_allow_html=True)
-    table = details[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "ACTIVE_HEADCOUNT", "GROSS_SALARY", "HAS_CURRENT_STRUCTURE"]].sort_values("GROSS_SALARY", ascending=False)
+    table = details[["COMPANY", "EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "ACTIVE_HEADCOUNT", "GROSS_SALARY", "HAS_CURRENT_STRUCTURE"]].sort_values("GROSS_SALARY", ascending=False)
     show_employee_table(table)
     download_csv(table, "employee_current_gross_salary")
 
     st.markdown('<div class="hr-section-header">Employee Salary History · FROMDT to TODT</div>', unsafe_allow_html=True)
-    options = names[["EMPLOYEEID", "EMPCODE", "EMPNAME"]].copy()
-    options["DISPLAY"] = options.EMPCODE.fillna("").astype(str) + " | " + options.EMPNAME.fillna("").astype(str)
+    options = names[["COMPANY", "EMPLOYEEID", "EMPCODE", "EMPNAME"]].copy()
+    options["DISPLAY"] = (
+        options.COMPANY.fillna("").astype(str) + " | "
+        + options.EMPCODE.fillna("").astype(str) + " | "
+        + options.EMPNAME.fillna("").astype(str) + " | ID: "
+        + options.EMPLOYEEID.astype(str)
+    )
     selected = st.selectbox("Select an employee", options.DISPLAY.tolist() if len(options) else ["No Employees Found"], key="salary_history_employee")
     if len(options):
-        selected_id = options.loc[options.DISPLAY.eq(selected), "EMPLOYEEID"].iloc[0]
-        periods = gross_salary_history(salary.loc[salary.EMPLOYEEID.eq(selected_id)])
+        selected_employee = options.loc[options.DISPLAY.eq(selected), EMPLOYEE_KEYS]
+        periods = gross_salary_history(salary.loc[employee_key_mask(salary, selected_employee)])
         if not periods.empty:
             periods = periods.sort_values(["FROMDT", "TODT"], na_position="last").copy()
             # Compare each recorded gross structure with its immediately preceding period.
@@ -772,11 +866,11 @@ elif page=="Salary & Costs":
             st.info("This employee has no mapped salary earnings history.")
 
 elif page=="Missing Salary Details":
-    names = emp[["EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "ACTIVE_HEADCOUNT"]].drop_duplicates("EMPLOYEEID")
-    conflicted_ids = set(snapshot.loc[snapshot.AMBIGUOUS_RECORD, "EMPLOYEEID"])
-    clean = snapshot.loc[~snapshot.AMBIGUOUS_RECORD & ~snapshot.EMPLOYEEID.isin(conflicted_ids)].copy()
-    employee_gross = clean.groupby("EMPLOYEEID", as_index=False)["AMOUNT"].sum().rename(columns={"AMOUNT": "GROSS_SALARY"})
-    details = names.merge(employee_gross, on="EMPLOYEEID", how="left")
+    names = emp[["COMPANY", "EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "ACTIVE_HEADCOUNT"]].drop_duplicates(EMPLOYEE_KEYS)
+    conflicted_keys = snapshot.loc[snapshot.AMBIGUOUS_RECORD, EMPLOYEE_KEYS]
+    clean = snapshot.loc[~snapshot.AMBIGUOUS_RECORD & ~employee_key_mask(snapshot, conflicted_keys)].copy()
+    employee_gross = clean.groupby(EMPLOYEE_KEYS, as_index=False)["AMOUNT"].sum().rename(columns={"AMOUNT": "GROSS_SALARY"})
+    details = names.merge(employee_gross, on=EMPLOYEE_KEYS, how="left")
     details["HAS_CURRENT_STRUCTURE"] = details.GROSS_SALARY.notna()
     current = details.loc[details.ACTIVE_HEADCOUNT.eq(1)].copy()
     valid = current.loc[current.HAS_CURRENT_STRUCTURE].copy()
@@ -784,7 +878,7 @@ elif page=="Missing Salary Details":
     # This includes records missing salary and records with conflicting salary amounts.
     missing_salary = current.loc[~current.HAS_CURRENT_STRUCTURE].copy()
     missing_salary["SALARY_ISSUE"] = np.where(
-        missing_salary.EMPLOYEEID.isin(conflicted_ids),
+        employee_key_mask(missing_salary, conflicted_keys),
         "Conflicting Salary Amounts", "Salary Details Not Filled"
     )
     st.markdown('<div class="hr-section-header">Missing Salary Details - Employee Insights</div>', unsafe_allow_html=True)
@@ -815,7 +909,7 @@ elif page=="Missing Salary Details":
             fig.update_layout(xaxis_title="Employees", yaxis_title=None, showlegend=False)
             hr_plot(fig, 300)
         st.markdown('<div class="hr-section-header">Employees With Missing Salary Details</div>', unsafe_allow_html=True)
-        missing_table = missing_salary[["EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "SALARY_ISSUE"]].copy()
+        missing_table = missing_salary[["COMPANY", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "SALARY_ISSUE"]].copy()
         missing_table = missing_table.rename(columns={"SALARY_ISSUE": "Issue"})
         show_employee_table(missing_table)
         download_csv(missing_table, "employees_missing_salary_details")
@@ -826,15 +920,15 @@ elif page=="Employee List":
     q=st.text_input("Search employee code or name",placeholder="Type employee code or name…")
     shown=emp.copy()
     if q.strip():shown=shown[shown.EMPNAME.fillna("").astype(str).str.contains(q,case=False,regex=False)|shown.EMPCODE.fillna("").astype(str).str.contains(q,case=False,regex=False)]
-    col=["EMPLOYEEID","EMPCODE","EMPNAME","ZONE","BRANCH","DEPARTMENT","GENDER","DOJ","AGE","SERVICE_YEARS","RESIGNDT","DATEOFLEAVING","STATUS"]
+    col=["COMPANY","EMPLOYEEID","EMPCODE","EMPNAME","ZONE","BRANCH","DEPARTMENT","GENDER","DOJ","AGE","SERVICE_YEARS","RESIGNDT","DATEOFLEAVING","STATUS"]
     show_employee_table(shown[col])
     download_csv(shown[col],"employees_dashboard")
     with st.expander("Check Missing or Incorrect Data"):
-        st.write("Duplicate employee IDs:",int(emp_all.EMPLOYEEID.duplicated().sum()))
-        st.write("Missing DOJ:",int(emp_all.DOJ.isna().sum()))
-        st.write("LWD before joining:",int(((emp_all.DATEOFLEAVING<emp_all.DOJ)&emp_all.DATEOFLEAVING.notna()).sum()))
-        st.write("Resignation date after leaving:",int(((emp_all.RESIGNDT>emp_all.DATEOFLEAVING)&emp_all.RESIGNDT.notna()).sum()))
-        st.write("Salary lines without FROMDT:",int(sal_all.FROMDT.isna().sum()))
+        st.write("Duplicate employee IDs within the same company:",int(emp.duplicated(subset=EMPLOYEE_KEYS).sum()))
+        st.write("Missing DOJ:",int(emp.DOJ.isna().sum()))
+        st.write("LWD before joining:",int(((emp.DATEOFLEAVING<emp.DOJ)&emp.DATEOFLEAVING.notna()).sum()))
+        st.write("Resignation date after leaving:",int(((emp.RESIGNDT>emp.DATEOFLEAVING)&emp.RESIGNDT.notna()).sum()))
+        st.write("Salary lines without FROMDT:",int(salary.FROMDT.isna().sum()))
 
 elif page=="Rejoining Details":
     confirmed=rejoining.REJOINING_STATUS.eq("REJOINED - PRIOR EXIT RECORDED")
@@ -842,9 +936,9 @@ elif page=="Rejoining Details":
     c=st.columns(4)
     for box,label,num,sub in zip(c,["Possible Rejoining Employees","Previous Leaving Date Available","Need Checking","Matched Using PAN Only"],
                                  [len(rejoining),int(confirmed.sum()),int(review.sum()),int(rejoining.MATCH_METHOD.eq("PAN").sum())],
-                                 ["Employees with more than one ID","Previous leaving date is before joining again","Employee details need checking","Only PAN matched"]):
+                                 ["Employees with multiple employment records","Previous leaving date is before joining again","Employee details need checking","Only PAN matched"]):
         with box:hr_metric(label,indian_number(num),sub)
-    st.markdown('<div class="hr-note">Employees are matched using Aadhaar and PAN. If both match, the result is more reliable. Check differences in IDs, missing leaving dates, or overlapping job dates. Full ID numbers are hidden.</div>',unsafe_allow_html=True)
+    st.markdown('<div class="hr-note">Employees are matched using Aadhaar and PAN. If both match, the result is more reliable. Check differences in IDs, missing leaving dates, or overlapping job dates. Full ID numbers are hidden. Company filter applies to the current employment; previous employment may belong to another group company.</div>',unsafe_allow_html=True)
     if rejoining.empty:st.info("No possible rejoining employees found for these filters.")
     else:
         a,b=st.columns(2)
@@ -858,7 +952,7 @@ elif page=="Rejoining Details":
             fig.update_layout(xaxis_title="Employees",yaxis_title=None,showlegend=False);hr_plot(fig,225)
         status=st.multiselect("Checking Status",sorted(rejoining.REJOINING_STATUS.unique()),key="hr_exec_rejoin_status")
         shown=rejoining[rejoining.REJOINING_STATUS.isin(status)] if status else rejoining
-        cols=["EMPCODE","EMPNAME","MATCH_METHOD","AADHAAR_MASKED","PAN_MASKED","ZONE","BRANCH","DEPARTMENT","DOJ","PREVIOUS_EMPCODE","PREVIOUS_DOJ","PREVIOUS_LWD","DAYS_BETWEEN","REJOINING_STATUS","STATUS"]
+        cols=["COMPANY","EMPCODE","EMPNAME","MATCH_METHOD","AADHAAR_MASKED","PAN_MASKED","ZONE","BRANCH","DEPARTMENT","DOJ","PREVIOUS_COMPANY","PREVIOUS_EMPCODE","PREVIOUS_DOJ","PREVIOUS_LWD","DAYS_BETWEEN","REJOINING_STATUS","STATUS"]
         show_employee_table(shown[cols].sort_values("DOJ",ascending=False))
         download_csv(shown[cols],"hr_rejoining_review")
 
