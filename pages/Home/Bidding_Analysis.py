@@ -2357,12 +2357,45 @@ def render_bid_finalization_history(current_df, history_df):
             f"Latest rate is {_format_inr(abs(diff_avg))}{pct_text} {direction} the prior historical average."
         )
 
+    # Winner-bid sequence insight: for each winner bid, show the immediately
+    # previous WINNER bid amount for the same Origin + Destination + Vehicle Type.
+    # hist is already filtered to winner bids only and sorted latest -> oldest.
+    hist["PREVIOUS_WINNER_BID_AMOUNT"] = pd.to_numeric(
+        hist["BID_AMOUNT"].shift(-1), errors="coerce"
+    )
+    hist["VS_PREVIOUS_WINNER_DIFF"] = (
+        pd.to_numeric(hist["BID_AMOUNT"], errors="coerce")
+        - hist["PREVIOUS_WINNER_BID_AMOUNT"]
+    )
+    hist["VS_PREVIOUS_WINNER_PCT"] = (
+        hist["VS_PREVIOUS_WINNER_DIFF"]
+        .div(hist["PREVIOUS_WINNER_BID_AMOUNT"].replace(0, pd.NA))
+        .mul(100.0)
+    )
+
+    # Additional management KPI: how many winner bids have a usable previous
+    # winner benchmark and how often the new rate increased/decreased.
+    comparable_seq = hist[hist["PREVIOUS_WINNER_BID_AMOUNT"].notna()].copy()
+    rate_up = int(comparable_seq["VS_PREVIOUS_WINNER_DIFF"].gt(0).sum())
+    rate_down = int(comparable_seq["VS_PREVIOUS_WINNER_DIFF"].lt(0).sum())
+    rate_same = int(comparable_seq["VS_PREVIOUS_WINNER_DIFF"].abs().le(0.01).sum())
+
+    st.caption(
+        f"Winner-bid sequence: {len(comparable_seq):,} comparable bids • "
+        f"Rate increased: {rate_up:,} • decreased: {rate_down:,} • same: {rate_same:,}. "
+        "Previous amount always means the immediately preceding winner bid for the same route and vehicle type."
+    )
+
     display = hist.head(10).copy()
     display.insert(0, "S#", range(1, len(display) + 1))
     display["BID_DATE"] = pd.to_datetime(display["BID_DATE"], errors="coerce")
     display["REMARKS"] = display["REMARKS"].replace("", "winner")
     display = display[
-        ["S#", "BIDID", "BID_DATE", "VEHICLE_TYPE", "ORIGIN", "DESTINATION", "WINNER_NAME", "BID_AMOUNT", "REMARKS"]
+        [
+            "S#", "BIDID", "BID_DATE", "VEHICLE_TYPE", "ORIGIN", "DESTINATION",
+            "WINNER_NAME", "BID_AMOUNT", "PREVIOUS_WINNER_BID_AMOUNT",
+            "VS_PREVIOUS_WINNER_DIFF", "VS_PREVIOUS_WINNER_PCT", "REMARKS"
+        ]
     ].rename(columns={
         "BIDID": "Bid ID",
         "BID_DATE": "Bid Date",
@@ -2370,11 +2403,14 @@ def render_bid_finalization_history(current_df, history_df):
         "ORIGIN": "Origin",
         "DESTINATION": "Destination",
         "WINNER_NAME": "Winner Name",
-        "BID_AMOUNT": "Bid Amount",
+        "BID_AMOUNT": "Winner Bid Amount",
+        "PREVIOUS_WINNER_BID_AMOUNT": "Previous Winner Bid Amount",
+        "VS_PREVIOUS_WINNER_DIFF": "Change vs Previous",
+        "VS_PREVIOUS_WINNER_PCT": "Change %",
         "REMARKS": "Remarks",
     })
 
-    with st.expander("📋 Bid Finalization Summary — latest 10 matching bids", expanded=True):
+    with st.expander("📋 Winner Bid Finalization Summary — latest 10 matching winner bids", expanded=True):
         st.dataframe(
             display,
             use_container_width=True,
@@ -2388,7 +2424,10 @@ def render_bid_finalization_history(current_df, history_df):
                 "Origin": st.column_config.TextColumn("Origin"),
                 "Destination": st.column_config.TextColumn("Destination"),
                 "Winner Name": st.column_config.TextColumn("Winner Name", width="large"),
-                "Bid Amount": st.column_config.NumberColumn("Bid Amount", format="₹ %.2f"),
+                "Winner Bid Amount": st.column_config.NumberColumn("Winner Bid Amount", format="₹ %.2f"),
+                "Previous Winner Bid Amount": st.column_config.NumberColumn("Previous Winner Bid Amount", format="₹ %.2f"),
+                "Change vs Previous": st.column_config.NumberColumn("Change vs Previous", format="₹ %.2f"),
+                "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%"),
                 "Remarks": st.column_config.TextColumn("Remarks"),
             },
         )
