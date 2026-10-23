@@ -2369,6 +2369,7 @@ def render_bid_finalization_history(current_df, history_df, from_date, to_date):
     hist["PREVIOUS_WINNER_BID_AMOUNT"] = hist["BID_AMOUNT"].shift(1)
     hist["PREVIOUS_WINNER_BID_ID"] = hist["BIDID"].shift(1)
     hist["PREVIOUS_WINNER_BID_DATE"] = hist["BID_DATE"].shift(1)
+    hist["PREVIOUS_WINNER_NAME"] = hist["WINNER_NAME"].shift(1)
     hist["VS_PREVIOUS_WINNER_DIFF"] = hist["BID_AMOUNT"] - hist["PREVIOUS_WINNER_BID_AMOUNT"]
     hist["VS_PREVIOUS_WINNER_PCT"] = (
         hist["VS_PREVIOUS_WINNER_DIFF"]
@@ -2429,7 +2430,7 @@ def render_bid_finalization_history(current_df, history_df, from_date, to_date):
     )
     _kpi_card(
         k3, "↩️ Previous Winner Rate", _format_inr(previous_rate),
-        "Same route + vehicle; vendor can differ" if pd.notna(previous_rate) else "No earlier winner bid found", "purple"
+        (("Prev Winner: " + str(latest["PREVIOUS_WINNER_NAME"])) if pd.notna(previous_rate) and pd.notna(latest.get("PREVIOUS_WINNER_NAME")) else "No earlier winner bid found"), "purple"
     )
     _kpi_card(
         k4, "↕️ Latest Change", _format_inr(diff_prev),
@@ -2454,7 +2455,7 @@ def render_bid_finalization_history(current_df, history_df, from_date, to_date):
         [
             "S#", "BIDID", "BID_DATE", "VEHICLE_TYPE", "ORIGIN", "DESTINATION",
             "WINNER_NAME", "BID_AMOUNT", "PREVIOUS_WINNER_BID_AMOUNT",
-            "PREVIOUS_WINNER_BID_ID", "PREVIOUS_WINNER_BID_DATE",
+            "PREVIOUS_WINNER_NAME", "PREVIOUS_WINNER_BID_ID", "PREVIOUS_WINNER_BID_DATE",
             "VS_PREVIOUS_WINNER_DIFF", "VS_PREVIOUS_WINNER_PCT", "REMARKS"
         ]
     ].rename(columns={
@@ -2466,6 +2467,7 @@ def render_bid_finalization_history(current_df, history_df, from_date, to_date):
         "WINNER_NAME": "Winner Name",
         "BID_AMOUNT": "Winner Bid Amount",
         "PREVIOUS_WINNER_BID_AMOUNT": "Previous Winner Bid Amount",
+        "PREVIOUS_WINNER_NAME": "Previous Winner Name",
         "PREVIOUS_WINNER_BID_ID": "Previous Winner Bid ID",
         "PREVIOUS_WINNER_BID_DATE": "Previous Winner Bid Date",
         "VS_PREVIOUS_WINNER_DIFF": "Change vs Previous",
@@ -2492,6 +2494,7 @@ def render_bid_finalization_history(current_df, history_df, from_date, to_date):
                 "Winner Name": st.column_config.TextColumn("Winner Name", width="large"),
                 "Winner Bid Amount": st.column_config.NumberColumn("Winner Bid Amount", format="₹ %.2f"),
                 "Previous Winner Bid Amount": st.column_config.NumberColumn("Previous Winner Bid Amount", format="₹ %.2f"),
+                "Previous Winner Name": st.column_config.TextColumn("Previous Winner Name", width="large"),
                 "Previous Winner Bid ID": st.column_config.NumberColumn("Prev Bid ID", format="%.0f"),
                 "Previous Winner Bid Date": st.column_config.DatetimeColumn("Prev Bid Date", format="DD-MM-YYYY"),
                 "Change vs Previous": st.column_config.NumberColumn("Change vs Previous", format="₹ %.2f"),
