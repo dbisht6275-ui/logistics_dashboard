@@ -2256,8 +2256,8 @@ def render_bid_finalization_history(current_df, history_df):
     """Same Origin + Destination + Vehicle Type historical finalized-rate insight."""
     st.markdown("#### 💰 Bid Finalization History & Rate Benchmark")
     st.caption(
-        "Benchmarks the latest finalized bid against previous finalized bids for the same "
-        "Origin + Destination + Vehicle Type. Historical data uses a 12-month lookback."
+        "Benchmarks winner bids for the same Origin + Destination + Vehicle Type. "
+        "Previous winner amount is taken irrespective of which vendor won. Historical data uses a 12-month lookback."
     )
 
     if current_df is None or current_df.empty or history_df is None or history_df.empty:
@@ -2334,21 +2334,18 @@ def render_bid_finalization_history(current_df, history_df):
     diff_avg = latest_rate - avg_rate if pd.notna(latest_rate) and pd.notna(avg_rate) else pd.NA
     pct_avg = (diff_avg / avg_rate * 100.0) if pd.notna(diff_avg) and pd.notna(avg_rate) and avg_rate else pd.NA
 
-    latest_winner = str(hist.iloc[0].get("WINNER_NAME", "") or "").strip()
-    repeat_wins = int(
-        _clean_text_series(hist["WINNER_NAME"]).str.upper().eq(latest_winner.upper()).sum()
-    ) if latest_winner else 0
+    diff_prev_pct = (diff_prev / previous_rate * 100.0) if pd.notna(diff_prev) and pd.notna(previous_rate) and previous_rate else pd.NA
 
     k1, k2, k3, k4, k5 = st.columns(5, gap="small")
     _kpi_card(k1, "💵 Latest Final Rate", _format_inr(latest_rate), f"Bid {int(hist.iloc[0]['BIDID'])}", "blue")
-    _kpi_card(k2, "↩️ Previous Rate", _format_inr(previous_rate),
-              "No previous finalized bid" if pd.isna(previous_rate) else f"Change: {_format_inr(diff_prev)}", "purple")
-    _kpi_card(k3, "📊 Prior Avg Rate", _format_inr(avg_rate),
-              "Previous finalized bids only" if len(hist) > 1 else "Available history", "cyan")
-    _kpi_card(k4, "📉 Prior Min / Max", f"{_format_inr(min_rate)} / {_format_inr(max_rate)}",
-              "Historical rate band", "green")
-    _kpi_card(k5, "🏆 Latest Winner Repeat", f"{repeat_wins:,}x" if latest_winner else "-",
-              latest_winner or "Winner not available", "orange")
+    _kpi_card(k2, "↩️ Previous Winner Rate", _format_inr(previous_rate),
+              "No previous winner bid" if pd.isna(previous_rate) else "Same route + vehicle", "purple")
+    _kpi_card(k3, "↕️ Change vs Previous", _format_inr(diff_prev),
+              "-" if pd.isna(diff_prev_pct) else f"{diff_prev_pct:+.1f}%", "orange")
+    _kpi_card(k4, "📊 Prior Avg Rate", _format_inr(avg_rate),
+              "Previous winner bids only" if len(hist) > 1 else "Available history", "cyan")
+    _kpi_card(k5, "📉 Prior Min / Max", f"{_format_inr(min_rate)} / {_format_inr(max_rate)}",
+              "Historical winner-rate band", "green")
 
     if pd.notna(diff_avg):
         direction = "above" if diff_avg > 0 else "below" if diff_avg < 0 else "equal to"
