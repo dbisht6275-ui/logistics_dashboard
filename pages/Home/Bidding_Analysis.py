@@ -421,7 +421,10 @@ BID_FINALIZATION_HISTORY_SQL = text(r"""
         BH.DESTINATIONCITY AS DESTINATION,
         VT.TYPENAME AS VEHICLE_TYPE,
         WINVEND.VENDNAME AS WINNER_NAME,
-        TRY_CONVERT(DECIMAL(18,2), BD.FINALRATE) AS BID_AMOUNT,
+        COALESCE(
+            TRY_CONVERT(DECIMAL(18,2), BD.FINALRATE),
+            TRY_CONVERT(DECIMAL(18,2), WBID.BIDAMOUNT)
+        ) AS BID_AMOUNT,
         BH.REMARKS
     FROM BIDHEAD BH
     LEFT JOIN VEHICLETYPEMAST VT
@@ -447,11 +450,24 @@ BID_FINALIZATION_HISTORY_SQL = text(r"""
     ) BD
     LEFT JOIN VENDMAST WINVEND
         ON WINVEND.VENDCODE = BD.VENDCODE
+    OUTER APPLY
+    (
+        SELECT TOP 1 BA.BIDAMOUNT
+        FROM BIDAMOUNT BA WITH (NOLOCK)
+        WHERE BA.BIDID = BH.BIDID
+          AND BA.VENDCODE = BD.VENDCODE
+          AND ISNULL(BA.CANCEL,'N') <> 'Y'
+          AND TRY_CONVERT(DECIMAL(18,2), BA.BIDAMOUNT) > 0
+        ORDER BY TRY_CONVERT(DECIMAL(18,2), BA.BIDAMOUNT) ASC
+    ) WBID
     WHERE BH.BIDOPENDT >= :history_from
       AND BH.BIDOPENDT < :to_date_exclusive
       AND ISNULL(BH.CANCEL,'N') <> 'Y'
       AND BD.VENDCODE IS NOT NULL
-      AND TRY_CONVERT(DECIMAL(18,2), BD.FINALRATE) > 0
+      AND COALESCE(
+            TRY_CONVERT(DECIMAL(18,2), BD.FINALRATE),
+            TRY_CONVERT(DECIMAL(18,2), WBID.BIDAMOUNT)
+          ) > 0
     ORDER BY BH.BIDOPENDT DESC, BH.BIDID DESC;
 """)
 
@@ -2252,16 +2268,18 @@ def render_zone_bidding_insights(df):
 
 
 
-def render_bid_finalization_history(current_df, history_df):
-    """Same Origin + Destination + Vehicle Type historical finalized-rate insight."""
-    st.markdown("#### 💰 Bid Finalization History & Rate Benchmark")
+def render_bid_finalization_history(current_df, history_df, from_date, to_date):
+    """Winner bids in selected period + immediately previous historical winner rate."""
+    st.markdown("#### 💰 Winner Bid Finalization & Previous Rate Insight")
     st.caption(
-        "Benchmarks winner bids for the same Origin + Destination + Vehicle Type. "
-        "Previous winner amount is taken irrespective of which vendor won. Historical data uses a 12-month lookback."
+        "Shows only winner bids falling in the selected dashboard period. For each winner bid, "
+        "Previous Winner Bid Amount is the immediately preceding winner bid for the same "
+        "Origin + Destination + Vehicle Type, even when that previous bid falls before the selected period. "
+        "Winner vendor does not need to be the same."
     )
 
     if current_df is None or current_df.empty or history_df is None or history_df.empty:
-        st.info("No finalized bid history is available for the selected view.")
+        st.info("No winner-bid history is available for the selected view.")
         return
 
     required_current = {"ORIGINCITY", "DESTINATIONCITY", "VEHICLETYPE", "BIDOPENDT", "BIDID"}
@@ -2269,14 +2287,31 @@ def render_bid_finalization_history(current_df, history_df):
         st.info("Origin, destination or vehicle-type fields are not available for rate-history analysis.")
         return
 
+    # Current dashboard data is used only to determine which route + vehicle
+    # combinations are relevant after all dashboard filters have been applied.
+    current_source = current_df.copy()
+    if "HAS_WINNER" in current_source.columns:
+        current_source = current_source[current_source["HAS_WINNER"].fillna(False).astype(bool)].copy()
+
+    current_source["BIDOPENDT"] = pd.to_datetime(current_source["BIDOPENDT"], errors="coerce")
+    from_ts = pd.Timestamp(from_date)
+    to_exclusive = pd.Timestamp(to_date) + pd.Timedelta(days=1)
+    current_source = current_source[
+        current_source["BIDOPENDT"].ge(from_ts)
+        & current_source["BIDOPENDT"].lt(to_exclusive)
+    ].copy()
+
     current = (
-        current_df.sort_values(["BIDOPENDT", "BIDID"], ascending=[False, False], na_position="last")
+        current_source
+        .sort_values(["BIDOPENDT", "BIDID"], ascending=[False, False], na_position="last")
         .drop_duplicates(subset=["BIDID"], keep="first")
         .copy()
     )
+
     current["ORIGIN_CLEAN"] = _clean_text_series(current["ORIGINCITY"])
     current["DEST_CLEAN"] = _clean_text_series(current["DESTINATIONCITY"])
     current["VEHICLE_CLEAN"] = _clean_text_series(current["VEHICLETYPE"])
+
     combos = current.loc[
         current["ORIGIN_CLEAN"].ne("")
         & current["DEST_CLEAN"].ne("")
@@ -2285,7 +2320,7 @@ def render_bid_finalization_history(current_df, history_df):
     ].copy()
 
     if combos.empty:
-        st.info("No valid route + vehicle combination found in the selected filters.")
+        st.info("No winner bids found in the selected period for the applied filters.")
         return
 
     combos["ROUTE_VEHICLE"] = (
@@ -2305,92 +2340,121 @@ def render_bid_finalization_history(current_df, history_df):
     destination = selected_row["DEST_CLEAN"]
     vehicle_type = selected_row["VEHICLE_CLEAN"]
 
+    # IMPORTANT: Do NOT restrict history to the selected dashboard period yet.
+    # Previous winner amount must be calculated on the complete historical
+    # winner sequence first.
     hist = history_df.copy()
+    hist["BID_DATE"] = pd.to_datetime(hist["BID_DATE"], errors="coerce")
+    hist["BID_AMOUNT"] = pd.to_numeric(hist["BID_AMOUNT"], errors="coerce")
+
     hist = hist[
         _clean_text_series(hist["ORIGIN"]).str.upper().eq(str(origin).upper())
         & _clean_text_series(hist["DESTINATION"]).str.upper().eq(str(destination).upper())
         & _clean_text_series(hist["VEHICLE_TYPE"]).str.upper().eq(str(vehicle_type).upper())
+        & hist["BID_DATE"].notna()
+        & hist["BID_AMOUNT"].notna()
     ].copy()
 
     if hist.empty:
-        st.info("No previous finalized bids found for this route and vehicle type in the last 12 months.")
+        st.info("No historical winner bids found for this route and vehicle type.")
         return
 
-    hist = (
-        hist.sort_values(["BID_DATE", "BIDID"], ascending=[False, False])
-        .drop_duplicates(subset=["BIDID"], keep="first")
-        .reset_index(drop=True)
-    )
+    # One finalized winner record per BID.
+    hist = hist.drop_duplicates(subset=["BIDID"], keep="first").copy()
 
-    latest_rate = pd.to_numeric(hist.iloc[0]["BID_AMOUNT"], errors="coerce")
-    previous_rate = pd.to_numeric(hist.iloc[1]["BID_AMOUNT"], errors="coerce") if len(hist) > 1 else pd.NA
-    prior_rates = pd.to_numeric(hist.iloc[1:]["BID_AMOUNT"], errors="coerce").dropna()
-    benchmark_rates = prior_rates if not prior_rates.empty else pd.to_numeric(hist["BID_AMOUNT"], errors="coerce").dropna()
-    avg_rate = benchmark_rates.mean() if not benchmark_rates.empty else pd.NA
-    min_rate = benchmark_rates.min() if not benchmark_rates.empty else pd.NA
-    max_rate = benchmark_rates.max() if not benchmark_rates.empty else pd.NA
-
-    diff_prev = latest_rate - previous_rate if pd.notna(latest_rate) and pd.notna(previous_rate) else pd.NA
-    diff_avg = latest_rate - avg_rate if pd.notna(latest_rate) and pd.notna(avg_rate) else pd.NA
-    pct_avg = (diff_avg / avg_rate * 100.0) if pd.notna(diff_avg) and pd.notna(avg_rate) and avg_rate else pd.NA
-
-    diff_prev_pct = (diff_prev / previous_rate * 100.0) if pd.notna(diff_prev) and pd.notna(previous_rate) and previous_rate else pd.NA
-
-    k1, k2, k3, k4, k5 = st.columns(5, gap="small")
-    _kpi_card(k1, "💵 Latest Final Rate", _format_inr(latest_rate), f"Bid {int(hist.iloc[0]['BIDID'])}", "blue")
-    _kpi_card(k2, "↩️ Previous Winner Rate", _format_inr(previous_rate),
-              "No previous winner bid" if pd.isna(previous_rate) else "Same route + vehicle", "purple")
-    _kpi_card(k3, "↕️ Change vs Previous", _format_inr(diff_prev),
-              "-" if pd.isna(diff_prev_pct) else f"{diff_prev_pct:+.1f}%", "orange")
-    _kpi_card(k4, "📊 Prior Avg Rate", _format_inr(avg_rate),
-              "Previous winner bids only" if len(hist) > 1 else "Available history", "cyan")
-    _kpi_card(k5, "📉 Prior Min / Max", f"{_format_inr(min_rate)} / {_format_inr(max_rate)}",
-              "Historical winner-rate band", "green")
-
-    if pd.notna(diff_avg):
-        direction = "above" if diff_avg > 0 else "below" if diff_avg < 0 else "equal to"
-        pct_text = f" ({abs(pct_avg):.1f}%)" if pd.notna(pct_avg) else ""
-        st.caption(
-            f"Latest rate is {_format_inr(abs(diff_avg))}{pct_text} {direction} the prior historical average."
-        )
-
-    # Winner-bid sequence insight: for each winner bid, show the immediately
-    # previous WINNER bid amount for the same Origin + Destination + Vehicle Type.
-    # hist is already filtered to winner bids only and sorted latest -> oldest.
-    hist["PREVIOUS_WINNER_BID_AMOUNT"] = pd.to_numeric(
-        hist["BID_AMOUNT"].shift(-1), errors="coerce"
-    )
-    hist["VS_PREVIOUS_WINNER_DIFF"] = (
-        pd.to_numeric(hist["BID_AMOUNT"], errors="coerce")
-        - hist["PREVIOUS_WINNER_BID_AMOUNT"]
-    )
+    # Calculate previous winner rate in TRUE chronological order.
+    # If two bids have the same date, the lower BIDID is earlier and the higher
+    # BIDID is later, so BIDID ASC is used within the same date.
+    hist = hist.sort_values(["BID_DATE", "BIDID"], ascending=[True, True]).reset_index(drop=True)
+    hist["PREVIOUS_WINNER_BID_AMOUNT"] = hist["BID_AMOUNT"].shift(1)
+    hist["PREVIOUS_WINNER_BID_ID"] = hist["BIDID"].shift(1)
+    hist["PREVIOUS_WINNER_BID_DATE"] = hist["BID_DATE"].shift(1)
+    hist["VS_PREVIOUS_WINNER_DIFF"] = hist["BID_AMOUNT"] - hist["PREVIOUS_WINNER_BID_AMOUNT"]
     hist["VS_PREVIOUS_WINNER_PCT"] = (
         hist["VS_PREVIOUS_WINNER_DIFF"]
         .div(hist["PREVIOUS_WINNER_BID_AMOUNT"].replace(0, pd.NA))
         .mul(100.0)
     )
 
-    # Additional management KPI: how many winner bids have a usable previous
-    # winner benchmark and how often the new rate increased/decreased.
-    comparable_seq = hist[hist["PREVIOUS_WINNER_BID_AMOUNT"].notna()].copy()
-    rate_up = int(comparable_seq["VS_PREVIOUS_WINNER_DIFF"].gt(0).sum())
-    rate_down = int(comparable_seq["VS_PREVIOUS_WINNER_DIFF"].lt(0).sum())
-    rate_same = int(comparable_seq["VS_PREVIOUS_WINNER_DIFF"].abs().le(0.01).sum())
+    # Only AFTER previous-rate calculation, filter the rows that are displayed
+    # to the selected dashboard period.
+    period_hist = hist[
+        hist["BID_DATE"].ge(from_ts)
+        & hist["BID_DATE"].lt(to_exclusive)
+    ].copy()
 
-    st.caption(
-        f"Winner-bid sequence: {len(comparable_seq):,} comparable bids • "
-        f"Rate increased: {rate_up:,} • decreased: {rate_down:,} • same: {rate_same:,}. "
-        "Previous amount always means the immediately preceding winner bid for the same route and vehicle type."
+    # Respect current dashboard filters: show only winner BIDIDs that are present
+    # in the filtered dashboard data for this route + vehicle combination.
+    selected_current_bidids = set(
+        pd.to_numeric(
+            combos.loc[combos["ROUTE_VEHICLE"].eq(selected_combo), "BIDID"],
+            errors="coerce",
+        ).dropna().astype("int64").tolist()
+    )
+    if selected_current_bidids:
+        period_hist = period_hist[
+            pd.to_numeric(period_hist["BIDID"], errors="coerce")
+            .fillna(-1).astype("int64")
+            .isin(selected_current_bidids)
+        ].copy()
+
+    if period_hist.empty:
+        st.info("No winner bids for this route and vehicle type fall in the selected dashboard period.")
+        return
+
+    # Display latest winner bids first.
+    period_hist = period_hist.sort_values(
+        ["BID_DATE", "BIDID"], ascending=[False, False]
+    ).reset_index(drop=True)
+
+    latest = period_hist.iloc[0]
+    latest_rate = pd.to_numeric(latest["BID_AMOUNT"], errors="coerce")
+    previous_rate = pd.to_numeric(latest["PREVIOUS_WINNER_BID_AMOUNT"], errors="coerce")
+    diff_prev = pd.to_numeric(latest["VS_PREVIOUS_WINNER_DIFF"], errors="coerce")
+    diff_prev_pct = pd.to_numeric(latest["VS_PREVIOUS_WINNER_PCT"], errors="coerce")
+
+    comparable = period_hist[period_hist["PREVIOUS_WINNER_BID_AMOUNT"].notna()].copy()
+    rate_up = int(comparable["VS_PREVIOUS_WINNER_DIFF"].gt(0).sum())
+    rate_down = int(comparable["VS_PREVIOUS_WINNER_DIFF"].lt(0).sum())
+    rate_same = int(comparable["VS_PREVIOUS_WINNER_DIFF"].abs().le(0.01).sum())
+
+    k1, k2, k3, k4, k5 = st.columns(5, gap="small")
+    _kpi_card(
+        k1, "🏆 Winner Bids in Period", f"{int(period_hist['BIDID'].nunique()):,}",
+        f"{pd.Timestamp(from_date).strftime('%d-%m-%Y')} to {pd.Timestamp(to_date).strftime('%d-%m-%Y')}", "blue"
+    )
+    _kpi_card(
+        k2, "💵 Latest Winner Rate", _format_inr(latest_rate),
+        f"Bid {int(latest['BIDID'])}", "green"
+    )
+    _kpi_card(
+        k3, "↩️ Previous Winner Rate", _format_inr(previous_rate),
+        "Same route + vehicle; vendor can differ" if pd.notna(previous_rate) else "No earlier winner bid found", "purple"
+    )
+    _kpi_card(
+        k4, "↕️ Latest Change", _format_inr(diff_prev),
+        "-" if pd.isna(diff_prev_pct) else f"{diff_prev_pct:+.1f}%", "orange"
+    )
+    _kpi_card(
+        k5, "📊 Period Movement", f"↑ {rate_up}  ↓ {rate_down}  = {rate_same}",
+        f"{len(comparable):,} comparable winner bids", "cyan"
     )
 
-    display = hist.head(10).copy()
+    st.caption(
+        "Logic: winner bids are displayed only for the selected dashboard period; "
+        "the previous amount is looked up from the full historical winner sequence for the same "
+        "Origin + Destination + Vehicle Type. The previous winner may therefore be before the selected From Date."
+    )
+
+    display = period_hist.head(10).copy()
     display.insert(0, "S#", range(1, len(display) + 1))
-    display["BID_DATE"] = pd.to_datetime(display["BID_DATE"], errors="coerce")
     display["REMARKS"] = display["REMARKS"].replace("", "winner")
+
     display = display[
         [
             "S#", "BIDID", "BID_DATE", "VEHICLE_TYPE", "ORIGIN", "DESTINATION",
             "WINNER_NAME", "BID_AMOUNT", "PREVIOUS_WINNER_BID_AMOUNT",
+            "PREVIOUS_WINNER_BID_ID", "PREVIOUS_WINNER_BID_DATE",
             "VS_PREVIOUS_WINNER_DIFF", "VS_PREVIOUS_WINNER_PCT", "REMARKS"
         ]
     ].rename(columns={
@@ -2402,12 +2466,17 @@ def render_bid_finalization_history(current_df, history_df):
         "WINNER_NAME": "Winner Name",
         "BID_AMOUNT": "Winner Bid Amount",
         "PREVIOUS_WINNER_BID_AMOUNT": "Previous Winner Bid Amount",
+        "PREVIOUS_WINNER_BID_ID": "Previous Winner Bid ID",
+        "PREVIOUS_WINNER_BID_DATE": "Previous Winner Bid Date",
         "VS_PREVIOUS_WINNER_DIFF": "Change vs Previous",
         "VS_PREVIOUS_WINNER_PCT": "Change %",
         "REMARKS": "Remarks",
     })
 
-    with st.expander("📋 Winner Bid Finalization Summary — latest 10 matching winner bids", expanded=True):
+    with st.expander(
+        "📋 Winner Bid Finalization Summary — selected period, latest 10",
+        expanded=True,
+    ):
         st.dataframe(
             display,
             use_container_width=True,
@@ -2423,12 +2492,13 @@ def render_bid_finalization_history(current_df, history_df):
                 "Winner Name": st.column_config.TextColumn("Winner Name", width="large"),
                 "Winner Bid Amount": st.column_config.NumberColumn("Winner Bid Amount", format="₹ %.2f"),
                 "Previous Winner Bid Amount": st.column_config.NumberColumn("Previous Winner Bid Amount", format="₹ %.2f"),
+                "Previous Winner Bid ID": st.column_config.NumberColumn("Prev Bid ID", format="%.0f"),
+                "Previous Winner Bid Date": st.column_config.DatetimeColumn("Prev Bid Date", format="DD-MM-YYYY"),
                 "Change vs Previous": st.column_config.NumberColumn("Change vs Previous", format="₹ %.2f"),
                 "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%"),
                 "Remarks": st.column_config.TextColumn("Remarks"),
             },
         )
-
 
 def render_charts(df):
     st.markdown("### Management Analysis")
@@ -5093,7 +5163,12 @@ def show_bidding_analysis():
                     st.session_state["bidding_to_date"],
                     lookback_days=365,
                 )
-            render_bid_finalization_history(filtered_df, bid_history_df)
+            render_bid_finalization_history(
+                filtered_df,
+                bid_history_df,
+                st.session_state["bidding_from_date"],
+                st.session_state["bidding_to_date"],
+            )
         except Exception as exc:
             st.warning(f"Unable to load bid finalization history: {exc}")
         render_charts(filtered_df)
