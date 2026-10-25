@@ -436,6 +436,12 @@ HR_KPI_STYLES = {
     "Left This Year": ("📉", "#b45309", "#f59e0b"),
     "Net Employee Change This Year": ("⚖️", "#0f766e", "#2dd4bf"),
     "Employee Leaving Rate (Estimate)": ("📊", "#7c3aed", "#a78bfa"),
+    "New Joiners": ("🆕", "#0369a1", "#38bdf8"),
+    "Still Active": ("✅", "#047857", "#34d399"),
+    "Exited After Joining": ("🚪", "#b45309", "#f59e0b"),
+    "Employees Exited": ("🚪", "#9a3412", "#f97316"),
+    "Early Exits (< 1 Year)": ("⚠️", "#b45309", "#f59e0b"),
+    "Average Tenure at Exit": ("📆", "#155e75", "#22b8a6"),
 }
 HR_KPI_FALLBACK = ("📌", "#1d4ed8", "#60a5fa")
 
@@ -531,7 +537,7 @@ salary=sal_all.loc[employee_key_mask(sal_all,emp)].copy()
 snapshot=salary_snapshot(salary,asof)
 # Filter on current employment; previous employment may be in another company.
 rejoining=rejoining_all.loc[employee_key_mask(rejoining_all,emp)].copy()
-sections=[("Overview","Overview"),
+sections=[("Overview","Overview"), ("New Joiners","New Joiners"), ("Exit Insights","Exit Insights"),
           ("Salary & Costs","Salary & Costs"),("Missing Salary Details","Missing Salary"),("Employee List","Employees"),("Rejoining Details","Rejoining")]
 if st.session_state.get("hr_selected_section") not in [k for k,_ in sections]:
     st.session_state["hr_selected_section"]="Overview"
@@ -803,6 +809,120 @@ if page=="Overview":
             st.markdown(f'<div class="hr-note"><b>Highest number of employees who left:</b> {escape(str(group))} age group · <b>{indian_number(int(exit_age.max()))}</b> employees ({exit_age.max()/exit_age.sum():.1%} of exits with valid DOB). This is the number who left, not the percentage of each age group.</div>',unsafe_allow_html=True)
     else:
         st.info("No employee exits with valid DOB for the selected filters and as-of date.")
+
+elif page in ("New Joiners", "Exit Insights"):
+    # Dates control the event window; global filters above also apply to both reports.
+    asof_ts = pd.Timestamp(asof).normalize()
+    default_start = asof_ts.replace(month=1, day=1)
+    st.markdown('<div class="hr-section-header">' +
+                ("New Employee Joining Insights" if page == "New Joiners" else "Employee Exit Insights") +
+                '</div>', unsafe_allow_html=True)
+    left_date, right_date, interval_col = st.columns([1, 1, 1.2], gap="small")
+    period_start = left_date.date_input("From Date", value=default_start.date(),
+                                      max_value=asof, key=f"hr_{page}_from")
+    period_end = right_date.date_input("To Date", value=asof,
+                                     max_value=asof, key=f"hr_{page}_to")
+    cadence = interval_col.selectbox("Trend", ["Monthly", "Quarterly", "Yearly"],
+                                     key=f"hr_{page}_cadence")
+    if period_start > period_end:
+        st.warning("From Date cannot be after To Date. Please change the period.")
+        st.stop()
+    start_ts, end_ts = pd.Timestamp(period_start), pd.Timestamp(period_end)
+    event_field = "DOJ" if page == "New Joiners" else "DATEOFLEAVING"
+    people = emp.loc[emp[event_field].between(start_ts, end_ts)].copy()
+    people = people.drop_duplicates(EMPLOYEE_KEYS)
+    # A leaving date is the recorded last working date (LWD); it is not the resignation date.
+    if page == "New Joiners":
+        active_joiners = people.ACTIVE_HEADCOUNT.eq(1)
+        exited_joiners = people.DATEOFLEAVING.notna() & people.DATEOFLEAVING.lt(asof_ts)
+        potential_rejoiners = employee_key_mask(people, rejoining)
+        hr_metric_grid([
+            ("New Joiners", indian_number(len(people)), "DOJ within selected dates"),
+            ("Still Active", indian_number(int(active_joiners.sum())), "Working on report date"),
+            ("Exited After Joining", indian_number(int(exited_joiners.sum())), "LWD before report date"),
+            ("Possible Rejoining Employees", indian_number(int(potential_rejoiners.sum())), "Matched to another employment record"),
+        ])
+        st.caption("Joining count includes recorded rejoinings as separate employment records. 'Still Active' includes notice-period employees.")
+    else:
+        people["TENURE_AT_EXIT_DAYS"] = (people.DATEOFLEAVING - people.DOJ).dt.days
+        valid_tenure = people.TENURE_AT_EXIT_DAYS.ge(0) & people.TENURE_AT_EXIT_DAYS.notna()
+        early_exits = valid_tenure & people.TENURE_AT_EXIT_DAYS.lt(365)
+        avg_years = people.loc[valid_tenure, "TENURE_AT_EXIT_DAYS"].mean() / 365.25 if valid_tenure.any() else float("nan")
+        hr_metric_grid([
+            ("Employees Exited", indian_number(len(people)), "Recorded LWD within selected dates"),
+            ("Early Exits (< 1 Year)", indian_number(int(early_exits.sum())), "Exited within 365 days of DOJ"),
+            ("Average Tenure at Exit", f"{avg_years:.1f} years" if pd.notna(avg_years) else "—", "Based on valid DOJ and LWD"),
+            ("Leaving Date Not Updated", indian_number(int(emp.STATUS.eq("RESIGNED - LWD PENDING").sum())), "Resigned employees missing LWD (all dates)"),
+        ])
+        st.caption("Exits use Last Working Date (LWD), not resignation date. Future LWDs are not included; missing LWDs cannot be counted as exits.")
+
+    if people.empty:
+        st.info("No " + ("joinings" if page == "New Joiners" else "exits") +
+                " found for the selected dates and global filters.")
+    else:
+        freq = {"Monthly": "M", "Quarterly": "Q", "Yearly": "Y"}[cadence]
+        all_periods = pd.period_range(start=start_ts.to_period(freq), end=end_ts.to_period(freq), freq=freq)
+        counts = people[event_field].dt.to_period(freq).value_counts().reindex(all_periods, fill_value=0)
+        movements = pd.DataFrame({"Period": counts.index.astype(str), "Employees": counts.to_numpy()})
+        st.markdown('<div class="hr-section-header">' + cadence + ' Trend</div>', unsafe_allow_html=True)
+        trend_fig = px.bar(movements, x="Period", y="Employees",
+                           color_discrete_sequence=["#1682ae" if page == "New Joiners" else "#ea795e"])
+        trend_fig.update_layout(showlegend=False, xaxis_title=None, yaxis_title="Employees")
+        hr_plot(trend_fig, 290)
+
+        st.markdown('<div class="hr-section-header">Where Are Employees ' +
+                    ('Joining?' if page == "New Joiners" else 'Leaving From?') +
+                    '</div>', unsafe_allow_html=True)
+        breakdowns = [("Company", "COMPANY"), ("Zone", "ZONE"),
+                      ("Branch", "BRANCH"), ("Department", "DEPARTMENT")]
+        a, b = st.columns(2, gap="medium")
+        for i, (label, field) in enumerate(breakdowns):
+            with (a if i % 2 == 0 else b):
+                st.markdown(f'<div class="hr-section-header">{label}-wise {"Joinings" if page == "New Joiners" else "Exits"}</div>',
+                            unsafe_allow_html=True)
+                grouped = people[field].fillna("Unknown").replace("", "Unknown").value_counts().head(12).sort_values()
+                fig = px.bar(x=grouped.values, y=grouped.index.astype(str), orientation="h",
+                             color_discrete_sequence=["#178aad" if page == "New Joiners" else "#e78a65"])
+                fig.update_layout(showlegend=False, xaxis_title="Employees", yaxis_title=None,
+                                  margin=dict(l=18, r=75, t=20, b=25))
+                hr_plot(fig, max(270, 29 * len(grouped) + 90))
+
+        if page == "Exit Insights":
+            st.markdown('<div class="hr-section-header">Exit Tenure Analysis</div>', unsafe_allow_html=True)
+            tenure_labels = ["< 3 Months", "3–6 Months", "6–12 Months", "1–3 Years", "3–5 Years", "5+ Years"]
+            days = people.loc[valid_tenure, "TENURE_AT_EXIT_DAYS"]
+            tenure_bands = pd.cut(days, bins=[-1, 89, 179, 364, 1094, 1825, float("inf")],
+                                  labels=tenure_labels)
+            tenure_count = tenure_bands.value_counts().reindex(tenure_labels, fill_value=0)
+            fig = px.bar(x=tenure_count.index.astype(str), y=tenure_count.values,
+                         color_discrete_sequence=["#d67e57"])
+            fig.update_layout(showlegend=False, xaxis_title="Tenure at exit", yaxis_title="Employees")
+            hr_plot(fig, 290)
+            people["TENURE_AT_EXIT_YEARS"] = (people["TENURE_AT_EXIT_DAYS"] / 365.25).round(2)
+            people.loc[~valid_tenure, "TENURE_AT_EXIT_YEARS"] = np.nan
+            if (~valid_tenure).any():
+                st.caption(f"{int((~valid_tenure).sum())} exit record(s) have missing or inconsistent joining dates; excluded from tenure calculations.")
+
+        st.markdown('<div class="hr-section-header">Employee-wise ' +
+                    ('New Joiners' if page == "New Joiners" else 'Exit Details') +
+                    '</div>', unsafe_allow_html=True)
+        search_term = st.text_input("Find by employee code or name", key=f"hr_{page}_search")
+        if search_term.strip():
+            matched = (people.EMPNAME.fillna("").astype(str).str.contains(search_term.strip(), case=False, regex=False) |
+                       people.EMPCODE.fillna("").astype(str).str.contains(search_term.strip(), case=False, regex=False))
+            people = people.loc[matched].copy()
+        base_cols = ["COMPANY", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "GENDER", "DOJ"]
+        if page == "New Joiners":
+            table_cols = base_cols + ["RESIGNDT", "DATEOFLEAVING", "STATUS"]
+            filename = "hr_new_joiners"
+        else:
+            table_cols = base_cols + ["RESIGNDT", "DATEOFLEAVING", "TENURE_AT_EXIT_YEARS"]
+            filename = "hr_employee_exits"
+        table = people[table_cols].sort_values(event_field, ascending=False)
+        if "TENURE_AT_EXIT_YEARS" in table:
+            table = table.rename(columns={"TENURE_AT_EXIT_YEARS": "Years Worked at Exit"})
+        show_employee_table(table)
+        download_csv(table, filename)
 
 elif page=="Salary & Costs":
     st.markdown('<div class="hr-section-header">Current Gross Salary · TODT is NULL</div>', unsafe_allow_html=True)
