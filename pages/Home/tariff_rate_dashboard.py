@@ -110,7 +110,11 @@ SET @sql = N'
         RT.SLAB1,
         RT.RATE1,
         RT.AMOUNT,
-        RT.RATECATEGORY
+        RT.RATECATEGORY,
+        RT.CREATEDON,
+        RT.APPROVEDBY,
+        RT.EDITID,
+        RT.EDITEDON
     FROM RATEMAST RT WITH (NOLOCK)
     INNER JOIN VIEWSTATIONMAST ORG WITH (NOLOCK)
         ON ORG.STNCODE = RT.ORGCODE
@@ -183,6 +187,10 @@ CHARGE_PIVOT AS
 )
 SELECT
     RT.RATEDATAID,
+    RT.CREATEDON,
+    RT.APPROVEDBY,
+    RT.EDITID,
+    RT.EDITEDON,
     COALESCE(RT.CUSTCODE, RT.CNGECODE, RT.CNGRCODE) AS CUSTOMER_CODE,
     CASE
         WHEN RT.CUSTCODE = ''0000007565'' THEN ''TARIFF RATE''
@@ -249,6 +257,10 @@ IF @cols IS NULL
 BEGIN
     SELECT TOP (0)
         RT.RATEDATAID,
+        RT.CREATEDON,
+        RT.APPROVEDBY,
+        RT.EDITID,
+        RT.EDITEDON,
         CAST(NULL AS VARCHAR(20)) AS CUSTOMER_CODE,
         CAST(NULL AS VARCHAR(20)) AS RATE_TYPE_GROUP,
         CAST(NULL AS VARCHAR(200)) AS CUSTOMER_NAME,
@@ -837,7 +849,7 @@ def _render_rate_grid(frame: pd.DataFrame, height: int = 520) -> None:
         return
 
     show = frame.copy()
-    for col in ("FROMDT", "TODT"):
+    for col in ("FROMDT", "TODT", "CREATEDON", "EDITEDON"):
         if col in show.columns:
             dt = pd.to_datetime(show[col], errors="coerce")
             show[col] = dt.dt.strftime("%d-%m-%Y").where(dt.notna(), "")
@@ -1211,7 +1223,8 @@ as_on_ts = pd.Timestamp(active_date)
 
 # Columns not in the fixed rate schema are dynamic charge-name columns.
 base_rate_columns = {
-    "RATEDATAID", "CUSTOMER_CODE", "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
+    "RATEDATAID", "CREATEDON", "APPROVEDBY", "EDITID", "EDITEDON",
+    "CUSTOMER_CODE", "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
     "ORG_ZONE", "ORG_CIRCLE", "ORIGIN", "DEST_ZONE", "DEST_CIRCLE", "DESTINATION",
     "FROMDT", "TODT", "FROMWT", "TOWT", "PRODUCT_NAME", "GOODS", "VEHICLE_TYPE",
     "MINCWEIGHT", "RATETYPE", "VIA_BORDER", "PCKGRATE", "SLAB1", "RATE1",
@@ -1283,6 +1296,16 @@ elif view_mode == "Rate Records":
             st.warning(f"No Rate Record found for RATEDATAID {active_ratedata_search} within the current filters and access scope.")
 
     display_records = display_records.drop(columns=[c for c in ["SLAB1", "PRODUCT_NAME"] if c in display_records.columns])
+
+    # Keep identification/audit fields together at the front of the Rate Records table.
+    audit_front = [
+        "RATEDATAID", "CREATEDON", "APPROVEDBY", "EDITID", "EDITEDON",
+        "CUSTOMER_CODE", "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
+    ]
+    audit_front = [col for col in audit_front if col in display_records.columns]
+    remaining_cols = [col for col in display_records.columns if col not in audit_front]
+    display_records = display_records[audit_front + remaining_cols]
+
     display_records["RATE_TYPE_GROUP"] = display_records["RATE_TYPE_GROUP"].map(_rate_type_display)
 
     page_records = _paged_frame(display_records, "records_grid", default_size=100)
