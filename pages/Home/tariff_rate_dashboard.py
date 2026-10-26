@@ -182,6 +182,7 @@ CHARGE_PIVOT AS
     ) PVT
 )
 SELECT
+    RT.RATEDATAID,
     COALESCE(RT.CUSTCODE, RT.CNGECODE, RT.CNGRCODE) AS CUSTOMER_CODE,
     CASE
         WHEN RT.CUSTCODE = ''0000007565'' THEN ''TARIFF RATE''
@@ -247,6 +248,7 @@ ORDER BY RT.FROMDT, ORG.STNNAME, DEST.STNNAME;
 IF @cols IS NULL
 BEGIN
     SELECT TOP (0)
+        RT.RATEDATAID,
         CAST(NULL AS VARCHAR(20)) AS CUSTOMER_CODE,
         CAST(NULL AS VARCHAR(20)) AS RATE_TYPE_GROUP,
         CAST(NULL AS VARCHAR(200)) AS CUSTOMER_NAME,
@@ -1209,7 +1211,7 @@ as_on_ts = pd.Timestamp(active_date)
 
 # Columns not in the fixed rate schema are dynamic charge-name columns.
 base_rate_columns = {
-    "CUSTOMER_CODE", "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
+    "RATEDATAID", "CUSTOMER_CODE", "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
     "ORG_ZONE", "ORG_CIRCLE", "ORIGIN", "DEST_ZONE", "DEST_CIRCLE", "DESTINATION",
     "FROMDT", "TODT", "FROMWT", "TOWT", "PRODUCT_NAME", "GOODS", "VEHICLE_TYPE",
     "MINCWEIGHT", "RATETYPE", "VIA_BORDER", "PCKGRATE", "SLAB1", "RATE1",
@@ -1248,6 +1250,38 @@ if view_mode == "Expiry Watch":
 elif view_mode == "Rate Records":
     # Important: render only one page. Rendering the complete HTML table was the main browser-freeze cause.
     display_records = filtered.copy()
+
+    # Exact RATEDATAID lookup inside the already-loaded, role-scoped dataset.
+    # Blank input + Search restores the complete filtered Rate Records set.
+    search_cols = st.columns([1.65, 0.75, 5.6], gap="small")
+    with search_cols[0]:
+        ratedata_search_value = st.text_input(
+            "RateData ID",
+            key="rate_records_ratedata_search_v1",
+            placeholder="Enter RATEDATAID",
+        )
+    with search_cols[1]:
+        st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+        ratedata_search_clicked = st.button(
+            "Search",
+            key="rate_records_ratedata_search_btn_v1",
+            use_container_width=True,
+        )
+
+    if ratedata_search_clicked:
+        st.session_state["rate_records_ratedata_active_v1"] = ratedata_search_value.strip()
+        st.session_state["records_grid_page"] = 1
+        st.session_state["records_grid_page_input"] = 1
+
+    active_ratedata_search = str(
+        st.session_state.get("rate_records_ratedata_active_v1", "") or ""
+    ).strip()
+    if active_ratedata_search:
+        ratedata_series = display_records["RATEDATAID"].fillna("").astype(str).str.strip()
+        display_records = display_records[ratedata_series.eq(active_ratedata_search)].copy()
+        if display_records.empty:
+            st.warning(f"No Rate Record found for RATEDATAID {active_ratedata_search} within the current filters and access scope.")
+
     display_records = display_records.drop(columns=[c for c in ["SLAB1", "PRODUCT_NAME"] if c in display_records.columns])
     display_records["RATE_TYPE_GROUP"] = display_records["RATE_TYPE_GROUP"].map(_rate_type_display)
 
