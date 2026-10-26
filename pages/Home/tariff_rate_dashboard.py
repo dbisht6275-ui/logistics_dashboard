@@ -297,7 +297,7 @@ END;
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def load_rates_role_v2(active_on: date, scope_type: str, scope_value: str) -> pd.DataFrame:
+def load_rates_role_v3(active_on: date, scope_type: str, scope_value: str) -> pd.DataFrame:
     engine = get_engine()
     with engine.connect() as cn:
         return pd.read_sql_query(
@@ -1047,20 +1047,20 @@ load_key = (active_date, scope_type, scope_value)
 if load_clicked:
     try:
         with st.spinner("Loading rate data..."):
-            loaded = load_rates_role_v2(active_date, scope_type, scope_value)
-            st.session_state["rate_data_v2"] = loaded
-            st.session_state["rate_key_v2"] = load_key
+            loaded = load_rates_role_v3(active_date, scope_type, scope_value)
+            st.session_state["rate_data_v3"] = loaded
+            st.session_state["rate_key_v3"] = load_key
     except Exception as exc:
         st.error("Rate data could not be loaded.")
         with st.expander("Technical details"):
             st.code(str(exc))
         st.stop()
 
-if st.session_state.get("rate_key_v2") != load_key:
-    st.info("Choose the active date and click **Load Dashboard**.")
+if st.session_state.get("rate_key_v3") != load_key:
+    st.info("Rate data schema was updated. Click **Load Dashboard** to fetch the latest Rate Records including audit columns.")
     st.stop()
 
-data = st.session_state.get("rate_data_v2", pd.DataFrame()).copy()
+data = st.session_state.get("rate_data_v3", pd.DataFrame()).copy()
 if data.empty:
     if scope_type:
         st.warning(f"No active rates found for your assigned {scope_type}: {scope_value}.")
@@ -1069,13 +1069,14 @@ if data.empty:
     st.stop()
 
 required_columns = {
+    "RATEDATAID", "CREATEDON", "APPROVEDBY", "EDITID", "EDITEDON",
     "RATE_TYPE_GROUP",
     "ORG_ZONE", "ORG_CIRCLE", "ORIGIN",
     "DEST_ZONE", "DEST_CIRCLE", "DESTINATION",
 }
 missing = sorted(required_columns.difference(data.columns))
 if missing:
-    load_rates_role_v2.clear()
+    load_rates_role_v3.clear()
     st.error("SQL result is missing required columns: " + ", ".join(missing))
     st.stop()
 
@@ -1465,3 +1466,4 @@ else:
                 mime="text/csv",
                 key="rate_finder_download_v3",
             )
+
