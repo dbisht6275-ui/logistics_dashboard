@@ -849,10 +849,15 @@ def _render_rate_grid(frame: pd.DataFrame, height: int = 520) -> None:
         return
 
     show = frame.copy()
-    for col in ("FROMDT", "TODT", "CREATEDON", "EDITEDON"):
+    for col in ("FROMDT", "TODT"):
         if col in show.columns:
             dt = pd.to_datetime(show[col], errors="coerce")
             show[col] = dt.dt.strftime("%d-%m-%Y").where(dt.notna(), "")
+
+    for col in ("CREATEDON", "EDITEDON"):
+        if col in show.columns:
+            dt = pd.to_datetime(show[col], errors="coerce")
+            show[col] = dt.dt.strftime("%d-%m-%Y %H:%M:%S").where(dt.notna(), "")
 
     # Display missing values as blank instead of NaN / NaT / <NA>.
     show = show.astype(object).where(pd.notna(show), "")
