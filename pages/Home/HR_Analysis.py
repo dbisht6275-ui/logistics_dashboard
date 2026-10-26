@@ -325,7 +325,7 @@ def employee_filtered(df, zones, branches, departments, genders, companies=None)
 DISPLAY_COLUMNS = {
     "COMPANY": "Company", "PREVIOUS_COMPANY": "Previous Company",
     "EMPLOYEEID": "Employee ID", "EMPCODE": "Employee Code", "EMPNAME": "Employee Name",
-    "ZONE": "Zone", "BRANCH": "Branch", "DEPARTMENT": "Department", "GENDER": "Gender",
+    "ZONE": "Zone", "BRANCH": "Branch", "DEPARTMENT": "Department", "GENDER": "Gender", "MARITALSTATUS": "Marital Status",
     "DOJ": "Joining Date", "DOB": "Date of Birth", "AGE": "Age",
     "SERVICE_YEARS": "Years Worked", "RESIGNDT": "Resignation Date",
     "DATEOFLEAVING": "Last Working Date", "STATUS": "Employee Status",
@@ -1096,7 +1096,7 @@ elif page=="Employee List":
     q=st.text_input("Search employee code or name",placeholder="Type employee code or name…")
     shown=emp.copy()
     if q.strip():shown=shown[shown.EMPNAME.fillna("").astype(str).str.contains(q,case=False,regex=False)|shown.EMPCODE.fillna("").astype(str).str.contains(q,case=False,regex=False)]
-    col=["COMPANY","EMPLOYEEID","EMPCODE","EMPNAME","ZONE","BRANCH","DEPARTMENT","GENDER","DOJ","AGE","SERVICE_YEARS","RESIGNDT","DATEOFLEAVING","STATUS"]
+    col=["COMPANY","EMPLOYEEID","EMPCODE","EMPNAME","ZONE","BRANCH","DEPARTMENT","GENDER","MARITALSTATUS","DOJ","AGE","SERVICE_YEARS","RESIGNDT","DATEOFLEAVING","STATUS"]
     show_employee_table(shown[col])
     download_csv(shown[col],"employees_dashboard")
     with st.expander("Check Missing or Incorrect Data"):
