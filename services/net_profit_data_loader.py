@@ -148,6 +148,71 @@ GROUP BY
     MONTH(VM.VDATE);
 
 
+/* ================= NEPAL OVERHEAD ================= */
+
+IF OBJECT_ID('tempdb..#NEPALOVERHEAD') IS NOT NULL
+    DROP TABLE #NEPALOVERHEAD;
+
+SELECT
+    X.BRANCHCODE,
+    X.BRANCH,
+    X.[YEAR],
+    X.[MONTHNO],
+    ROUND(SUM(X.NETAMT), 2) AS NETAMT
+INTO #NEPALOVERHEAD
+FROM
+(
+    /* -------- NEPAL LOGISTICS DATA -------- */
+    SELECT
+        VL.BRANCHCODE,
+        VL.BRANCHNAME AS BRANCH,
+        YEAR(VL.VDATE) AS [YEAR],
+        MONTH(VL.VDATE) AS [MONTHNO],
+        SUM(VL.DRAMOUNT - VL.CRAMOUNT) / 1.60 AS NETAMT
+    FROM GREENTRANSSGNL..VIEWVOUCHERDETAILS VL
+    INNER JOIN VIEWLEDGER LL
+        ON LL.LEDCODE = VL.LEDCODE
+    WHERE VL.VDATE BETWEEN @FROMDATE AND @TODATE
+      AND LL.GRPTYPE = 'E'
+      AND LL.MAINGRP  IN ('AM203','AM148','AM152','AM205')
+      AND VL.CANCEL <> 'Y'
+      AND LL.isoperationalexpense<>'Y'
+    GROUP BY
+        VL.BRANCHCODE,
+        VL.BRANCHNAME,
+        YEAR(VL.VDATE),
+        MONTH(VL.VDATE)
+
+    UNION ALL
+
+    /* -------- NEPAL TRANSPORT DATA -------- */
+    SELECT
+        VT.BRANCHCODE,
+        VT.BRANCHNAME AS BRANCH,
+        YEAR(VT.VDATE) AS [YEAR],
+        MONTH(VT.VDATE) AS [MONTHNO],
+        SUM(VT.DRAMOUNT - VT.CRAMOUNT) / 1.60 AS NETAMT
+    FROM GREENTRANSSGNT..VIEWVOUCHERDETAILS VT
+    INNER JOIN VIEWLEDGER LT
+        ON LT.LEDCODE = VT.LEDCODE
+    WHERE VT.VDATE BETWEEN @FROMDATE AND @TODATE
+      AND LT.GRPTYPE = 'E'
+      AND VT.CANCEL <> 'Y'
+      AND LT.MAINGRP  IN ('AM203','AM148','AM152','AM205')
+      AND LT.isoperationalexpense<>'Y'
+    GROUP BY
+        VT.BRANCHCODE,
+        VT.BRANCHNAME,
+        YEAR(VT.VDATE),
+        MONTH(VT.VDATE)
+) X
+GROUP BY
+    X.BRANCHCODE,
+    X.BRANCH,
+    X.[YEAR],
+    X.[MONTHNO];
+
+
 /* ================= CLAIM ================= */
 
 IF OBJECT_ID('tempdb..#CLAIM') IS NOT NULL
@@ -212,14 +277,7 @@ IF OBJECT_ID('tempdb..#DESTINATION5') IS NOT NULL
 
 SELECT
 
-    CASE
-        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '704' THEN '602'
-        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '705' THEN '601'
-        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '708' THEN '603'
-        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '712' THEN '171'
-        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '709' THEN '607'
-        ELSE COALESCE(MRG.STNCODE, DEST.STNCODE)
-    END AS BRANCHCODE,
+    COALESCE(MRG.STNCODE, DEST.STNCODE) AS BRANCHCODE,
 
     YEAR(CN.GRDT) AS [YEAR],
     MONTH(CN.GRDT) AS [MONTHNO],
@@ -250,14 +308,7 @@ WHERE CN.GRDT BETWEEN @FROMDATE AND @TODATE
 
 GROUP BY
 
-    CASE
-        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '704' THEN '602'
-        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '705' THEN '601'
-        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '708' THEN '603'
-        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '712' THEN '171'
-        WHEN COALESCE(MRG.STNCODE, DEST.STNCODE) = '709' THEN '607'
-        ELSE COALESCE(MRG.STNCODE, DEST.STNCODE)
-    END,
+    COALESCE(MRG.STNCODE, DEST.STNCODE),
 
     YEAR(CN.GRDT),
     MONTH(CN.GRDT);
@@ -309,45 +360,28 @@ FROM
 
 /* ================= FINAL OUTPUT ================= */
 
+/*
+   Keep India overhead and Nepal overhead as separate rows.
+   This is intentional: some Nepal accounting branch codes overlap / map to
+   different India station codes. Combining them in SQL can move India salary,
+   rent or voucher overhead to a Nepal branch name.
+*/
+
+/* -------- INDIA / NORMAL OVERHEAD ROWS -------- */
 SELECT
-    STN.STNCODE AS BRANCHCODE,
-    STN.STNNAME AS BRANCH,
+    M.BRANCHCODE AS BRANCHCODE,
+    COALESCE(STN.STNNAME, M.BRANCHCODE) AS BRANCH,
     M.[YEAR],
     M.[MONTHNO] AS [MONTH NO],
-    DATENAME(
-        MONTH,
-        DATEFROMPARTS(M.[YEAR], M.[MONTHNO], 1)
-    ) AS [MONTH],
+    DATENAME(MONTH, DATEFROMPARTS(M.[YEAR], M.[MONTHNO], 1)) AS [MONTH],
 
-    ROUND(
-        ISNULL(SAL.NETAMT, 0),
-        2
-    ) AS [SALARY],
-
-    ROUND(
-        ISNULL(GOD.NETAMT, 0),
-        2
-    ) AS [GODOWN RENT],
-
-    ROUND(
-        ISNULL(VEXP.NETAMT, 0),
-        2
-    ) AS [OVERHEAD EXPENSE],
-
-    ROUND(
-        ISNULL(CL.NETAMT, 0),
-        2
-    ) AS [CLAIM],
-
-    ROUND(
-        ISNULL(BK6.NETAMT, 0),
-        2
-    ) AS [BOOKING 6%],
-
-    ROUND(
-        ISNULL(DEST5.NETAMT, 0),
-        2
-    ) AS [DESTINATION 5%],
+    ROUND(ISNULL(SAL.NETAMT, 0), 2) AS [SALARY],
+    ROUND(ISNULL(GOD.NETAMT, 0), 2) AS [GODOWN RENT],
+    ROUND(ISNULL(VEXP.NETAMT, 0), 2) AS [OVERHEAD EXPENSE],
+    CAST(0.00 AS DECIMAL(18,2)) AS [NEPAL OVERHEAD],
+    ROUND(ISNULL(CL.NETAMT, 0), 2) AS [CLAIM],
+    ROUND(ISNULL(BK6.NETAMT, 0), 2) AS [BOOKING 6%],
+    ROUND(ISNULL(DEST5.NETAMT, 0), 2) AS [DESTINATION 5%],
 
     ROUND(
           ISNULL(SAL.NETAMT, 0)
@@ -361,7 +395,7 @@ SELECT
 
 FROM #MONTHS M
 
-INNER JOIN STATIONMAST STN
+LEFT JOIN STATIONMAST STN
     ON STN.STNCODE = M.BRANCHCODE
 
 LEFT JOIN #SALARY SAL
@@ -394,10 +428,26 @@ LEFT JOIN #DESTINATION5 DEST5
    AND DEST5.[YEAR] = M.[YEAR]
    AND DEST5.[MONTHNO] = M.[MONTHNO]
 
-ORDER BY
-    STN.STNNAME,
-    M.[YEAR],
-    M.[MONTHNO];
+UNION ALL
+
+/* -------- NEPAL OVERHEAD ONLY ROWS -------- */
+SELECT
+    NEP.BRANCHCODE AS BRANCHCODE,
+    NEP.BRANCH AS BRANCH,
+    NEP.[YEAR],
+    NEP.[MONTHNO] AS [MONTH NO],
+    DATENAME(MONTH, DATEFROMPARTS(NEP.[YEAR], NEP.[MONTHNO], 1)) AS [MONTH],
+
+    CAST(0.00 AS DECIMAL(18,2)) AS [SALARY],
+    CAST(0.00 AS DECIMAL(18,2)) AS [GODOWN RENT],
+    CAST(0.00 AS DECIMAL(18,2)) AS [OVERHEAD EXPENSE],
+    ROUND(ISNULL(NEP.NETAMT, 0), 2) AS [NEPAL OVERHEAD],
+    CAST(0.00 AS DECIMAL(18,2)) AS [CLAIM],
+    CAST(0.00 AS DECIMAL(18,2)) AS [BOOKING 6%],
+    CAST(0.00 AS DECIMAL(18,2)) AS [DESTINATION 5%],
+    ROUND(ISNULL(NEP.NETAMT, 0), 2) AS [TOTAL EXPENSE]
+
+FROM #NEPALOVERHEAD NEP;
 """)
 
 
@@ -704,6 +754,7 @@ def _prepare_overhead(df):
         "SALARY",
         "GODOWN RENT",
         "OVERHEAD EXPENSE",
+        "NEPAL OVERHEAD",
         "CLAIM",
         "BOOKING 6%",
         "DESTINATION 5%",
@@ -724,6 +775,7 @@ def _prepare_overhead(df):
         "SALARY": ["SALARY"],
         "GODOWN RENT": ["GODOWN RENT", "GODOWN_RENT"],
         "OVERHEAD EXPENSE": ["OVERHEAD EXPENSE", "OVERHEAD_EXPENSE"],
+        "NEPAL OVERHEAD": ["NEPAL OVERHEAD", "NEPAL_OVERHEAD", "NEPALOVERHEAD"],
         "CLAIM": ["CLAIM"],
         "BOOKING 6%": ["BOOKING 6%", "BOOKING_6", "BOOKING6"],
         "DESTINATION 5%": ["DESTINATION 5%", "DESTINATION_5", "DESTINATION5"],
@@ -769,6 +821,7 @@ def _prepare_overhead(df):
         "SALARY",
         "GODOWN RENT",
         "OVERHEAD EXPENSE",
+        "NEPAL OVERHEAD",
         "CLAIM",
         "BOOKING 6%",
         "DESTINATION 5%",
@@ -856,6 +909,31 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         & master["BRANCH_KEY"].ne("")
         & master["BRANCH_KEY"].ne("nan")
     ][["BRANCH_KEY", "BRANCHCODE", "BRANCH", "zone", "circle", "COMPNAME"]].drop_duplicates("BRANCH_KEY")
+
+    # Prefer Branch Master code mapping for overhead rows. This is important for
+    # Nepal, where the accounting database branch name may differ slightly from
+    # the dashboard Branch Master name.
+    valid_master_codes = master["BRANCHCODE"].astype(str).str.strip().ne("")
+    code_to_branch_key = (
+        master.loc[valid_master_codes, ["BRANCHCODE", "BRANCH_KEY"]]
+        .drop_duplicates("BRANCHCODE")
+        .set_index("BRANCHCODE")["BRANCH_KEY"]
+    )
+    if overhead is not None and not overhead.empty and "BRANCHCODE" in overhead.columns:
+        mapped_key = overhead["BRANCHCODE"].astype(str).str.strip().map(code_to_branch_key)
+
+        # Nepal overhead is returned as a separate SQL row with its original
+        # Nepal branch name/code. Keep its name-derived BRANCH_KEY so it can
+        # never absorb India salary/rent/voucher overhead from another station.
+        # Normal India overhead rows continue to use Branch Master code mapping.
+        nepal_amount = pd.to_numeric(
+            overhead.get("NEPAL OVERHEAD", 0.0),
+            errors="coerce",
+        ).fillna(0.0)
+        nepal_rows = nepal_amount.ne(0.0)
+
+        use_code_mapping = mapped_key.notna() & ~nepal_rows
+        overhead.loc[use_code_mapping, "BRANCH_KEY"] = mapped_key.loc[use_code_mapping]
 
     # Build branch-month skeleton from the selected reporting period present in
     # Origin, Destination, or Overhead. If a month has only overhead, it still survives.
@@ -966,6 +1044,7 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
             "SALARY",
             "GODOWN RENT",
             "OVERHEAD EXPENSE",
+            "NEPAL OVERHEAD",
             "CLAIM",
             "BOOKING 6%",
             "DESTINATION 5%",
@@ -973,8 +1052,34 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         ]
     ].copy()
 
+    # SQL intentionally returns India overhead and Nepal overhead separately.
+    # Consolidate only when they genuinely resolve to the same dashboard branch
+    # name/month. This preserves India components on India branches and keeps
+    # Nepal overhead on the Nepal branch.
+    overhead_value_columns = [
+        "SALARY",
+        "GODOWN RENT",
+        "OVERHEAD EXPENSE",
+        "NEPAL OVERHEAD",
+        "CLAIM",
+        "BOOKING 6%",
+        "DESTINATION 5%",
+        "TOTAL EXPENSE",
+    ]
+
+    for column in overhead_value_columns:
+        overhead_merge[column] = pd.to_numeric(
+            overhead_merge[column], errors="coerce"
+        ).fillna(0.0)
+
+    overhead_merge = (
+        overhead_merge
+        .groupby(keys, as_index=False, dropna=False)[overhead_value_columns]
+        .sum()
+    )
+
     final = combined.merge(
-        overhead_merge.drop(columns=["BRANCHCODE", "BRANCH"], errors="ignore"),
+        overhead_merge,
         on=keys,
         how="left",
         validate="one_to_one",
@@ -1027,6 +1132,7 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         "SALARY",
         "GODOWN RENT",
         "OVERHEAD EXPENSE",
+        "NEPAL OVERHEAD",
         "CLAIM",
         "BOOKING 6%",
         "DESTINATION 5%",
@@ -1053,6 +1159,7 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         final["SALARY"]
         + final["GODOWN RENT"]
         + final["OVERHEAD EXPENSE"]
+        + final["NEPAL OVERHEAD"]
         + final["CLAIM"]
         + final["BOOKING 6%"]
         + final["DESTINATION 5%"]
@@ -1128,6 +1235,135 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
     return final.sort_values(
         ["BRANCH", "YEAR", "MONTHNO"]
     ).reset_index(drop=True)
+
+
+# ============================================================
+# NEPAL OVERHEAD LEDGER DETAIL
+# ============================================================
+
+_NEPAL_OVERHEAD_DETAIL_QUERY = text("""
+DECLARE @FROMDATE DATE = :from_date;
+DECLARE @TODATE   DATE = :to_date;
+
+SELECT
+    X.BRANCHCODE,
+    X.BRANCH,
+    X.LEDCODE,
+    X.LEDNAME,
+    X.MAINGROUP,
+    X.[YEAR],
+    X.[MONTHNO],
+    ROUND(SUM(X.NETAMT), 2) AS NETAMT
+FROM
+(
+    /* Nepal Logistics */
+    SELECT
+        VL.BRANCHCODE,
+        VL.BRANCHNAME AS BRANCH,
+        VL.LEDCODE,
+        LL.LEDNAME,
+        LL.MAINGRP AS MAINGROUP,
+        YEAR(VL.VDATE) AS [YEAR],
+        MONTH(VL.VDATE) AS [MONTHNO],
+        SUM(VL.DRAMOUNT - VL.CRAMOUNT) / 1.60 AS NETAMT
+    FROM GREENTRANSSGNL..VIEWVOUCHERDETAILS VL
+    INNER JOIN VIEWLEDGER LL
+        ON LL.LEDCODE = VL.LEDCODE
+    WHERE VL.VDATE >= @FROMDATE
+      AND VL.VDATE < DATEADD(DAY, 1, @TODATE)
+      AND LL.GRPTYPE = 'E'
+      AND VL.CANCEL <> 'Y'
+      AND LL.MAINGRP  IN ('AM203','AM148','AM152','AM205')
+      AND LL.isoperationalexpense<>'Y'
+    GROUP BY
+        VL.BRANCHCODE,
+        VL.BRANCHNAME,
+        VL.LEDCODE,
+        LL.LEDNAME,
+        LL.MAINGRP,
+        YEAR(VL.VDATE),
+        MONTH(VL.VDATE)
+
+    UNION ALL
+
+    /* Nepal Transport */
+    SELECT
+        VT.BRANCHCODE,
+        VT.BRANCHNAME AS BRANCH,
+        VT.LEDCODE,
+        LT.LEDNAME,
+        LT.MAINGRP AS MAINGROUP,
+        YEAR(VT.VDATE) AS [YEAR],
+        MONTH(VT.VDATE) AS [MONTHNO],
+        SUM(VT.DRAMOUNT - VT.CRAMOUNT) / 1.60 AS NETAMT
+    FROM GREENTRANSSGNT..VIEWVOUCHERDETAILS VT
+    INNER JOIN VIEWLEDGER LT
+        ON LT.LEDCODE = VT.LEDCODE
+    WHERE VT.VDATE >= @FROMDATE
+      AND VT.VDATE < DATEADD(DAY, 1, @TODATE)
+      AND LT.GRPTYPE = 'E'
+      AND VT.CANCEL <> 'Y'
+      AND LT.MAINGRP  IN ('AM203','AM148','AM152','AM205')
+      AND LT.isoperationalexpense<>'Y'
+    GROUP BY
+        VT.BRANCHCODE,
+        VT.BRANCHNAME,
+        VT.LEDCODE,
+        LT.LEDNAME,
+        LT.MAINGRP,
+        YEAR(VT.VDATE),
+        MONTH(VT.VDATE)
+) X
+GROUP BY
+    X.BRANCHCODE,
+    X.BRANCH,
+    X.LEDCODE,
+    X.LEDNAME,
+    X.MAINGROUP,
+    X.[YEAR],
+    X.[MONTHNO]
+ORDER BY
+    X.BRANCH,
+    X.LEDNAME,
+    X.[YEAR],
+    X.[MONTHNO];
+""")
+
+
+def _fetch_nepal_overhead_detail(start_date, end_date):
+    engine = get_engine()
+    with engine.connect() as conn:
+        df = pd.read_sql_query(
+            _NEPAL_OVERHEAD_DETAIL_QUERY,
+            conn,
+            params={
+                "from_date": str(start_date),
+                "to_date": str(end_date),
+            },
+        )
+
+    if df is None or df.empty:
+        return pd.DataFrame(
+            columns=[
+                "BRANCHCODE", "BRANCH", "LEDCODE", "LEDNAME",
+                "MAINGROUP", "YEAR", "MONTHNO", "NETAMT",
+            ]
+        )
+
+    out = df.copy()
+    for col in ["BRANCHCODE", "BRANCH", "LEDCODE", "LEDNAME", "MAINGROUP"]:
+        if col in out.columns:
+            out[col] = out[col].fillna("").astype(str).str.strip()
+    out["YEAR"] = pd.to_numeric(out["YEAR"], errors="coerce")
+    out["MONTHNO"] = pd.to_numeric(out["MONTHNO"], errors="coerce")
+    out["NETAMT"] = pd.to_numeric(out["NETAMT"], errors="coerce").fillna(0.0)
+    return out
+
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=2)
+def load_nepal_overhead_detail(start_date, end_date):
+    """Return Nepal overhead ledger detail for the selected reporting period."""
+    return _fetch_nepal_overhead_detail(start_date, end_date)
 
 
 # ============================================================

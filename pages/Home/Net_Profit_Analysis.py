@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from services.data_loader import get_date_range
-from services.net_profit_data_loader import load_net_profit_data_pair
+from services.net_profit_data_loader import load_net_profit_data_pair, load_nepal_overhead_detail
 from services.pnl_data_loader import load_pnl_sp_revenue_total, load_pnl_data_pair
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
@@ -200,6 +200,13 @@ def _apply_pnl_business_rule(df, all_branches):
         "DESTINATION_TOTAL_INCOME",
         "ORIGIN_DIRECT_EXPENSE",
         "DESTINATION_DIRECT_EXPENSE",
+        "SALARY",
+        "GODOWN RENT",
+        "OVERHEAD EXPENSE",
+        "NEPAL OVERHEAD",
+        "CLAIM",
+        "BOOKING 6%",
+        "DESTINATION 5%",
         "TOTAL EXPENSE",
     ]:
         if column not in out.columns:
@@ -214,17 +221,31 @@ def _apply_pnl_business_rule(df, all_branches):
         out["DESTINATION_TOTAL_INCOME"] = 0.0
         out["DESTINATION_DIRECT_EXPENSE"] = 0.0
 
+        # Business rule for consolidated All Branches:
+        # deduct only the 6% Booking charge. The 5% Delivery charge must not
+        # reduce consolidated Net Profit.
+        out["DESTINATION 5%"] = 0.0
+        out["TOTAL EXPENSE"] = (
+            out["SALARY"]
+            + out["GODOWN RENT"]
+            + out["OVERHEAD EXPENSE"]
+            + out["NEPAL OVERHEAD"]
+            + out["CLAIM"]
+            + out["BOOKING 6%"]
+        )
+
     out["BUSINESS"] = out["ORIGIN_BUSINESS"] + out["DESTINATION_BUSINESS"]
     out["TOTAL_INCOME"] = out["ORIGIN_TOTAL_INCOME"] + out["DESTINATION_TOTAL_INCOME"]
     out["DIRECT_EXPENSE"] = out["ORIGIN_DIRECT_EXPENSE"] + out["DESTINATION_DIRECT_EXPENSE"]
     out["COMBINED_PNL"] = out["ORIGIN_PNL"] + out["DESTINATION_PNL"]
     out["NET_PROFIT"] = out["COMBINED_PNL"] - out["TOTAL EXPENSE"]
 
+    # Net Profit % must use the same business denominator shown on the dashboard.
     out["NET_PROFIT_MARGIN"] = 0.0
-    valid_income = out["TOTAL_INCOME"].ne(0)
-    out.loc[valid_income, "NET_PROFIT_MARGIN"] = (
-        out.loc[valid_income, "NET_PROFIT"]
-        / out.loc[valid_income, "TOTAL_INCOME"]
+    valid_business = out["BUSINESS"].ne(0)
+    out.loc[valid_business, "NET_PROFIT_MARGIN"] = (
+        out.loc[valid_business, "NET_PROFIT"]
+        / out.loc[valid_business, "BUSINESS"]
         * 100
     )
 
@@ -240,6 +261,7 @@ def calculate_kpis(df):
             "salary": 0.0,
             "godown": 0.0,
             "overhead": 0.0,
+            "nepal_overhead": 0.0,
             "claim": 0.0,
             "booking_6": 0.0,
             "destination_5": 0.0,
@@ -260,6 +282,7 @@ def calculate_kpis(df):
         "salary": float(df["SALARY"].sum()),
         "godown": float(df["GODOWN RENT"].sum()),
         "overhead": float(df["OVERHEAD EXPENSE"].sum()),
+        "nepal_overhead": float(df["NEPAL OVERHEAD"].sum()) if "NEPAL OVERHEAD" in df.columns else 0.0,
         "claim": float(df["CLAIM"].sum()),
         "booking_6": float(df["BOOKING 6%"].sum()) if "BOOKING 6%" in df.columns else 0.0,
         "destination_5": float(df["DESTINATION 5%"].sum()) if "DESTINATION 5%" in df.columns else 0.0,
@@ -272,8 +295,8 @@ def calculate_kpis(df):
     }
 
     values["margin"] = (
-        values["net_profit"] / values["total_income"] * 100
-        if values["total_income"]
+        values["net_profit"] / values["business"] * 100
+        if values["business"]
         else 0.0
     )
     values["gp_margin"] = (
@@ -327,6 +350,25 @@ def _inject_css():
         }
         .st-key-np_executive_header > div[data-testid="stVerticalBlockBorderWrapper"] > div {padding:.65rem .8rem .75rem !important;}
         .np-header-badge {padding:5px 10px;border-radius:999px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font:700 10px var(--np-kpi-font);white-space:nowrap;}
+        .np-header-left-only {padding:2px 2px 4px !important;margin:0 !important;}
+        .np-header-badge-action {
+            min-height:34px;display:flex;align-items:center;justify-content:center;
+            padding:0 12px;border-radius:9px;background:#eff6ff;color:#1d4ed8;
+            border:1px solid #bfdbfe;font-size:10px;font-weight:750;
+            box-sizing:border-box;
+        }
+        .st-key-np_reset_filters button,
+        .st-key-np_executive_header div[data-testid="stPopover"] > button {
+            min-height:34px !important;height:34px !important;border-radius:9px !important;
+            border:1px solid #dbe4ef !important;background:#ffffff !important;
+            color:#17324d !important;font-size:10px !important;font-weight:650 !important;
+            box-shadow:0 1px 2px rgba(15,42,67,.04) !important;
+            white-space:nowrap !important;
+        }
+        .st-key-np_reset_filters button:hover,
+        .st-key-np_executive_header div[data-testid="stPopover"] > button:hover {
+            border-color:#b8c8da !important;background:#f8fbff !important;
+        }
         .np-title {
             color:var(--np-text);
             font-family:var(--np-kpi-font);
@@ -702,16 +744,70 @@ def _apply_same_filters(df, filters):
     return out
 
 
-def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_business):
-    """Reconcile consolidated 6% Booking and 5% Delivery charges.
+def _load_authoritative_revenue_for_time_scope(period_start, period_end, quarters=None, months=None):
+    """Return authoritative P&L SP revenue for the selected time scope.
 
-    In a fully consolidated All-Branches view, booking and delivery represent
-    opposite ends of the same shipment population, so their gross business base
-    must reconcile to the same authoritative P&L SP revenue total. Branch-level
-    origin/destination mappings can understate either side. This helper adjusts
-    only the two percentage charges, allocating any difference back across rows,
-    then rebuilds Total Expense and Net Profit so every downstream view remains
-    internally consistent.
+    When Month/Quarter filters are active in All-Branches mode, using the
+    branch-joined ORIGIN_BUSINESS sum can differ from the stored-procedure
+    revenue total. Build the selected calendar-month slices and sum the SP
+    revenue for those slices so FY+Month/Quarter matches an equivalent
+    Custom Date run.
+    """
+    if period_start is None or period_end is None:
+        return 0.0
+
+    start = pd.Timestamp(period_start).normalize()
+    end = pd.Timestamp(period_end).normalize()
+    if start > end:
+        return 0.0
+
+    selected_months = set(months or [])
+    selected_quarters = set(quarters or [])
+
+    # No time filter: one authoritative call for the whole committed period.
+    if not selected_months and not selected_quarters:
+        return float(load_pnl_sp_revenue_total(start.date(), end.date()) or 0.0)
+
+    month_to_quarter = {
+        "Apr": "Q1", "May": "Q1", "Jun": "Q1",
+        "Jul": "Q2", "Aug": "Q2", "Sep": "Q2",
+        "Oct": "Q3", "Nov": "Q3", "Dec": "Q3",
+        "Jan": "Q4", "Feb": "Q4", "Mar": "Q4",
+    }
+
+    total = 0.0
+    cursor = start.replace(day=1)
+    last_month = end.replace(day=1)
+
+    while cursor <= last_month:
+        month_label = cursor.strftime("%b")
+        quarter_label = month_to_quarter.get(month_label)
+
+        month_selected = (not selected_months) or (month_label in selected_months)
+        quarter_selected = (not selected_quarters) or (quarter_label in selected_quarters)
+
+        if month_selected and quarter_selected:
+            month_start = max(cursor, start)
+            month_end = min(cursor + pd.offsets.MonthEnd(0), end)
+            if month_start <= month_end:
+                total += float(
+                    load_pnl_sp_revenue_total(
+                        month_start.date(), month_end.date()
+                    ) or 0.0
+                )
+
+        cursor = cursor + pd.offsets.MonthBegin(1)
+
+    return total
+
+
+def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_business):
+    """Reconcile consolidated All-Branches percentage charge.
+
+    Business rule: consolidated All Branches deducts only 6% of Booking.
+    The 5% Delivery charge is set to zero in this view. The helper aligns the
+    Booking 6% charge to the authoritative P&L SP revenue total, then rebuilds
+    Total Expense and Net Profit so every downstream view remains consistent.
     """
     if df is None or df.empty or authoritative_business is None:
         return df
@@ -738,26 +834,26 @@ def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_bu
         out[column] = current_series + allocation
 
     _reconcile("BOOKING 6%", 0.06, "ORIGIN_BUSINESS")
-    _reconcile("DESTINATION 5%", 0.05, "DESTINATION_BUSINESS")
 
-    for column in ["SALARY", "GODOWN RENT", "OVERHEAD EXPENSE", "CLAIM", "BOOKING 6%", "DESTINATION 5%"]:
+    for column in ["SALARY", "GODOWN RENT", "OVERHEAD EXPENSE", "NEPAL OVERHEAD", "CLAIM", "BOOKING 6%", "DESTINATION 5%"]:
         if column not in out.columns:
             out[column] = 0.0
         out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
 
+    out["DESTINATION 5%"] = 0.0
     out["TOTAL EXPENSE"] = (
         out["SALARY"]
         + out["GODOWN RENT"]
         + out["OVERHEAD EXPENSE"]
+        + out["NEPAL OVERHEAD"]
         + out["CLAIM"]
         + out["BOOKING 6%"]
-        + out["DESTINATION 5%"]
     )
     out["NET_PROFIT"] = pd.to_numeric(out.get("COMBINED_PNL", 0.0), errors="coerce").fillna(0.0) - out["TOTAL EXPENSE"]
     out["NET_PROFIT_MARGIN"] = 0.0
-    income = pd.to_numeric(out.get("TOTAL_INCOME", 0.0), errors="coerce").fillna(0.0)
-    valid = income.ne(0)
-    out.loc[valid, "NET_PROFIT_MARGIN"] = out.loc[valid, "NET_PROFIT"] / income.loc[valid] * 100
+    business = pd.to_numeric(out.get("BUSINESS", 0.0), errors="coerce").fillna(0.0)
+    valid = business.ne(0)
+    out.loc[valid, "NET_PROFIT_MARGIN"] = out.loc[valid, "NET_PROFIT"] / business.loc[valid] * 100
     return out
 
 
@@ -1007,14 +1103,32 @@ def _render_phase1_pnl_insights(
                         st.session_state["np_pnl_insight_view_value"] = view_label
                         st.rerun()
 
-    try:
-        with st.spinner(f"Loading {insight_view} P&L insights..."):
-            raw_insight_df, raw_insight_prev_df = load_pnl_data_pair(
-                start_date, end_date, prev_start, prev_end, insight_view
-            )
-    except Exception as exc:
-        st.warning(f"P&L insights could not be loaded: {exc}")
-        return pd.DataFrame(), pd.DataFrame()
+    # Load each P&L insight view only once per committed period. Streamlit reruns
+    # the page for every widget change, but Zone/Circle/Branch/Quarter/Month
+    # filters must reuse the already-loaded data instead of calling the loader.
+    insight_period_key = (
+        str(start_date), str(end_date), str(prev_start), str(prev_end), insight_view
+    )
+    insight_cache_key = f"np_pnl_insight_payload_{insight_view.lower()}"
+    insight_payload = st.session_state.get(insight_cache_key)
+
+    if not insight_payload or insight_payload.get("period_key") != insight_period_key:
+        try:
+            with st.spinner(f"Loading {insight_view} P&L insights..."):
+                raw_insight_df, raw_insight_prev_df = load_pnl_data_pair(
+                    start_date, end_date, prev_start, prev_end, insight_view
+                )
+            st.session_state[insight_cache_key] = {
+                "period_key": insight_period_key,
+                "current": raw_insight_df,
+                "previous": raw_insight_prev_df,
+            }
+        except Exception as exc:
+            st.warning(f"P&L insights could not be loaded: {exc}")
+            return pd.DataFrame(), pd.DataFrame()
+    else:
+        raw_insight_df = insight_payload.get("current", pd.DataFrame())
+        raw_insight_prev_df = insight_payload.get("previous", pd.DataFrame())
 
     insight_df = _normalise_insight_pnl(raw_insight_df)
     insight_prev_df = _normalise_insight_pnl(raw_insight_prev_df)
@@ -2129,62 +2243,307 @@ def show_net_profit_dashboard():
     _inject_css()
 
     executive_header = st.container(key="np_executive_header", border=True)
-    executive_header.markdown(
-        """
-        <div class="np-header">
-            <div>
-                <div class="np-title">Net Profit Analysis</div>
-                <div class="np-subtitle">Business, P&L and indirect expense performance by branch</div>
-            </div>
-            <div class="np-header-badge">MANAGEMENT VIEW</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+
+    # Top header: title on the left, compact action controls on the right.
+    header_left, header_actions = executive_header.columns(
+        [7.2, 2.8], gap="small", vertical_alignment="center"
     )
+
+    with header_left:
+        st.markdown(
+            """
+            <div class="np-header np-header-left-only">
+                <div>
+                    <div class="np-title">Net Profit Analysis</div>
+                    <div class="np-subtitle">Business, P&amp;L and indirect expense performance by branch</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with header_actions:
+        action_cols = st.columns([1.15, 0.95, 1.18], gap="small", vertical_alignment="center")
+
+        with action_cols[0]:
+            if st.button(
+                "⟳  Reset Filters",
+                key="np_reset_filters",
+                use_container_width=True,
+            ):
+                for key in [
+                    "np_zone",
+                    "np_circle",
+                    "np_branch",
+                    "np_quarter",
+                    "np_month",
+                    "np_conversion",
+                    "np_pnl_insight_view_value",
+                    "np_pnl_insight_trend_type",
+                    "np_net_profit_performance_trend_value",
+                ]:
+                    st.session_state.pop(key, None)
+                st.rerun()
+
+        with action_cols[1]:
+            with st.popover("⇩  Export  ▾", use_container_width=True):
+                payload = st.session_state.get("np_loaded_payload") or {}
+                export_current = payload.get("raw_df")
+                export_previous = payload.get("raw_prev_df")
+                export_nepal = payload.get("nepal_overhead_detail_df")
+
+                if export_current is not None and not export_current.empty:
+                    st.download_button(
+                        "Current Period CSV",
+                        data=export_current.to_csv(index=False).encode("utf-8-sig"),
+                        file_name="net_profit_current_period.csv",
+                        mime="text/csv",
+                        key="np_header_export_current",
+                        use_container_width=True,
+                    )
+                if export_previous is not None and not export_previous.empty:
+                    st.download_button(
+                        "Previous Period CSV",
+                        data=export_previous.to_csv(index=False).encode("utf-8-sig"),
+                        file_name="net_profit_previous_period.csv",
+                        mime="text/csv",
+                        key="np_header_export_previous",
+                        use_container_width=True,
+                    )
+                if export_nepal is not None and not export_nepal.empty:
+                    st.download_button(
+                        "Nepal Overhead CSV",
+                        data=export_nepal.to_csv(index=False).encode("utf-8-sig"),
+                        file_name="nepal_overhead_detail.csv",
+                        mime="text/csv",
+                        key="np_header_export_nepal",
+                        use_container_width=True,
+                    )
+                if (
+                    export_current is None or export_current.empty
+                ) and (export_previous is None or export_previous.empty) and (
+                    export_nepal is None or export_nepal.empty
+                ):
+                    st.caption("Run the dashboard first to enable exports.")
+
+        with action_cols[2]:
+            st.markdown(
+                '<div class="np-header-badge np-header-badge-action">MANAGEMENT VIEW</div>',
+                unsafe_allow_html=True,
+            )
 
     # --------------------------------------------------------
     # PRIMARY FILTERS
     # --------------------------------------------------------
 
-    filter_cols = executive_header.columns([1.15, 1, 1.35, 1.2, 1.2, 1.1, 1.0], gap="small")
+    # Keep every primary filter on one clean row. Hierarchy filters are
+    # ordered Zone -> Circle -> Branch so they cascade naturally.
+    filter_cols = executive_header.columns(
+        [1.0, 1.15, 1.05, 1.05, 0.95, 1.0, 1.05, 1.35, 1.1, 1.1, 1.05],
+        gap="small",
+    )
 
     with filter_cols[0]:
+        period_mode = st.selectbox(
+            "Period Mode",
+            ["Financial Year", "Custom Date"],
+            key="np_period_mode",
+        )
+
+    with filter_cols[1]:
         fy = st.selectbox(
             "Financial Year",
             FY_OPTIONS,
             key="np_fy",
+            disabled=period_mode != "Financial Year",
         )
 
-    if fy == "Select FY":
-        st.info("Please select financial year.")
+    # Build the period selection first. Data is loaded only after the user
+    # presses Run. The committed selection is kept in session_state so
+    # changing Zone / Circle / Branch / Quarter / Month does not require
+    # pressing Run again.
+    selected_start = None
+    selected_end = None
+    selected_fy_label = None
+    selected_prev_fy_label = None
+    selected_prev_start = None
+    selected_prev_end = None
+    period_selection_valid = True
+
+    if period_mode == "Financial Year":
+        if fy != "Select FY":
+            selected_start, selected_end = get_date_range(fy)
+            selected_prev_fy_label = get_previous_fy(fy)
+            selected_prev_start, selected_prev_end = get_date_range(selected_prev_fy_label)
+            selected_fy_label = fy
+
+        with filter_cols[2]:
+            st.date_input(
+                "From Date",
+                value=selected_start if selected_start is not None else pd.Timestamp.today().date(),
+                disabled=True,
+                key="np_from_date_fy",
+                format="DD/MM/YYYY",
+            )
+
+        with filter_cols[3]:
+            st.date_input(
+                "To Date",
+                value=selected_end if selected_end is not None else pd.Timestamp.today().date(),
+                disabled=True,
+                key="np_to_date_fy",
+                format="DD/MM/YYYY",
+            )
+
+        period_selection_valid = fy != "Select FY"
+    else:
+        today = pd.Timestamp.today().date()
+        default_from = today.replace(day=1)
+
+        with filter_cols[2]:
+            custom_start = st.date_input(
+                "From Date",
+                value=st.session_state.get("np_custom_from_date", default_from),
+                key="np_custom_from_date",
+                format="DD/MM/YYYY",
+            )
+
+        with filter_cols[3]:
+            custom_end = st.date_input(
+                "To Date",
+                value=st.session_state.get("np_custom_to_date", today),
+                key="np_custom_to_date",
+                format="DD/MM/YYYY",
+            )
+
+        if custom_start > custom_end:
+            period_selection_valid = False
+        else:
+            selected_start = custom_start
+            selected_end = custom_end
+            selected_prev_start = (pd.Timestamp(custom_start) - pd.DateOffset(years=1)).date()
+            selected_prev_end = (pd.Timestamp(custom_end) - pd.DateOffset(years=1)).date()
+            selected_fy_label = f"{custom_start.strftime('%d-%b-%Y')} to {custom_end.strftime('%d-%b-%Y')}"
+            selected_prev_fy_label = f"{selected_prev_start.strftime('%d-%b-%Y')} to {selected_prev_end.strftime('%d-%b-%Y')}"
+
+    with filter_cols[4]:
+        # Keep Run vertically aligned with the input controls above/beside it.
+        st.markdown(
+            '<div style="height:34px;"></div>',
+            unsafe_allow_html=True,
+        )
+        run_clicked = st.button(
+            "▶ Run",
+            key="np_run_period",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if run_clicked:
+        if not period_selection_valid:
+            if period_mode == "Financial Year":
+                st.warning("Please select financial year.")
+            else:
+                st.warning("From Date cannot be after To Date.")
+            return
+
+        committed = {
+            "mode": period_mode,
+            "start_date": selected_start,
+            "end_date": selected_end,
+            "prev_start": selected_prev_start,
+            "prev_end": selected_prev_end,
+            "fy": selected_fy_label,
+            "prev_fy": selected_prev_fy_label,
+        }
+        period_key = (
+            str(selected_start), str(selected_end),
+            str(selected_prev_start), str(selected_prev_end),
+        )
+
+        # IMPORTANT: Heavy SQL/P&L processing happens only when Run is clicked.
+        # All dashboard filters below operate on these session-state DataFrames.
+        with st.spinner("Loading Origin, Destination and branch overhead..."):
+            branch_master_loaded = load_net_profit_branch_mast()
+            valid_branches_loaded = safe_options(branch_master_loaded, "BRANCH")
+            if not valid_branches_loaded:
+                st.warning("No valid branches found in Branch/Agency Master for selected financial year.")
+                return
+
+            raw_loaded, raw_prev_loaded = load_net_profit_data_pair(
+                selected_start,
+                selected_end,
+                selected_prev_start,
+                selected_prev_end,
+            )
+            nepal_overhead_detail_loaded = load_nepal_overhead_detail(
+                selected_start, selected_end
+            )
+
+            # Consolidated All-Branches booking/origin revenue must come directly
+            # from the P&L stored procedure. Keep the period totals in session too.
+            sp_loaded = load_pnl_sp_revenue_total(selected_start, selected_end)
+            sp_prev_loaded = load_pnl_sp_revenue_total(selected_prev_start, selected_prev_end)
+
+        if raw_loaded is None or raw_loaded.empty:
+            st.warning("No Net Profit data found for selected financial year.")
+            return
+
+        st.session_state["np_committed_period"] = committed
+        st.session_state["np_loaded_payload"] = {
+            "period_key": period_key,
+            "raw_df": raw_loaded,
+            "raw_prev_df": raw_prev_loaded,
+            "branch_master_df": branch_master_loaded,
+            "nepal_overhead_detail_df": nepal_overhead_detail_loaded,
+            "sp_revenue_total": float(sp_loaded or 0.0),
+            "sp_prev_revenue_total": float(sp_prev_loaded or 0.0),
+        }
+
+        # A new period invalidates any lazily loaded P&L insight view and
+        # any authoritative month/quarter revenue previously resolved.
+        for key in [
+            "np_pnl_insight_payload_origin",
+            "np_pnl_insight_payload_destination",
+            "np_authoritative_revenue_cache",
+        ]:
+            st.session_state.pop(key, None)
+
+    committed_period = st.session_state.get("np_committed_period")
+    loaded_payload = st.session_state.get("np_loaded_payload")
+    if not committed_period or not loaded_payload:
+        st.info("Select Financial Year or Custom Date, then click Run.")
         return
 
-    start_date, end_date = get_date_range(fy)
-    prev_fy = get_previous_fy(fy)
-    prev_start, prev_end = get_date_range(prev_fy)
+    start_date = committed_period["start_date"]
+    end_date = committed_period["end_date"]
+    prev_start = committed_period["prev_start"]
+    prev_end = committed_period["prev_end"]
+    fy = committed_period["fy"]
+    prev_fy = committed_period["prev_fy"]
 
-    # Branch/Agency master is loaded first and becomes the dashboard branch scope.
-    branch_master_df = load_net_profit_branch_mast()
+    expected_period_key = (
+        str(start_date), str(end_date), str(prev_start), str(prev_end)
+    )
+    if loaded_payload.get("period_key") != expected_period_key:
+        st.info("Period selection changed. Click Run to load the new period.")
+        return
+
+    # Reuse the exact DataFrames loaded by Run. No SQL call happens here when
+    # Zone/Circle/Branch/Quarter/Month/Conversion widgets rerun the Streamlit page.
+    raw_df = loaded_payload.get("raw_df", pd.DataFrame())
+    raw_prev_df = loaded_payload.get("raw_prev_df", pd.DataFrame())
+    branch_master_df = loaded_payload.get("branch_master_df", pd.DataFrame())
+    nepal_overhead_detail_df = loaded_payload.get(
+        "nepal_overhead_detail_df", pd.DataFrame()
+    )
+    sp_revenue_total = float(loaded_payload.get("sp_revenue_total", 0.0) or 0.0)
+    sp_prev_revenue_total = float(loaded_payload.get("sp_prev_revenue_total", 0.0) or 0.0)
+
     valid_branches = safe_options(branch_master_df, "BRANCH")
-
     if not valid_branches:
         st.warning("No valid branches found in Branch/Agency Master for selected financial year.")
         return
-
-    with st.spinner("Loading Origin, Destination and branch overhead..."):
-        raw_df, raw_prev_df = load_net_profit_data_pair(
-            start_date,
-            end_date,
-            prev_start,
-            prev_end,
-        )
-
-        # Consolidated All-Branches booking/origin revenue must come directly
-        # from the P&L revenue stored procedure. Summing the branch-joined
-        # ORIGIN_BUSINESS rows can understate revenue because some booking
-        # records may be lost/repeated by branch mapping joins.
-        sp_revenue_total = load_pnl_sp_revenue_total(start_date, end_date)
-        sp_prev_revenue_total = load_pnl_sp_revenue_total(prev_start, prev_end)
 
     if raw_df is None or raw_df.empty:
         st.warning("No Net Profit data found for selected financial year.")
@@ -2206,7 +2565,7 @@ def show_net_profit_dashboard():
     )
 
     # Use whichever hierarchy columns are actually available.
-    with filter_cols[1]:
+    with filter_cols[5]:
         zones = st.multiselect(
             "Zone",
             safe_options(df, "zone"),
@@ -2222,7 +2581,7 @@ def show_net_profit_dashboard():
     circle_scope = apply_multi_filter(circle_scope, "zone", zones)
     circle_options = safe_options(circle_scope, "circle")
 
-    with filter_cols[2]:
+    with filter_cols[6]:
         circles = st.multiselect(
             "Circle",
             circle_options,
@@ -2237,7 +2596,7 @@ def show_net_profit_dashboard():
     branch_scope = apply_multi_filter(branch_scope, "circle", circles)
     branch_options = safe_options(branch_scope, "BRANCH")
 
-    with filter_cols[3]:
+    with filter_cols[7]:
         branches = st.multiselect(
             "Branch",
             branch_options,
@@ -2260,7 +2619,7 @@ def show_net_profit_dashboard():
             if quarter in quarter_options
         ]
 
-    with filter_cols[4]:
+    with filter_cols[8]:
         quarters = st.multiselect(
             "Quarter",
             quarter_options,
@@ -2283,7 +2642,7 @@ def show_net_profit_dashboard():
             if month in month_options
         ]
 
-    with filter_cols[5]:
+    with filter_cols[9]:
         months = st.multiselect(
             "Month",
             month_options,
@@ -2292,7 +2651,7 @@ def show_net_profit_dashboard():
             disabled=not month_options,
         )
 
-    with filter_cols[6]:
+    with filter_cols[10]:
         conversion_type = st.selectbox(
             "₹ Conversion",
             ["Crore", "Lac"],
@@ -2316,7 +2675,7 @@ def show_net_profit_dashboard():
 
     # No explicit branch selection means consolidated All Branches mode.
     # In this mode only Origin-view P&L is used.
-    all_branches = len(branches) == 0
+    all_branches = not branches and not circles and not zones
     df = _apply_pnl_business_rule(df, all_branches=all_branches)
     prev_df = (
         _apply_pnl_business_rule(prev_df, all_branches=all_branches)
@@ -2327,21 +2686,43 @@ def show_net_profit_dashboard():
     divisor, unit = get_conversion(conversion_type)
 
     # Business KPI display rule:
-    # - Fully consolidated All Branches (no Branch/Zone/Circle/Quarter/Month filter):
-    #   show the exact P&L SP revenue total in the Booking/Origin KPI. This is the
-    #   authoritative origin-basis consolidated revenue and avoids understatement
-    #   caused by branch joins. Destination KPI stays disabled.
-    # - All Branches with hierarchy/time filters: use filtered ORIGIN_BUSINESS only.
-    # - Explicit branch selection: show Booking and Destination revenue separately.
-    no_business_scope_filters = not (branches or zones or circles or quarters or months)
+    # - All Branches with no Zone/Circle restriction: always use the authoritative
+    #   P&L SP revenue for the active time scope. This includes FY, Quarter and
+    #   Month selections, so FY + Sep reconciles with Custom Date Sep.
+    # - Zone/Circle or explicit Branch selections remain based on the filtered
+    #   Net Profit dataset because the consolidated SP has no hierarchy filter.
+    authoritative_scope = all_branches and not (zones or circles)
 
-    if all_branches and no_business_scope_filters:
-        booking_business_current = float(sp_revenue_total or 0.0)
-        booking_business_previous = float(sp_prev_revenue_total or 0.0)
+    if authoritative_scope:
+        # Full committed period is already stored from the Run click. For
+        # Quarter/Month slices, resolve the authoritative SP total once per
+        # unique filter combination and then keep it in session_state.
+        if not quarters and not months:
+            booking_business_current = sp_revenue_total
+            booking_business_previous = sp_prev_revenue_total
+        else:
+            revenue_cache = st.session_state.setdefault("np_authoritative_revenue_cache", {})
+            filter_key = (
+                str(start_date), str(end_date),
+                tuple(sorted(quarters or [])), tuple(sorted(months or [])),
+            )
+            prev_filter_key = (
+                str(prev_start), str(prev_end),
+                tuple(sorted(quarters or [])), tuple(sorted(months or [])),
+            )
+            if filter_key not in revenue_cache:
+                revenue_cache[filter_key] = _load_authoritative_revenue_for_time_scope(
+                    start_date, end_date, quarters=quarters, months=months
+                )
+            if prev_filter_key not in revenue_cache:
+                revenue_cache[prev_filter_key] = _load_authoritative_revenue_for_time_scope(
+                    prev_start, prev_end, quarters=quarters, months=months
+                )
+            booking_business_current = float(revenue_cache[filter_key] or 0.0)
+            booking_business_previous = float(revenue_cache[prev_filter_key] or 0.0)
 
-        # In the consolidated view, Booking and Delivery are two sides of the
-        # same shipment population. Reconcile BOTH percentage expenses to the
-        # exact authoritative business base, then rebuild expense / profit.
+        # All Branches business rule: only 6% Booking is deducted. Reconcile that
+        # charge to the same authoritative revenue base and rebuild Net Profit.
         df = _reconcile_percentage_charges_to_authoritative_business(
             df, booking_business_current
         )
@@ -2350,8 +2731,6 @@ def show_net_profit_dashboard():
                 prev_df, booking_business_previous
             )
     else:
-        # Filtered/branch views use the already-aligned P&L business values from
-        # the Net Profit loader. There is no separate consolidated SP override.
         booking_business_current = float(df["ORIGIN_BUSINESS"].sum()) if "ORIGIN_BUSINESS" in df.columns else 0.0
         booking_business_previous = float(prev_df["ORIGIN_BUSINESS"].sum()) if (prev_df is not None and not prev_df.empty and "ORIGIN_BUSINESS" in prev_df.columns) else 0.0
 
@@ -2373,6 +2752,20 @@ def show_net_profit_dashboard():
         )
         previous["gp_margin"] = (
             previous["combined_pnl"] / booking_business_previous * 100
+            if booking_business_previous
+            else 0.0
+        )
+
+        # Net Profit % must use the same Business denominator shown on the dashboard.
+        # In consolidated All-Branches mode, the authoritative business base is the
+        # P&L SP revenue total stored in booking_business_current/previous.
+        current["margin"] = (
+            current["net_profit"] / booking_business_current * 100
+            if booking_business_current
+            else 0.0
+        )
+        previous["margin"] = (
+            previous["net_profit"] / booking_business_previous * 100
             if booking_business_previous
             else 0.0
         )
@@ -2442,11 +2835,13 @@ def show_net_profit_dashboard():
     overhead_kpis = [
         ("Salary", current["salary"], previous["salary"], "●"),
         ("Overhead Expense", current["overhead"], previous["overhead"], "▦"),
+        ("Nepal Overhead", current["nepal_overhead"], previous["nepal_overhead"], "NP"),
         ("Claim", current["claim"], previous["claim"], "◆"),
         ("6% of Booking )", current["booking_6"], previous["booking_6"], "▣"),
-        ("5% of Delivery)", current["destination_5"], previous["destination_5"], "●"),
         ("Godown Rent", current["godown"], previous["godown"], "▥"),
     ]
+    if not all_branches:
+        overhead_kpis.insert(4, ("5% of Delivery)", current["destination_5"], previous["destination_5"], "●"))
 
     overhead_items_html = "".join(
         overhead_kpi_item_html(title, cy, ly, conversion_type, icon)
@@ -2473,14 +2868,30 @@ def show_net_profit_dashboard():
             Salary=("SALARY", "sum"),
             Godown_Rent=("GODOWN RENT", "sum"),
             Overhead_Expense=("OVERHEAD EXPENSE", "sum"),
+            Nepal_Overhead=("NEPAL OVERHEAD", "sum"),
             Claim=("CLAIM", "sum"),
             Booking_6=("BOOKING 6%", "sum"),
             Destination_5=("DESTINATION 5%", "sum"),
             Total_Overhead=("TOTAL EXPENSE", "sum"),
             Net_Profit=("NET_PROFIT", "sum"),
-            Total_Income=("TOTAL_INCOME", "sum"),
         )
     )
+
+    # Rebuild the branch-level accounting from the displayed components so the
+    # detail table always reconciles exactly with the selected branch scope.
+    branch_summary["Total_Overhead"] = (
+        branch_summary["Salary"]
+        + branch_summary["Godown_Rent"]
+        + branch_summary["Overhead_Expense"]
+        + branch_summary["Nepal_Overhead"]
+        + branch_summary["Claim"]
+        + branch_summary["Booking_6"]
+        + branch_summary["Destination_5"]
+    )
+    branch_summary["Net_Profit"] = (
+        branch_summary["Combined_PNL"] - branch_summary["Total_Overhead"]
+    )
+
     branch_summary["P&L %"] = 0.0
     valid_business = branch_summary["Revenue"].ne(0)
     branch_summary.loc[valid_business, "P&L %"] = (
@@ -2488,10 +2899,9 @@ def show_net_profit_dashboard():
         / branch_summary.loc[valid_business, "Revenue"] * 100
     )
     branch_summary["Net Profit Margin %"] = 0.0
-    valid_income = branch_summary["Total_Income"].ne(0)
-    branch_summary.loc[valid_income, "Net Profit Margin %"] = (
-        branch_summary.loc[valid_income, "Net_Profit"]
-        / branch_summary.loc[valid_income, "Total_Income"] * 100
+    branch_summary.loc[valid_business, "Net Profit Margin %"] = (
+        branch_summary.loc[valid_business, "Net_Profit"]
+        / branch_summary.loc[valid_business, "Revenue"] * 100
     )
     branch_summary = branch_summary.sort_values("Net_Profit", ascending=False).reset_index(drop=True)
 
@@ -2634,10 +3044,11 @@ def show_net_profit_dashboard():
             '<span class="np-bottom-tabs-marker"></span>',
             unsafe_allow_html=True,
         )
-        detail_tab, audit_tab, gr_tab = st.tabs(
+        detail_tab, audit_tab, nepal_detail_tab, gr_tab = st.tabs(
             [
                 "Branch Net Profit Detail",
                 "Monthly Calculation Audit",
+                "Nepal Overhead Detail",
                 "P&L GR Details",
             ]
         )
@@ -2658,12 +3069,12 @@ def show_net_profit_dashboard():
             "Salary",
             "Godown_Rent",
             "Overhead_Expense",
+            "Nepal_Overhead",
             "Claim",
             "Booking_6",
             "Destination_5",
             "Total_Overhead",
             "Net_Profit",
-            "Total_Income",
         ]
 
         for column in money_columns:
@@ -2686,12 +3097,12 @@ def show_net_profit_dashboard():
                 "Salary": f"Salary ({unit})",
                 "Godown_Rent": f"Godown Rent ({unit})",
                 "Overhead_Expense": f"Overhead Expense ({unit})",
+                "Nepal_Overhead": f"Nepal Overhead ({unit})",
                 "Claim": f"Claim ({unit})",
                 "Booking_6": f"Booking 6% ({unit})",
                 "Destination_5": f"Destination 5% ({unit})",
                 "Total_Overhead": f"Total Overhead ({unit})",
                 "Net_Profit": f"Net Profit ({unit})",
-                "Total_Income": f"Total Income ({unit})",
             }
         )
 
@@ -2708,20 +3119,40 @@ def show_net_profit_dashboard():
             f"Salary ({unit})",
             f"Godown Rent ({unit})",
             f"Overhead Expense ({unit})",
+            f"Nepal Overhead ({unit})",
             f"Claim ({unit})",
             f"Booking 6% ({unit})",
             f"Destination 5% ({unit})",
             f"Total Overhead ({unit})",
             f"Net Profit ({unit})",
-            f"Total Income ({unit})",
             "Net Profit Margin %",
         ]
         display = display[
             [column for column in detail_columns if column in display.columns]
         ]
 
+        net_profit_display_col = f"Net Profit ({unit})"
+
+        def _highlight_negative_np_row(row):
+            is_negative = (
+                net_profit_display_col in row.index
+                and pd.notna(row[net_profit_display_col])
+                and float(row[net_profit_display_col]) < 0
+            )
+            if is_negative:
+                return [
+                    "background-color:#fff1f2; color:#991b1b; font-weight:600;"
+                    for _ in row.index
+                ]
+            return ["" for _ in row.index]
+
+        styled_display = display.style.apply(
+            _highlight_negative_np_row,
+            axis=1,
+        )
+
         st.dataframe(
-            display,
+            styled_display,
             width="stretch",
             hide_index=True,
             column_config={
@@ -2764,6 +3195,7 @@ def show_net_profit_dashboard():
             "SALARY",
             "GODOWN RENT",
             "OVERHEAD EXPENSE",
+            "NEPAL OVERHEAD",
             "CLAIM",
             "BOOKING 6%",
             "DESTINATION 5%",
@@ -2777,6 +3209,40 @@ def show_net_profit_dashboard():
         ]
 
         audit_display = df[audit_columns].copy()
+
+        # Display the audit in the selected conversion unit, including Nepal Overhead.
+        audit_money_columns = [
+            "BUSINESS",
+            "ORIGIN_BUSINESS",
+            "DESTINATION_BUSINESS",
+            "ORIGIN_PNL",
+            "DESTINATION_PNL",
+            "COMBINED_PNL",
+            "SALARY",
+            "GODOWN RENT",
+            "OVERHEAD EXPENSE",
+            "NEPAL OVERHEAD",
+            "CLAIM",
+            "BOOKING 6%",
+            "DESTINATION 5%",
+            "TOTAL EXPENSE",
+            "NET_PROFIT",
+        ]
+        for column in audit_money_columns:
+            if column in audit_display.columns:
+                audit_display[column] = (
+                    pd.to_numeric(audit_display[column], errors="coerce").fillna(0.0)
+                    / divisor
+                )
+
+        audit_display = audit_display.rename(
+            columns={
+                column: f"{column} ({unit})"
+                for column in audit_money_columns
+                if column in audit_display.columns
+            }
+        )
+
         audit_sort = [
             column
             for column in ["BRANCH", "YEAR", "MONTHNO"]
@@ -2799,7 +3265,93 @@ def show_net_profit_dashboard():
         )
 
     # --------------------------------------------------------
-    # TAB 3: GR P&L DETAILED
+    # TAB 3: NEPAL OVERHEAD LEDGER DETAIL
+    # --------------------------------------------------------
+    with nepal_detail_tab:
+        if nepal_overhead_detail_df is None or nepal_overhead_detail_df.empty:
+            st.info("No Nepal overhead ledger detail is available for the selected period.")
+        else:
+            nep = nepal_overhead_detail_df.copy()
+
+            # Apply the active Month / Quarter filters locally.
+            nep["YEAR"] = pd.to_numeric(nep.get("YEAR"), errors="coerce")
+            nep["MONTHNO"] = pd.to_numeric(nep.get("MONTHNO"), errors="coerce")
+            nep["MONTH"] = nep["MONTHNO"].map({
+                1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
+                7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
+            })
+            nep["FIN_MONTH"] = nep["MONTHNO"].map({
+                4: 1, 5: 2, 6: 3, 7: 4, 8: 5, 9: 6,
+                10: 7, 11: 8, 12: 9, 1: 10, 2: 11, 3: 12,
+            })
+            nep["QUARTER"] = nep["FIN_MONTH"].map({
+                1: "Q1", 2: "Q1", 3: "Q1",
+                4: "Q2", 5: "Q2", 6: "Q2",
+                7: "Q3", 8: "Q3", 9: "Q3",
+                10: "Q4", 11: "Q4", 12: "Q4",
+            })
+
+            if quarters:
+                nep = nep[nep["QUARTER"].isin(quarters)].copy()
+            if months:
+                nep = nep[nep["MONTH"].isin(months)].copy()
+
+            # Branch / Zone / Circle filters are already represented by the
+            # filtered Net Profit dataframe. Use its surviving branch names as
+            # the allowed Nepal branch scope. In unrestricted All-Branches mode
+            # keep all Nepal ledger rows.
+            if branches or zones or circles:
+                allowed_branch_keys = {
+                    _normalise_branch_name(value)
+                    for value in df.get("BRANCH", pd.Series(dtype="object")).dropna().tolist()
+                }
+                nep_branch_keys = nep["BRANCH"].fillna("").map(_normalise_branch_name)
+                nep = nep[nep_branch_keys.isin(allowed_branch_keys)].copy()
+
+            if nep.empty:
+                st.info("No Nepal overhead detail found for the active filters.")
+            else:
+                # The user-facing ledger detail is one row per
+                # Branch + Ledger Code + Ledger Name + Main Group.
+                nep_display = (
+                    nep.groupby(
+                        ["BRANCH", "LEDCODE", "LEDNAME", "MAINGROUP"],
+                        as_index=False,
+                        dropna=False,
+                    )["NETAMT"]
+                    .sum()
+                    .sort_values(["BRANCH", "LEDNAME", "LEDCODE"])
+                    .reset_index(drop=True)
+                )
+                nep_display["NETAMT"] = pd.to_numeric(
+                    nep_display["NETAMT"], errors="coerce"
+                ).fillna(0.0)
+
+                st.dataframe(
+                    nep_display,
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "BRANCH": st.column_config.TextColumn("Branch"),
+                        "LEDCODE": st.column_config.TextColumn("Led Code"),
+                        "LEDNAME": st.column_config.TextColumn("Led Name"),
+                        "MAINGROUP": st.column_config.TextColumn("Main Group"),
+                        "NETAMT": st.column_config.NumberColumn(
+                            "Net Amount", format="₹ %.2f"
+                        ),
+                    },
+                )
+
+                st.download_button(
+                    "Download Nepal Overhead Detail CSV",
+                    data=nep_display.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"nepal_overhead_detail_{fy}.csv",
+                    mime="text/csv",
+                    key="np_download_nepal_overhead_detail",
+                )
+
+    # --------------------------------------------------------
+    # TAB 4: GR P&L DETAILED
     # Same filtered P&L insight source; no LOADTYPE filter is applied.
     # --------------------------------------------------------
     with gr_tab:

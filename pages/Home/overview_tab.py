@@ -3041,6 +3041,78 @@ def _inject_overview_mobile_css():
         unsafe_allow_html=True,
     )
 
+@st.cache_data(ttl=21600, show_spinner=False)
+def _load_independent_five_year_revenue(financial_years):
+    """Fetch five annual SUM totals in one SQL query, never full booking rows.
+
+    Separate service deliberately has no dependency on Overview filters or its
+    loaded report dataframe. Cached results are keyed by the fixed FY range.
+    """
+    from services.yearly_revenue import load_five_year_revenue_totals
+    return load_five_year_revenue_totals(tuple(financial_years))
+
+
+def _render_independent_five_year_revenue():
+    """Revenue-only historical bar chart: intentionally ignores ALL page slicers."""
+    today = pd.Timestamp.now(tz="Asia/Kolkata")
+    current_fy_start = today.year if today.month >= 4 else today.year - 1
+    years = [f"{year}-{year+1}" for year in range(current_fy_start - 5, current_fy_start)]
+
+    with st.container(border=True):
+        st.markdown(
+            "<div style='font-size:16px;font-weight:650;color:#0f2744;margin:1px 0 5px 2px;'>"
+            "Last 5 Completed Financial Years — Revenue</div>",
+            unsafe_allow_html=True,
+        )
+        try:
+            with st.spinner("Loading five-year revenue..."):
+                totals = _load_independent_five_year_revenue(tuple(years))
+        except Exception as exc:
+            st.warning(f"Five-year revenue could not be loaded: {exc}")
+            return
+
+        labels = [f"{fy[2:4]}-{fy[7:9]}" for fy in years]
+        amounts = [totals.get(fy) for fy in years]
+        if not any(value is not None for value in amounts):
+            st.info("Revenue data is not available for these financial years.")
+            return
+
+        # Independent of dashboard conversion and slicer filters.
+        values_cr = [(float(amount) / 10000000) if amount is not None else None for amount in amounts]
+        x_positions = list(range(len(years)))
+        maximum = max([v for v in values_cr if v is not None] + [1.0])
+        fig = go.Figure()
+
+        # Standard vertical bars, with revenue amounts directly above each bar.
+        fig.add_trace(go.Bar(
+            x=x_positions,
+            y=[v if v is not None else 0 for v in values_cr],
+            name="Annual Revenue (Cr)",
+            width=0.52,
+            marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1)),
+            text=[f"{v:,.2f} Cr" if v is not None else "N/A" for v in values_cr],
+            textposition="outside",
+            textfont=dict(color="#173b63", size=10),
+            cliponaxis=False,
+            customdata=labels,
+            hovertemplate="FY %{customdata}<br>Revenue: %{text}<extra></extra>",
+        ))
+        fig.update_layout(
+            height=245,
+            margin=dict(l=12, r=12, t=30, b=12),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#173b63", size=10),
+            xaxis=dict(tickmode="array", tickvals=x_positions, ticktext=labels,
+                       range=[-0.5, 4.5], showgrid=False, zeroline=False, fixedrange=True),
+            yaxis=dict(title="Revenue (₹ Cr)", range=[0, maximum * 1.23],
+                       showgrid=False, zeroline=False, showline=False, fixedrange=True),
+            bargap=0.32,
+            showlegend=False,
+        )
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "responsive": True})
+        st.caption("Blue bars = yearly revenue · Apr–Mar · Not affected by dashboard filters")
+
+
 def show_overview():
     """Compact overview dashboard page."""
 
@@ -4687,10 +4759,104 @@ def show_overview():
 
     compact_spacer()
 
+    # Annual (filter-independent) revenue and filtered company revenue side by side.
+    yearly_revenue_col, yearly_company_col = st.columns(
+        [1.12, 0.88], gap="medium", vertical_alignment="top"
+    )
+    with yearly_revenue_col:
+        _render_independent_five_year_revenue()
+
+    with yearly_company_col:
+        with st.container(border=True):
+            st.markdown(
+                f'<div style="font-size:13px;font-weight:600;'
+                f'color:#0f172a;margin:0 0 7px 0;line-height:1.2;">'
+                f'Business by Company (CY)</div>',
+                unsafe_allow_html=True,
+            )
+
+            if company_chart_df.empty or company_total <= 0:
+                st.info("No company revenue is available for the selected filters.")
+            else:
+                company_colors = [
+                    "#2563eb",
+                    "#0f9f8f",
+                    "#7c3aed",
+                    "#f59e0b",
+                    "#ec4899",
+                    "#64748b",
+                ]
+                max_company_value = float(company_chart_df["Business Cr"].max() or 1)
+                company_rows = []
+
+                for idx, row in company_chart_df.iterrows():
+                    company_name = escape(str(row["Company"]))
+                    value = float(row["Business Cr"] or 0)
+                    share = float(row["Contribution %"] or 0)
+                    py_value = float(row["PY Business Cr"] or 0)
+                    growth = float(row["Growth %"] or 0)
+                    width_pct = (
+                        min((value / max_company_value * 100), 100)
+                        if max_company_value
+                        else 0
+                    )
+                    color = company_colors[idx % len(company_colors)]
+                    growth_color = "#16a34a" if growth >= 0 else "#dc2626"
+                    growth_arrow = "▲" if growth >= 0 else "▼"
+
+                    company_rows.append(
+                        f'<div title="{company_name} | LY ₹{py_value:.2f} {revenue_unit} | '
+                        f'{growth_arrow} {abs(growth):.1f}%" '
+                        f'style="display:grid;'
+                        f'grid-template-columns:minmax(150px,195px) minmax(55px,1fr) '
+                        f'minmax(84px,auto) minmax(58px,auto);'
+                        f'align-items:center;gap:8px;margin:9px 0;line-height:1.2;">'
+
+                        f'<div style="font-size:10.5px;font-weight:600;'
+                        f'color:#334155;white-space:nowrap;overflow:hidden;'
+                        f'text-overflow:ellipsis;">{company_name}</div>'
+
+                        f'<div style="height:9px;background:#e8eef5;border-radius:999px;'
+                        f'overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
+                        f'<div style="height:9px;width:{width_pct:.2f}%;background:{color};'
+                        f'border-radius:999px;"></div></div>'
+
+                        f'<div style="font-size:10px;font-weight:700;'
+                        f'color:#0f172a;white-space:nowrap;">'
+                        f'₹{value:.2f} {revenue_unit}</div>'
+
+                        f'<div style="font-size:10px;font-weight:700;'
+                        f'color:#334155;min-width:54px;text-align:right;white-space:nowrap;">'
+                        f'{share:.2f}%</div>'
+
+                        f'<div style="grid-column:2/5;margin-top:-3px;'
+                        f'font-size:{COMPANY_SUBTEXT_FONT}px;color:#64748b;white-space:nowrap;">'
+                        f'LY ₹{py_value:.2f} {revenue_unit} · '
+                        f'<span style="color:{growth_color};font-weight:700;">'
+                        f'{growth_arrow} {abs(growth):.1f}%</span></div>'
+
+                        f'</div>'
+                    )
+
+                company_html = (
+                    '<div style="padding:0 3px 4px 3px;">'
+                    + ''.join(company_rows)
+                    + '</div>'
+                )
+
+                if hasattr(st, "html"):
+                    st.html(company_html)
+                else:
+                    st.markdown(company_html, unsafe_allow_html=True)
+
+                                                            
+                                                       
+    compact_spacer()
+
     # MoM panel period controls are intentionally local to this insight only.
     # D / M / Q changes only this chart and does not affect any other dashboard logic.
-    mom_chart_col, branch_achievement_col, target_meter_col = st.columns(
-        [1.20, 1.20, 0.60], gap="medium", vertical_alignment="top"
+    mom_chart_col, branch_achievement_col = st.columns(
+        [1.00, 1.00], gap="medium", vertical_alignment="top"
     )
 
     with mom_chart_col:
@@ -4918,91 +5084,6 @@ def show_overview():
             except Exception as _branch_achievement_exc:
                 st.info(f"Target achievement unavailable: {_branch_achievement_exc}")
 
-    with target_meter_col:
-        with st.container(border=True):
-            st.markdown(
-                f'<div style="font-size:13px;font-weight:600;'
-                f'color:#0f172a;margin:0 0 7px 0;line-height:1.2;">'
-                f'Business by Company (CY)</div>',
-                unsafe_allow_html=True,
-            )
-
-            if company_chart_df.empty or company_total <= 0:
-                st.info("No company revenue is available for the selected filters.")
-            else:
-                company_colors = [
-                    "#2563eb",
-                    "#0f9f8f",
-                    "#7c3aed",
-                    "#f59e0b",
-                    "#ec4899",
-                    "#64748b",
-                ]
-                max_company_value = float(company_chart_df["Business Cr"].max() or 1)
-                company_rows = []
-
-                for idx, row in company_chart_df.iterrows():
-                    company_name = escape(str(row["Company"]))
-                    value = float(row["Business Cr"] or 0)
-                    share = float(row["Contribution %"] or 0)
-                    py_value = float(row["PY Business Cr"] or 0)
-                    growth = float(row["Growth %"] or 0)
-                    width_pct = (
-                        min((value / max_company_value * 100), 100)
-                        if max_company_value
-                        else 0
-                    )
-                    color = company_colors[idx % len(company_colors)]
-                    growth_color = "#16a34a" if growth >= 0 else "#dc2626"
-                    growth_arrow = "▲" if growth >= 0 else "▼"
-
-                    company_rows.append(
-                        f'<div title="{company_name} | LY ₹{py_value:.2f} {revenue_unit} | '
-                        f'{growth_arrow} {abs(growth):.1f}%" '
-                        f'style="display:grid;'
-                        f'grid-template-columns:minmax(150px,195px) minmax(55px,1fr) '
-                        f'minmax(84px,auto) minmax(58px,auto);'
-                        f'align-items:center;gap:8px;margin:9px 0;line-height:1.2;">'
-
-                        f'<div style="font-size:10.5px;font-weight:600;'
-                        f'color:#334155;white-space:nowrap;overflow:hidden;'
-                        f'text-overflow:ellipsis;">{company_name}</div>'
-
-                        f'<div style="height:9px;background:#e8eef5;border-radius:999px;'
-                        f'overflow:hidden;box-shadow:inset 0 1px 2px rgba(15,23,42,.10);">'
-                        f'<div style="height:9px;width:{width_pct:.2f}%;background:{color};'
-                        f'border-radius:999px;"></div></div>'
-
-                        f'<div style="font-size:10px;font-weight:700;'
-                        f'color:#0f172a;white-space:nowrap;">'
-                        f'₹{value:.2f} {revenue_unit}</div>'
-
-                        f'<div style="font-size:10px;font-weight:700;'
-                        f'color:#334155;min-width:54px;text-align:right;white-space:nowrap;">'
-                        f'{share:.2f}%</div>'
-
-                        f'<div style="grid-column:2/5;margin-top:-3px;'
-                        f'font-size:{COMPANY_SUBTEXT_FONT}px;color:#64748b;white-space:nowrap;">'
-                        f'LY ₹{py_value:.2f} {revenue_unit} · '
-                        f'<span style="color:{growth_color};font-weight:700;">'
-                        f'{growth_arrow} {abs(growth):.1f}%</span></div>'
-
-                        f'</div>'
-                    )
-
-                company_html = (
-                    '<div style="padding:0 3px 4px 3px;">'
-                    + ''.join(company_rows)
-                    + '</div>'
-                )
-
-                if hasattr(st, "html"):
-                    st.html(company_html)
-                else:
-                    st.markdown(company_html, unsafe_allow_html=True)
-
-                                                            
-                                                       
     compact_spacer()
 
     def _find_column(frame, candidates):

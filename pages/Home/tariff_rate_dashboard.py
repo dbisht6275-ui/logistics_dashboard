@@ -1,7 +1,8 @@
-# UPDATED UI BUILD: 2026-09-05 - dark blue grid headers, compact bordered header, branch scope preserved
+# UPDATED UI BUILD V9: ultra-compact header/filter bar, paged grids, branch scope preserved
 from __future__ import annotations
 
 from datetime import date
+from html import escape
 
 import pandas as pd
 import streamlit as st
@@ -109,7 +110,11 @@ SET @sql = N'
         RT.SLAB1,
         RT.RATE1,
         RT.AMOUNT,
-        RT.RATECATEGORY
+        RT.RATECATEGORY,
+        RT.CREATEDON,
+        RT.APPROVEDBY,
+        RT.EDITID,
+        RT.EDITEDON
     FROM RATEMAST RT WITH (NOLOCK)
     INNER JOIN VIEWSTATIONMAST ORG WITH (NOLOCK)
         ON ORG.STNCODE = RT.ORGCODE
@@ -181,6 +186,11 @@ CHARGE_PIVOT AS
     ) PVT
 )
 SELECT
+    RT.RATEDATAID,
+    RT.CREATEDON,
+    RT.APPROVEDBY,
+    RT.EDITID,
+    RT.EDITEDON,
     COALESCE(RT.CUSTCODE, RT.CNGECODE, RT.CNGRCODE) AS CUSTOMER_CODE,
     CASE
         WHEN RT.CUSTCODE = ''0000007565'' THEN ''TARIFF RATE''
@@ -246,6 +256,11 @@ ORDER BY RT.FROMDT, ORG.STNNAME, DEST.STNNAME;
 IF @cols IS NULL
 BEGIN
     SELECT TOP (0)
+        RT.RATEDATAID,
+        RT.CREATEDON,
+        RT.APPROVEDBY,
+        RT.EDITID,
+        RT.EDITEDON,
         CAST(NULL AS VARCHAR(20)) AS CUSTOMER_CODE,
         CAST(NULL AS VARCHAR(20)) AS RATE_TYPE_GROUP,
         CAST(NULL AS VARCHAR(200)) AS CUSTOMER_NAME,
@@ -282,7 +297,7 @@ END;
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def load_rates_role_v2(active_on: date, scope_type: str, scope_value: str) -> pd.DataFrame:
+def load_rates_role_v3(active_on: date, scope_type: str, scope_value: str) -> pd.DataFrame:
     engine = get_engine()
     with engine.connect() as cn:
         return pd.read_sql_query(
@@ -377,25 +392,32 @@ def _inject_css():
     st.markdown(
         """
         <style>
-        .block-container {max-width:100%; padding:.45rem .75rem 1rem !important;}
-        div[data-testid="stHorizontalBlock"] {gap:.45rem !important; align-items:flex-start !important;}
+        .block-container {max-width:100%; padding:.12rem .42rem .55rem !important;}
+        div[data-testid="stHorizontalBlock"] {gap:.22rem !important; align-items:flex-start !important;}
+        div[data-testid="stWidgetLabel"] {min-height:12px !important; margin-bottom:0 !important;}
+        div[data-testid="stWidgetLabel"] p {line-height:1.0 !important; margin:0 !important;}
+        div[data-testid="stSelectbox"],
+        div[data-testid="stMultiSelect"],
+        div[data-testid="stDateInput"] {margin-bottom:0 !important;}
         div[data-testid="stSelectbox"] > label,
         div[data-testid="stMultiSelect"] > label,
         div[data-testid="stTextInput"] > label,
         div[data-testid="stNumberInput"] > label,
         div[data-testid="stDateInput"] > label {
             color:#243b53 !important;
-            font-size:10px !important;
-            font-weight:500 !important;
+            font-size:9px !important;
+            line-height:1 !important;
+            font-weight:600 !important;
         }
         div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
         div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div,
         div[data-testid="stTextInput"] input,
         div[data-testid="stNumberInput"] input,
         div[data-testid="stDateInput"] input {
-            min-height:38px !important;
-            border:1px solid #a9bfd8 !important;
-            border-radius:9px !important;
+            min-height:28px !important;
+            height:28px !important;
+            border:1px solid #b6c6d7 !important;
+            border-radius:7px !important;
             background:linear-gradient(180deg,#f9fbfe 0%,#eef4fa 58%,#e4edf7 100%) !important;
             box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 2px 5px rgba(30,64,105,.08) !important;
         }
@@ -404,19 +426,74 @@ def _inject_css():
             margin:0 !important;
             padding:0 !important;
             color:#17365d;
-            font-size:1.15rem !important;
-            line-height:1.25 !important;
+            font-size:.88rem !important;
+            line-height:1.05 !important;
             font-weight:700 !important;
         }
         .rate-dashboard-scope {
-            margin:.18rem 0 0 0 !important;
-            color:#52667a;
-            font-size:.74rem !important;
-            line-height:1.25 !important;
+            margin:.01rem 0 0 0 !important;
+            color:#607286;
+            font-size:.57rem !important;
+            line-height:1 !important;
+        }
+        .login-scope-value {
+            color:#0b3f75 !important;
+            font-weight:800 !important;
+            font-size:.76rem !important;
+            letter-spacing:.01em;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            border-color:#b7c9dc !important;
-            border-radius:10px !important;
+            border-color:#c2cfdb !important;
+            border-radius:8px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding:.28rem .48rem !important;
+        }
+        .active-on-label {
+            font-size:9px !important;
+            font-weight:700 !important;
+            color:#243b53 !important;
+            line-height:30px !important;
+            white-space:nowrap !important;
+            text-align:right !important;
+        }
+        div[data-testid="stDateInput"] {
+            width:100% !important;
+            min-width:100% !important;
+            max-width:none !important;
+            margin:0 !important;
+        }
+        div[data-testid="stDateInput"] > div {
+            width:100% !important;
+            min-width:100% !important;
+        }
+        div[data-testid="stDateInput"] input {
+            font-size:10px !important;
+            padding:.10rem .26rem !important;
+            background:#ffffff !important;
+            border-color:#d7e0ea !important;
+            box-shadow:none !important;
+        }
+        div[data-testid="stDateInput"] div[data-baseweb="input"] {
+            width:100% !important;
+            min-height:30px !important;
+            height:30px !important;
+            background:#ffffff !important;
+            border:1px solid #d7e0ea !important;
+            border-radius:7px !important;
+            box-shadow:0 1px 2px rgba(18,59,102,.05) !important;
+        }
+        div[data-testid="stButton"] button {
+            min-height:30px !important;
+            height:30px !important;
+            padding:.15rem .55rem !important;
+            border-radius:7px !important;
+            font-size:10px !important;
+            line-height:1 !important;
+        }
+        div[data-testid="stSelectbox"] div[data-baseweb="select"] span,
+        div[data-testid="stMultiSelect"] div[data-baseweb="select"] span {
+            font-size:10px !important;
         }
 
         /* Reliable HTML grid styling. Streamlit st.dataframe uses a canvas in
@@ -459,15 +536,296 @@ def _inject_css():
         table.rate-grid-table tbody tr:nth-child(even) td { background:#f7f9fc; }
         table.rate-grid-table tbody tr:hover td { background:#edf4fb; }
 
-        /* Make the top header card visibly compact. */
-        div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding-top:.35rem !important;
-            padding-bottom:.35rem !important;
+        /* Header card and filter card are deliberately separate. */
+        .header-panel-marker, .filter-panel-marker {
+            height:0 !important;
+            margin:0 !important;
+            padding:0 !important;
+            overflow:hidden !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) > div {
+            padding:.08rem .42rem .10rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) > div > div[data-testid="stVerticalBlock"] {
+            gap:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) > div {
+            padding:.06rem .38rem .10rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) > div > div[data-testid="stVerticalBlock"] {
+            gap:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stHorizontalBlock"] {
+            gap:.18rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stWidgetLabel"] {
+            min-height:12px !important;
+            margin-bottom:2px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stWidgetLabel"] p {
+            font-size:9.5px !important;
+            line-height:1 !important;
+            font-weight:650 !important;
+            color:#24425f !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+            min-height:31px !important;
+            height:31px !important;
+            border:1px solid #d4dfeb !important;
+            border-radius:8px !important;
+            background:#ffffff !important;
+            box-shadow:0 1px 2px rgba(16,42,67,.04) !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div:hover {
+            border-color:#9eb8d2 !important;
         }
         div[data-testid="stButton"] button {
-            min-height:38px !important;
-            font-size:.82rem !important;
+            min-height:30px !important;
+            height:30px !important;
+            padding:.10rem .45rem !important;
+            font-size:.66rem !important;
+            font-weight:700 !important;
+            background:#123b66 !important;
+            color:#ffffff !important;
+            border:1px solid #0b2d4e !important;
+            box-shadow:0 1px 2px rgba(18,59,102,.18) !important;
+        }
+        div[data-testid="stButton"] button:hover {
+            background:#0b2d4e !important;
+            color:#ffffff !important;
+            border-color:#081f36 !important;
+        }
+        .active-on-label {
+            font-size:.56rem !important;
             font-weight:600 !important;
+            color:#41566d !important;
+            white-space:nowrap !important;
+            line-height:30px !important;
+            padding-top:0 !important;
+            text-align:right !important;
+        }
+
+        /* Compact view selector used instead of st.tabs so only one heavy grid renders. */
+        div[role="radiogroup"] {gap:.25rem !important;}
+        div[role="radiogroup"] label {
+            background:#eef3f8 !important;
+            border:1px solid #c4d2df !important;
+            border-radius:6px !important;
+            padding:.20rem .55rem !important;
+            min-height:30px !important;
+        }
+        div[role="radiogroup"] label:has(input:checked) {
+            background:#123b66 !important;
+            color:#ffffff !important;
+            border-color:#0b2d4e !important;
+        }
+        /* Streamlit applies its own text color to nested elements; force selected button text white. */
+        div[role="radiogroup"] label:has(input:checked) * {
+            color:#ffffff !important;
+        }
+        .grid-summary {
+            font-size:.70rem;
+            color:#52667a;
+            margin:.02rem 0 .18rem 0;
+        }
+        .rate-grid-table tbody tr.tariff-row td {
+            background:#fff3cd !important;
+            color:#5f4300 !important;
+            font-weight:600 !important;
+        }
+        .rate-grid-table tbody tr.tariff-row:hover td {
+            background:#ffe69c !important;
+        }
+        .quick-finder-title {
+            font-size:1.05rem;
+            font-weight:700;
+            color:#123b66;
+            margin:.15rem 0 .05rem 0;
+        }
+        .quick-finder-note {
+            font-size:.72rem;
+            color:#6a7685;
+            margin:0 0 .28rem 0;
+        }
+        .quick-kpi-wrap {
+            display:grid;
+            grid-template-columns:repeat(3,minmax(150px,1fr));
+            gap:8px;
+            margin:.28rem 0 .35rem 0;
+        }
+        .quick-kpi {
+            border:1px solid #d5dfeb;
+            border-radius:8px;
+            background:#f8fbff;
+            padding:6px 10px;
+            min-height:48px;
+        }
+        .quick-kpi .kpi-label {font-size:.67rem;color:#52667a;margin-bottom:1px;}
+        .quick-kpi .kpi-value {font-size:1.18rem;font-weight:700;color:#123b66;line-height:1.1;}
+
+        /* V10: ultra-compact header and filter cards to preserve vertical space. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) {
+            margin-bottom:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) > div {
+            padding:.02rem .34rem .03rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) > div > div[data-testid="stVerticalBlock"] {
+            gap:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stHorizontalBlock"] {
+            min-height:34px !important;
+            align-items:center !important;
+            gap:.18rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) .rate-dashboard-title {
+            font-size:.80rem !important;
+            line-height:1 !important;
+            margin:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) .rate-dashboard-scope {
+            font-size:.52rem !important;
+            line-height:1 !important;
+            margin:.02rem 0 0 0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) .active-on-label {
+            font-size:.52rem !important;
+            line-height:26px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stDateInput"] div[data-baseweb="input"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stDateInput"] input {
+            min-height:26px !important;
+            height:26px !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stDateInput"] input {
+            font-size:9px !important;
+            padding:.05rem .22rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stButton"] button {
+            min-height:26px !important;
+            height:26px !important;
+            font-size:.61rem !important;
+            padding:.05rem .38rem !important;
+        }
+
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) {
+            margin-top:-.10rem !important;
+            margin-bottom:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) > div {
+            padding:.01rem .28rem .04rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) > div > div[data-testid="stVerticalBlock"] {
+            gap:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stHorizontalBlock"] {
+            gap:.14rem !important;
+            align-items:flex-start !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stWidgetLabel"] {
+            min-height:9px !important;
+            height:9px !important;
+            margin:0 0 1px 0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stWidgetLabel"] p {
+            font-size:8.7px !important;
+            line-height:9px !important;
+            font-weight:600 !important;
+            margin:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stSelectbox"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stMultiSelect"] {
+            margin:0 !important;
+            padding:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+            min-height:27px !important;
+            height:27px !important;
+            border-radius:6px !important;
+            padding-top:0 !important;
+            padding-bottom:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-baseweb="select"] span {
+            font-size:9px !important;
+            line-height:1 !important;
+        }
+
+
+        /* V11: remove Streamlit container's own extra vertical padding/min-height. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker),
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) {
+            min-height:0 !important;
+            height:auto !important;
+            padding-top:.18rem !important;
+            padding-bottom:.18rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) {
+            padding-left:.45rem !important;
+            padding-right:.45rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) {
+            padding-left:.45rem !important;
+            padding-right:.45rem !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) > div {
+            min-height:0 !important;
+            height:auto !important;
+            padding:0 !important;
+            margin:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stVerticalBlock"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stVerticalBlock"] {
+            min-height:0 !important;
+            height:auto !important;
+            gap:0 !important;
+            padding:0 !important;
+            margin:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stElementContainer"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stElementContainer"] {
+            margin-top:0 !important;
+            margin-bottom:0 !important;
+            padding-top:0 !important;
+            padding-bottom:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.header-panel-marker) div[data-testid="stHorizontalBlock"] {
+            min-height:30px !important;
+            height:auto !important;
+            margin:0 !important;
+            padding:0 !important;
+            align-items:center !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stHorizontalBlock"] {
+            min-height:0 !important;
+            height:auto !important;
+            margin:0 !important;
+            padding:0 !important;
+            align-items:flex-end !important;
+        }
+        /* Marker elements must occupy absolutely no row height. */
+        div[data-testid="stElementContainer"]:has(.header-panel-marker),
+        div[data-testid="stElementContainer"]:has(.filter-panel-marker) {
+            display:none !important;
+            height:0 !important;
+            min-height:0 !important;
+            margin:0 !important;
+            padding:0 !important;
+        }
+        /* Tight filter labels + controls. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stWidgetLabel"] {
+            min-height:10px !important;
+            height:auto !important;
+            margin:0 0 2px 0 !important;
+            padding:0 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.filter-panel-marker) div[data-testid="stMultiSelect"] div[data-baseweb="select"] > div {
+            min-height:28px !important;
+            height:28px !important;
         }
         </style>
         """,
@@ -485,7 +843,7 @@ def _rate_type_display(value: str) -> str:
 
 
 def _render_rate_grid(frame: pd.DataFrame, height: int = 520) -> None:
-    """Render a compact scrollable HTML grid with reliable dark-blue sticky headers."""
+    """Render a compact scrollable grid; blanks for missing values and highlight Tariff rows."""
     if frame is None or frame.empty:
         st.info("No records to display.")
         return
@@ -496,15 +854,146 @@ def _render_rate_grid(frame: pd.DataFrame, height: int = 520) -> None:
             dt = pd.to_datetime(show[col], errors="coerce")
             show[col] = dt.dt.strftime("%d-%m-%Y").where(dt.notna(), "")
 
-    html = show.to_html(index=False, escape=True, border=0, classes="rate-grid-table")
+    for col in ("CREATEDON", "EDITEDON"):
+        if col in show.columns:
+            dt = pd.to_datetime(show[col], errors="coerce")
+            show[col] = dt.dt.strftime("%d-%m-%Y %H:%M:%S").where(dt.notna(), "")
+
+    # Display missing values as blank instead of NaN / NaT / <NA>.
+    show = show.astype(object).where(pd.notna(show), "")
+
+    headers = "".join(f"<th>{escape(str(col))}</th>" for col in show.columns)
+    body_rows = []
+    rate_idx = show.columns.get_loc("RATE_TYPE_GROUP") if "RATE_TYPE_GROUP" in show.columns else None
+    for row in show.itertuples(index=False, name=None):
+        is_tariff = False
+        if rate_idx is not None:
+            is_tariff = str(row[rate_idx]).strip().casefold() == "tariff rate"
+        row_class = ' class="tariff-row"' if is_tariff else ""
+        cells = "".join(f"<td>{escape(str(value)) if value != '' else ''}</td>" for value in row)
+        body_rows.append(f"<tr{row_class}>{cells}</tr>")
+
+    table_html = (
+        '<table class="rate-grid-table">'
+        f'<thead><tr>{headers}</tr></thead>'
+        f'<tbody>{"".join(body_rows)}</tbody>'
+        '</table>'
+    )
     st.markdown(
-        f"""
-        <div class="rate-grid-wrap" style="max-height:{int(height)}px;">
-            {html}
-        </div>
-        """,
+        f'<div class="rate-grid-wrap" style="max-height:{int(height)}px;">{table_html}</div>',
         unsafe_allow_html=True,
     )
+
+
+def _paged_frame(frame: pd.DataFrame, key: str, default_size: int = 100) -> pd.DataFrame:
+    """Return only one page so the browser never renders thousands of HTML rows."""
+    if frame is None or frame.empty:
+        return frame
+
+    total = len(frame)
+    size_options = [50, 100, 250, 500]
+    default_index = size_options.index(default_size) if default_size in size_options else 1
+
+    ctl = st.columns([1.15, 1.0, 4.5], gap="small")
+    with ctl[0]:
+        page_size = st.selectbox(
+            "Rows per page",
+            size_options,
+            index=default_index,
+            key=f"{key}_page_size",
+        )
+
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    current = int(st.session_state.get(f"{key}_page", 1) or 1)
+    current = max(1, min(current, total_pages))
+
+    with ctl[1]:
+        page = st.number_input(
+            "Page",
+            min_value=1,
+            max_value=total_pages,
+            value=current,
+            step=1,
+            key=f"{key}_page_input",
+        )
+    st.session_state[f"{key}_page"] = int(page)
+
+    start = (int(page) - 1) * page_size
+    stop = min(start + page_size, total)
+    with ctl[2]:
+        st.markdown(
+            f'<div class="grid-summary">Showing {start + 1:,}-{stop:,} of {total:,} records · Page {int(page):,} of {total_pages:,}</div>',
+            unsafe_allow_html=True,
+        )
+    return frame.iloc[start:stop].copy()
+
+
+
+def _paged_expiry_frame(frame: pd.DataFrame, key: str, default_size: int = 100) -> pd.DataFrame:
+    """Expiry grid controls on one compact row: Rows/page -> Page -> Expiry Window."""
+    size_options = [50, 100, 250, 500]
+    default_index = size_options.index(default_size) if default_size in size_options else 1
+
+    # Visual order is fixed by columns. We render the expiry widget first in code
+    # so its value can filter the frame before page-count calculation.
+    ctl = st.columns([1.05, 0.85, 1.20, 4.9], gap="small")
+
+    with ctl[2]:
+        expiry_window = st.selectbox(
+            "Expiry Window",
+            ["7 days", "15 days", "30 days", "60 days", "90 days", "All active"],
+            key="rate_expiry_window_v2",
+        )
+
+    filtered_frame = frame.copy() if frame is not None else pd.DataFrame()
+    day_limit = {
+        "7 days": 7,
+        "15 days": 15,
+        "30 days": 30,
+        "60 days": 60,
+        "90 days": 90,
+    }.get(expiry_window)
+    if day_limit is not None and not filtered_frame.empty and "DAYS_TO_EXPIRY" in filtered_frame.columns:
+        filtered_frame = filtered_frame[
+            filtered_frame["DAYS_TO_EXPIRY"].between(0, day_limit)
+        ].copy()
+
+    with ctl[0]:
+        page_size = st.selectbox(
+            "Rows per page",
+            size_options,
+            index=default_index,
+            key=f"{key}_page_size",
+        )
+
+    total = len(filtered_frame)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    current = int(st.session_state.get(f"{key}_page", 1) or 1)
+    current = max(1, min(current, total_pages))
+
+    with ctl[1]:
+        page = st.number_input(
+            "Page",
+            min_value=1,
+            max_value=total_pages,
+            value=current,
+            step=1,
+            key=f"{key}_page_input",
+        )
+    st.session_state[f"{key}_page"] = int(page)
+
+    if total:
+        start = (int(page) - 1) * page_size
+        stop = min(start + page_size, total)
+        summary = f"Showing {start + 1:,}-{stop:,} of {total:,} records · Page {int(page):,} of {total_pages:,}"
+    else:
+        start = stop = 0
+        summary = "No records in the selected expiry window"
+
+    with ctl[3]:
+        st.markdown(f'<div class="grid-summary">{summary}</div>', unsafe_allow_html=True)
+
+    return filtered_frame.iloc[start:stop].copy()
 
 
 # =============================================================================
@@ -514,38 +1003,44 @@ _inject_css()
 
 scope_type, scope_value = _get_login_scope()
 
-# Keep the dashboard title, active date and Load button together inside one compact border.
-with st.container(border=True):
-    header_cols = st.columns([4.8, 1.15, 1.15], gap="small")
+# Compact heading/date/load card. Filters render in their own separate card below.
+header_panel = st.container(border=True)
+with header_panel:
+    st.markdown('<div class="header-panel-marker"></div>', unsafe_allow_html=True)
+    header_cols = st.columns([7.48, 0.42, 1.12, 0.10, 1.12], gap="small")
 
     with header_cols[0]:
         st.markdown(
             '<div class="rate-dashboard-title">Tariff &amp; Contractual Rate Dashboard</div>',
             unsafe_allow_html=True,
         )
-        st.markdown('<div class="rate-dashboard-scope">Rate Dashboard · Dynamic Charges · Rate Finder</div>', unsafe_allow_html=True)
         if scope_type:
             st.markdown(
-                f'<div class="rate-dashboard-scope">Data access: {scope_type.title()} = {scope_value}. '
-                'Permitted rates include the assigned scope on either Origin or Destination side.</div>',
+                f'<div class="rate-dashboard-scope">Data access: {escape(scope_type.title())} = '
+                f'<span class="login-scope-value">{escape(str(scope_value))}</span> · '
+                'Origin or Destination permitted.</div>',
                 unsafe_allow_html=True,
             )
         else:
             st.markdown(
-                '<div class="rate-dashboard-scope">Full-network rate visibility. '
-                'Use the cascading filters below to refine rates.</div>',
+                '<div class="rate-dashboard-scope">Full-network visibility · use filters to refine rates.</div>',
                 unsafe_allow_html=True,
             )
 
     with header_cols[1]:
+        st.markdown('<div class="active-on-label">Active on</div>', unsafe_allow_html=True)
+
+    with header_cols[2]:
         active_date = st.date_input(
             "Active on",
             date.today(),
             key="rate_active_on_v2",
+            format="YYYY/MM/DD",
+            label_visibility="collapsed",
         )
 
-    with header_cols[2]:
-        st.markdown("<div style='height:22px'></div>", unsafe_allow_html=True)
+    # header_cols[3] is an intentional spacer so date and button never touch.
+    with header_cols[4]:
         load_clicked = st.button(
             "Load Dashboard",
             type="primary",
@@ -557,20 +1052,20 @@ load_key = (active_date, scope_type, scope_value)
 if load_clicked:
     try:
         with st.spinner("Loading rate data..."):
-            loaded = load_rates_role_v2(active_date, scope_type, scope_value)
-            st.session_state["rate_data_v2"] = loaded
-            st.session_state["rate_key_v2"] = load_key
+            loaded = load_rates_role_v3(active_date, scope_type, scope_value)
+            st.session_state["rate_data_v3"] = loaded
+            st.session_state["rate_key_v3"] = load_key
     except Exception as exc:
         st.error("Rate data could not be loaded.")
         with st.expander("Technical details"):
             st.code(str(exc))
         st.stop()
 
-if st.session_state.get("rate_key_v2") != load_key:
-    st.info("Choose the active date and click **Load Dashboard**.")
+if st.session_state.get("rate_key_v3") != load_key:
+    st.info("Rate data schema was updated. Click **Load Dashboard** to fetch the latest Rate Records including audit columns.")
     st.stop()
 
-data = st.session_state.get("rate_data_v2", pd.DataFrame()).copy()
+data = st.session_state.get("rate_data_v3", pd.DataFrame()).copy()
 if data.empty:
     if scope_type:
         st.warning(f"No active rates found for your assigned {scope_type}: {scope_value}.")
@@ -579,13 +1074,14 @@ if data.empty:
     st.stop()
 
 required_columns = {
+    "RATEDATAID", "CREATEDON", "APPROVEDBY", "EDITID", "EDITEDON",
     "RATE_TYPE_GROUP",
     "ORG_ZONE", "ORG_CIRCLE", "ORIGIN",
     "DEST_ZONE", "DEST_CIRCLE", "DESTINATION",
 }
 missing = sorted(required_columns.difference(data.columns))
 if missing:
-    load_rates_role_v2.clear()
+    load_rates_role_v3.clear()
     st.error("SQL result is missing required columns: " + ", ".join(missing))
     st.stop()
 
@@ -612,13 +1108,16 @@ if data.empty:
 
 
 # =============================================================================
-# FILTER ROW
+# FILTER ROW - separate compact card below the heading card
 # =============================================================================
-filter_cols = st.columns(7, gap="small")
+filter_panel = st.container(border=True)
+with filter_panel:
+    st.markdown('<div class="filter-panel-marker"></div>', unsafe_allow_html=True)
+    filter_cols = st.columns([0.95, 1.0, 1.0, 1.0, 1.0, 1.0, 1.15], gap="small")
 
 with filter_cols[0]:
     view_type = st.selectbox(
-        "⇄ View Type",
+        "View Type",
         ["Origin", "Destination"],
         key="rate_view_type_v2",
         help="Changes which side Zone / Circle / Branch filters are based on.",
@@ -626,7 +1125,7 @@ with filter_cols[0]:
 
 with filter_cols[1]:
     rate_type = st.selectbox(
-        "▥ Rate Type",
+        "Rate Type",
         ["All", "Tariff Rate", "Contractual Rate"],
         key="rate_type_v2",
     )
@@ -648,7 +1147,7 @@ zone_options = _safe_options(filter_source_df, zone_col)
 _prune_multiselect_state("rate_zone_v2", zone_options)
 with filter_cols[2]:
     selected_zones = st.multiselect(
-        "◉ Zone",
+        "Zone",
         zone_options,
         key="rate_zone_v2",
         placeholder="All zones",
@@ -661,7 +1160,7 @@ circle_options = _safe_options(circle_scope, circle_col)
 _prune_multiselect_state("rate_circle_v2", circle_options)
 with filter_cols[3]:
     selected_circles = st.multiselect(
-        "◎ Circle",
+        "Circle",
         circle_options,
         key="rate_circle_v2",
         placeholder="All circles",
@@ -674,7 +1173,7 @@ branch_options = _safe_options(branch_scope, branch_col)
 _prune_multiselect_state("rate_branch_v2", branch_options)
 with filter_cols[4]:
     selected_branches = st.multiselect(
-        "⌂ Branch",
+        "Branch",
         branch_options,
         key="rate_branch_v2",
         placeholder="All branches",
@@ -687,7 +1186,7 @@ ratefor_options = _safe_options(ratefor_scope, "RATEFOR")
 _prune_multiselect_state("rate_ratefor_v2", ratefor_options)
 with filter_cols[5]:
     selected_ratefor = st.multiselect(
-        "◫ Rate For",
+        "Rate For",
         ratefor_options,
         key="rate_ratefor_v2",
         placeholder="All",
@@ -700,7 +1199,7 @@ customer_options = _safe_options(customer_scope, "CUSTOMER_NAME")
 _prune_multiselect_state("rate_customer_v2", customer_options)
 with filter_cols[6]:
     selected_customers = st.multiselect(
-        "♙ Customer",
+        "Customer",
         customer_options,
         key="rate_customer_v2",
         placeholder="All customers",
@@ -730,6 +1229,7 @@ as_on_ts = pd.Timestamp(active_date)
 
 # Columns not in the fixed rate schema are dynamic charge-name columns.
 base_rate_columns = {
+    "RATEDATAID", "CREATEDON", "APPROVEDBY", "EDITID", "EDITEDON",
     "CUSTOMER_CODE", "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
     "ORG_ZONE", "ORG_CIRCLE", "ORIGIN", "DEST_ZONE", "DEST_CIRCLE", "DESTINATION",
     "FROMDT", "TODT", "FROMWT", "TOWT", "PRODUCT_NAME", "GOODS", "VEHICLE_TYPE",
@@ -737,62 +1237,107 @@ base_rate_columns = {
     "FLAT_AMOUNT", "RATECATEGORY",
 }
 charge_columns = [col for col in data.columns if col not in base_rate_columns]
-for col in charge_columns:
-    data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
-    if col in filtered.columns:
-        filtered[col] = pd.to_numeric(filtered[col], errors="coerce").fillna(0)
 
-expiry_tab, records_tab, finder_tab = st.tabs(["Expiry Watch", "Rate Records", "Rate Finder"])
+view_mode = st.radio(
+    "Result view",
+    ["Quick Rate Finder", "Expiry Watch", "Rate Records"],
+    horizontal=True,
+    label_visibility="collapsed",
+    key="rate_result_view_v5",
+)
 
 
-with expiry_tab:
+if view_mode == "Expiry Watch":
     expiry = filtered[filtered["TODT"].notna()].copy()
     expiry["DAYS_TO_EXPIRY"] = (expiry["TODT"].dt.normalize() - as_on_ts.normalize()).dt.days
     expiry = expiry.sort_values(["DAYS_TO_EXPIRY", "ORIGIN", "DESTINATION"])
 
-    expiry_window = st.selectbox(
-        "Expiry Window",
-        ["30 days", "60 days", "90 days", "All active"],
-        key="rate_expiry_window_v2",
-    )
-    day_limit = {"30 days": 30, "60 days": 60, "90 days": 90}.get(expiry_window)
-    if day_limit is not None:
-        expiry = expiry[expiry["DAYS_TO_EXPIRY"].between(0, day_limit)]
-
     expiry_cols = [
         "RATE_TYPE_GROUP", "CUSTOMER_NAME", "ORIGIN", "DESTINATION",
-        "PRODUCT_NAME", "FROMDT", "TODT", "DAYS_TO_EXPIRY",
-        "FROMWT", "TOWT", "SLAB1", "RATE1", "FLAT_AMOUNT",
+        "FROMDT", "TODT", "DAYS_TO_EXPIRY",
+        "FROMWT", "TOWT", "RATE1", "FLAT_AMOUNT",
     ]
     expiry_cols = [col for col in expiry_cols if col in expiry.columns]
     display_expiry = expiry[expiry_cols].copy()
     if "RATE_TYPE_GROUP" in display_expiry.columns:
         display_expiry["RATE_TYPE_GROUP"] = display_expiry["RATE_TYPE_GROUP"].map(_rate_type_display)
 
-    _render_rate_grid(display_expiry, height=520)
+    page_expiry = _paged_expiry_frame(display_expiry, "expiry_grid", default_size=100)
+    _render_rate_grid(page_expiry, height=500)
 
 
-with records_tab:
+elif view_mode == "Rate Records":
+    # Important: render only one page. Rendering the complete HTML table was the main browser-freeze cause.
     display_records = filtered.copy()
+
+    # Exact RATEDATAID lookup inside the already-loaded, role-scoped dataset.
+    # Blank input + Search restores the complete filtered Rate Records set.
+    search_cols = st.columns([1.65, 0.75, 5.6], gap="small")
+    with search_cols[0]:
+        ratedata_search_value = st.text_input(
+            "RateData ID",
+            key="rate_records_ratedata_search_v1",
+            placeholder="Enter RATEDATAID",
+        )
+    with search_cols[1]:
+        st.markdown('<div style="height:12px"></div>', unsafe_allow_html=True)
+        ratedata_search_clicked = st.button(
+            "Search",
+            key="rate_records_ratedata_search_btn_v1",
+            use_container_width=True,
+        )
+
+    if ratedata_search_clicked:
+        st.session_state["rate_records_ratedata_active_v1"] = ratedata_search_value.strip()
+        st.session_state["records_grid_page"] = 1
+        st.session_state["records_grid_page_input"] = 1
+
+    active_ratedata_search = str(
+        st.session_state.get("rate_records_ratedata_active_v1", "") or ""
+    ).strip()
+    if active_ratedata_search:
+        ratedata_series = display_records["RATEDATAID"].fillna("").astype(str).str.strip()
+        display_records = display_records[ratedata_series.eq(active_ratedata_search)].copy()
+        if display_records.empty:
+            st.warning(f"No Rate Record found for RATEDATAID {active_ratedata_search} within the current filters and access scope.")
+
+    display_records = display_records.drop(columns=[c for c in ["SLAB1", "PRODUCT_NAME"] if c in display_records.columns])
+
+    # Keep identification/audit fields together at the front of the Rate Records table.
+    audit_front = [
+        "RATEDATAID", "CREATEDON", "APPROVEDBY", "EDITID", "EDITEDON",
+        "CUSTOMER_CODE", "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
+    ]
+    audit_front = [col for col in audit_front if col in display_records.columns]
+    remaining_cols = [col for col in display_records.columns if col not in audit_front]
+    display_records = display_records[audit_front + remaining_cols]
+
     display_records["RATE_TYPE_GROUP"] = display_records["RATE_TYPE_GROUP"].map(_rate_type_display)
 
-    _render_rate_grid(display_records, height=580)
+    page_records = _paged_frame(display_records, "records_grid", default_size=100)
+    _render_rate_grid(page_records, height=540)
 
-    st.download_button(
-        "Download filtered rates (CSV)",
-        display_records.to_csv(index=False).encode("utf-8-sig"),
-        file_name=f"rate_dashboard_{active_date:%Y%m%d}.csv",
-        mime="text/csv",
-        key="rate_download_v2",
-    )
-with finder_tab:
-    st.markdown("### Query Rate Finder")
     st.caption(
-        "Find the active tariff or contractual rate for an Origin-Destination route. "
-        "Customer and weight can be used to narrow the result."
+        "For performance, only the selected page is rendered. Filters still apply to the complete loaded dataset."
     )
+    prepare_download = st.checkbox(
+        "Prepare full filtered CSV download",
+        value=False,
+        key="rate_prepare_download_v3",
+        help="Enable only when you need the export. This avoids rebuilding a large CSV on every dashboard refresh.",
+    )
+    if prepare_download:
+        st.download_button(
+            "Download all filtered rates (CSV)",
+            display_records.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"rate_dashboard_{active_date:%Y%m%d}.csv",
+            mime="text/csv",
+            key="rate_download_v3",
+        )
 
-    finder_source = data.copy()
+
+else:
+    finder_source = data
     finder_cols = st.columns([1.25, 1.25, 1.0, 1.6, 0.9], gap="small")
 
     origin_options = _safe_options(finder_source, "ORIGIN")
@@ -805,10 +1350,9 @@ with finder_tab:
             format_func=lambda x: "Select origin" if x == "" else x,
         )
 
-    destination_source = finder_source
-    if finder_origin:
-        destination_source = destination_source[destination_source["ORIGIN"].eq(finder_origin)].copy()
-    destination_options = _safe_options(destination_source, "DESTINATION")
+    # Destination remains independently searchable so Origin-only, Destination-only,
+    # and Origin+Destination queries all work.
+    destination_options = _safe_options(finder_source, "DESTINATION")
     with finder_cols[1]:
         finder_destination = st.selectbox(
             "Destination",
@@ -825,13 +1369,15 @@ with finder_tab:
             key="rate_finder_type_v2",
         )
 
-    customer_source = destination_source
+    customer_source = finder_source
+    if finder_origin:
+        customer_source = customer_source[customer_source["ORIGIN"].eq(finder_origin)]
     if finder_destination:
-        customer_source = customer_source[customer_source["DESTINATION"].eq(finder_destination)].copy()
+        customer_source = customer_source[customer_source["DESTINATION"].eq(finder_destination)]
     if finder_rate_type != "All":
         customer_source = customer_source[
             customer_source["RATE_TYPE_GROUP"].eq(finder_rate_type.upper())
-        ].copy()
+        ]
     customer_options = _safe_options(customer_source, "CUSTOMER_NAME")
     with finder_cols[3]:
         finder_customer = st.selectbox(
@@ -852,17 +1398,17 @@ with finder_tab:
             help="If entered, only rate slabs covering this weight are shown.",
         )
 
-    finder_results = finder_source.copy()
+    finder_results = finder_source
     if finder_origin:
-        finder_results = finder_results[finder_results["ORIGIN"].eq(finder_origin)].copy()
+        finder_results = finder_results[finder_results["ORIGIN"].eq(finder_origin)]
     if finder_destination:
-        finder_results = finder_results[finder_results["DESTINATION"].eq(finder_destination)].copy()
+        finder_results = finder_results[finder_results["DESTINATION"].eq(finder_destination)]
     if finder_rate_type != "All":
         finder_results = finder_results[
             finder_results["RATE_TYPE_GROUP"].eq(finder_rate_type.upper())
-        ].copy()
+        ]
     if finder_customer:
-        finder_results = finder_results[finder_results["CUSTOMER_NAME"].eq(finder_customer)].copy()
+        finder_results = finder_results[finder_results["CUSTOMER_NAME"].eq(finder_customer)]
 
     if finder_weight > 0 and not finder_results.empty:
         from_wt = pd.to_numeric(finder_results["FROMWT"], errors="coerce")
@@ -871,10 +1417,10 @@ with finder_tab:
             (from_wt.isna() | from_wt.le(finder_weight))
             & (to_wt.isna() | to_wt.eq(0) | to_wt.ge(finder_weight))
         )
-        finder_results = finder_results[weight_mask].copy()
+        finder_results = finder_results[weight_mask]
 
-    if not finder_origin or not finder_destination:
-        st.info("Select both **Origin** and **Destination** to query the applicable rate.")
+    if not finder_origin and not finder_destination:
+        st.info("Select at least **Origin** or **Destination** to query the applicable rate.")
     elif finder_results.empty:
         st.warning("No active rate found for the selected route and criteria.")
     else:
@@ -884,39 +1430,45 @@ with finder_tab:
         ).copy()
         finder_results["RATE_TYPE_GROUP"] = finder_results["RATE_TYPE_GROUP"].map(_rate_type_display)
 
-        summary_cols = st.columns(4)
-        summary_cols[0].metric("Matching Rates", f"{len(finder_results):,}")
-        summary_cols[1].metric(
-            "Tariff",
-            f"{finder_results['RATE_TYPE_GROUP'].eq('Tariff Rate').sum():,}",
-        )
-        summary_cols[2].metric(
-            "Contractual",
-            f"{finder_results['RATE_TYPE_GROUP'].eq('Contractual Rate').sum():,}",
-        )
-        active_charge_count = sum(
-            finder_results[col].fillna(0).ne(0).any()
-            for col in charge_columns
-            if col in finder_results.columns
-        )
-        summary_cols[3].metric("Active Charge Types", f"{active_charge_count:,}")
+        tariff_count = int(finder_results["RATE_TYPE_GROUP"].eq("Tariff Rate").sum())
+        contractual_count = int(finder_results["RATE_TYPE_GROUP"].eq("Contractual Rate").sum())
+        kpi_html = f"""
+        <div class="quick-kpi-wrap">
+            <div class="quick-kpi"><div class="kpi-label">Matching Rates</div><div class="kpi-value">{len(finder_results):,}</div></div>
+            <div class="quick-kpi"><div class="kpi-label">Tariff</div><div class="kpi-value">{tariff_count:,}</div></div>
+            <div class="quick-kpi"><div class="kpi-label">Contractual</div><div class="kpi-value">{contractual_count:,}</div></div>
+        </div>
+        """
 
         finder_display_cols = [
             "RATE_TYPE_GROUP", "CUSTOMER_NAME", "RATEFOR", "RATEID",
             "ORIGIN", "DESTINATION", "FROMDT", "TODT",
             "FROMWT", "TOWT", "MINCWEIGHT", "RATETYPE",
-            "PRODUCT_NAME", "GOODS", "VEHICLE_TYPE", "VIA_BORDER",
-            "PCKGRATE", "SLAB1", "RATE1", "FLAT_AMOUNT", "RATECATEGORY",
+            "GOODS", "VEHICLE_TYPE", "VIA_BORDER",
+            "PCKGRATE", "RATE1", "FLAT_AMOUNT", "RATECATEGORY",
         ] + charge_columns
         finder_display_cols = [col for col in finder_display_cols if col in finder_results.columns]
 
-        _render_rate_grid(finder_results[finder_display_cols], height=520)
-
-        st.download_button(
-            "Download rate finder result (CSV)",
-            finder_results[finder_display_cols].to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"rate_finder_{active_date:%Y%m%d}.csv",
-            mime="text/csv",
-            key="rate_finder_download_v2",
+        finder_page = _paged_frame(
+            finder_results[finder_display_cols],
+            "finder_grid",
+            default_size=100,
         )
+        # Keep the paging controls first, then show the KPI summary immediately below.
+        st.markdown(kpi_html, unsafe_allow_html=True)
+        _render_rate_grid(finder_page, height=500)
+
+        prepare_finder_download = st.checkbox(
+            "Prepare rate finder CSV download",
+            value=False,
+            key="rate_finder_prepare_download_v3",
+        )
+        if prepare_finder_download:
+            st.download_button(
+                "Download complete rate finder result (CSV)",
+                finder_results[finder_display_cols].to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"rate_finder_{active_date:%Y%m%d}.csv",
+                mime="text/csv",
+                key="rate_finder_download_v3",
+            )
 

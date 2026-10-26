@@ -1,0 +1,5190 @@
+import streamlit as st
+import pandas as pd
+import plotly.graph_objects as go
+
+from datetime import date, timedelta
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import URL
+
+
+# ============================================================
+# DATABASE CONNECTION
+# ============================================================
+
+@st.cache_resource(show_spinner=False)
+def get_bidding_engine():
+    """
+    Uses the same SQL Server connection pattern requested by the user:
+    SQLAlchemy + pymssql + Streamlit secrets.
+    """
+
+    def _build_engine():
+        connection_url = URL.create(
+            "mssql+pymssql",
+            username=st.secrets["DB_USER"],
+            password=st.secrets["DB_PASSWORD"],
+            host=st.secrets["DB_SERVER"],
+            port=int(st.secrets["DB_PORT"]),
+            database=st.secrets["DB_NAME"],
+        )
+
+        return create_engine(
+            connection_url,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+            pool_size=2,
+            max_overflow=1,
+        )
+
+    return _build_engine()
+
+
+# ============================================================
+# SQL
+# ============================================================
+
+BIDDING_SQL = text(
+    r"""
+    WITH CTE AS
+    (
+        SELECT
+            BP.BIDID,
+            BP.VENDCODE,
+            MAX(VD.VENDNAME) AS VENDNAME,
+
+            /* Mobile number captured against the vendor for this BID */
+            MAX(
+                NULLIF(
+                    LTRIM(RTRIM(BDD.MOBILENO)),
+                    ''
+                )
+            ) AS MOBILE_NO,
+
+            MAX(
+                COALESCE(
+                    TRY_CONVERT(DECIMAL(18,2), BP.BIDAMOUNT),
+                    0
+                )
+            ) AS BIDAMOUNT
+
+        FROM BIDAMOUNT BP
+
+        INNER JOIN BIDDETAIL BDD
+            ON BDD.BIDID = BP.BIDID
+           AND BDD.VENDCODE = BP.VENDCODE
+
+        INNER JOIN VENDMAST VD
+            ON VD.VENDCODE = BP.VENDCODE
+
+        WHERE ISNULL(BP.CANCEL,'N') <> 'Y'
+
+        GROUP BY
+            BP.BIDID,
+            BP.VENDCODE
+    ),
+
+    RANKED AS
+    (
+        SELECT
+            *,
+            ROW_NUMBER() OVER
+            (
+                PARTITION BY BIDID
+                ORDER BY BIDAMOUNT ASC, VENDCODE ASC
+            ) AS RN
+        FROM CTE
+    ),
+
+    TOP3 AS
+    (
+        SELECT
+            BIDID,
+
+            MAX(CASE WHEN RN = 1 THEN VENDNAME END) AS L_1_NAME,
+            MAX(CASE WHEN RN = 1 THEN BIDAMOUNT END) AS L_1_AMOUNT,
+
+            MAX(CASE WHEN RN = 2 THEN VENDNAME END) AS L_2_NAME,
+            MAX(CASE WHEN RN = 2 THEN BIDAMOUNT END) AS L_2_AMOUNT,
+
+            MAX(CASE WHEN RN = 3 THEN VENDNAME END) AS L_3_NAME,
+            MAX(CASE WHEN RN = 3 THEN BIDAMOUNT END) AS L_3_AMOUNT
+
+        FROM RANKED
+        WHERE RN <= 3
+        GROUP BY BIDID
+    ),
+
+    BIDDER_STATS AS
+    (
+        SELECT
+            C1.BIDID,
+            COUNT(*) AS BIDDER_COUNT,
+
+            /* Existing structure retained for vendor filters/performance */
+            STUFF(
+                (
+                    SELECT
+                        '|||' + CAST(
+                            CONCAT(
+                                C2.VENDCODE,
+                                '::',
+                                REPLACE(
+                                    REPLACE(ISNULL(C2.VENDNAME, ''), '|||', ' '),
+                                    '::',
+                                    ' '
+                                )
+                            ) AS NVARCHAR(MAX)
+                        )
+                    FROM CTE C2
+                    WHERE C2.BIDID = C1.BIDID
+                    ORDER BY C2.BIDAMOUNT ASC, C2.VENDCODE ASC
+                    FOR XML PATH(''), TYPE
+                ).value('.', 'NVARCHAR(MAX)'),
+                1,
+                3,
+                ''
+            ) AS BIDDER_VENDOR_LIST,
+
+            /*
+               New structure:
+               VENDCODE::VENDNAME::MOBILE::BIDAMOUNT
+               separated between bidders with |||
+            */
+            STUFF(
+                (
+                    SELECT
+                        '|||' + CAST(
+                            CONCAT(
+                                C2.VENDCODE,
+                                '::',
+                                REPLACE(
+                                    REPLACE(ISNULL(C2.VENDNAME, ''), '|||', ' '),
+                                    '::',
+                                    ' '
+                                ),
+                                '::',
+                                REPLACE(
+                                    REPLACE(ISNULL(C2.MOBILE_NO, ''), '|||', ' '),
+                                    '::',
+                                    ' '
+                                ),
+                                '::',
+                                CONVERT(
+                                    VARCHAR(50),
+                                    CAST(ISNULL(C2.BIDAMOUNT, 0) AS DECIMAL(18,2))
+                                )
+                            ) AS NVARCHAR(MAX)
+                        )
+                    FROM CTE C2
+                    WHERE C2.BIDID = C1.BIDID
+                    ORDER BY C2.BIDAMOUNT ASC, C2.VENDCODE ASC
+                    FOR XML PATH(''), TYPE
+                ).value('.', 'NVARCHAR(MAX)'),
+                1,
+                3,
+                ''
+            ) AS BIDDER_CONTACT_LIST
+
+        FROM CTE C1
+        GROUP BY C1.BIDID
+    )
+
+    SELECT
+        BH.BIDID,
+
+        IIF(BH.QUERYBID = 'Y','YES','NO') AS QUERYBID,
+        IIF(BH.QUERYTOBID = 'Y','YES','NO') AS QUERYTOBID,
+
+        BH.APPROVED,
+
+        CASE
+            WHEN EXISTS
+            (
+                SELECT 1
+                FROM CALLREGISTER CR WITH (NOLOCK)
+                WHERE CR.BIDID = BH.BIDID
+            )
+            THEN 'APP'
+            ELSE 'ERP'
+        END AS SOURCE,
+
+        BR.ZONENAME AS ZONE,
+        BR.HUBNAME AS CIRCLE,
+        BR.STNNAME AS BRANCH,
+
+        N.USERNAME AS GENERATEBYUSER,
+        AP.USERNAME AS APPROVEDBYUSER,
+
+        BH.CREATEDON AS GENERATEDDATE,
+        BH.BIDAMOUNTUPDATEDON AS REPLYUPDATEON,
+
+        IIF(
+            BH.QUERYTOBID = 'Y',
+            BH.APPROVEDON,
+            NULL
+        ) AS APPROVEDON,
+
+        BH.WEIGHT,
+        BH.GWEIGHT,
+
+        QUERYAMT.BIDAMOUNT AS [QUERY AMOUNT],
+
+        BH.BIDOPENDT,
+        BH.BIDOPENTIME,
+        BH.BIDCLOSEDT,
+        BH.BIDCLOSETIME,
+
+        BH.ORIGINCITY,
+        BH.DESTINATIONCITY,
+
+        VIA.STNNAME AS VIA,
+
+        VT.TYPENAME AS VEHICLETYPE,
+
+        BH.PARTYGODOWN,
+        BH.EXACTLOADINGPOINT,
+        BH.EXACTDELIVERYPOINT,
+        BH.REMARKS,
+
+        /* Winner details - one selected record per BID */
+        BD.ISWINNER,
+        BD.WINNERLEVEL,
+        BD.MANUALBIDREASON,
+
+        WINVEND.VENDNAME AS WINNER_NAME,
+        BD.VENDCODE AS WINNER_VENDCODE,
+        BD.MOBILENO AS WINNER_MOBILE,
+
+        BD.FINALRATE,
+
+        /* LHC */
+        LHC.LHCNO,
+
+        HIRE.HIREAMOUNT,
+
+        /* Bidder participation */
+        COALESCE(BS.BIDDER_COUNT, 0) AS BIDDER_COUNT,
+        COALESCE(BS.BIDDER_VENDOR_LIST, '') AS BIDDER_VENDOR_LIST,
+        COALESCE(BS.BIDDER_CONTACT_LIST, '') AS BIDDER_CONTACT_LIST,
+
+        /* Top 3 */
+        TOP3.L_1_NAME,
+        TOP3.L_2_NAME,
+        TOP3.L_3_NAME,
+
+        TOP3.L_1_AMOUNT,
+        TOP3.L_2_AMOUNT,
+        TOP3.L_3_AMOUNT
+
+    FROM BIDHEAD BH
+
+    INNER JOIN viewSTATIONMAST BR
+        ON BR.STNCODE = BH.BRANCHCODE
+
+    /* --------------------------------------------------------
+       Select only ONE winner row so duplicate ISWINNER='Y'
+       records do not duplicate the complete BID in the dashboard.
+       Manual row is preferred when both Manual and L-1 are flagged.
+       -------------------------------------------------------- */
+    OUTER APPLY
+    (
+        SELECT TOP 1
+            BDX.VENDCODE,
+            BDX.MOBILENO,
+            BDX.ISWINNER,
+            BDX.WINNERLEVEL,
+            BDX.MANUALBIDREASON,
+            BDX.FINALRATE
+        FROM BIDDETAIL BDX WITH (NOLOCK)
+        WHERE BDX.BIDID = BH.BIDID
+          AND BDX.ISWINNER = 'Y'
+        ORDER BY
+            CASE
+                WHEN LOWER(LTRIM(RTRIM(ISNULL(BDX.WINNERLEVEL,'')))) = 'manual' THEN 0
+                WHEN NULLIF(LTRIM(RTRIM(ISNULL(BDX.MANUALBIDREASON,''))), '') IS NOT NULL THEN 1
+                WHEN UPPER(LTRIM(RTRIM(ISNULL(BDX.WINNERLEVEL,'')))) = 'L-1' THEN 2
+                ELSE 3
+            END,
+            BDX.VENDCODE
+    ) BD
+
+    LEFT JOIN VENDMAST WINVEND
+        ON WINVEND.VENDCODE = BD.VENDCODE
+
+    LEFT JOIN VEHICLETYPEMAST VT
+        ON VT.TYPECODE = BH.VEHICLETYPECODE
+
+    LEFT JOIN CALLREGISTER C
+        ON C.BIDID = BH.BIDID
+
+    LEFT JOIN STATIONMAST VIA
+        ON VIA.STNCODE = BH.VIACITY
+
+    LEFT JOIN NAME N
+        ON N.CODE = BH.CREATEID
+
+    LEFT JOIN NAME AP
+        ON AP.CODE = BH.APPROVEDBY
+
+    OUTER APPLY
+    (
+        SELECT TOP 1
+            BA.BIDAMOUNT
+        FROM BIDAMOUNT BA WITH (NOLOCK)
+        WHERE BA.BIDID = BH.BIDID
+          AND BA.VENDCODE = '0000000000'
+          AND BA.BIDAMOUNT > 0
+          AND ISNULL(BA.CANCEL,'N') <> 'Y'
+    ) QUERYAMT
+
+    OUTER APPLY
+    (
+        SELECT TOP 1
+            LHD.LHCNO
+        FROM LHCHEADDETAIL LHD WITH (NOLOCK)
+        WHERE LHD.BIDID = BH.BIDID
+        ORDER BY LHD.LHCNO DESC
+    ) LHC
+
+    OUTER APPLY
+    (
+        SELECT
+            SUM(
+                COALESCE(
+                    TRY_CONVERT(DECIMAL(18,2), LD.AMOUNT),
+                    0
+                )
+            ) AS HIREAMOUNT
+        FROM LHCEXPENSE LD WITH (NOLOCK)
+        INNER JOIN MFEXPENSEMAST MCODE
+            ON MCODE.MFEXPCODE = LD.MFEXPCODE
+        INNER JOIN LHCHEAD LH WITH (NOLOCK)
+            ON LH.LHCNO = LD.LHCNO
+        WHERE ISNULL(LD.CANCEL,'N') <> 'Y'
+          AND MCODE.MFEXPNAME = 'VEHICLE HIRE COST'
+          AND LD.LHCNO = LHC.LHCNO
+    ) HIRE
+
+    LEFT JOIN TOP3
+        ON TOP3.BIDID = BH.BIDID
+
+    LEFT JOIN BIDDER_STATS BS
+        ON BS.BIDID = BH.BIDID
+
+    WHERE BH.BIDOPENDT >= :from_date
+      AND BH.BIDOPENDT <  :to_date_exclusive
+      AND ISNULL(BH.CANCEL,'N') <> 'Y'
+
+    ORDER BY
+        BH.BIDOPENDT,
+        BH.BIDID;
+    """
+)
+
+# ============================================================
+# DATA LOAD
+# ============================================================
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_bidding_data(from_date, to_date):
+    """
+    to_date is inclusive in the UI.
+    SQL receives next day as exclusive upper bound.
+    """
+    engine = get_bidding_engine()
+
+    to_date_exclusive = to_date + timedelta(days=1)
+
+    with engine.connect() as conn:
+        df = pd.read_sql(
+            BIDDING_SQL,
+            conn,
+            params={
+                "from_date": from_date,
+                "to_date_exclusive": to_date_exclusive,
+            },
+        )
+
+    return prepare_bidding_data(df)
+
+
+# ============================================================
+# BID FINALIZATION HISTORY / ROUTE-RATE BENCHMARK
+# Independent of the selected dashboard BID-open-date window.
+# ============================================================
+
+BID_FINALIZATION_HISTORY_SQL = text(r"""
+    SELECT
+        BH.BIDID,
+        BH.BIDOPENDT AS BID_DATE,
+        BH.ORIGINCITY AS ORIGIN,
+        BH.DESTINATIONCITY AS DESTINATION,
+        VT.TYPENAME AS VEHICLE_TYPE,
+        WINVEND.VENDNAME AS WINNER_NAME,
+        COALESCE(
+            TRY_CONVERT(DECIMAL(18,2), BD.FINALRATE),
+            TRY_CONVERT(DECIMAL(18,2), WBID.BIDAMOUNT)
+        ) AS BID_AMOUNT,
+        BH.REMARKS
+    FROM BIDHEAD BH
+    LEFT JOIN VEHICLETYPEMAST VT
+        ON VT.TYPECODE = BH.VEHICLETYPECODE
+    OUTER APPLY
+    (
+        SELECT TOP 1
+            BDX.VENDCODE,
+            BDX.FINALRATE,
+            BDX.WINNERLEVEL,
+            BDX.MANUALBIDREASON
+        FROM BIDDETAIL BDX WITH (NOLOCK)
+        WHERE BDX.BIDID = BH.BIDID
+          AND BDX.ISWINNER = 'Y'
+        ORDER BY
+            CASE
+                WHEN LOWER(LTRIM(RTRIM(ISNULL(BDX.WINNERLEVEL,'')))) = 'manual' THEN 0
+                WHEN NULLIF(LTRIM(RTRIM(ISNULL(BDX.MANUALBIDREASON,''))), '') IS NOT NULL THEN 1
+                WHEN UPPER(LTRIM(RTRIM(ISNULL(BDX.WINNERLEVEL,'')))) = 'L-1' THEN 2
+                ELSE 3
+            END,
+            BDX.VENDCODE
+    ) BD
+    LEFT JOIN VENDMAST WINVEND
+        ON WINVEND.VENDCODE = BD.VENDCODE
+    OUTER APPLY
+    (
+        SELECT TOP 1 BA.BIDAMOUNT
+        FROM BIDAMOUNT BA WITH (NOLOCK)
+        WHERE BA.BIDID = BH.BIDID
+          AND BA.VENDCODE = BD.VENDCODE
+          AND ISNULL(BA.CANCEL,'N') <> 'Y'
+          AND TRY_CONVERT(DECIMAL(18,2), BA.BIDAMOUNT) > 0
+        ORDER BY TRY_CONVERT(DECIMAL(18,2), BA.BIDAMOUNT) ASC
+    ) WBID
+    WHERE BH.BIDOPENDT >= :history_from
+      AND BH.BIDOPENDT < :to_date_exclusive
+      AND ISNULL(BH.CANCEL,'N') <> 'Y'
+      AND BD.VENDCODE IS NOT NULL
+      AND COALESCE(
+            TRY_CONVERT(DECIMAL(18,2), BD.FINALRATE),
+            TRY_CONVERT(DECIMAL(18,2), WBID.BIDAMOUNT)
+          ) > 0
+    ORDER BY BH.BIDOPENDT DESC, BH.BIDID DESC;
+""")
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_bid_finalization_history(to_date, lookback_days=365):
+    history_from = to_date - timedelta(days=int(lookback_days))
+    with get_bidding_engine().connect() as conn:
+        hist = pd.read_sql(
+            BID_FINALIZATION_HISTORY_SQL,
+            conn,
+            params={
+                "history_from": history_from,
+                "to_date_exclusive": to_date + timedelta(days=1),
+            },
+        )
+
+    if hist is None or hist.empty:
+        return pd.DataFrame()
+
+    hist["BID_DATE"] = pd.to_datetime(hist["BID_DATE"], errors="coerce")
+    hist["BID_AMOUNT"] = pd.to_numeric(hist["BID_AMOUNT"], errors="coerce")
+    for col in ["ORIGIN", "DESTINATION", "VEHICLE_TYPE", "WINNER_NAME", "REMARKS"]:
+        if col in hist.columns:
+            hist[col] = _clean_text_series(hist[col])
+    return hist.dropna(subset=["BID_DATE", "BID_AMOUNT"])
+
+
+
+# ============================================================
+# LINE HAUL LHC: UNIQUE LHCNO / BID-LINKED VS WITHOUT BID
+# This is independently filtered by LHC date, not BID open date.
+# ============================================================
+
+LINEHAUL_LHC_SQL = text(r"""
+    SELECT
+        BR.ZONENAME AS ZONENAME,
+        BR.HUBNAME AS HUBNAME,
+        BR.STNNAME AS LHC_BRANCH,
+        LH.LHCNO,
+        LH.LHCDT,
+        DST.DEST_ZONE,
+        DST.DEST_CIRCLE,
+        DST.TOST,
+        CASE WHEN BIDREF.HAS_LTL = 1 THEN 'LTL' ELSE 'FTL' END AS LHCTYPE,
+        COALESCE(BIDREF.BIDID, 0) AS BIDID,
+        LAMT.LHCAMOUNT
+    FROM LHCHEAD LH
+    INNER JOIN VEHICLEMAST REG ON REG.VEHICLECODE = LH.MODECODE
+    INNER JOIN VIEWSTATIONMAST BR ON BR.STNCODE = LH.BRANCHCODE
+    OUTER APPLY (
+        SELECT
+            MAX(CASE WHEN TRY_CONVERT(BIGINT, LHD.BIDID) > 0
+                     THEN TRY_CONVERT(BIGINT, LHD.BIDID) ELSE 0 END) AS BIDID,
+            MAX(CASE WHEN UPPER(LTRIM(RTRIM(LHD.LHCTYPE))) = 'L'
+                     THEN 1 ELSE 0 END) AS HAS_LTL
+        FROM LHCHEADDETAIL LHD
+        WHERE LHD.LHCNO = LH.LHCNO
+    ) BIDREF
+    OUTER APPLY (
+        SELECT MAX(VL.LHCAMOUNT) AS LHCAMOUNT
+        FROM VIEWLHCDETAIL VL
+        WHERE VL.LHCNO = LH.LHCNO
+    ) LAMT
+    OUTER APPLY (
+        SELECT
+            STRING_AGG(CAST(D.TOST AS NVARCHAR(MAX)), ', ') AS TOST,
+            STRING_AGG(CAST(D.DEST_ZONE AS NVARCHAR(MAX)), ', ') AS DEST_ZONE,
+            STRING_AGG(CAST(D.DEST_CIRCLE AS NVARCHAR(MAX)), ', ') AS DEST_CIRCLE
+        FROM (
+            SELECT DISTINCT
+                S.STNNAME AS TOST,
+                S.ZONENAME AS DEST_ZONE,
+                S.HUBNAME AS DEST_CIRCLE
+            FROM LHCDETAIL L
+            INNER JOIN MFDETAIL IM
+                ON IM.MANIFESTNO = L.MANIFESTNO
+               AND ISNULL(IM.CANCEL, 'N') <> 'Y'
+            INNER JOIN MFHEAD IH
+                ON IH.MANIFESTNO = IM.MANIFESTNO
+               AND ISNULL(IH.CANCEL, 'N') <> 'Y'
+            LEFT JOIN VIEWSTATIONMAST S ON S.STNCODE = IH.TOST
+            WHERE L.LHCNO = LH.LHCNO
+              AND L.MANIFESTTYPE = 'O'
+              AND IM.GRNO IS NOT NULL
+        ) D
+    ) DST
+    WHERE LH.LHCDT >= :from_date
+      AND LH.LHCDT < :to_date_exclusive
+      AND ISNULL(LH.CANCEL, 'N') <> 'Y'
+      AND LAMT.LHCAMOUNT IS NOT NULL
+      AND DST.TOST IS NOT NULL
+      AND EXISTS (
+          SELECT 1 FROM LHCHEADDETAIL LHD2
+          WHERE LHD2.LHCNO = LH.LHCNO
+      )
+    ORDER BY LH.LHCDT, LH.LHCNO
+""")
+
+@st.cache_data(ttl=300, show_spinner=False)
+def load_linehaul_lhc_data(from_date, to_date):
+    with get_bidding_engine().connect() as conn:
+        result = pd.read_sql(
+            LINEHAUL_LHC_SQL,
+            conn,
+            params={
+                "from_date": from_date,
+                "to_date_exclusive": to_date + timedelta(days=1),
+            },
+        )
+    result["BIDID"] = pd.to_numeric(result["BIDID"], errors="coerce").fillna(0)
+    result["LHCDT"] = pd.to_datetime(result["LHCDT"], errors="coerce")
+    result["LHCAMOUNT"] = pd.to_numeric(result["LHCAMOUNT"], errors="coerce")
+    return result.drop_duplicates(subset=["LHCNO"])
+
+
+def render_linehaul_lhc_kpis(lhc_df, from_date, to_date):
+    """Counts actual LHC numbers; separate from Winner Bid -> LHC KPI."""
+    if lhc_df is None:
+        return
+
+    total = int(lhc_df["LHCNO"].nunique())
+    with_bid = int(lhc_df.loc[lhc_df["BIDID"].gt(0), "LHCNO"].nunique())
+    without_bid = total - with_bid
+
+    label, content = st.columns([1.25, 8.75], gap="small")
+    _kpi_group_label(label, "1. LINE HAUL LHC", "By LHC date", "green")
+    with content:
+        c1, c2, c3 = st.columns(3, gap="small")
+        _kpi_card(c1, "🚛 Total Line Haul LHC", f"{total:,}",
+                  "Unique LHCNO in selected period", "blue")
+        _kpi_card(c2, "✅ LHC With Bid ID", f"{with_bid:,}",
+                  f"{with_bid / total * 100:.1f}% of LHC" if total else "0% of LHC", "green")
+        _kpi_card(c3, "📄 LHC Without Bid ID", f"{without_bid:,}",
+                  f"{without_bid / total * 100:.1f}% of LHC" if total else "0% of LHC", "amber")
+
+    with st.expander("📋 Line Haul LHC-wise BIDID verification", expanded=False):
+        st.caption(
+            "LHC created from " + from_date.strftime("%d/%m/%Y")
+            + " to " + to_date.strftime("%d/%m/%Y")
+            + ". BIDID > 0 = With Bid; zero/blank = Without Bid."
+        )
+        detail_cols = [
+            "ZONENAME", "HUBNAME", "LHC_BRANCH", "LHCNO", "LHCDT",
+            "DEST_ZONE", "DEST_CIRCLE", "TOST", "LHCTYPE", "BIDID",
+            "LHCAMOUNT",
+        ]
+        details = lhc_df[detail_cols].copy()
+        details["Bid Status"] = details["BIDID"].gt(0).map(
+            {True: "With Bid", False: "Without Bid"}
+        )
+        status_filter = st.radio(
+            "Show LHC", ["All", "With Bid", "Without Bid"],
+            horizontal=True, key="linehaul_bid_status_filter",
+        )
+        if status_filter != "All":
+            details = details.loc[details["Bid Status"].eq(status_filter)]
+        st.caption(f"Showing {len(details):,} unique LHC records")
+        st.dataframe(
+            details,
+            use_container_width=True,
+            hide_index=True,
+            height=420,
+            column_config={
+                "ZONENAME": st.column_config.TextColumn("Zone"),
+                "HUBNAME": st.column_config.TextColumn("Circle"),
+                "LHC_BRANCH": st.column_config.TextColumn("LHC Branch"),
+                "LHCNO": st.column_config.TextColumn("LHC No."),
+                "LHCDT": st.column_config.DatetimeColumn("LHC Date", format="DD/MM/YYYY"),
+                "DEST_ZONE": st.column_config.TextColumn("Destination Zone", width="medium"),
+                "DEST_CIRCLE": st.column_config.TextColumn("Destination Circle", width="medium"),
+                "TOST": st.column_config.TextColumn("Destinations (TOST)", width="large"),
+                "LHCTYPE": st.column_config.TextColumn("LHC Type"),
+                "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
+                "LHCAMOUNT": st.column_config.NumberColumn("LHC Amount", format="₹ %.2f"),
+                "Bid Status": st.column_config.TextColumn("Bid Status"),
+            },
+        )
+        st.download_button(
+            "⬇️ Download Full Line Haul LHC Details",
+            data=details.to_csv(index=False).encode("utf-8-sig"),
+            file_name="linehaul_lhc_full_verification.csv",
+            mime="text/csv",
+            key="download_linehaul_lhc_details",
+        )
+
+
+# ============================================================
+# DATA PREPARATION
+# ============================================================
+
+def _clean_text_series(series):
+    return (
+        series.fillna("")
+        .astype(str)
+        .str.strip()
+    )
+
+
+def _normalize_mobile_number(value):
+    """Normalize Indian-style mobile numbers for duplicate-number analysis."""
+    if value is None or pd.isna(value):
+        return ""
+
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+
+    if not digits:
+        return ""
+
+    # Common stored forms: 098xxxxxxxx, 91xxxxxxxxxx, +91-xxxxxxxxxx.
+    if len(digits) == 11 and digits.startswith("0"):
+        digits = digits[-10:]
+    elif len(digits) == 12 and digits.startswith("91"):
+        digits = digits[-10:]
+
+    return digits
+
+
+def _parse_bidder_contact_list(raw_value):
+    """Parse VENDCODE::VENDOR::MOBILE::AMOUNT bidder-contact payload."""
+    columns = ["Vendor Code", "Vendor", "Mobile Number", "Bid Amount"]
+
+    if raw_value is None or pd.isna(raw_value):
+        return pd.DataFrame(columns=columns)
+
+    raw_value = str(raw_value).strip()
+    if not raw_value:
+        return pd.DataFrame(columns=columns)
+
+    rows = []
+
+    for token in raw_value.split("|||"):
+        token = token.strip()
+        if not token:
+            continue
+
+        parts = token.split("::")
+        vendcode = parts[0].strip() if len(parts) > 0 else ""
+        vendor = parts[1].strip() if len(parts) > 1 else ""
+        mobile = parts[2].strip() if len(parts) > 2 else ""
+        amount_raw = parts[3].strip() if len(parts) > 3 else ""
+
+        try:
+            amount = float(amount_raw)
+        except (TypeError, ValueError):
+            amount = pd.NA
+
+        rows.append(
+            {
+                "Vendor Code": vendcode,
+                "Vendor": vendor,
+                "Mobile Number": mobile,
+                "Bid Amount": amount,
+            }
+        )
+
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _format_bidder_contacts(raw_value):
+    """Human-readable bidder name + mobile + amount for bid-wise tables."""
+    bidder_df = _parse_bidder_contact_list(raw_value)
+    if bidder_df.empty:
+        return ""
+
+    lines = []
+    for _, bidder in bidder_df.iterrows():
+        vendor = str(bidder.get("Vendor", "") or "").strip()
+        mobile = str(bidder.get("Mobile Number", "") or "").strip()
+        amount = pd.to_numeric(bidder.get("Bid Amount"), errors="coerce")
+
+        mobile_display = mobile if mobile else "Mobile Not Available"
+        amount_display = f"₹{amount:,.0f}" if pd.notna(amount) else "Amount Not Available"
+        lines.append(f"{vendor} | {mobile_display} | {amount_display}")
+
+    return "\n".join(lines)
+
+
+def _bidder_contact_rows(df):
+    """Build one normalized row per BID x Vendor for contact/mobile analysis."""
+    columns = [
+        "BIDID",
+        "BIDOPENDT",
+        "BRANCH",
+        "ROUTE",
+        "Vendor Code",
+        "Vendor",
+        "Mobile Number",
+        "Mobile Normalized",
+        "Bid Amount",
+    ]
+
+    if df is None or df.empty or "BIDDER_CONTACT_LIST" not in df.columns:
+        return pd.DataFrame(columns=columns)
+
+    base = (
+        df.sort_values(["BIDID", "BIDOPENDT"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    rows = []
+
+    for _, bid_row in base.iterrows():
+        contacts = _parse_bidder_contact_list(bid_row.get("BIDDER_CONTACT_LIST", ""))
+        if contacts.empty:
+            continue
+
+        for _, bidder in contacts.iterrows():
+            mobile = str(bidder.get("Mobile Number", "") or "").strip()
+            rows.append(
+                {
+                    "BIDID": bid_row.get("BIDID"),
+                    "BIDOPENDT": bid_row.get("BIDOPENDT"),
+                    "BRANCH": bid_row.get("BRANCH"),
+                    "ROUTE": bid_row.get("ROUTE"),
+                    "Vendor Code": str(bidder.get("Vendor Code", "") or "").strip(),
+                    "Vendor": str(bidder.get("Vendor", "") or "").strip(),
+                    "Mobile Number": mobile,
+                    "Mobile Normalized": _normalize_mobile_number(mobile),
+                    "Bid Amount": pd.to_numeric(bidder.get("Bid Amount"), errors="coerce"),
+                }
+            )
+
+    if not rows:
+        return pd.DataFrame(columns=columns)
+
+    contacts_df = pd.DataFrame(rows)
+
+    # Same vendor can occur only once for the same bid in this analysis.
+    contacts_df["Vendor Key"] = (
+        contacts_df["Vendor Code"].where(
+            contacts_df["Vendor Code"].astype(str).str.strip().ne(""),
+            contacts_df["Vendor"].astype(str).str.upper(),
+        )
+    )
+
+    contacts_df = (
+        contacts_df.sort_values(["BIDID", "Vendor Key", "Bid Amount"], na_position="last")
+        .drop_duplicates(subset=["BIDID", "Vendor Key"], keep="first")
+        .copy()
+    )
+
+    return contacts_df
+
+
+def prepare_bidding_data(df):
+    if df is None or df.empty:
+        return pd.DataFrame() if df is None else df
+
+    df = df.copy()
+
+    # Make Python-friendly name.
+    if "QUERY AMOUNT" in df.columns:
+        df = df.rename(columns={"QUERY AMOUNT": "QUERY_AMOUNT"})
+
+    numeric_columns = [
+        "WEIGHT",
+        "GWEIGHT",
+        "QUERY_AMOUNT",
+        "FINALRATE",
+        "HIREAMOUNT",
+        "L_1_AMOUNT",
+        "L_2_AMOUNT",
+        "L_3_AMOUNT",
+        "BIDDER_COUNT",
+    ]
+
+    for col in numeric_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    date_columns = [
+        "GENERATEDDATE",
+        "REPLYUPDATEON",
+        "APPROVEDON",
+        "BIDOPENDT",
+        "BIDCLOSEDT",
+    ]
+
+    for col in date_columns:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+
+    # --------------------------------------------------------
+    # Query lifecycle / turnaround metrics
+    # --------------------------------------------------------
+    # Current source mapping used by the dashboard:
+    #   GENERATEDDATE  -> query/bid received/generated timestamp
+    #   REPLYUPDATEON  -> query reply updated/sent timestamp
+    #   APPROVEDBYUSER -> user who handled/approved the query
+    query_mask = _clean_text_series(df["QUERYBID"]).str.upper().eq("YES")
+
+    df["QUERY_RECEIVED_ON"] = df["GENERATEDDATE"].where(query_mask)
+    df["QUERY_REPLY_ON"] = df["REPLYUPDATEON"].where(query_mask)
+
+    response_delta = df["QUERY_REPLY_ON"] - df["QUERY_RECEIVED_ON"]
+    response_hours = response_delta.dt.total_seconds() / 3600.0
+
+    # Negative TAT indicates source timestamps need checking, so do not fold it
+    # into management averages.
+    df["QUERY_RESPONSE_HOURS"] = response_hours.where(response_hours.ge(0))
+
+    df["QUERY_RESPONSE_STATUS"] = "Not a Query Bid"
+    df.loc[query_mask & df["QUERY_REPLY_ON"].isna(), "QUERY_RESPONSE_STATUS"] = "Pending Reply"
+    df.loc[query_mask & df["QUERY_REPLY_ON"].notna(), "QUERY_RESPONSE_STATUS"] = "Replied"
+    df.loc[query_mask & response_hours.lt(0), "QUERY_RESPONSE_STATUS"] = "Check Dates"
+
+    now_ts = pd.Timestamp.now()
+    pending_delta = now_ts - df["QUERY_RECEIVED_ON"]
+    pending_hours = pending_delta.dt.total_seconds() / 3600.0
+    df["QUERY_PENDING_HOURS"] = pending_hours.where(
+        query_mask
+        & df["QUERY_REPLY_ON"].isna()
+        & pending_hours.ge(0)
+    )
+
+    def query_response_bucket(row):
+        status = row.get("QUERY_RESPONSE_STATUS")
+        hours = row.get("QUERY_RESPONSE_HOURS")
+
+        if status == "Pending Reply":
+            return "Pending"
+        if status == "Check Dates":
+            return "Check Dates"
+        if status != "Replied" or pd.isna(hours):
+            return "Not Applicable"
+        if hours <= 2:
+            return "≤ 2 Hours"
+        if hours <= 4:
+            return "2-4 Hours"
+        if hours <= 8:
+            return "4-8 Hours"
+        if hours <= 24:
+            return "8-24 Hours"
+        return "24+ Hours"
+
+    df["QUERY_RESPONSE_BUCKET"] = df.apply(query_response_bucket, axis=1)
+
+    # --------------------------------------------------------
+    # Derived management metrics
+    # --------------------------------------------------------
+    df["L1_L2_GAP"] = df["L_2_AMOUNT"] - df["L_1_AMOUNT"]
+    df["L2_L3_GAP"] = df["L_3_AMOUNT"] - df["L_2_AMOUNT"]
+
+    def gap_status(row):
+        if pd.isna(row.get("L_1_AMOUNT")) or pd.isna(row.get("L_2_AMOUNT")):
+            return "Not Comparable"
+
+        gap = row.get("L1_L2_GAP")
+
+        # Equal L1/L2 rates are not treated as a Rs 500 gap violation.
+        if pd.isna(gap):
+            return "Not Comparable"
+        if abs(gap) <= 0.01:
+            return "Same Rate"
+        if 0 < gap < 500:
+            return "Issue"
+        return "OK"
+
+    df["GAP_STATUS"] = df.apply(gap_status, axis=1)
+
+    # Positive value = final awarded rate is lower than original L1 amount.
+    df["SAVING_VS_L1"] = df["L_1_AMOUNT"] - df["FINALRATE"]
+
+    # Positive value = query amount was higher than final rate.
+    df["SAVING_VS_QUERY"] = df["QUERY_AMOUNT"] - df["FINALRATE"]
+
+    # Final rate and booked vehicle hire validation.
+    # Positive value = booked hire amount is higher than final awarded rate.
+    df["HIRE_FINAL_DIFF"] = df["HIREAMOUNT"] - df["FINALRATE"]
+
+    def rate_match_status(row):
+        if pd.isna(row.get("FINALRATE")) or pd.isna(row.get("HIREAMOUNT")):
+            return "Not Available"
+        if abs(row["HIRE_FINAL_DIFF"]) <= 0.01:
+            return "Matched"
+        return "Mismatch"
+
+    df["FINAL_HIRE_STATUS"] = df.apply(rate_match_status, axis=1)
+
+    winner_level_raw = _clean_text_series(df["WINNERLEVEL"])
+    winner_level = winner_level_raw.str.lower()
+    manual_reason = _clean_text_series(df["MANUALBIDREASON"])
+    winner_name_text = _clean_text_series(df["WINNER_NAME"])
+
+    # Winner mode must reflect the actual winner level available in source data.
+    # Example: L-2 / L-3 are valid winner levels and must not be labelled as missing.
+    df["WINNER_MODE"] = "No Winner"
+    has_winner_name = winner_name_text.ne("")
+
+    # Winner exists but source has no level value.
+    df.loc[has_winner_name & winner_level_raw.eq(""), "WINNER_MODE"] = "Winner Level Not Defined"
+
+    # Explicit manual winner.
+    df.loc[has_winner_name & winner_level.eq("manual"), "WINNER_MODE"] = "Manual"
+
+    # Preserve any L-number level such as L-1, L-2, L-3, etc.
+    level_mask = has_winner_name & winner_level.str.match(r"^l\s*-\s*\d+$", na=False)
+    df.loc[level_mask, "WINNER_MODE"] = (
+        winner_level_raw[level_mask]
+        .str.upper()
+        .str.replace(r"\s+", "", regex=True)
+    )
+
+    # If the level is blank but a manual reason is recorded, classify it as Manual.
+    df.loc[
+        has_winner_name
+        & manual_reason.ne("")
+        & winner_level_raw.eq(""),
+        "WINNER_MODE"
+    ] = "Manual"
+
+    # Keep any other non-blank source level visible instead of calling it missing.
+    other_level_mask = (
+        has_winner_name
+        & winner_level_raw.ne("")
+        & ~winner_level.eq("manual")
+        & ~level_mask
+    )
+    df.loc[other_level_mask, "WINNER_MODE"] = winner_level_raw[other_level_mask].str.upper()
+
+    l1_name = _clean_text_series(df["L_1_NAME"]).str.upper()
+    winner_name = winner_name_text.str.upper()
+
+    df["WINNER_VS_L1"] = "Not Comparable"
+    comparable = l1_name.ne("") & winner_name.ne("")
+    df.loc[comparable & l1_name.eq(winner_name), "WINNER_VS_L1"] = "Winner = L1"
+    df.loc[comparable & ~l1_name.eq(winner_name), "WINNER_VS_L1"] = "Winner != L1"
+
+    # Participation bucket for charts.
+    def bidder_bucket(value):
+        if pd.isna(value) or value <= 0:
+            return "No Bidder"
+        value = int(value)
+        if value == 1:
+            return "1 Bidder"
+        if value == 2:
+            return "2 Bidders"
+        if value == 3:
+            return "3 Bidders"
+        return "4+ Bidders"
+
+    df["BIDDER_BUCKET"] = df["BIDDER_COUNT"].apply(bidder_bucket)
+
+    df["ROUTE"] = (
+        _clean_text_series(df["ORIGINCITY"]).replace("", "-")
+        + " → "
+        + _clean_text_series(df["DESTINATIONCITY"]).replace("", "-")
+    )
+
+    # --------------------------------------------------------
+    # LHC CONTROL / PENDING AGEING
+    # --------------------------------------------------------
+    # Winner control: a BID is treated as having a winner when any one of
+    # the three winner indicators is available. The same HAS_WINNER logic
+    # is used for Winner Bids as well as LHC Created / Pending controls.
+    is_winner_flag = _clean_text_series(df["ISWINNER"]).str.upper().eq("Y")
+    has_winner_name = _clean_text_series(df["WINNER_NAME"]).ne("")
+
+    # Strict winner rule requested by user:
+    # a BID is treated as a winner only when BOTH conditions are met.
+    df["HAS_WINNER"] = is_winner_flag & has_winner_name
+
+    lhc_no_text = _clean_text_series(df["LHCNO"])
+    df["LHC_STATUS"] = "No Winner"
+
+    # LHC already exists.
+    df.loc[
+        df["HAS_WINNER"] & lhc_no_text.ne(""),
+        "LHC_STATUS"
+    ] = "LHC Created"
+
+    # Winner -> LHC Pending:
+    # Every winner bid without an LHC is pending, irrespective of approval status.
+    # Therefore, at KPI level: LHC Pending = Winner Bids - LHC Created.
+    df.loc[
+        df["HAS_WINNER"] & lhc_no_text.eq(""),
+        "LHC_STATUS"
+    ] = "Winner - LHC Pending"
+
+    # There is no separate Winner Selected Date in the current SQL output.
+    # Ageing therefore uses:
+    # Ageing uses BIDCLOSEDT -> BIDOPENDT. Approval fields are intentionally ignored.
+    ageing_source = (
+        df[["BIDCLOSEDT", "BIDOPENDT"]]
+        .bfill(axis=1)
+        .iloc[:, 0]
+    )
+
+    df["LHC_AGEING_FROM"] = pd.to_datetime(ageing_source, errors="coerce")
+
+    today_ts = pd.Timestamp(date.today())
+    ageing_days = (
+        today_ts - df["LHC_AGEING_FROM"].dt.normalize()
+    ).dt.days
+
+    ageing_days = ageing_days.clip(lower=0)
+
+    pending_mask = df["LHC_STATUS"].eq("Winner - LHC Pending")
+    df["LHC_PENDING_AGE_DAYS"] = ageing_days.where(pending_mask)
+
+    def lhc_age_bucket(days):
+        if pd.isna(days):
+            return "Not Pending"
+
+        days = int(days)
+
+        if days == 0:
+            return "0 Day"
+        if days == 1:
+            return "1 Day"
+        if days <= 3:
+            return "2-3 Days"
+        if days <= 7:
+            return "4-7 Days"
+        if days <= 15:
+            return "8-15 Days"
+        if days <= 30:
+            return "16-30 Days"
+        return "31+ Days"
+
+    df["LHC_AGEING_BUCKET"] = df["LHC_PENDING_AGE_DAYS"].apply(lhc_age_bucket)
+
+    # Readable bidder contact list for bid-wise detail / exceptions.
+    if "BIDDER_CONTACT_LIST" in df.columns:
+        df["BIDDER_CONTACTS"] = df["BIDDER_CONTACT_LIST"].apply(_format_bidder_contacts)
+    else:
+        df["BIDDER_CONTACTS"] = ""
+
+    return df
+
+
+# ============================================================
+# FILTER HELPERS
+# ============================================================
+
+def _sorted_options(series):
+    values = (
+        series.dropna()
+        .astype(str)
+        .str.strip()
+    )
+    values = values[values.ne("")]
+    return sorted(values.unique().tolist())
+
+
+def apply_dashboard_filters(df):
+    """Compact collapsible filters. Default state is collapsed."""
+    with st.expander("🔎 Filters — click to expand / collapse", expanded=False):
+        row1 = st.columns(5, gap="small")
+
+        with row1[0]:
+            branch_filter = st.multiselect(
+                "Branch",
+                _sorted_options(df["BRANCH"]),
+                key="bid_filter_branch",
+                placeholder="All branches",
+            )
+
+        with row1[1]:
+            source_filter = st.multiselect(
+                "Source",
+                _sorted_options(df["SOURCE"]),
+                key="bid_filter_source",
+                placeholder="All sources",
+            )
+
+        with row1[2]:
+            querybid_filter = st.multiselect(
+                "Query Bid",
+                ["YES", "NO"],
+                key="bid_filter_querybid",
+                placeholder="YES / NO",
+            )
+
+        with row1[3]:
+            winner_filter = st.multiselect(
+                "Winner Type",
+                _sorted_options(df["WINNER_MODE"]),
+                key="bid_filter_winner",
+                placeholder="All winner types",
+            )
+
+        with row1[4]:
+            vehicle_filter = st.multiselect(
+                "Vehicle Type",
+                _sorted_options(df["VEHICLETYPE"]),
+                key="bid_filter_vehicle",
+                placeholder="All vehicle types",
+            )
+
+        row2 = st.columns(5, gap="small")
+
+        with row2[0]:
+            origin_filter = st.multiselect(
+                "Origin",
+                _sorted_options(df["ORIGINCITY"]),
+                key="bid_filter_origin",
+                placeholder="All origins",
+            )
+
+        with row2[1]:
+            destination_filter = st.multiselect(
+                "Destination",
+                _sorted_options(df["DESTINATIONCITY"]),
+                key="bid_filter_destination",
+                placeholder="All destinations",
+            )
+
+        with row2[2]:
+            gap_filter = st.multiselect(
+                "₹500 Gap Status",
+                ["OK", "Issue", "Same Rate", "Not Comparable"],
+                key="bid_filter_gap",
+                placeholder="All statuses",
+            )
+
+        with row2[3]:
+            lhc_status_filter = st.multiselect(
+                "LHC Status",
+                ["LHC Created", "Winner - LHC Pending", "No Winner"],
+                key="bid_filter_lhc_status",
+                placeholder="All LHC statuses",
+            )
+
+        row3 = st.columns(2, gap="small")
+
+        with row3[0]:
+            zone_filter = st.multiselect(
+                "Zone",
+                _sorted_options(df["ZONE"]) if "ZONE" in df.columns else [],
+                key="bid_filter_zone",
+                placeholder="All zones",
+            )
+
+        with row3[1]:
+            circle_filter = st.multiselect(
+                "Circle",
+                _sorted_options(df["CIRCLE"]) if "CIRCLE" in df.columns else [],
+                key="bid_filter_circle",
+                placeholder="All circles",
+            )
+
+        # Vendor filter uses the all-bidder list so a vendor can be filtered
+        # whether it won the bid or only participated.
+        vendor_options = []
+        if "BIDDER_VENDOR_LIST" in df.columns:
+            vendor_names = set()
+            for raw_value in df["BIDDER_VENDOR_LIST"].fillna("").astype(str):
+                for token in raw_value.split("|||"):
+                    token = token.strip()
+                    if not token:
+                        continue
+                    vendor = token.split("::", 1)[1] if "::" in token else token
+                    vendor = vendor.strip()
+                    if vendor:
+                        vendor_names.add(vendor)
+            vendor_options = sorted(vendor_names)
+
+        # Defensive fallback for older cached data where BIDDER_VENDOR_LIST
+        # may not yet be present.
+        if not vendor_options:
+            fallback_vendor_cols = [
+                c for c in ["WINNER_NAME", "L_1_NAME", "L_2_NAME", "L_3_NAME"]
+                if c in df.columns
+            ]
+            fallback_names = set()
+            for col in fallback_vendor_cols:
+                fallback_names.update(_sorted_options(df[col]))
+            vendor_options = sorted(fallback_names)
+
+        vendor_filter = st.multiselect(
+            "Vendor",
+            vendor_options,
+            key="bid_filter_vendor",
+            placeholder="All vendors",
+        )
+
+    filtered = df.copy()
+
+    if branch_filter:
+        filtered = filtered[filtered["BRANCH"].isin(branch_filter)]
+
+    if source_filter:
+        filtered = filtered[filtered["SOURCE"].isin(source_filter)]
+
+    if querybid_filter:
+        filtered = filtered[filtered["QUERYBID"].isin(querybid_filter)]
+
+    if winner_filter:
+        filtered = filtered[filtered["WINNER_MODE"].isin(winner_filter)]
+
+    if vehicle_filter:
+        filtered = filtered[filtered["VEHICLETYPE"].isin(vehicle_filter)]
+
+    if origin_filter:
+        filtered = filtered[filtered["ORIGINCITY"].isin(origin_filter)]
+
+    if destination_filter:
+        filtered = filtered[filtered["DESTINATIONCITY"].isin(destination_filter)]
+
+    if gap_filter:
+        filtered = filtered[filtered["GAP_STATUS"].isin(gap_filter)]
+
+    if lhc_status_filter:
+        filtered = filtered[filtered["LHC_STATUS"].isin(lhc_status_filter)]
+
+    if zone_filter and "ZONE" in filtered.columns:
+        filtered = filtered[filtered["ZONE"].isin(zone_filter)]
+
+    if circle_filter and "CIRCLE" in filtered.columns:
+        filtered = filtered[filtered["CIRCLE"].isin(circle_filter)]
+
+    if vendor_filter:
+        selected_vendor_keys = {str(v).strip().upper() for v in vendor_filter}
+
+        def _bid_has_selected_vendor(row):
+            # Primary check: all bidders who participated in the BID.
+            raw_value = row.get("BIDDER_VENDOR_LIST", "")
+            raw_list = "" if pd.isna(raw_value) else str(raw_value).strip()
+            if raw_list:
+                for token in raw_list.split("|||"):
+                    token = token.strip()
+                    if not token:
+                        continue
+                    vendor = token.split("::", 1)[1] if "::" in token else token
+                    if vendor.strip().upper() in selected_vendor_keys:
+                        return True
+
+            # Fallback / defensive checks.
+            for col in ["WINNER_NAME", "L_1_NAME", "L_2_NAME", "L_3_NAME"]:
+                value = row.get(col, "")
+                value = "" if pd.isna(value) else str(value).strip().upper()
+                if value in selected_vendor_keys:
+                    return True
+            return False
+
+        filtered = filtered[filtered.apply(_bid_has_selected_vendor, axis=1)]
+
+    return filtered
+
+
+# ============================================================
+# KPI / CHARTS
+# ============================================================
+
+CHART_TEXT_COLOR = "#0f2744"
+CHART_MUTED_TEXT_COLOR = "#334155"
+
+def _format_inr(value):
+    if value is None or pd.isna(value):
+        return "-"
+    return f"₹{value:,.0f}"
+
+
+def _kpi_card(column, label, value, note="", tone="blue"):
+    note_text = note if note else "&nbsp;"
+    column.markdown(
+        f"""
+        <div class="bid-kpi-card bid-kpi-{tone}">
+            <div class="bid-kpi-label">{label}</div>
+            <div class="bid-kpi-value">{value}</div>
+            <div class="bid-kpi-note">{note_text}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _kpi_group_label(column, title, subtitle="", tone="blue"):
+    column.markdown(
+        f"""
+        <div class="bid-kpi-group bid-kpi-group-{tone}">
+            <div class="bid-kpi-group-title">{title}</div>
+            <div class="bid-kpi-group-subtitle">{subtitle}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_kpis(df):
+    total_bids = int(df["BIDID"].nunique())
+
+
+    query_bids = int(
+        df.loc[
+            _clean_text_series(df["QUERYBID"]).str.upper().eq("YES"),
+            "BIDID"
+        ].nunique()
+    )
+
+    source_clean = _clean_text_series(df["SOURCE"]).str.upper()
+    erp_bids = int(df.loc[source_clean.eq("ERP"), "BIDID"].nunique())
+    app_bids = int(df.loc[source_clean.eq("APP"), "BIDID"].nunique())
+
+    # Direct = QUERYBID is not YES. Count unique BIDIDs in each segment.
+    query_flag = _clean_text_series(df["QUERYBID"]).str.upper().eq("YES")
+    erp_query_bids = int(df.loc[source_clean.eq("ERP") & query_flag, "BIDID"].nunique())
+    erp_direct_bids = int(df.loc[source_clean.eq("ERP") & ~query_flag, "BIDID"].nunique())
+    app_query_bids = int(df.loc[source_clean.eq("APP") & query_flag, "BIDID"].nunique())
+    app_direct_bids = int(df.loc[source_clean.eq("APP") & ~query_flag, "BIDID"].nunique())
+
+    l1_bids = int(df.loc[df["WINNER_MODE"].eq("L-1"), "BIDID"].nunique())
+    winner_not_l1 = int(
+        df.loc[df["WINNER_VS_L1"].eq("Winner != L1"), "BIDID"].nunique()
+    )
+    comparable_winner_bids = int(
+        df.loc[
+            df["WINNER_VS_L1"].isin(["Winner = L1", "Winner != L1"]),
+            "BIDID",
+        ].nunique()
+    )
+    manual_bids = int(df.loc[df["WINNER_MODE"].eq("Manual"), "BIDID"].nunique())
+    single_bidder = int(df.loc[df["BIDDER_COUNT"].eq(1), "BIDID"].nunique())
+
+    winner_bids = int(df.loc[df["HAS_WINNER"], "BIDID"].nunique())
+    lhc_created = int(
+        df.loc[df["LHC_STATUS"].eq("LHC Created"), "BIDID"].nunique()
+    )
+    lhc_pending = max(winner_bids - lhc_created, 0)
+
+    pending_rows = df[df["LHC_STATUS"].eq("Winner - LHC Pending")].copy()
+    oldest_pending = (
+        int(pending_rows["LHC_PENDING_AGE_DAYS"].max())
+        if not pending_rows.empty and pending_rows["LHC_PENDING_AGE_DAYS"].notna().any()
+        else 0
+    )
+    # Mutually exclusive LHC pending ageing buckets for clear management review.
+    pending_0_7 = int(
+        pending_rows.loc[
+            pending_rows["LHC_PENDING_AGE_DAYS"].between(0, 7, inclusive="both"),
+            "BIDID"
+        ].nunique()
+    )
+    pending_8_15 = int(
+        pending_rows.loc[
+            pending_rows["LHC_PENDING_AGE_DAYS"].between(8, 15, inclusive="both"),
+            "BIDID"
+        ].nunique()
+    )
+    pending_16_plus = int(
+        pending_rows.loc[
+            pending_rows["LHC_PENDING_AGE_DAYS"].gt(15),
+            "BIDID"
+        ].nunique()
+    )
+
+    query_pct = (query_bids / total_bids * 100) if total_bids else 0
+    erp_pct = (erp_bids / total_bids * 100) if total_bids else 0
+    app_pct = (app_bids / total_bids * 100) if total_bids else 0
+    l1_pct = (l1_bids / winner_bids * 100) if winner_bids else 0
+    manual_pct = (manual_bids / winner_bids * 100) if winner_bids else 0
+    single_pct = (single_bidder / total_bids * 100) if total_bids else 0
+    winner_not_l1_pct = (
+        winner_not_l1 / comparable_winner_bids * 100
+        if comparable_winner_bids else 0
+    )
+    lhc_created_pct = (lhc_created / winner_bids * 100) if winner_bids else 0
+    lhc_pending_pct = (lhc_pending / winner_bids * 100) if winner_bids else 0
+
+    no_winner_bids = max(total_bids - winner_bids, 0)
+    no_winner_pct = (no_winner_bids / total_bids * 100) if total_bids else 0
+    # --------------------------------------------------------
+    # Row 1 — Bid Volume / Source
+    # --------------------------------------------------------
+    label, content = st.columns([1.25, 8.75], gap="small")
+    _kpi_group_label(label, "2. BIDS VOLUME", "Overall", "blue")
+    with content:
+        c1, c2, c3, c4 = st.columns(4, gap="small")
+        _kpi_card(c1, "📦 Total Bids", f"{total_bids:,}", "Filtered unique bids", "blue")
+        _kpi_card(c2, "🖥️ ERP Bids", f"{erp_bids:,}",
+                  f"Direct: {erp_direct_bids:,}  |  Query: {erp_query_bids:,}", "blue")
+        _kpi_card(c3, "📱 APP Bids", f"{app_bids:,}",
+                  f"Direct: {app_direct_bids:,}  |  Query: {app_query_bids:,}", "purple")
+        _kpi_card(c4, "💬 Query Bids", f"{query_bids:,}",
+                  f"ERP: {erp_query_bids:,}  |  APP: {app_query_bids:,}", "purple")
+
+    # --------------------------------------------------------
+    # Row 2 — Decision / Winner / LHC Flow
+    # --------------------------------------------------------
+    label, content = st.columns([1.25, 8.75], gap="small")
+    _kpi_group_label(label, "3. WINNER & LHC FLOW", "Key focus", "green")
+    with content:
+        c1, c2, c3, c4 = st.columns(4, gap="small")
+        _kpi_card(c1, "🏆 Winner Bids", f"{winner_bids:,}", f"{(winner_bids / total_bids * 100 if total_bids else 0):.1f}% of total bids", "navy")
+        _kpi_card(c2, "◻️ No Winner", f"{no_winner_bids:,}", f"{no_winner_pct:.1f}% of total bids", "amber")
+        _kpi_card(c3, "🚚 LHC Created", f"{lhc_created:,}", f"{lhc_created_pct:.1f}% of winner bids", "green")
+        _kpi_card(c4, "⏳ LHC Pending", f"{lhc_pending:,}", f"{lhc_pending_pct:.1f}% of winner bids", "red")
+
+    # --------------------------------------------------------
+    # Row 3 — Winner Quality / Competition
+    # --------------------------------------------------------
+    label, content = st.columns([1.25, 8.75], gap="small")
+    _kpi_group_label(label, "4. CONVERSION & QUALITY", "Winner mix", "purple")
+    with content:
+        c1, c2, c3, c4 = st.columns(4, gap="small")
+        _kpi_card(c1, "🥇 L-1 Selected", f"{l1_bids:,}", f"{l1_pct:.1f}% of winner bids", "teal")
+        _kpi_card(c2, "✍️ Manual", f"{manual_bids:,}", f"{manual_pct:.1f}% of winner bids", "orange")
+        _kpi_card(c3, "↔️ Winner Not L1", f"{winner_not_l1:,}", f"{winner_not_l1_pct:.1f}% of comparable winners", "rose")
+        _kpi_card(c4, "👤 Single Bidder", f"{single_bidder:,}", f"{single_pct:.1f}% of total bids", "amber")
+
+    # --------------------------------------------------------
+    # Row 4 — LHC Pending Ageing / Execution Control
+    # --------------------------------------------------------
+    label, content = st.columns([1.25, 8.75], gap="small")
+    _kpi_group_label(label, "5. LHC PENDING AGEING", "Execution control", "amber")
+    with content:
+        c1, c2, c3, c4 = st.columns(4, gap="small")
+        _kpi_card(
+            c1,
+            "🟢 Pending 0–7 Days",
+            f"{pending_0_7:,}",
+            f"{(pending_0_7 / lhc_pending * 100 if lhc_pending else 0):.1f}% of pending",
+            "green",
+        )
+        _kpi_card(
+            c2,
+            "🟠 Pending 8–15 Days",
+            f"{pending_8_15:,}",
+            f"{(pending_8_15 / lhc_pending * 100 if lhc_pending else 0):.1f}% of pending",
+            "orange",
+        )
+        _kpi_card(
+            c3,
+            "🔴 Pending 16+ Days",
+            f"{pending_16_plus:,}",
+            f"{(pending_16_plus / lhc_pending * 100 if lhc_pending else 0):.1f}% of pending",
+            "red",
+        )
+        _kpi_card(
+            c4,
+            "🕒 Oldest Pending",
+            f"{oldest_pending:,} days",
+            "Oldest open winner → LHC case",
+            "amber",
+        )
+
+
+def _compact_chart_layout(fig, height=245, bottom_margin=48):
+    """Common compact styling for all management charts."""
+    fig.update_layout(
+        height=height,
+        margin=dict(l=18, r=18, t=12, b=bottom_margin),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#ffffff",
+        showlegend=False,
+        hoverlabel=dict(
+            bgcolor="#0b2447",
+            font_size=11,
+            font_color="#ffffff",
+        ),
+        font=dict(
+            family="Arial, sans-serif",
+            size=10,
+            color=CHART_TEXT_COLOR,
+        ),
+    )
+    fig.update_xaxes(
+        showgrid=False,
+        zeroline=False,
+        linecolor="#dbe4ef",
+        tickfont=dict(size=9, color=CHART_TEXT_COLOR),
+        title=None,
+    )
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor="#eef2f7",
+        zeroline=False,
+        tickfont=dict(size=9, color=CHART_TEXT_COLOR),
+        title=None,
+        rangemode="tozero",
+    )
+    return fig
+
+
+def _bar_chart_with_values(labels, values, height=245, rotate_x=0):
+    """Create a compact bar chart with values always visible above bars."""
+    labels = [str(x) for x in labels]
+    values = [int(v) if pd.notna(v) else 0 for v in values]
+
+    fig = go.Figure(
+        go.Bar(
+            x=labels,
+            y=values,
+            text=[f"{v:,}" for v in values],
+            textposition="outside",
+            textfont=dict(size=10, color=CHART_TEXT_COLOR),
+            cliponaxis=False,
+            marker=dict(
+                color="#2563eb",
+                line=dict(color="#1d4ed8", width=0.5),
+            ),
+            hovertemplate="<b>%{x}</b><br>Bids: %{y:,}<extra></extra>",
+        )
+    )
+
+    max_value = max(values) if values else 0
+    if max_value > 0:
+        fig.update_yaxes(range=[0, max_value * 1.18])
+
+    _compact_chart_layout(fig, height=height, bottom_margin=58 if rotate_x else 42)
+    fig.update_xaxes(tickangle=rotate_x)
+    return fig
+
+
+def _horizontal_bar_chart(labels, values, height=270, value_name="Bids"):
+    """Ranked horizontal bar chart for long category labels."""
+    work = pd.DataFrame({"Label": [str(x) for x in labels], "Value": values})
+    work["Value"] = pd.to_numeric(work["Value"], errors="coerce").fillna(0).astype(int)
+    work = work.sort_values("Value", ascending=True)
+
+    fig = go.Figure(
+        go.Bar(
+            x=work["Value"],
+            y=work["Label"],
+            orientation="h",
+            text=[f"{v:,}" for v in work["Value"]],
+            textposition="outside",
+            textfont=dict(size=9, color=CHART_TEXT_COLOR),
+            cliponaxis=False,
+            marker=dict(
+                color="#2563eb",
+                line=dict(color="#1d4ed8", width=0.5),
+            ),
+            hovertemplate=f"<b>%{{y}}</b><br>{value_name}: %{{x:,}}<extra></extra>",
+        )
+    )
+
+    max_value = int(work["Value"].max()) if not work.empty else 0
+    if max_value > 0:
+        fig.update_xaxes(range=[0, max_value * 1.18])
+
+    _compact_chart_layout(fig, height=height, bottom_margin=38)
+    fig.update_yaxes(
+        showgrid=False,
+        autorange=True,
+        tickfont=dict(size=9, color=CHART_TEXT_COLOR),
+        automargin=True,
+    )
+    fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+    fig.update_layout(bargap=0.30)
+    return fig
+
+
+def _donut_chart(labels, values, height=265, center_label="Total", colors=None):
+    """Enhanced donut for part-to-whole comparisons with count + % labels."""
+    labels = [str(x) for x in labels]
+    values = [int(v) if pd.notna(v) else 0 for v in values]
+    total = sum(values)
+
+    if colors is None:
+        colors = [
+            "#2563eb", "#60a5fa", "#f59e0b", "#ef4444", "#94a3b8", "#cbd5e1"
+        ]
+
+    fig = go.Figure(
+        go.Pie(
+            labels=labels,
+            values=values,
+            hole=0.66,
+            sort=False,
+            textinfo="none",
+            texttemplate="%{percent:.1%}<br>%{value:,}",
+            textposition="inside",
+            insidetextorientation="horizontal",
+            textfont=dict(size=9, color="#ffffff"),
+            hovertemplate="<b>%{label}</b><br>Bids: %{value:,}<br>Share: %{percent}<extra></extra>",
+            marker=dict(colors=colors[: len(labels)], line=dict(color="#ffffff", width=2.2)),
+            pull=[0.02 if i == 0 else 0 for i in range(len(labels))],
+            automargin=True,
+        )
+    )
+
+    fig.update_layout(
+        height=height,
+        margin=dict(l=8, r=8, t=8, b=30),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#ffffff",
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.02,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=7, color=CHART_TEXT_COLOR),
+            entrywidth=52,
+            entrywidthmode="pixels",
+            itemwidth=30,
+        ),
+        font=dict(family="Arial, sans-serif", size=10, color=CHART_TEXT_COLOR),
+        uniformtext=dict(minsize=8, mode="hide"),
+        annotations=[
+            dict(
+                text=(
+                    f"<b style='font-size:18px'>{total:,}</b>"
+                    f"<br><span style='font-size:10px;color:#64748b'>{center_label}</span>"
+                ),
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+                font=dict(size=14, color=CHART_TEXT_COLOR),
+                align="center",
+            )
+        ],
+    )
+    return fig
+
+
+def _lollipop_chart(labels, values, height=270, value_name="Bids"):
+    """Compact lollipop ranking to avoid repeating bar charts."""
+    work = pd.DataFrame({"Label": [str(x) for x in labels], "Value": values})
+    work["Value"] = pd.to_numeric(work["Value"], errors="coerce").fillna(0).astype(int)
+    work = work.sort_values("Value", ascending=True)
+
+    line_x, line_y = [], []
+    for label, value in zip(work["Label"], work["Value"]):
+        line_x.extend([0, value, None])
+        line_y.extend([label, label, None])
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=line_x,
+            y=line_y,
+            mode="lines",
+            line=dict(color="#cbd5e1", width=2),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=work["Value"],
+            y=work["Label"],
+            mode="markers+text",
+            text=[f"{v:,}" for v in work["Value"]],
+            textposition="middle right",
+            textfont=dict(size=9, color=CHART_TEXT_COLOR),
+            marker=dict(
+                size=10,
+                color="#2563eb",
+                line=dict(color="#ffffff", width=1.5),
+            ),
+            cliponaxis=False,
+            hovertemplate=f"<b>%{{y}}</b><br>{value_name}: %{{x:,}}<extra></extra>",
+            showlegend=False,
+        )
+    )
+
+    max_value = int(work["Value"].max()) if not work.empty else 0
+    if max_value > 0:
+        fig.update_xaxes(range=[0, max_value * 1.22])
+
+    _compact_chart_layout(fig, height=height, bottom_margin=38)
+    fig.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=9, color=CHART_TEXT_COLOR))
+    fig.update_xaxes(showgrid=True, gridcolor="#eef2f7", tickfont=dict(size=9, color=CHART_TEXT_COLOR))
+    return fig
+
+
+def _line_chart_with_values(labels, values, height=235):
+    """Create daily trend chart with value labels above every point."""
+    labels = [str(x) for x in labels]
+    values = [int(v) if pd.notna(v) else 0 for v in values]
+
+    fig = go.Figure(
+        go.Scatter(
+            x=labels,
+            y=values,
+            mode="lines+markers+text",
+            text=[f"{v:,}" for v in values],
+            textposition="top center",
+            textfont=dict(size=9, color=CHART_TEXT_COLOR),
+            line=dict(color="#2563eb", width=2),
+            marker=dict(
+                size=6,
+                color="#ffffff",
+                line=dict(color="#2563eb", width=2),
+            ),
+            hovertemplate="<b>%{x}</b><br>Bids: %{y:,}<extra></extra>",
+        )
+    )
+
+    max_value = max(values) if values else 0
+    if max_value > 0:
+        fig.update_yaxes(range=[0, max_value * 1.20])
+
+    _compact_chart_layout(fig, height=height, bottom_margin=44)
+    return fig
+
+
+def _render_chart_card(title, fig):
+    """Render every chart inside the same bordered compact card."""
+    with st.container(border=True):
+        st.markdown(
+            f"<div class='bid-chart-title'>{title}</div>",
+            unsafe_allow_html=True,
+        )
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={
+                "displayModeBar": False,
+                "responsive": True,
+            },
+        )
+
+
+def _ageing_chart_with_values(ageing_df, height=255):
+    """
+    Professional ageing chart:
+    - Different color by ageing severity
+    - Count + % displayed above each bar
+    - % is calculated against total Winner -> LHC Pending bids
+    """
+    work = ageing_df.copy()
+
+    work["Bids"] = pd.to_numeric(work["Bids"], errors="coerce").fillna(0).astype(int)
+    total_pending = int(work["Bids"].sum())
+
+    if total_pending > 0:
+        work["Percent"] = work["Bids"] / total_pending * 100.0
+    else:
+        work["Percent"] = 0.0
+
+    # Green -> teal -> blue -> amber -> orange -> red progression.
+    ageing_colors = {
+        "0 Day": "#16a34a",
+        "1 Day": "#22c55e",
+        "2-3 Days": "#0d9488",
+        "4-7 Days": "#2563eb",
+        "8-15 Days": "#d97706",
+        "16-30 Days": "#ea580c",
+        "31+ Days": "#dc2626",
+    }
+
+    colors = [
+        ageing_colors.get(str(bucket), "#64748b")
+        for bucket in work["LHC_AGEING_BUCKET"]
+    ]
+
+    labels = [
+        f"{count:,}  |  {pct:.1f}%"
+        for count, pct in zip(work["Bids"], work["Percent"])
+    ]
+
+    fig = go.Figure(
+        go.Bar(
+            x=work["LHC_AGEING_BUCKET"].astype(str),
+            y=work["Bids"],
+            text=labels,
+            textposition="outside",
+            textfont=dict(
+                size=10,
+                color=CHART_TEXT_COLOR,
+            ),
+            cliponaxis=False,
+            marker=dict(
+                color=colors,
+                line=dict(
+                    color="#ffffff",
+                    width=0.8,
+                ),
+            ),
+            customdata=work["Percent"],
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Pending Bids: %{y:,}<br>"
+                "Share: %{customdata:.1f}%"
+                "<extra></extra>"
+            ),
+        )
+    )
+
+    max_value = int(work["Bids"].max()) if not work.empty else 0
+    if max_value > 0:
+        fig.update_yaxes(range=[0, max_value * 1.24])
+
+    _compact_chart_layout(
+        fig,
+        height=height,
+        bottom_margin=55,
+    )
+
+    fig.update_layout(
+        showlegend=False,
+        bargap=0.28,
+    )
+
+    fig.update_xaxes(
+        tickangle=-18,
+        tickfont=dict(size=9, color=CHART_TEXT_COLOR),
+    )
+
+    return fig
+
+
+
+def _bid_trend_data(df, mode):
+    """Aggregate unique BIDIDs by Day / Month / Quarter / Year."""
+    trend_df = df.dropna(subset=["BIDOPENDT"]).copy()
+
+    if trend_df.empty:
+        return pd.DataFrame(columns=["PERIOD_LABEL", "Bids"])
+
+    trend_df["BIDOPENDT"] = pd.to_datetime(trend_df["BIDOPENDT"], errors="coerce")
+    trend_df = trend_df.dropna(subset=["BIDOPENDT"])
+
+    if mode == "D":
+        trend_df["PERIOD_KEY"] = trend_df["BIDOPENDT"].dt.date
+        grouped = (
+            trend_df.groupby("PERIOD_KEY")["BIDID"]
+            .nunique()
+            .rename("Bids")
+            .reset_index()
+        )
+        grouped["PERIOD_LABEL"] = pd.to_datetime(grouped["PERIOD_KEY"]).dt.strftime("%d %b")
+
+    elif mode == "M":
+        trend_df["PERIOD_KEY"] = trend_df["BIDOPENDT"].dt.to_period("M")
+        grouped = (
+            trend_df.groupby("PERIOD_KEY")["BIDID"]
+            .nunique()
+            .rename("Bids")
+            .reset_index()
+        )
+        grouped["PERIOD_LABEL"] = grouped["PERIOD_KEY"].dt.strftime("%b %Y")
+
+    elif mode == "Q":
+        trend_df["PERIOD_KEY"] = trend_df["BIDOPENDT"].dt.to_period("Q")
+        grouped = (
+            trend_df.groupby("PERIOD_KEY")["BIDID"]
+            .nunique()
+            .rename("Bids")
+            .reset_index()
+        )
+        grouped["PERIOD_LABEL"] = grouped["PERIOD_KEY"].apply(
+            lambda p: f"Q{p.quarter} {p.year}"
+        )
+
+    else:  # Y
+        trend_df["PERIOD_KEY"] = trend_df["BIDOPENDT"].dt.year
+        grouped = (
+            trend_df.groupby("PERIOD_KEY")["BIDID"]
+            .nunique()
+            .rename("Bids")
+            .reset_index()
+        )
+        grouped["PERIOD_LABEL"] = grouped["PERIOD_KEY"].astype(int).astype(str)
+
+    return grouped[["PERIOD_LABEL", "Bids"]]
+
+
+def _render_bid_trend_card(df):
+    """Bid Trend chart with D / M / Q / Y buttons in the card header."""
+    if "bid_trend_mode" not in st.session_state:
+        st.session_state["bid_trend_mode"] = "D"
+
+    current_mode = st.session_state["bid_trend_mode"]
+
+    with st.container(border=True):
+        # Marker is used by CSS to scope compact button styling to this card only.
+        st.markdown("<span class='bid-trend-marker'></span>", unsafe_allow_html=True)
+
+        title_col, d_col, m_col, q_col, y_col = st.columns(
+            [5.5, .42, .42, .42, .42],
+            gap="small",
+            vertical_alignment="center",
+        )
+
+        with title_col:
+            st.markdown(
+                "<div class='bid-chart-title'>Bid Trend</div>",
+                unsafe_allow_html=True,
+            )
+
+        button_map = [
+            ("D", d_col, "bid_trend_d"),
+            ("M", m_col, "bid_trend_m"),
+            ("Q", q_col, "bid_trend_q"),
+            ("Y", y_col, "bid_trend_y"),
+        ]
+
+        for mode, col, key in button_map:
+            with col:
+                if st.button(
+                    mode,
+                    key=key,
+                    type="primary" if current_mode == mode else "secondary",
+                    use_container_width=True,
+                    help={
+                        "D": "Daily",
+                        "M": "Monthly",
+                        "Q": "Quarterly",
+                        "Y": "Yearly",
+                    }[mode],
+                ):
+                    st.session_state["bid_trend_mode"] = mode
+                    st.rerun()
+
+        current_mode = st.session_state["bid_trend_mode"]
+        trend_data = _bid_trend_data(df, current_mode)
+
+        if trend_data.empty:
+            st.info("No bid date data available.")
+            return
+
+        subtitle_map = {
+            "D": "Daily",
+            "M": "Monthly",
+            "Q": "Quarterly",
+            "Y": "Yearly",
+        }
+
+        st.caption(
+            f"{subtitle_map[current_mode]} unique bid volume • "
+            f"{int(trend_data['Bids'].sum()):,} period-count total"
+        )
+
+        trend_fig = _line_chart_with_values(
+            trend_data["PERIOD_LABEL"],
+            trend_data["Bids"],
+            height=245,
+        )
+
+        st.plotly_chart(
+            trend_fig,
+            use_container_width=True,
+            config={
+                "displayModeBar": False,
+                "responsive": True,
+            },
+        )
+
+
+def render_zone_bidding_insights(df):
+    """Executive zone-wise bidding view for the Overview tab."""
+    st.markdown("#### Zone-wise Bidding Insights")
+
+    if "ZONE" not in df.columns:
+        st.info("ZONE is not available in the loaded SQL output. Refresh after deploying the updated query.")
+        return
+
+    base = (
+        df.sort_values(["BIDID", "BIDOPENDT"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    base["ZONE_CLEAN"] = _clean_text_series(base["ZONE"]).replace("", "Not Available")
+    base["QUERY_FLAG"] = _clean_text_series(base["QUERYBID"]).str.upper().eq("YES").astype(int)
+    base["WINNER_FLAG"] = base["HAS_WINNER"].fillna(False).astype(int)
+    base["LHC_CREATED_FLAG"] = base["LHC_STATUS"].eq("LHC Created").astype(int)
+    base["LHC_PENDING_FLAG"] = base["LHC_STATUS"].eq("Winner - LHC Pending").astype(int)
+    base["L1_FLAG"] = base["WINNER_MODE"].eq("L-1").astype(int)
+    base["MANUAL_FLAG"] = base["WINNER_MODE"].eq("Manual").astype(int)
+    base["SINGLE_BIDDER_FLAG"] = pd.to_numeric(
+        base["BIDDER_COUNT"], errors="coerce"
+    ).eq(1).astype(int)
+
+    if "CIRCLE" in base.columns:
+        base["CIRCLE_CLEAN"] = _clean_text_series(base["CIRCLE"]).replace("", "Not Available")
+    else:
+        base["CIRCLE_CLEAN"] = "Not Available"
+
+    zone = (
+        base.groupby("ZONE_CLEAN", as_index=False)
+        .agg(
+            **{
+                "Total Bids": ("BIDID", "nunique"),
+                "Query Bids": ("QUERY_FLAG", "sum"),
+                "Winner Bids": ("WINNER_FLAG", "sum"),
+                "LHC Created": ("LHC_CREATED_FLAG", "sum"),
+                "LHC Pending": ("LHC_PENDING_FLAG", "sum"),
+                "L-1 Selected": ("L1_FLAG", "sum"),
+                "Manual": ("MANUAL_FLAG", "sum"),
+                "Single Bidder": ("SINGLE_BIDDER_FLAG", "sum"),
+                "Circles": ("CIRCLE_CLEAN", "nunique"),
+                "Branches": ("BRANCH", "nunique"),
+            }
+        )
+        .rename(columns={"ZONE_CLEAN": "Zone"})
+    )
+
+    if zone.empty:
+        st.info("No zone-wise data available for the selected filters.")
+        return
+
+    zone["Bid Share %"] = (
+        zone["Total Bids"].div(zone["Total Bids"].sum()).mul(100.0).fillna(0.0)
+    )
+    zone["Query Rate %"] = (
+        zone["Query Bids"].div(zone["Total Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    zone["Winner Rate %"] = (
+        zone["Winner Bids"].div(zone["Total Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    zone["LHC Completion %"] = (
+        zone["LHC Created"].div(zone["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    zone["LHC Pending %"] = (
+        zone["LHC Pending"].div(zone["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+
+    # Reconcile pending directly to the dashboard rule: Winner Bids - LHC Created.
+    zone["LHC Pending"] = (zone["Winner Bids"] - zone["LHC Created"]).clip(lower=0)
+    zone["LHC Pending %"] = (
+        zone["LHC Pending"].div(zone["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+
+    zone = zone.sort_values(["Total Bids", "Winner Bids"], ascending=[False, False]).reset_index(drop=True)
+
+    top_volume = zone.iloc[0]
+    query_candidates = zone[zone["Query Bids"].gt(0)]
+    top_query = (
+        query_candidates.sort_values(["Query Bids", "Total Bids"], ascending=[False, False]).iloc[0]
+        if not query_candidates.empty else None
+    )
+    pending_candidates = zone[zone["LHC Pending"].gt(0)]
+    top_pending = (
+        pending_candidates.sort_values(["LHC Pending", "LHC Pending %"], ascending=[False, False]).iloc[0]
+        if not pending_candidates.empty else None
+    )
+
+    k1, k2, k3 = st.columns(3, gap="small")
+    _kpi_card(
+        k1,
+        "🌐 Highest Bid Volume Zone",
+        str(top_volume["Zone"]),
+        f"{int(top_volume['Total Bids']):,} bids • {float(top_volume['Bid Share %']):.1f}% share",
+        "blue",
+    )
+    _kpi_card(
+        k2,
+        "💬 Highest Query Volume Zone",
+        str(top_query["Zone"]) if top_query is not None else "-",
+        (
+            f"{int(top_query['Query Bids']):,} queries • {float(top_query['Query Rate %']):.1f}% query rate"
+            if top_query is not None else "No query bids"
+        ),
+        "purple",
+    )
+    _kpi_card(
+        k3,
+        "⏳ Highest LHC Pending Zone",
+        str(top_pending["Zone"]) if top_pending is not None else "-",
+        (
+            f"{int(top_pending['LHC Pending']):,} pending • {float(top_pending['LHC Pending %']):.1f}% of winners"
+            if top_pending is not None else "No LHC pending"
+        ),
+        "red",
+    )
+
+    left, right = st.columns(2, gap="small")
+
+    with left:
+        volume_work = zone.sort_values("Total Bids", ascending=True)
+        volume_fig = _horizontal_bar_chart(
+            volume_work["Zone"],
+            volume_work["Total Bids"],
+            height=max(285, min(520, 42 * len(volume_work) + 85)),
+            value_name="Bids",
+        )
+        _render_chart_card("Zone-wise Bid Volume", volume_fig)
+
+    with right:
+        flow_work = zone.sort_values("Winner Bids", ascending=True)
+        flow_fig = go.Figure()
+        flow_fig.add_trace(
+            go.Bar(
+                x=flow_work["LHC Created"],
+                y=flow_work["Zone"],
+                name="LHC Created",
+                orientation="h",
+                marker=dict(color="#2563eb"),
+                text=[
+                    f"{int(v):,} | {pct:.1f}%"
+                    for v, pct in zip(flow_work["LHC Created"], flow_work["LHC Completion %"])
+                ],
+                textposition="inside",
+                insidetextanchor="middle",
+                textfont=dict(color="#ffffff", size=10),
+                hovertemplate=(
+                    "<b>%{y}</b><br>"
+                    "LHC Created: %{x:,}<br>"
+                    "Completion: %{customdata:.1f}%"
+                    "<extra></extra>"
+                ),
+                customdata=flow_work["LHC Completion %"],
+            )
+        )
+        flow_fig.add_trace(
+            go.Bar(
+                x=flow_work["LHC Pending"],
+                y=flow_work["Zone"],
+                name="LHC Pending",
+                orientation="h",
+                marker=dict(color="#f59e0b"),
+                text=[
+                    f"{int(v):,} | {pct:.1f}%"
+                    for v, pct in zip(flow_work["LHC Pending"], flow_work["LHC Pending %"])
+                ],
+                # Pending bars can be very small, so place the value outside
+                # the stacked bar to keep the number + % visible for every zone.
+                textposition="outside",
+                textfont=dict(color=CHART_TEXT_COLOR, size=10),
+                cliponaxis=False,
+                hovertemplate=(
+                    "<b>%{y}</b><br>"
+                    "LHC Pending: %{x:,}<br>"
+                    "Pending Share: %{customdata:.1f}%"
+                    "<extra></extra>"
+                ),
+                customdata=flow_work["LHC Pending %"],
+            )
+        )
+        _compact_chart_layout(
+            flow_fig,
+            height=max(285, min(520, 42 * len(flow_work) + 85)),
+            bottom_margin=42,
+        )
+        flow_fig.update_layout(
+            barmode="stack",
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.01,
+                xanchor="right",
+                x=1,
+                font=dict(size=9, color=CHART_TEXT_COLOR),
+            ),
+            bargap=0.28,
+        )
+        flow_fig.update_yaxes(showgrid=False, automargin=True)
+
+        # Extra right-side headroom keeps the outside pending labels from clipping.
+        flow_total = (flow_work["LHC Created"] + flow_work["LHC Pending"]).max()
+        if pd.notna(flow_total) and flow_total > 0:
+            flow_fig.update_xaxes(
+                showgrid=True,
+                gridcolor="#eef2f7",
+                range=[0, float(flow_total) * 1.16],
+            )
+        else:
+            flow_fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+
+        _render_chart_card("Zone-wise Winner → LHC Flow", flow_fig)
+
+    with st.expander("📋 Zone-wise Performance Table — expand / collapse", expanded=False):
+        zone_display = zone[
+            [
+                "Zone",
+                "Total Bids",
+                "Bid Share %",
+                "Query Bids",
+                "Query Rate %",
+                "Winner Bids",
+                "Winner Rate %",
+                "LHC Created",
+                "LHC Pending",
+                "LHC Completion %",
+                "LHC Pending %",
+                "L-1 Selected",
+                "Manual",
+                "Single Bidder",
+                "Circles",
+                "Branches",
+            ]
+        ].copy()
+
+        st.dataframe(
+            zone_display,
+            use_container_width=True,
+            hide_index=True,
+            height=min(520, 88 + 35 * len(zone_display)),
+            column_config={
+                "Zone": st.column_config.TextColumn("Zone", width="medium"),
+                "Total Bids": st.column_config.NumberColumn("Total Bids", format="%d"),
+                "Bid Share %": st.column_config.ProgressColumn("Bid Share %", min_value=0, max_value=100, format="%.1f%%"),
+                "Query Bids": st.column_config.NumberColumn("Query Bids", format="%d"),
+                "Query Rate %": st.column_config.ProgressColumn("Query Rate %", min_value=0, max_value=100, format="%.1f%%"),
+                "Winner Bids": st.column_config.NumberColumn("Winner Bids", format="%d"),
+                "Winner Rate %": st.column_config.ProgressColumn("Winner Rate %", min_value=0, max_value=100, format="%.1f%%"),
+                "LHC Created": st.column_config.NumberColumn("LHC Created", format="%d"),
+                "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
+                "LHC Completion %": st.column_config.ProgressColumn("LHC Completion %", min_value=0, max_value=100, format="%.1f%%"),
+                "LHC Pending %": st.column_config.ProgressColumn("LHC Pending %", min_value=0, max_value=100, format="%.1f%%"),
+                "L-1 Selected": st.column_config.NumberColumn("L-1", format="%d"),
+                "Manual": st.column_config.NumberColumn("Manual", format="%d"),
+                "Single Bidder": st.column_config.NumberColumn("Single Bidder", format="%d"),
+                "Circles": st.column_config.NumberColumn("Circles", format="%d"),
+                "Branches": st.column_config.NumberColumn("Branches", format="%d"),
+            },
+        )
+
+
+
+def render_bid_finalization_history(current_df, history_df, from_date, to_date):
+    """Winner bids in selected period + immediately previous historical winner rate."""
+    st.markdown("#### 💰 Winner Bid Finalization & Previous Rate Insight")
+    st.caption(
+        "Shows only winner bids falling in the selected dashboard period. For each winner bid, "
+        "Previous Winner Bid Amount is the immediately preceding winner bid for the same "
+        "Origin + Destination + Vehicle Type, even when that previous bid falls before the selected period. "
+        "Winner vendor does not need to be the same."
+    )
+
+    if current_df is None or current_df.empty or history_df is None or history_df.empty:
+        st.info("No winner-bid history is available for the selected view.")
+        return
+
+    required_current = {"ORIGINCITY", "DESTINATIONCITY", "VEHICLETYPE", "BIDOPENDT", "BIDID"}
+    if not required_current.issubset(current_df.columns):
+        st.info("Origin, destination or vehicle-type fields are not available for rate-history analysis.")
+        return
+
+    # Current dashboard data is used only to determine which route + vehicle
+    # combinations are relevant after all dashboard filters have been applied.
+    current_source = current_df.copy()
+    if "HAS_WINNER" in current_source.columns:
+        current_source = current_source[current_source["HAS_WINNER"].fillna(False).astype(bool)].copy()
+
+    current_source["BIDOPENDT"] = pd.to_datetime(current_source["BIDOPENDT"], errors="coerce")
+    from_ts = pd.Timestamp(from_date)
+    to_exclusive = pd.Timestamp(to_date) + pd.Timedelta(days=1)
+    current_source = current_source[
+        current_source["BIDOPENDT"].ge(from_ts)
+        & current_source["BIDOPENDT"].lt(to_exclusive)
+    ].copy()
+
+    current = (
+        current_source
+        .sort_values(["BIDOPENDT", "BIDID"], ascending=[False, False], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="first")
+        .copy()
+    )
+
+    current["ORIGIN_CLEAN"] = _clean_text_series(current["ORIGINCITY"])
+    current["DEST_CLEAN"] = _clean_text_series(current["DESTINATIONCITY"])
+    current["VEHICLE_CLEAN"] = _clean_text_series(current["VEHICLETYPE"])
+
+    combos = current.loc[
+        current["ORIGIN_CLEAN"].ne("")
+        & current["DEST_CLEAN"].ne("")
+        & current["VEHICLE_CLEAN"].ne(""),
+        ["ORIGIN_CLEAN", "DEST_CLEAN", "VEHICLE_CLEAN", "BIDOPENDT", "BIDID"],
+    ].copy()
+
+    if combos.empty:
+        st.info("No winner bids found in the selected period for the applied filters.")
+        return
+
+    combos["ROUTE_VEHICLE"] = (
+        combos["ORIGIN_CLEAN"] + " → " + combos["DEST_CLEAN"] + " | " + combos["VEHICLE_CLEAN"]
+    )
+    combo_options = combos.drop_duplicates("ROUTE_VEHICLE")["ROUTE_VEHICLE"].tolist()
+
+    selected_combo = st.selectbox(
+        "Route + Vehicle Type",
+        combo_options,
+        index=0,
+        key="bid_finalization_history_combo",
+    )
+
+    selected_row = combos.loc[combos["ROUTE_VEHICLE"].eq(selected_combo)].iloc[0]
+    origin = selected_row["ORIGIN_CLEAN"]
+    destination = selected_row["DEST_CLEAN"]
+    vehicle_type = selected_row["VEHICLE_CLEAN"]
+
+    # IMPORTANT: Do NOT restrict history to the selected dashboard period yet.
+    # Previous winner amount must be calculated on the complete historical
+    # winner sequence first.
+    hist = history_df.copy()
+    hist["BID_DATE"] = pd.to_datetime(hist["BID_DATE"], errors="coerce")
+    hist["BID_AMOUNT"] = pd.to_numeric(hist["BID_AMOUNT"], errors="coerce")
+
+    hist = hist[
+        _clean_text_series(hist["ORIGIN"]).str.upper().eq(str(origin).upper())
+        & _clean_text_series(hist["DESTINATION"]).str.upper().eq(str(destination).upper())
+        & _clean_text_series(hist["VEHICLE_TYPE"]).str.upper().eq(str(vehicle_type).upper())
+        & hist["BID_DATE"].notna()
+        & hist["BID_AMOUNT"].notna()
+    ].copy()
+
+    if hist.empty:
+        st.info("No historical winner bids found for this route and vehicle type.")
+        return
+
+    # One finalized winner record per BID.
+    hist = hist.drop_duplicates(subset=["BIDID"], keep="first").copy()
+
+    # Calculate previous winner rate in TRUE chronological order.
+    # If two bids have the same date, the lower BIDID is earlier and the higher
+    # BIDID is later, so BIDID ASC is used within the same date.
+    hist = hist.sort_values(["BID_DATE", "BIDID"], ascending=[True, True]).reset_index(drop=True)
+    hist["PREVIOUS_WINNER_BID_AMOUNT"] = hist["BID_AMOUNT"].shift(1)
+    hist["PREVIOUS_WINNER_BID_ID"] = hist["BIDID"].shift(1)
+    hist["PREVIOUS_WINNER_BID_DATE"] = hist["BID_DATE"].shift(1)
+    hist["PREVIOUS_WINNER_NAME"] = hist["WINNER_NAME"].shift(1)
+    hist["VS_PREVIOUS_WINNER_DIFF"] = hist["BID_AMOUNT"] - hist["PREVIOUS_WINNER_BID_AMOUNT"]
+    hist["VS_PREVIOUS_WINNER_PCT"] = (
+        hist["VS_PREVIOUS_WINNER_DIFF"]
+        .div(hist["PREVIOUS_WINNER_BID_AMOUNT"].replace(0, pd.NA))
+        .mul(100.0)
+    )
+
+    # Only AFTER previous-rate calculation, filter the rows that are displayed
+    # to the selected dashboard period.
+    period_hist = hist[
+        hist["BID_DATE"].ge(from_ts)
+        & hist["BID_DATE"].lt(to_exclusive)
+    ].copy()
+
+    # Respect current dashboard filters: show only winner BIDIDs that are present
+    # in the filtered dashboard data for this route + vehicle combination.
+    selected_current_bidids = set(
+        pd.to_numeric(
+            combos.loc[combos["ROUTE_VEHICLE"].eq(selected_combo), "BIDID"],
+            errors="coerce",
+        ).dropna().astype("int64").tolist()
+    )
+    if selected_current_bidids:
+        period_hist = period_hist[
+            pd.to_numeric(period_hist["BIDID"], errors="coerce")
+            .fillna(-1).astype("int64")
+            .isin(selected_current_bidids)
+        ].copy()
+
+    if period_hist.empty:
+        st.info("No winner bids for this route and vehicle type fall in the selected dashboard period.")
+        return
+
+    # Display latest winner bids first.
+    period_hist = period_hist.sort_values(
+        ["BID_DATE", "BIDID"], ascending=[False, False]
+    ).reset_index(drop=True)
+
+    latest = period_hist.iloc[0]
+    latest_rate = pd.to_numeric(latest["BID_AMOUNT"], errors="coerce")
+    previous_rate = pd.to_numeric(latest["PREVIOUS_WINNER_BID_AMOUNT"], errors="coerce")
+    diff_prev = pd.to_numeric(latest["VS_PREVIOUS_WINNER_DIFF"], errors="coerce")
+    diff_prev_pct = pd.to_numeric(latest["VS_PREVIOUS_WINNER_PCT"], errors="coerce")
+
+    comparable = period_hist[period_hist["PREVIOUS_WINNER_BID_AMOUNT"].notna()].copy()
+    rate_up = int(comparable["VS_PREVIOUS_WINNER_DIFF"].gt(0).sum())
+    rate_down = int(comparable["VS_PREVIOUS_WINNER_DIFF"].lt(0).sum())
+    rate_same = int(comparable["VS_PREVIOUS_WINNER_DIFF"].abs().le(0.01).sum())
+
+    k1, k2, k3, k4, k5 = st.columns(5, gap="small")
+    _kpi_card(
+        k1, "🏆 Winner Bids in Period", f"{int(period_hist['BIDID'].nunique()):,}",
+        f"{pd.Timestamp(from_date).strftime('%d-%m-%Y')} to {pd.Timestamp(to_date).strftime('%d-%m-%Y')}", "blue"
+    )
+    _kpi_card(
+        k2, "💵 Latest Winner Rate", _format_inr(latest_rate),
+        f"Bid {int(latest['BIDID'])}", "green"
+    )
+    _kpi_card(
+        k3, "↩️ Previous Winner Rate", _format_inr(previous_rate),
+        (("Prev Winner: " + str(latest["PREVIOUS_WINNER_NAME"])) if pd.notna(previous_rate) and pd.notna(latest.get("PREVIOUS_WINNER_NAME")) else "No earlier winner bid found"), "purple"
+    )
+    _kpi_card(
+        k4, "↕️ Latest Change", _format_inr(diff_prev),
+        "-" if pd.isna(diff_prev_pct) else f"{diff_prev_pct:+.1f}%", "orange"
+    )
+    _kpi_card(
+        k5, "📊 Period Movement", f"↑ {rate_up}  ↓ {rate_down}  = {rate_same}",
+        f"{len(comparable):,} comparable winner bids", "cyan"
+    )
+
+    st.caption(
+        "Logic: winner bids are displayed only for the selected dashboard period; "
+        "the previous amount is looked up from the full historical winner sequence for the same "
+        "Origin + Destination + Vehicle Type. The previous winner may therefore be before the selected From Date."
+    )
+
+    display = period_hist.head(10).copy()
+    display.insert(0, "S#", range(1, len(display) + 1))
+    display["REMARKS"] = display["REMARKS"].replace("", "winner")
+
+    display = display[
+        [
+            "S#", "BIDID", "BID_DATE", "VEHICLE_TYPE", "ORIGIN", "DESTINATION",
+            "WINNER_NAME", "BID_AMOUNT", "PREVIOUS_WINNER_BID_AMOUNT",
+            "PREVIOUS_WINNER_NAME", "PREVIOUS_WINNER_BID_ID", "PREVIOUS_WINNER_BID_DATE",
+            "VS_PREVIOUS_WINNER_DIFF", "VS_PREVIOUS_WINNER_PCT", "REMARKS"
+        ]
+    ].rename(columns={
+        "BIDID": "Bid ID",
+        "BID_DATE": "Bid Date",
+        "VEHICLE_TYPE": "Vehicle Type",
+        "ORIGIN": "Origin",
+        "DESTINATION": "Destination",
+        "WINNER_NAME": "Winner Name",
+        "BID_AMOUNT": "Winner Bid Amount",
+        "PREVIOUS_WINNER_BID_AMOUNT": "Previous Winner Bid Amount",
+        "PREVIOUS_WINNER_NAME": "Previous Winner Name",
+        "PREVIOUS_WINNER_BID_ID": "Previous Winner Bid ID",
+        "PREVIOUS_WINNER_BID_DATE": "Previous Winner Bid Date",
+        "VS_PREVIOUS_WINNER_DIFF": "Change vs Previous",
+        "VS_PREVIOUS_WINNER_PCT": "Change %",
+        "REMARKS": "Remarks",
+    })
+
+    with st.expander(
+        "📋 Winner Bid Finalization Summary — selected period, latest 10",
+        expanded=True,
+    ):
+        st.dataframe(
+            display,
+            use_container_width=True,
+            hide_index=True,
+            height=min(430, 78 + 35 * len(display)),
+            column_config={
+                "S#": st.column_config.NumberColumn("S#", format="%d", width="small"),
+                "Bid ID": st.column_config.NumberColumn("Bid ID", format="%d"),
+                "Bid Date": st.column_config.DatetimeColumn("Bid Date", format="DD-MM-YYYY"),
+                "Vehicle Type": st.column_config.TextColumn("Vehicle Type", width="medium"),
+                "Origin": st.column_config.TextColumn("Origin"),
+                "Destination": st.column_config.TextColumn("Destination"),
+                "Winner Name": st.column_config.TextColumn("Winner Name", width="large"),
+                "Winner Bid Amount": st.column_config.NumberColumn("Winner Bid Amount", format="₹ %.2f"),
+                "Previous Winner Bid Amount": st.column_config.NumberColumn("Previous Winner Bid Amount", format="₹ %.2f"),
+                "Previous Winner Name": st.column_config.TextColumn("Previous Winner Name", width="large"),
+                "Previous Winner Bid ID": st.column_config.NumberColumn("Prev Bid ID", format="%.0f"),
+                "Previous Winner Bid Date": st.column_config.DatetimeColumn("Prev Bid Date", format="DD-MM-YYYY"),
+                "Change vs Previous": st.column_config.NumberColumn("Change vs Previous", format="₹ %.2f"),
+                "Change %": st.column_config.NumberColumn("Change %", format="%.2f%%"),
+                "Remarks": st.column_config.TextColumn("Remarks"),
+            },
+        )
+
+def render_charts(df):
+    st.markdown("### Management Analysis")
+
+    # --------------------------------------------------------
+    # Row 1: primary volume rankings
+    # --------------------------------------------------------
+    left, right = st.columns(2, gap="small")
+
+    with left:
+        branch_data = (
+            df.groupby("BRANCH", dropna=False)["BIDID"]
+            .nunique()
+            .sort_values(ascending=False)
+            .head(12)
+            .rename("Bids")
+            .reset_index()
+        )
+
+        if not branch_data.empty:
+            branch_fig = _horizontal_bar_chart(
+                branch_data["BRANCH"],
+                branch_data["Bids"],
+                height=300,
+                value_name="Bids",
+            )
+            _render_chart_card("Top Branches by Bid Volume", branch_fig)
+        else:
+            with st.container(border=True):
+                st.markdown("<div class='bid-chart-title'>Top Branches by Bid Volume</div>", unsafe_allow_html=True)
+                st.info("No branch data available.")
+
+    with right:
+        route_data = (
+            df.assign(
+                ROUTE_CLEAN=_clean_text_series(df["ROUTE"]).replace("", "Not Available")
+            )
+            .groupby("ROUTE_CLEAN")["BIDID"]
+            .nunique()
+            .sort_values(ascending=False)
+            .head(12)
+            .rename("Bids")
+            .reset_index()
+        )
+
+        if not route_data.empty:
+            route_fig = _horizontal_bar_chart(
+                route_data["ROUTE_CLEAN"],
+                route_data["Bids"],
+                height=300,
+                value_name="Bids",
+            )
+            _render_chart_card("Top Routes by Bid Volume", route_fig)
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Top Routes by Bid Volume</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No route data available.")
+
+    # --------------------------------------------------------
+    # Row 2: composition insights + donuts
+    # --------------------------------------------------------
+    winner_counts = df.groupby("WINNER_MODE")["BIDID"].nunique()
+    preferred_winner_order = [
+        "L-1", "L-2", "L-3", "Manual", "Winner Level Not Defined", "No Winner"
+    ]
+    extra_winner_modes = [
+        mode for mode in winner_counts.index.tolist()
+        if mode not in preferred_winner_order
+    ]
+    winner_order = preferred_winner_order + sorted(extra_winner_modes)
+    winner_data = (
+        winner_counts
+        .reindex(winner_order)
+        .fillna(0)
+        .astype(int)
+        .rename("Bids")
+        .reset_index()
+    )
+    winner_data = winner_data[winner_data["Bids"].gt(0)]
+
+    participation_order = [
+        "No Bidder",
+        "1 Bidder",
+        "2 Bidders",
+        "3 Bidders",
+        "4+ Bidders",
+    ]
+    participation = (
+        df.groupby("BIDDER_BUCKET")["BIDID"]
+        .nunique()
+        .reindex(participation_order)
+        .fillna(0)
+        .astype(int)
+        .rename("Bids")
+        .reset_index()
+    )
+    participation = participation[participation["Bids"].gt(0)]
+
+    gap_data = (
+        df.groupby("GAP_STATUS")["BIDID"]
+        .nunique()
+        .reindex(["OK", "Issue", "Not Comparable"])
+        .fillna(0)
+        .astype(int)
+        .rename("Bids")
+        .reset_index()
+    )
+    gap_data = gap_data[gap_data["Bids"].gt(0)]
+
+    d1, d2, d3 = st.columns(3, gap="small")
+
+    with d1:
+        if not winner_data.empty:
+            winner_fig = _donut_chart(
+                winner_data["WINNER_MODE"],
+                winner_data["Bids"],
+                height=275,
+                center_label="Classified Bids",
+                colors=["#2563eb", "#60a5fa", "#93c5fd", "#ef4444", "#94a3b8", "#fca5a5"],
+            )
+            _render_chart_card("Winner Selection Mix", winner_fig)
+        else:
+            with st.container(border=True):
+                st.markdown("<div class='bid-chart-title'>Winner Selection Mix</div>", unsafe_allow_html=True)
+                st.info("No winner data available.")
+
+    with d2:
+        if not participation.empty:
+            participation_fig = _donut_chart(
+                participation["BIDDER_BUCKET"],
+                participation["Bids"],
+                height=275,
+                center_label="Unique Bids",
+                colors=["#1d4ed8", "#7cc0f2", "#ef4444", "#f5a3a7", "#14b8a6"],
+            )
+            _render_chart_card("Bidder Participation Mix", participation_fig)
+        else:
+            with st.container(border=True):
+                st.markdown("<div class='bid-chart-title'>Bidder Participation Mix</div>", unsafe_allow_html=True)
+                st.info("No bidder participation data available.")
+
+    with d3:
+        if not gap_data.empty:
+            gap_fig = _donut_chart(
+                gap_data["GAP_STATUS"],
+                gap_data["Bids"],
+                height=275,
+                center_label="Gap Checked",
+                colors=["#2563eb", "#7cc0f2", "#ef4444"],
+            )
+            _render_chart_card("₹500 Gap Compliance Mix", gap_fig)
+        else:
+            with st.container(border=True):
+                st.markdown("<div class='bid-chart-title'>₹500 Gap Compliance Mix</div>", unsafe_allow_html=True)
+                st.info("No gap-compliance data available.")
+
+    # --------------------------------------------------------
+    # Row 3: operational management views
+    # --------------------------------------------------------
+    left, right = st.columns(2, gap="small")
+
+    with left:
+        approved_user_data = (
+            df.assign(
+                APPROVEDBYUSER_CLEAN=_clean_text_series(df["APPROVEDBYUSER"]).replace("", "Not Available")
+            )
+            .groupby("APPROVEDBYUSER_CLEAN")["BIDID"]
+            .nunique()
+            .sort_values(ascending=False)
+            .head(12)
+            .rename("Bids")
+            .reset_index()
+        )
+
+        if not approved_user_data.empty:
+            approved_user_fig = _lollipop_chart(
+                approved_user_data["APPROVEDBYUSER_CLEAN"],
+                approved_user_data["Bids"],
+                height=300,
+                value_name="Handled Bids",
+            )
+            _render_chart_card(
+                "Bid Handling Workload — Top Users",
+                approved_user_fig,
+            )
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Bid Handling Workload — Top Users</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No approver data available.")
+
+    with right:
+        pending_df = df[df["LHC_STATUS"].eq("Winner - LHC Pending")].copy()
+
+        ageing_order = [
+            "0 Day",
+            "1 Day",
+            "2-3 Days",
+            "4-7 Days",
+            "8-15 Days",
+            "16-30 Days",
+            "31+ Days",
+        ]
+
+        if not pending_df.empty:
+            ageing_data = (
+                pending_df.groupby("LHC_AGEING_BUCKET")["BIDID"]
+                .nunique()
+                .reindex(ageing_order)
+                .fillna(0)
+                .astype(int)
+                .rename("Bids")
+                .reset_index()
+            )
+
+            ageing_fig = _ageing_chart_with_values(
+                ageing_data,
+                height=300,
+            )
+            _render_chart_card(
+                "Winner → LHC Pending Ageing  •  Count + % of Pending",
+                ageing_fig,
+            )
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Winner → LHC Pending Ageing</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No winner bids are pending for LHC.")
+
+    # --------------------------------------------------------
+    # Row 4: full-width time trend
+    # --------------------------------------------------------
+    _render_bid_trend_card(df)
+
+
+
+# ============================================================
+# VEHICLE TYPE INSIGHTS
+# ============================================================
+
+def render_vehicle_type_insights(df):
+    """Management view of bidding demand and controls by vehicle type."""
+    st.markdown("### Vehicle Type Insights")
+
+    if "VEHICLETYPE" not in df.columns or df.empty:
+        st.info("No vehicle type data available for the selected filters.")
+        return
+
+    # One BID contributes only once to vehicle-level metrics.
+    base = (
+        df.sort_values(["BIDID", "BIDOPENDT"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    base["VEHICLE_TYPE_CLEAN"] = (
+        _clean_text_series(base["VEHICLETYPE"])
+        .replace("", "Not Available")
+    )
+
+    base["QUERY_FLAG"] = (
+        _clean_text_series(base["QUERYBID"]).str.upper().eq("YES")
+    ).astype(int)
+    base["WINNER_FLAG"] = base["HAS_WINNER"].fillna(False).astype(int)
+    base["L1_FLAG"] = base["WINNER_MODE"].eq("L-1").astype(int)
+    base["MANUAL_FLAG"] = base["WINNER_MODE"].eq("Manual").astype(int)
+    base["SINGLE_BIDDER_FLAG"] = (
+        pd.to_numeric(base["BIDDER_COUNT"], errors="coerce").eq(1)
+    ).astype(int)
+    base["GAP_CHECKED_FLAG"] = base["GAP_STATUS"].isin(["OK", "Issue"]).astype(int)
+    base["GAP_VIOLATION_FLAG"] = base["GAP_STATUS"].eq("Issue").astype(int)
+    base["LHC_PENDING_FLAG"] = base["LHC_STATUS"].eq("Winner - LHC Pending").astype(int)
+    base["REPLIED_QUERY_FLAG"] = (
+        base.get("QUERY_RESPONSE_STATUS", pd.Series(index=base.index, dtype="object"))
+        .eq("Replied")
+    ).astype(int)
+
+    bidders_numeric = pd.to_numeric(base["BIDDER_COUNT"], errors="coerce")
+    base["BIDDERS_FOR_AVG"] = bidders_numeric.where(bidders_numeric.gt(0))
+    base["FINALRATE_NUM"] = pd.to_numeric(base["FINALRATE"], errors="coerce")
+    base["SAVING_VS_L1_NUM"] = pd.to_numeric(base["SAVING_VS_L1"], errors="coerce")
+    if "QUERY_RESPONSE_HOURS" in base.columns:
+        base["QUERY_RESPONSE_HOURS_NUM"] = pd.to_numeric(
+            base["QUERY_RESPONSE_HOURS"], errors="coerce"
+        )
+    else:
+        base["QUERY_RESPONSE_HOURS_NUM"] = pd.NA
+
+    vehicle = (
+        base.groupby("VEHICLE_TYPE_CLEAN", as_index=False)
+        .agg(
+            **{
+                "Bids": ("BIDID", "nunique"),
+                "Query Bids": ("QUERY_FLAG", "sum"),
+                "Winner Bids": ("WINNER_FLAG", "sum"),
+                "L1 Selected": ("L1_FLAG", "sum"),
+                "Manual Selected": ("MANUAL_FLAG", "sum"),
+                "Single Bidder": ("SINGLE_BIDDER_FLAG", "sum"),
+                "Gap Checked": ("GAP_CHECKED_FLAG", "sum"),
+                "Gap Issues": ("GAP_VIOLATION_FLAG", "sum"),
+                "LHC Pending": ("LHC_PENDING_FLAG", "sum"),
+                "Replied Queries": ("REPLIED_QUERY_FLAG", "sum"),
+                "Avg Bidders": ("BIDDERS_FOR_AVG", "mean"),
+                "Avg Final Rate": ("FINALRATE_NUM", "mean"),
+                "Avg Saving vs L1": ("SAVING_VS_L1_NUM", "mean"),
+                "Avg Query Response Hrs": ("QUERY_RESPONSE_HOURS_NUM", "mean"),
+                "Branches": ("BRANCH", "nunique"),
+                "Routes": ("ROUTE", "nunique"),
+            }
+        )
+        .rename(columns={"VEHICLE_TYPE_CLEAN": "Vehicle Type"})
+    )
+
+    if vehicle.empty:
+        st.info("No vehicle type data available for the selected filters.")
+        return
+
+    total_bids = int(vehicle["Bids"].sum())
+    vehicle["Share %"] = (
+        vehicle["Bids"].div(total_bids).mul(100.0) if total_bids else 0.0
+    )
+    vehicle["Query Rate %"] = (
+        vehicle["Query Bids"].div(vehicle["Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["Single Bidder %"] = (
+        vehicle["Single Bidder"].div(vehicle["Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["L1 Win %"] = (
+        vehicle["L1 Selected"].div(vehicle["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["Manual Win %"] = (
+        vehicle["Manual Selected"].div(vehicle["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["Gap Issue %"] = (
+        vehicle["Gap Issues"].div(vehicle["Gap Checked"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["LHC Pending %"] = (
+        vehicle["LHC Pending"].div(vehicle["Winner Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+    vehicle["Query Reply %"] = (
+        vehicle["Replied Queries"].div(vehicle["Query Bids"].replace(0, pd.NA)).mul(100.0).fillna(0.0)
+    )
+
+    vehicle["Avg Bidders"] = pd.to_numeric(vehicle["Avg Bidders"], errors="coerce").round(2)
+    vehicle["Avg Final Rate"] = pd.to_numeric(vehicle["Avg Final Rate"], errors="coerce").round(0)
+    vehicle["Avg Saving vs L1"] = pd.to_numeric(vehicle["Avg Saving vs L1"], errors="coerce").round(0)
+    vehicle["Avg Query Response Hrs"] = pd.to_numeric(
+        vehicle["Avg Query Response Hrs"], errors="coerce"
+    ).round(2)
+
+    vehicle = vehicle.sort_values(
+        ["Bids", "Query Bids", "Vehicle Type"],
+        ascending=[False, False, True],
+    ).reset_index(drop=True)
+
+    # --------------------------------------------------------
+    # Management KPIs
+    # --------------------------------------------------------
+    most_used = vehicle.iloc[0]
+
+    queried_candidates = vehicle[vehicle["Query Bids"].gt(0)]
+    most_queried = (
+        queried_candidates.sort_values(["Query Bids", "Query Rate %"], ascending=[False, False]).iloc[0]
+        if not queried_candidates.empty else None
+    )
+
+    # Small-volume vehicle types can distort rate KPIs, so use a practical
+    # minimum of 3 bids/winners while still showing ALL vehicle types below.
+    competition_candidates = vehicle[vehicle["Bids"].ge(3) & vehicle["Avg Bidders"].notna()]
+    if competition_candidates.empty:
+        competition_candidates = vehicle[vehicle["Avg Bidders"].notna()]
+    highest_competition = (
+        competition_candidates.sort_values(["Avg Bidders", "Bids"], ascending=[False, False]).iloc[0]
+        if not competition_candidates.empty else None
+    )
+
+    manual_candidates = vehicle[vehicle["Winner Bids"].ge(3)]
+    if manual_candidates.empty:
+        manual_candidates = vehicle[vehicle["Winner Bids"].gt(0)]
+    highest_manual = (
+        manual_candidates.sort_values(["Manual Win %", "Winner Bids"], ascending=[False, False]).iloc[0]
+        if not manual_candidates.empty else None
+    )
+
+    pending_candidates = vehicle[vehicle["Winner Bids"].ge(3)]
+    if pending_candidates.empty:
+        pending_candidates = vehicle[vehicle["Winner Bids"].gt(0)]
+    highest_pending = (
+        pending_candidates.sort_values(["LHC Pending %", "LHC Pending"], ascending=[False, False]).iloc[0]
+        if not pending_candidates.empty else None
+    )
+
+    k1, k2, k3, k4, k5 = st.columns(5, gap="small")
+    _kpi_card(
+        k1,
+        "🚚 Most Bid Vehicle",
+        str(most_used["Vehicle Type"]),
+        f"{int(most_used['Bids']):,} bids • {float(most_used['Share %']):.1f}% share",
+        "blue",
+    )
+    _kpi_card(
+        k2,
+        "💬 Most Query Bids",
+        str(most_queried["Vehicle Type"]) if most_queried is not None else "-",
+        (
+            f"{int(most_queried['Query Bids']):,} queries • {float(most_queried['Query Rate %']):.1f}% rate"
+            if most_queried is not None else "No query bids"
+        ),
+        "purple",
+    )
+    _kpi_card(
+        k3,
+        "👥 Highest Avg Bidders",
+        str(highest_competition["Vehicle Type"]) if highest_competition is not None else "-",
+        (
+            f"{float(highest_competition['Avg Bidders']):.2f} bidders • {int(highest_competition['Bids']):,} bids"
+            if highest_competition is not None else "No bidder data"
+        ),
+        "cyan",
+    )
+    _kpi_card(
+        k4,
+        "✍️ Highest Manual Share",
+        str(highest_manual["Vehicle Type"]) if highest_manual is not None else "-",
+        (
+            f"{float(highest_manual['Manual Win %']):.1f}% • {int(highest_manual['Manual Selected']):,} manual wins"
+            if highest_manual is not None else "No winner data"
+        ),
+        "orange",
+    )
+    _kpi_card(
+        k5,
+        "⏳ Highest LHC Pending %",
+        str(highest_pending["Vehicle Type"]) if highest_pending is not None else "-",
+        (
+            f"{float(highest_pending['LHC Pending %']):.1f}% • {int(highest_pending['LHC Pending']):,} pending"
+            if highest_pending is not None else "No winner data"
+        ),
+        "red",
+    )
+
+    # --------------------------------------------------------
+    # Charts - Top N selector applies to BOTH vehicle charts.
+    # --------------------------------------------------------
+    topn_label, topn_control = st.columns([8.7, 1.3], gap="small", vertical_alignment="center")
+    with topn_label:
+        st.markdown("#### Vehicle Type Charts")
+    with topn_control:
+        top_n = st.selectbox(
+            "Top N",
+            [10, 20, 30],
+            index=0,
+            key="vehicle_insights_top_n",
+            help="Show Top 10, 20 or 30 vehicle types in both charts.",
+        )
+
+    # Use the same Top N vehicle set for both charts so the comparison stays aligned.
+    chart_vehicle = (
+        vehicle.sort_values(["Bids", "Winner Bids", "Vehicle Type"], ascending=[False, False, True])
+        .head(int(top_n))
+        .copy()
+    )
+
+    chart_height = min(1400, max(320, 44 * len(chart_vehicle) + 90))
+
+    with st.container(height=540, border=False):
+        chart_left, chart_right = st.columns(2, gap="small")
+
+        with chart_left:
+            volume_fig = _horizontal_bar_chart(
+                chart_vehicle["Vehicle Type"],
+                chart_vehicle["Bids"],
+                height=chart_height,
+                value_name="Bids",
+            )
+            _render_chart_card(f"Vehicle Type Bid Volume — Top {top_n}", volume_fig)
+
+        with chart_right:
+            winner_mix = chart_vehicle[
+                ["Vehicle Type", "L1 Selected", "Manual Selected", "Winner Bids"]
+            ].copy()
+            winner_mix["Other Winner"] = (
+                winner_mix["Winner Bids"]
+                - winner_mix["L1 Selected"]
+                - winner_mix["Manual Selected"]
+            ).clip(lower=0)
+            winner_mix = winner_mix.sort_values("Winner Bids", ascending=True)
+
+            mix_fig = go.Figure()
+            mix_fig.add_trace(
+                go.Bar(
+                    x=winner_mix["L1 Selected"],
+                    y=winner_mix["Vehicle Type"],
+                    name="L-1",
+                    orientation="h",
+                    marker=dict(color="#16a34a"),
+                    hovertemplate="<b>%{y}</b><br>L-1 Winners: %{x:,}<extra></extra>",
+                )
+            )
+            mix_fig.add_trace(
+                go.Bar(
+                    x=winner_mix["Manual Selected"],
+                    y=winner_mix["Vehicle Type"],
+                    name="Manual",
+                    orientation="h",
+                    marker=dict(color="#f59e0b"),
+                    hovertemplate="<b>%{y}</b><br>Manual Winners: %{x:,}<extra></extra>",
+                )
+            )
+            if winner_mix["Other Winner"].gt(0).any():
+                mix_fig.add_trace(
+                    go.Bar(
+                        x=winner_mix["Other Winner"],
+                        y=winner_mix["Vehicle Type"],
+                        name="L-2 / L-3 / Other",
+                        orientation="h",
+                        marker=dict(color="#94a3b8"),
+                        hovertemplate="<b>%{y}</b><br>L-2 / L-3 / Other Winners: %{x:,}<extra></extra>",
+                    )
+                )
+
+            _compact_chart_layout(mix_fig, height=chart_height, bottom_margin=42)
+            mix_fig.update_layout(
+                barmode="stack",
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.01,
+                    xanchor="right",
+                    x=1,
+                    font=dict(size=9, color=CHART_TEXT_COLOR),
+                ),
+                bargap=0.28,
+            )
+            mix_fig.update_yaxes(showgrid=False, automargin=True)
+            mix_fig.update_xaxes(showgrid=True, gridcolor="#eef2f7")
+            _render_chart_card(f"Vehicle Type Winner Mix — Top {top_n} • L-1 vs Manual", mix_fig)
+
+    # --------------------------------------------------------
+    # Detailed insight table for all vehicle types.
+    # --------------------------------------------------------
+    st.markdown("#### Vehicle-wise Performance & Control Matrix")
+
+    display_cols = [
+        "Vehicle Type",
+        "Bids",
+        "Share %",
+        "Query Bids",
+        "Query Rate %",
+        "Query Reply %",
+        "Avg Query Response Hrs",
+        "Avg Bidders",
+        "Single Bidder %",
+        "Winner Bids",
+        "L1 Selected",
+        "L1 Win %",
+        "Manual Selected",
+        "Manual Win %",
+        "Gap Issues",
+        "Gap Issue %",
+        "LHC Pending",
+        "LHC Pending %",
+        "Avg Final Rate",
+        "Avg Saving vs L1",
+        "Branches",
+        "Routes",
+    ]
+
+    vehicle_display = vehicle[display_cols].copy()
+
+    with st.expander("📋 Show / Hide Vehicle-wise Performance Table", expanded=False):
+        st.dataframe(
+            vehicle_display,
+            use_container_width=True,
+            hide_index=True,
+            height=min(620, 88 + 35 * len(vehicle_display)),
+            column_config={
+                "Vehicle Type": st.column_config.TextColumn("Vehicle Type", width="medium"),
+                "Bids": st.column_config.NumberColumn("Bids", format="%d"),
+                "Share %": st.column_config.ProgressColumn("Bid Share %", min_value=0, max_value=100, format="%.1f%%"),
+                "Query Bids": st.column_config.NumberColumn("Query Bids", format="%d"),
+                "Query Rate %": st.column_config.ProgressColumn("Query Rate %", min_value=0, max_value=100, format="%.1f%%"),
+                "Query Reply %": st.column_config.ProgressColumn("Query Reply %", min_value=0, max_value=100, format="%.1f%%"),
+                "Avg Query Response Hrs": st.column_config.NumberColumn("Avg Query TAT (Hrs)", format="%.2f"),
+                "Avg Bidders": st.column_config.NumberColumn("Avg Bidders", format="%.2f"),
+                "Single Bidder %": st.column_config.ProgressColumn("Single Bidder %", min_value=0, max_value=100, format="%.1f%%"),
+                "Winner Bids": st.column_config.NumberColumn("Winner Bids", format="%d"),
+                "L1 Selected": st.column_config.NumberColumn("L-1", format="%d"),
+                "L1 Win %": st.column_config.ProgressColumn("L-1 Win %", min_value=0, max_value=100, format="%.1f%%"),
+                "Manual Selected": st.column_config.NumberColumn("Manual", format="%d"),
+                "Manual Win %": st.column_config.ProgressColumn("Manual Win %", min_value=0, max_value=100, format="%.1f%%"),
+                "Gap Issues": st.column_config.NumberColumn("Gap Issues", format="%d"),
+                "Gap Issue %": st.column_config.ProgressColumn("Gap Issue %", min_value=0, max_value=100, format="%.1f%%"),
+                "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
+                "LHC Pending %": st.column_config.ProgressColumn("LHC Pending %", min_value=0, max_value=100, format="%.1f%%"),
+                "Avg Final Rate": st.column_config.NumberColumn("Avg Final Rate", format="₹ %.0f"),
+                "Avg Saving vs L1": st.column_config.NumberColumn("Avg Saving vs L1", format="₹ %.0f"),
+                "Branches": st.column_config.NumberColumn("Branches", format="%d"),
+                "Routes": st.column_config.NumberColumn("Routes", format="%d"),
+            },
+        )
+
+    csv_data = vehicle_display.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        "⬇️ Download Vehicle Type Insights",
+        data=csv_data,
+        file_name="vehicle_type_bidding_insights.csv",
+        mime="text/csv",
+        key="download_vehicle_type_insights",
+    )
+
+
+# ============================================================
+# QUERY RESPONSE MONITORING
+# ============================================================
+
+def render_query_response_analysis(df):
+    """Track query arrival, reply time, turnaround and the approver/user."""
+    st.markdown("### Query Response Monitoring")
+
+    query_df = df[
+        _clean_text_series(df["QUERYBID"]).str.upper().eq("YES")
+    ].copy()
+
+    if query_df.empty:
+        st.info("No query bids are available for the selected filters.")
+        return
+
+    # One row per BID for management counts.
+    query_df = (
+        query_df
+        .sort_values(["BIDID", "QUERY_RECEIVED_ON"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    total_queries = int(query_df["BIDID"].nunique())
+    replied_queries = int(
+        query_df.loc[query_df["QUERY_RESPONSE_STATUS"].eq("Replied"), "BIDID"].nunique()
+    )
+    query_to_bid = int(
+        query_df.loc[
+            _clean_text_series(query_df["QUERYTOBID"]).str.upper().eq("YES"),
+            "BIDID",
+        ].nunique()
+    )
+    pending_queries = int(
+        query_df.loc[query_df["QUERY_RESPONSE_STATUS"].eq("Pending Reply"), "BIDID"].nunique()
+    )
+    invalid_dates = int(
+        query_df.loc[query_df["QUERY_RESPONSE_STATUS"].eq("Check Dates"), "BIDID"].nunique()
+    )
+
+    avg_response = query_df.loc[
+        query_df["QUERY_RESPONSE_STATUS"].eq("Replied"),
+        "QUERY_RESPONSE_HOURS",
+    ].mean()
+
+    query_to_bid_pct = (query_to_bid / total_queries * 100.0) if total_queries else 0.0
+
+    q1, q2, q3, q4, q5 = st.columns(5, gap="small")
+    _kpi_card(q1, "💬 Query Bids", f"{total_queries:,}", "Queries in selected period", "purple")
+    _kpi_card(q2, "✅ Replied", f"{replied_queries:,}", "Reply update available", "green")
+    _kpi_card(
+        q3,
+        "➡️ Query → Bid",
+        f"{query_to_bid:,}",
+        f"{query_to_bid_pct:.1f}% of query bids",
+        "blue",
+    )
+    _kpi_card(q4, "⏳ Pending Reply", f"{pending_queries:,}", "No reply update yet", "red")
+    _kpi_card(
+        q5,
+        "⏱ Avg Response Time",
+        "-" if pd.isna(avg_response) else f"{avg_response:.1f} hrs",
+        f"{invalid_dates:,} records need date check" if invalid_dates else "Received → reply update",
+        "cyan",
+    )
+
+    # Delay-control KPIs. For replied queries use actual response time; for
+    # pending queries use the current pending age so open delays are visible too.
+    query_df["QUERY_EFFECTIVE_HOURS"] = query_df["QUERY_RESPONSE_HOURS"]
+    pending_mask = query_df["QUERY_RESPONSE_STATUS"].eq("Pending Reply")
+    query_df.loc[pending_mask, "QUERY_EFFECTIVE_HOURS"] = query_df.loc[
+        pending_mask, "QUERY_PENDING_HOURS"
+    ]
+
+    over_2 = int(query_df.loc[query_df["QUERY_EFFECTIVE_HOURS"].gt(2), "BIDID"].nunique())
+    over_4 = int(query_df.loc[query_df["QUERY_EFFECTIVE_HOURS"].gt(4), "BIDID"].nunique())
+    over_8 = int(query_df.loc[query_df["QUERY_EFFECTIVE_HOURS"].gt(8), "BIDID"].nunique())
+    over_24 = int(query_df.loc[query_df["QUERY_EFFECTIVE_HOURS"].gt(24), "BIDID"].nunique())
+
+    d1, d2, d3, d4 = st.columns(4, gap="small")
+    _kpi_card(d1, "⚠️ > 2 Hours", f"{over_2:,}", "Replied late + currently pending", "amber")
+    _kpi_card(d2, "⚠️ > 4 Hours", f"{over_4:,}", "Replied late + currently pending", "orange")
+    _kpi_card(d3, "🚨 > 8 Hours", f"{over_8:,}", "Replied late + currently pending", "red")
+    _kpi_card(d4, "🛑 > 24 Hours", f"{over_24:,}", "Critical response delay", "rose")
+
+    left, right = st.columns(2, gap="small")
+
+    with left:
+        response_order = [
+            "≤ 2 Hours",
+            "2-4 Hours",
+            "4-8 Hours",
+            "8-24 Hours",
+            "24+ Hours",
+            "Pending",
+            "Check Dates",
+        ]
+        response_mix = (
+            query_df.groupby("QUERY_RESPONSE_BUCKET")["BIDID"]
+            .nunique()
+            .reindex(response_order)
+            .fillna(0)
+            .astype(int)
+            .rename("Bids")
+            .reset_index()
+        )
+        response_mix = response_mix[response_mix["Bids"].gt(0)]
+
+        if not response_mix.empty:
+            total_queries_chart = int(response_mix["Bids"].sum())
+            response_mix["Percent"] = (
+                response_mix["Bids"] / total_queries_chart * 100.0
+                if total_queries_chart else 0.0
+            )
+
+            # Keep the same category color sequence used in the existing donut chart.
+            response_colors = [
+                "#0d6efd",  # ≤ 2 Hours
+                "#83c9ff",  # 2-4 Hours
+                "#ff2b2b",  # 4-8 Hours
+                "#ffabab",  # 8-24 Hours
+                "#29b09d",  # 24+ Hours
+                "#7defa1",  # Pending
+                "#f5a623",  # Check Dates
+            ]
+
+            response_fig = go.Figure(
+                go.Bar(
+                    x=response_mix["QUERY_RESPONSE_BUCKET"],
+                    y=response_mix["Bids"],
+                    marker=dict(
+                        color=response_colors[:len(response_mix)],
+                        line=dict(color="#ffffff", width=0.8),
+                    ),
+                    text=[
+                        f"{int(count):,} | {pct:.1f}%"
+                        for count, pct in zip(
+                            response_mix["Bids"],
+                            response_mix["Percent"],
+                        )
+                    ],
+                    textposition="outside",
+                    textfont=dict(size=10, color=CHART_TEXT_COLOR),
+                    cliponaxis=False,
+                    customdata=response_mix["Percent"],
+                    hovertemplate=(
+                        "<b>%{x}</b><br>"
+                        "Queries: %{y:,}<br>"
+                        "Share: %{customdata:.1f}%"
+                        "<extra></extra>"
+                    ),
+                )
+            )
+
+            max_value = int(response_mix["Bids"].max()) if not response_mix.empty else 0
+            if max_value > 0:
+                response_fig.update_yaxes(range=[0, max_value * 1.20])
+
+            _compact_chart_layout(response_fig, height=255, bottom_margin=48)
+            response_fig.update_layout(bargap=0.28, showlegend=False)
+            response_fig.update_xaxes(tickangle=0)
+
+            _render_chart_card("Query Response Time Mix", response_fig)
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Query Response Time Mix</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No response-time data available.")
+
+    with right:
+        approver_work = (
+            query_df.assign(
+                APPROVER_CLEAN=_clean_text_series(query_df["APPROVEDBYUSER"]).replace("", "Not Available")
+            )
+            .groupby("APPROVER_CLEAN")["BIDID"]
+            .nunique()
+            .sort_values(ascending=False)
+            .head(12)
+            .rename("Queries")
+            .reset_index()
+        )
+
+        if not approver_work.empty:
+            approver_fig = _lollipop_chart(
+                approver_work["APPROVER_CLEAN"],
+                approver_work["Queries"],
+                height=255,
+                value_name="Query Bids",
+            )
+            _render_chart_card("Query Handling by Approver", approver_fig)
+        else:
+            with st.container(border=True):
+                st.markdown(
+                    "<div class='bid-chart-title'>Query Handling by Approver</div>",
+                    unsafe_allow_html=True,
+                )
+                st.info("No approver data available.")
+
+    st.markdown("#### Query-wise Response Tracker")
+    st.caption(
+        "Query Received On = GENERATEDDATE • Reply Sent/Updated On = REPLYUPDATEON • "
+        "Handled By = APPROVEDBYUSER"
+    )
+
+    # Human-readable delay band for quick control review.
+    def query_delay_status(row):
+        status = row.get("QUERY_RESPONSE_STATUS")
+        hours = row.get("QUERY_EFFECTIVE_HOURS")
+
+        if status == "Check Dates":
+            return "Check Dates"
+        if pd.isna(hours):
+            return "-"
+        if hours > 24:
+            return "> 24 Hours"
+        if hours > 8:
+            return "8-24 Hours"
+        if hours > 4:
+            return "4-8 Hours"
+        if hours > 2:
+            return "2-4 Hours"
+        return "Within 2 Hours"
+
+    query_df["QUERY_DELAY_STATUS"] = query_df.apply(query_delay_status, axis=1)
+
+    tracker = query_df[
+        [
+            "BIDID",
+            "BRANCH",
+            "ROUTE",
+            "QUERY_RECEIVED_ON",
+            "QUERY_REPLY_ON",
+            "QUERY_RESPONSE_STATUS",
+            "QUERY_DELAY_STATUS",
+            "QUERY_RESPONSE_HOURS",
+            "QUERY_PENDING_HOURS",
+            "APPROVEDBYUSER",
+            "QUERY_AMOUNT",
+            "WINNER_NAME",
+            "FINALRATE",
+        ]
+    ].copy()
+
+    tracker = tracker.sort_values(
+        ["QUERY_RESPONSE_STATUS", "QUERY_RECEIVED_ON", "BIDID"],
+        ascending=[True, False, False],
+        na_position="last",
+    )
+
+    with st.expander("📋 Show / Hide Query-wise Response Tracker", expanded=False):
+        st.dataframe(
+            tracker,
+            use_container_width=True,
+            hide_index=True,
+            height=390,
+            column_config={
+                "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
+                "BRANCH": st.column_config.TextColumn("Branch"),
+                "ROUTE": st.column_config.TextColumn("Route", width="large"),
+                "QUERY_RECEIVED_ON": st.column_config.DatetimeColumn(
+                    "Query Received On", format="DD/MM/YYYY HH:mm"
+                ),
+                "QUERY_REPLY_ON": st.column_config.DatetimeColumn(
+                    "Reply Sent / Updated On", format="DD/MM/YYYY HH:mm"
+                ),
+                "QUERY_RESPONSE_STATUS": st.column_config.TextColumn("Reply Status"),
+                "QUERY_DELAY_STATUS": st.column_config.TextColumn("Delay Band"),
+                "QUERY_RESPONSE_HOURS": st.column_config.NumberColumn(
+                    "Response Time (hrs)", format="%.2f"
+                ),
+                "QUERY_PENDING_HOURS": st.column_config.NumberColumn(
+                    "Pending Age (hrs)", format="%.1f"
+                ),
+                "APPROVEDBYUSER": st.column_config.TextColumn("Handled / Approved By"),
+                "QUERY_AMOUNT": st.column_config.NumberColumn("Query Amount", format="₹ %.2f"),
+                "WINNER_NAME": st.column_config.TextColumn("Winner"),
+                "FINALRATE": st.column_config.NumberColumn("Final Rate", format="₹ %.2f"),
+            },
+        )
+
+
+# ============================================================
+# VENDOR WINNER PERFORMANCE
+# ============================================================
+
+def _vendor_participation_rows(df):
+    """Build one row per Vendor x Bid for accurate wins/losses."""
+    base = (
+        df.sort_values(["BIDID", "BIDOPENDT"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    rows = []
+
+    for _, row in base.iterrows():
+        bidid = row.get("BIDID")
+        winner_value = row.get("WINNER_NAME")
+        winner = "" if pd.isna(winner_value) else str(winner_value).strip()
+        winner_key = winner.upper()
+        seen = set()
+
+        raw_value = row.get("BIDDER_VENDOR_LIST")
+        raw_list = "" if pd.isna(raw_value) else str(raw_value).strip()
+
+        if raw_list:
+            for token in raw_list.split("|||"):
+                token = token.strip()
+                if not token:
+                    continue
+
+                if "::" in token:
+                    vendcode, vendor = token.split("::", 1)
+                else:
+                    vendcode, vendor = "", token
+
+                vendcode = vendcode.strip()
+                vendor = vendor.strip()
+                vendor_key = vendor.upper()
+
+                if not vendor or vendor_key in seen:
+                    continue
+
+                seen.add(vendor_key)
+                rows.append(
+                    {
+                        "BIDID": bidid,
+                        "Vendor Code": vendcode,
+                        "Vendor": vendor,
+                        "Is Win": int(bool(winner_key) and vendor_key == winner_key),
+                    }
+                )
+        else:
+            # Backward-compatible fallback for cached data loaded before the
+            # all-bidder SQL field existed. Refreshing the dashboard loads all bidders.
+            for col in ["L_1_NAME", "L_2_NAME", "L_3_NAME"]:
+                vendor_value = row.get(col)
+                vendor = "" if pd.isna(vendor_value) else str(vendor_value).strip()
+                vendor_key = vendor.upper()
+                if not vendor or vendor_key in seen:
+                    continue
+                seen.add(vendor_key)
+                rows.append(
+                    {
+                        "BIDID": bidid,
+                        "Vendor Code": "",
+                        "Vendor": vendor,
+                        "Is Win": int(bool(winner_key) and vendor_key == winner_key),
+                    }
+                )
+
+        # Defensive: keep a selected winner in the vendor table even if the bidder
+        # list is incomplete because of source-data issues.
+        if winner and winner_key not in seen:
+            rows.append(
+                {
+                    "BIDID": bidid,
+                    "Vendor Code": "",
+                    "Vendor": winner,
+                    "Is Win": 1,
+                }
+            )
+
+    if not rows:
+        return pd.DataFrame(columns=["BIDID", "Vendor Code", "Vendor", "Is Win"])
+
+    participation = pd.DataFrame(rows)
+    participation["Vendor Key"] = _clean_text_series(participation["Vendor"]).str.upper()
+
+    # One vendor can appear only once per bid in performance calculations.
+    participation = (
+        participation.sort_values(["BIDID", "Is Win"], ascending=[True, False])
+        .drop_duplicates(subset=["BIDID", "Vendor Key"], keep="first")
+        .copy()
+    )
+    return participation
+
+
+def _vendor_win_loss_chart(vendor_table, height=330):
+    """Top vendor participation split into won and lost bids."""
+    work = vendor_table.sort_values(
+        ["Bid Participations", "Winner Bids"], ascending=[False, False]
+    ).head(12).copy()
+    work = work.sort_values("Bid Participations", ascending=True)
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=work["Winner Bids"],
+            y=work["Vendor"],
+            name="Won",
+            orientation="h",
+            marker=dict(color="#16a34a"),
+            hovertemplate="<b>%{y}</b><br>Won: %{x:,}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            x=work["Lost Bids"],
+            y=work["Vendor"],
+            name="Lost",
+            orientation="h",
+            marker=dict(color="#cbd5e1"),
+            hovertemplate="<b>%{y}</b><br>Lost: %{x:,}<extra></extra>",
+        )
+    )
+
+    _compact_chart_layout(fig, height=height, bottom_margin=42)
+    fig.update_layout(
+        barmode="stack",
+        showlegend=True,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.01,
+            xanchor="right",
+            x=1,
+            font=dict(size=9, color=CHART_TEXT_COLOR),
+        ),
+        bargap=0.28,
+    )
+    fig.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=9, color=CHART_TEXT_COLOR))
+    fig.update_xaxes(showgrid=True, gridcolor="#eef2f7", tickfont=dict(size=9, color=CHART_TEXT_COLOR))
+    return fig
+
+
+def _vendor_win_rate_chart(vendor_table, height=330):
+    """Dot plot of vendor win rate, restricted to meaningful participation."""
+    work = vendor_table[vendor_table["Bid Participations"].gt(0)].copy()
+    work = work.sort_values(
+        ["Bid Participations", "Win Rate %"], ascending=[False, False]
+    ).head(12)
+    work = work.sort_values("Win Rate %", ascending=True)
+
+    fig = go.Figure(
+        go.Scatter(
+            x=work["Win Rate %"],
+            y=work["Vendor"],
+            mode="markers+text",
+            text=[f"{v:.1f}%" for v in work["Win Rate %"]],
+            textposition="middle right",
+            textfont=dict(size=9, color=CHART_TEXT_COLOR),
+            marker=dict(
+                size=10,
+                color="#7c3aed",
+                line=dict(color="#ffffff", width=1.5),
+            ),
+            customdata=work[["Bid Participations", "Winner Bids", "Lost Bids"]],
+            hovertemplate=(
+                "<b>%{y}</b><br>Win Rate: %{x:.1f}%<br>"
+                "Participations: %{customdata[0]:,}<br>"
+                "Won: %{customdata[1]:,}<br>"
+                "Lost: %{customdata[2]:,}<extra></extra>"
+            ),
+            showlegend=False,
+        )
+    )
+
+    _compact_chart_layout(fig, height=height, bottom_margin=42)
+    fig.update_xaxes(
+        range=[0, 108],
+        ticksuffix="%",
+        dtick=20,
+        showgrid=True,
+        gridcolor="#eef2f7",
+    )
+    fig.update_yaxes(showgrid=False, automargin=True, tickfont=dict(size=9, color=CHART_TEXT_COLOR))
+    return fig
+
+
+def render_vendor_performance(df):
+    st.markdown("### Vendor Performance — Wins, Losses & Conversion")
+
+    participation = _vendor_participation_rows(df)
+
+    if participation.empty:
+        st.info("No vendor participation data available for the selected filters.")
+        return
+
+    participation_summary = (
+        participation.groupby("Vendor", as_index=False)
+        .agg(
+            **{
+                "Bid Participations": ("BIDID", "nunique"),
+                "Winner Bids": ("Is Win", "sum"),
+            }
+        )
+    )
+    participation_summary["Lost Bids"] = (
+        participation_summary["Bid Participations"] - participation_summary["Winner Bids"]
+    ).clip(lower=0)
+    participation_summary["Win Rate %"] = (
+        participation_summary["Winner Bids"]
+        .div(participation_summary["Bid Participations"].replace(0, pd.NA))
+        .mul(100.0)
+        .fillna(0.0)
+    )
+    participation_summary["Loss Rate %"] = 100.0 - participation_summary["Win Rate %"]
+
+    winner_df = df[
+        df["HAS_WINNER"]
+        & _clean_text_series(df["WINNER_NAME"]).ne("")
+    ].copy()
+
+    # Defensive: one BID should contribute only once to winner statistics.
+    winner_df = (
+        winner_df
+        .sort_values(["BIDID", "BIDOPENDT"], na_position="last")
+        .drop_duplicates(subset=["BIDID"], keep="last")
+        .copy()
+    )
+
+    if not winner_df.empty:
+        winner_df["L1_WIN_FLAG"] = (
+            winner_df["WINNER_VS_L1"].eq("Winner = L1")
+        ).astype(int)
+
+        winner_df["MANUAL_WIN_FLAG"] = (
+            winner_df["WINNER_MODE"].eq("Manual")
+        ).astype(int)
+
+        winner_df["LHC_CREATED_FLAG"] = (
+            winner_df["LHC_STATUS"].eq("LHC Created")
+        ).astype(int)
+
+        winner_df["LHC_PENDING_FLAG"] = (
+            winner_df["LHC_STATUS"].eq("Winner - LHC Pending")
+        ).astype(int)
+
+        winner_df["SINGLE_BIDDER_WIN_FLAG"] = (
+            pd.to_numeric(winner_df["BIDDER_COUNT"], errors="coerce").eq(1)
+        ).astype(int)
+
+        winner_metrics = (
+            winner_df.groupby("WINNER_NAME", as_index=False)
+            .agg(
+                **{
+                    "L1 Wins": ("L1_WIN_FLAG", "sum"),
+                    "Manual Wins": ("MANUAL_WIN_FLAG", "sum"),
+                    "LHC Created": ("LHC_CREATED_FLAG", "sum"),
+                    "LHC Pending": ("LHC_PENDING_FLAG", "sum"),
+                    "Single Bidder Wins": ("SINGLE_BIDDER_WIN_FLAG", "sum"),
+                    "Avg Bidders": ("BIDDER_COUNT", "mean"),
+                    "Avg Saving vs L1": ("SAVING_VS_L1", "mean"),
+                    "Branches": ("BRANCH", "nunique"),
+                    "Routes": ("ROUTE", "nunique"),
+                    "Last Win": ("BIDOPENDT", "max"),
+                    "Oldest Pending Days": ("LHC_PENDING_AGE_DAYS", "max"),
+                }
+            )
+            .rename(columns={"WINNER_NAME": "Vendor"})
+        )
+    else:
+        winner_metrics = pd.DataFrame(columns=["Vendor"])
+
+    vendor_table = participation_summary.merge(
+        winner_metrics,
+        on="Vendor",
+        how="left",
+    )
+
+    total_winner_bids = int(winner_df["BIDID"].nunique()) if not winner_df.empty else 0
+    vendor_table["Win Share %"] = (
+        vendor_table["Winner Bids"] / total_winner_bids * 100.0
+        if total_winner_bids else 0.0
+    )
+
+    count_cols = [
+        "L1 Wins",
+        "Manual Wins",
+        "LHC Created",
+        "LHC Pending",
+        "Single Bidder Wins",
+        "Branches",
+        "Routes",
+    ]
+    for col in count_cols:
+        if col not in vendor_table.columns:
+            vendor_table[col] = 0
+        vendor_table[col] = pd.to_numeric(vendor_table[col], errors="coerce").fillna(0).astype(int)
+
+    vendor_table["LHC Pending %"] = (
+        vendor_table["LHC Pending"]
+        .div(vendor_table["Winner Bids"].replace(0, pd.NA))
+        .mul(100.0)
+        .fillna(0.0)
+    )
+
+    for col in ["Avg Bidders", "Avg Saving vs L1"]:
+        if col not in vendor_table.columns:
+            vendor_table[col] = pd.NA
+
+    vendor_table["Avg Bidders"] = pd.to_numeric(
+        vendor_table["Avg Bidders"], errors="coerce"
+    ).round(2)
+
+    vendor_table["Avg Saving vs L1"] = pd.to_numeric(
+        vendor_table["Avg Saving vs L1"], errors="coerce"
+    ).round(0)
+
+    if "Oldest Pending Days" not in vendor_table.columns:
+        vendor_table["Oldest Pending Days"] = 0
+    vendor_table["Oldest Pending Days"] = pd.to_numeric(
+        vendor_table["Oldest Pending Days"], errors="coerce"
+    ).fillna(0).astype(int)
+
+    if "Last Win" not in vendor_table.columns:
+        vendor_table["Last Win"] = pd.NaT
+
+    vendor_table = vendor_table.sort_values(
+        ["Bid Participations", "Winner Bids", "Win Rate %", "Vendor"],
+        ascending=[False, False, False, True],
+    ).reset_index(drop=True)
+
+    vendor_table.insert(0, "Rank", range(1, len(vendor_table) + 1))
+
+    total_participations = int(vendor_table["Bid Participations"].sum())
+    total_wins = int(vendor_table["Winner Bids"].sum())
+    total_losses = int(vendor_table["Lost Bids"].sum())
+    overall_win_rate = (total_wins / total_participations * 100.0) if total_participations else 0.0
+
+    v1, v2, v3, v4 = st.columns(4, gap="small")
+    _kpi_card(v1, "🤝 Vendor Participations", f"{total_participations:,}", "Vendor × bid attempts", "blue")
+    _kpi_card(v2, "🏆 Won Bids", f"{total_wins:,}", f"{overall_win_rate:.1f}% conversion", "green")
+    _kpi_card(v3, "❌ Lost Bids", f"{total_losses:,}", "Participated but not selected", "red")
+    _kpi_card(v4, "🏢 Active Vendors", f"{vendor_table['Vendor'].nunique():,}", "Participated in selected period", "purple")
+
+    chart_left, chart_right = st.columns(2, gap="small")
+    with chart_left:
+        _render_chart_card(
+            "Top Vendor Participation — Won vs Lost",
+            _vendor_win_loss_chart(vendor_table),
+        )
+    with chart_right:
+        _render_chart_card(
+            "Vendor Win Rate — Top Participants",
+            _vendor_win_rate_chart(vendor_table),
+        )
+
+    display_columns = [
+        "Rank",
+        "Vendor",
+        "Bid Participations",
+        "Winner Bids",
+        "Lost Bids",
+        "Win Rate %",
+        "Loss Rate %",
+        "Win Share %",
+        "L1 Wins",
+        "Manual Wins",
+        "LHC Created",
+        "LHC Pending",
+        "LHC Pending %",
+        "Single Bidder Wins",
+        "Avg Bidders",
+        "Avg Saving vs L1",
+        "Branches",
+        "Routes",
+        "Last Win",
+        "Oldest Pending Days",
+    ]
+
+    vendor_table = vendor_table[display_columns]
+
+    if not vendor_table.empty:
+        top_participant = vendor_table.iloc[0]
+        top_winner = vendor_table.sort_values(
+            ["Winner Bids", "Win Rate %", "Bid Participations"],
+            ascending=[False, False, False],
+        ).iloc[0]
+        st.markdown(
+            f"""
+            <div class="bid-report-meta">
+                📊 Most Active: <b>{top_participant['Vendor']}</b>
+                &nbsp;•&nbsp; {int(top_participant['Bid Participations']):,} participations
+                &nbsp;•&nbsp; {int(top_participant['Lost Bids']):,} lost
+                &nbsp;&nbsp; | &nbsp;&nbsp;
+                🏆 Most Wins: <b>{top_winner['Vendor']}</b>
+                &nbsp;•&nbsp; {int(top_winner['Winner Bids']):,} wins
+                &nbsp;•&nbsp; {float(top_winner['Win Rate %']):.1f}% win rate
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with st.expander("📋 Show / Hide Vendor Performance Table", expanded=False):
+        st.dataframe(
+            vendor_table,
+            use_container_width=True,
+            hide_index=True,
+            height=470,
+            column_config={
+                "Rank": st.column_config.NumberColumn("Rank", format="%d", width="small"),
+                "Vendor": st.column_config.TextColumn("Vendor", width="large"),
+                "Bid Participations": st.column_config.NumberColumn("Bid Participations", format="%d"),
+                "Winner Bids": st.column_config.NumberColumn("Won Bids", format="%d"),
+                "Lost Bids": st.column_config.NumberColumn("Lost Bids", format="%d"),
+                "Win Rate %": st.column_config.ProgressColumn(
+                    "Win Rate %",
+                    min_value=0,
+                    max_value=100,
+                    format="%.1f%%",
+                ),
+                "Loss Rate %": st.column_config.ProgressColumn(
+                    "Loss Rate %",
+                    min_value=0,
+                    max_value=100,
+                    format="%.1f%%",
+                ),
+                "Win Share %": st.column_config.ProgressColumn(
+                    "Win Share %",
+                    min_value=0,
+                    max_value=100,
+                    format="%.1f%%",
+                ),
+                "L1 Wins": st.column_config.NumberColumn("L1 Wins", format="%d"),
+                "Manual Wins": st.column_config.NumberColumn("Manual Wins", format="%d"),
+                    "LHC Created": st.column_config.NumberColumn("LHC Created", format="%d"),
+                "LHC Pending": st.column_config.NumberColumn("LHC Pending", format="%d"),
+                "LHC Pending %": st.column_config.ProgressColumn(
+                    "LHC Pending %",
+                    min_value=0,
+                    max_value=100,
+                    format="%.1f%%",
+                ),
+                "Single Bidder Wins": st.column_config.NumberColumn(
+                    "Single Bidder Wins", format="%d"
+                ),
+                "Avg Bidders": st.column_config.NumberColumn("Avg Bidders", format="%.2f"),
+                "Avg Saving vs L1": st.column_config.NumberColumn(
+                    "Avg Saving vs L1", format="₹ %.0f"
+                ),
+                "Branches": st.column_config.NumberColumn("Branches", format="%d"),
+                "Routes": st.column_config.NumberColumn("Routes", format="%d"),
+                "Last Win": st.column_config.DatetimeColumn(
+                    "Last Win", format="DD/MM/YYYY"
+                ),
+                "Oldest Pending Days": st.column_config.NumberColumn(
+                    "Oldest Pending Days", format="%d"
+                ),
+            },
+        )
+
+    csv_data = vendor_table.to_csv(index=False).encode("utf-8-sig")
+
+    st.download_button(
+        "⬇️ Download Vendor Performance",
+        data=csv_data,
+        file_name="vendor_performance_wins_losses.csv",
+        mime="text/csv",
+        key="download_vendor_winner_performance",
+    )
+
+
+
+# ============================================================
+# MOBILE NUMBER / SHARED CONTACT INSIGHTS
+# ============================================================
+
+def _mobile_winner_history(df):
+    """One row per bid and participating vendor, attributed to the selected winner."""
+    cols = [
+        "BIDID", "BIDOPENDT", "ZONE", "CIRCLE", "BRANCH", "ROUTE",
+        "VEHICLETYPE", "Vendor Code", "Vendor", "Mobile Number",
+        "Mobile Normalized", "Bid Amount", "Winner", "Winner Vendor Code",
+        "Winner Mobile", "Winner Type", "Winner Level", "Final Rate",
+        "LHC No", "LHC Status", "Won", "Result", "Manual Reason",
+    ]
+    base = df.sort_values(["BIDID", "BIDOPENDT"], na_position="last").drop_duplicates("BIDID", keep="last").copy()
+    contacts = _bidder_contact_rows(base)
+    if contacts.empty:
+        return pd.DataFrame(columns=cols)
+
+    extra = ["BIDID", "ZONE", "CIRCLE", "VEHICLETYPE", "HAS_WINNER",
+             "WINNER_NAME", "WINNER_VENDCODE", "WINNER_MOBILE", "WINNER_MODE",
+             "WINNERLEVEL", "FINALRATE", "LHCNO", "LHC_STATUS", "MANUALBIDREASON"]
+    for c in extra:
+        if c not in base.columns:
+            base[c] = pd.NA
+    history = contacts.merge(base[extra], on="BIDID", how="left", validate="many_to_one")
+    code = history["Vendor Code"].fillna("").astype(str).str.strip().str.upper()
+    winner_code = history["WINNER_VENDCODE"].fillna("").astype(str).str.strip().str.upper()
+    vendor_name = history["Vendor"].fillna("").astype(str).str.strip().str.upper()
+    winner_name = history["WINNER_NAME"].fillna("").astype(str).str.strip().str.upper()
+
+    # A code match is authoritative. Name is only a fallback for old data without codes.
+    by_code = code.ne("") & winner_code.ne("") & code.eq(winner_code)
+    by_name = winner_code.eq("") & winner_name.ne("") & vendor_name.eq(winner_name)
+    history["Won"] = history["HAS_WINNER"].fillna(False).astype(bool) & (by_code | by_name)
+    history["Result"] = "Lost"
+    history.loc[~history["HAS_WINNER"].fillna(False).astype(bool), "Result"] = "No Winner Selected"
+    history.loc[history["Won"], "Result"] = "Won"
+    history = history.rename(columns={
+        "WINNER_NAME": "Winner", "WINNER_VENDCODE": "Winner Vendor Code",
+        "WINNER_MOBILE": "Winner Mobile", "WINNER_MODE": "Winner Type",
+        "WINNERLEVEL": "Winner Level", "FINALRATE": "Final Rate",
+        "LHCNO": "LHC No", "LHC_STATUS": "LHC Status",
+        "MANUALBIDREASON": "Manual Reason",
+    })
+    history["Winner Mobile"] = history["Winner Mobile"].fillna("").astype(str)
+    return history[cols]
+
+
+def render_mobile_number_insights(df):
+    """Mobile-wise vendor linkage, winner details and bid history."""
+    st.markdown("### 📱 Mobile Insights — Winner Details by Mobile Number")
+    st.caption(
+        "Mobile source: BIDDETAIL.MOBILENO. Winner is matched by BIDID + "
+        "VENDCODE (not merely by shared mobile). All figures follow the selected dashboard filters."
+    )
+    history = _mobile_winner_history(df)
+    if history.empty:
+        st.info("No bidder mobile data found in the selected period.")
+        return
+
+    history = history[history["Mobile Normalized"].astype(str).str.strip().ne("")].copy()
+    if history.empty:
+        st.info("Bidder records exist, but no usable mobile numbers were found.")
+        return
+
+    history["Vendor Identity"] = history["Vendor Code"].fillna("").astype(str).str.strip()
+    blank_code = history["Vendor Identity"].eq("")
+    history.loc[blank_code, "Vendor Identity"] = history.loc[blank_code, "Vendor"].fillna("").astype(str).str.upper()
+    history["Mobile Normalized"] = history["Mobile Normalized"].astype(str)
+
+    mobile_summary = history.groupby("Mobile Normalized", as_index=False).agg(
+        **{
+            "Vendors Linked": ("Vendor Identity", "nunique"),
+            "Vendor Names": ("Vendor", lambda x: " | ".join(sorted(set(v for v in x.dropna().astype(str) if v.strip())))),
+            "Total Bids": ("BIDID", "nunique"),
+            "Winner Bids": ("Won", "sum"),
+            "Branches": ("BRANCH", "nunique"),
+            "Routes": ("ROUTE", "nunique"),
+            "First Bid": ("BIDOPENDT", "min"),
+            "Last Bid": ("BIDOPENDT", "max"),
+        }
+    )
+    # The same mobile may be used by 2 vendors in a single bid: Winner Bids
+    # is the number of bids won by a linked vendor, not all bids that had a winner.
+    mobile_summary["Winner Bids"] = mobile_summary["Winner Bids"].astype(int)
+    mobile_summary["Win Rate %"] = (
+        mobile_summary["Winner Bids"] / mobile_summary["Total Bids"].replace(0, float("nan")) * 100
+    ).fillna(0).round(1)
+    mobile_summary["Lost / No Win Bids"] = mobile_summary["Total Bids"] - mobile_summary["Winner Bids"]
+    mobile_summary = mobile_summary.sort_values(["Winner Bids", "Total Bids"], ascending=False)
+
+    total_mobiles = len(mobile_summary)
+    winner_mobile_count = int((mobile_summary["Winner Bids"] > 0).sum())
+    shared_count = int((mobile_summary["Vendors Linked"] > 1).sum())
+    won_bid_count = int(history.loc[history["Won"], "BIDID"].nunique())
+    c1, c2, c3, c4 = st.columns(4, gap="small")
+    _kpi_card(c1, "📱 Unique Mobiles", f"{total_mobiles:,}", "Participating mobiles", "blue")
+    _kpi_card(c2, "🏆 Winner Mobiles", f"{winner_mobile_count:,}", "Mobiles linked to a winner", "green")
+    _kpi_card(c3, "✅ Won Bids", f"{won_bid_count:,}", "Unique bids matched to winning vendors", "teal")
+    _kpi_card(c4, "⚠️ Shared Mobiles", f"{shared_count:,}", "Linked to multiple vendors", "orange")
+
+    st.markdown("#### Search Mobile Number & Winner Status")
+    a, b, c = st.columns([2.2, 1.5, 1.2], gap="small")
+    with a:
+        search = st.text_input("Mobile Number (full or partial)", key="mobile_winner_search", placeholder="Enter mobile digits")
+    with b:
+        status = st.selectbox("Winner Filter", ["All Mobiles", "Won at Least One Bid", "Never Won"], key="mobile_winner_status")
+    with c:
+        share_type = st.selectbox("Vendor Linkage", ["All", "Shared Only", "Single Vendor"], key="mobile_winner_shared")
+
+    summary_view = mobile_summary.copy()
+    needle = "".join(ch for ch in search if ch.isdigit())
+    if needle:
+        summary_view = summary_view[summary_view["Mobile Normalized"].str.contains(needle, regex=False)]
+    if status == "Won at Least One Bid":
+        summary_view = summary_view[summary_view["Winner Bids"].gt(0)]
+    elif status == "Never Won":
+        summary_view = summary_view[summary_view["Winner Bids"].eq(0)]
+    if share_type == "Shared Only":
+        summary_view = summary_view[summary_view["Vendors Linked"].gt(1)]
+    elif share_type == "Single Vendor":
+        summary_view = summary_view[summary_view["Vendors Linked"].eq(1)]
+
+    st.markdown("#### Mobile-wise Winner Summary")
+    st.dataframe(summary_view, use_container_width=True, hide_index=True, height=430,
+        column_config={
+            "Mobile Normalized": st.column_config.TextColumn("Mobile Number"),
+            "Vendor Names": st.column_config.TextColumn("Linked Vendors", width="large"),
+            "Win Rate %": st.column_config.NumberColumn("Win Rate %", format="%.1f%%"),
+            "First Bid": st.column_config.DatetimeColumn("First Bid", format="DD/MM/YYYY"),
+            "Last Bid": st.column_config.DatetimeColumn("Last Bid", format="DD/MM/YYYY"),
+        })
+    st.download_button("⬇️ Download Mobile Winner Summary", summary_view.to_csv(index=False).encode("utf-8-sig"),
+        file_name="mobile_winner_summary.csv", mime="text/csv", key="mobile_winner_summary_download")
+
+    if summary_view.empty:
+        st.info("No mobile number matches the selected filters.")
+        return
+
+    st.markdown("#### Mobile Number — Complete Winner & Bid Details")
+    options = summary_view["Mobile Normalized"].tolist()
+    selected = st.selectbox("Select Mobile Number for full details", options, key="mobile_winner_selected")
+    detail = history[history["Mobile Normalized"].eq(selected)].copy()
+    detail = detail.sort_values(["BIDOPENDT", "BIDID"], ascending=[False, False], na_position="last")
+
+    m1, m2, m3, m4 = st.columns(4, gap="small")
+    _kpi_card(m1, "Total Bids", f"{detail['BIDID'].nunique():,}", "Bid participations", "blue")
+    _kpi_card(m2, "Won", f"{detail.loc[detail['Won'], 'BIDID'].nunique():,}", "Selected winner", "green")
+    _kpi_card(m3, "Vendors Linked", f"{detail['Vendor Identity'].nunique():,}", "Distinct vendor codes", "purple")
+    win_count = detail.loc[detail["Won"], "BIDID"].nunique()
+    total_count = detail["BIDID"].nunique()
+    _kpi_card(m4, "Win Rate", f"{(win_count / total_count * 100) if total_count else 0:.1f}%", "Wins / participated bids", "teal")
+
+    vendor_perf = detail.groupby(["Vendor Code", "Vendor"], as_index=False, dropna=False).agg(
+        **{"Bids": ("BIDID", "nunique"), "Wins": ("Won", "sum"), "First Bid": ("BIDOPENDT", "min"),
+           "Last Bid": ("BIDOPENDT", "max")}
+    )
+    vendor_perf["Win %"] = (vendor_perf["Wins"] / vendor_perf["Bids"].replace(0, float("nan")) * 100).fillna(0).round(1)
+    st.markdown("##### Vendors Associated with Selected Mobile")
+    st.dataframe(vendor_perf.sort_values("Wins", ascending=False), hide_index=True, use_container_width=True,
+                 column_config={"Win %": st.column_config.NumberColumn("Win %", format="%.1f%%")})
+
+    st.markdown("##### Winning Bid Details")
+    detail_cols = ["BIDID", "BIDOPENDT", "ZONE", "CIRCLE", "BRANCH", "ROUTE", "VEHICLETYPE",
+                   "Vendor Code", "Vendor", "Mobile Number", "Bid Amount", "Winner", "Winner Type",
+                   "Winner Level", "Final Rate", "LHC No", "LHC Status", "Manual Reason", "Result"]
+    winning = detail.loc[detail["Won"], detail_cols].copy()
+    if winning.empty:
+        st.info("No winning bids found for this mobile number within the selected period.")
+    else:
+        st.dataframe(winning, use_container_width=True, hide_index=True, height=360)
+        st.download_button("⬇️ Download Winning Bids", winning.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"winner_details_{selected}.csv", mime="text/csv", key="mobile_wins_download")
+
+    with st.expander("📋 Complete Bid Participation History — Won / Lost / No Winner", expanded=False):
+        all_detail = detail[detail_cols].copy()
+        st.dataframe(all_detail, use_container_width=True, hide_index=True, height=450)
+        st.download_button("⬇️ Download Complete Bid History", all_detail.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"mobile_bid_history_{selected}.csv", mime="text/csv", key="mobile_bid_history_download")
+
+    # Report source inconsistencies rather than silently assigning unknown winners.
+    missing_winner = detail[detail["Winner"].fillna("").astype(str).str.strip().ne("") & ~detail["Won"]]
+    if not missing_winner.empty:
+        st.caption("'Lost' means another vendor was selected on that bid. If winning vendor contact is missing from the participant list, it will not be attributed to this mobile.")
+
+# ============================================================
+# EXCEPTIONS
+# ============================================================
+
+def _exception_table(df, columns):
+    available = [col for col in columns if col in df.columns]
+    if df.empty:
+        st.info("No records.")
+        return
+
+    with st.expander("📋 Show / Hide Exception Details", expanded=False):
+        st.dataframe(
+            df[available],
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "QUERY_AMOUNT": st.column_config.NumberColumn(
+                    "Query Amount",
+                    format="₹ %.2f",
+                ),
+                "L_1_AMOUNT": st.column_config.NumberColumn(
+                    "L1 Amount",
+                    format="₹ %.2f",
+                ),
+                "L_2_AMOUNT": st.column_config.NumberColumn(
+                    "L2 Amount",
+                    format="₹ %.2f",
+                ),
+                "L_3_AMOUNT": st.column_config.NumberColumn(
+                    "L3 Amount",
+                    format="₹ %.2f",
+                ),
+                "L1_L2_GAP": st.column_config.NumberColumn(
+                    "L1-L2 Gap",
+                    format="₹ %.2f",
+                ),
+                "FINALRATE": st.column_config.NumberColumn(
+                    "Final Rate",
+                    format="₹ %.2f",
+                ),
+                "HIREAMOUNT": st.column_config.NumberColumn(
+                    "Hire Amount",
+                    format="₹ %.2f",
+                ),
+                "SAVING_VS_L1": st.column_config.NumberColumn(
+                    "Saving vs L1",
+                    format="₹ %.2f",
+                ),
+                "HIRE_FINAL_DIFF": st.column_config.NumberColumn(
+                    "Hire-Final Diff",
+                    format="₹ %.2f",
+                ),
+                "LHC_PENDING_AGE_DAYS": st.column_config.NumberColumn(
+                    "Ageing Days",
+                    format="%d",
+                ),
+                "LHC_AGEING_FROM": st.column_config.DatetimeColumn(
+                    "Ageing From",
+                    format="DD/MM/YYYY",
+                ),
+            },
+        )
+
+
+def render_exceptions(df):
+    st.markdown("### Exceptions & Control Checks")
+
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        [
+            "⏳ Winner → LHC Pending",
+            "₹500 Gap Issues",
+            "Manual Winners",
+            "Single Bidder",
+            "Hire vs Final",
+        ]
+    )
+
+    base_cols = [
+        "BIDID",
+        "BIDOPENDT",
+        "BRANCH",
+        "ROUTE",
+        "VEHICLETYPE",
+        "BIDDER_COUNT",
+        "BIDDER_CONTACTS",
+        "L_1_NAME",
+        "L_1_AMOUNT",
+        "L_2_NAME",
+        "L_2_AMOUNT",
+        "L1_L2_GAP",
+        "WINNER_NAME",
+        "WINNER_MODE",
+        "FINALRATE",
+        "SAVING_VS_L1",
+        "MANUALBIDREASON",
+        "LHCNO",
+        "HIREAMOUNT",
+    ]
+
+    with tab1:
+        pending_df = df[df["LHC_STATUS"].eq("Winner - LHC Pending")].copy()
+
+        ageing_order = [
+            "0 Day",
+            "1 Day",
+            "2-3 Days",
+            "4-7 Days",
+            "8-15 Days",
+            "16-30 Days",
+            "31+ Days",
+        ]
+
+        age_filter = st.multiselect(
+            "Pending Ageing",
+            ageing_order,
+            key="bid_lhc_pending_age_filter",
+            placeholder="All ageing buckets",
+        )
+
+        if age_filter:
+            pending_df = pending_df[
+                pending_df["LHC_AGEING_BUCKET"].isin(age_filter)
+            ]
+
+        pending_df = pending_df.sort_values(
+            ["LHC_PENDING_AGE_DAYS", "BIDID"],
+            ascending=[False, False],
+            na_position="last",
+        )
+
+        _exception_table(
+            pending_df,
+            [
+                "BIDID",
+                "BIDOPENDT",
+                "BIDCLOSEDT",
+                "BRANCH",
+                "ROUTE",
+                "VEHICLETYPE",
+                "QUERYBID",
+                "WINNER_NAME",
+                "WINNER_MODE",
+                "FINALRATE",
+                "LHC_STATUS",
+                "LHC_AGEING_FROM",
+                "LHC_PENDING_AGE_DAYS",
+                "LHC_AGEING_BUCKET",
+                "GENERATEBYUSER",
+                "APPROVEDBYUSER",
+                "MANUALBIDREASON",
+            ],
+        )
+
+    with tab2:
+        violation_df = df[df["GAP_STATUS"].eq("Issue")].copy()
+        _exception_table(violation_df, base_cols)
+
+    with tab3:
+        manual_df = df[df["WINNER_MODE"].eq("Manual")].copy()
+        _exception_table(
+            manual_df,
+            base_cols + ["WINNER_VS_L1", "QUERY_AMOUNT"],
+        )
+
+    with tab4:
+        single_df = df[df["BIDDER_COUNT"].eq(1)].copy()
+        _exception_table(
+            single_df,
+            [
+                "BIDID",
+                "BIDOPENDT",
+                "BRANCH",
+                "ROUTE",
+                "VEHICLETYPE",
+                "BIDDER_COUNT",
+                "BIDDER_CONTACTS",
+                "L_1_NAME",
+                "L_1_AMOUNT",
+                "WINNER_NAME",
+                "WINNER_MODE",
+                "FINALRATE",
+                "MANUALBIDREASON",
+            ],
+        )
+
+    with tab5:
+        mismatch_df = df[df["FINAL_HIRE_STATUS"].eq("Mismatch")].copy()
+        _exception_table(
+            mismatch_df,
+            [
+                "BIDID",
+                "BIDOPENDT",
+                "BRANCH",
+                "ROUTE",
+                "WINNER_NAME",
+                "FINALRATE",
+                "LHCNO",
+                "HIREAMOUNT",
+                "HIRE_FINAL_DIFF",
+            ],
+        )
+
+
+# ============================================================
+# DETAIL TABLE
+# ============================================================
+
+def render_detail_table(df):
+    st.markdown("### Bid-wise Detail")
+
+    detail_columns = [
+        "BIDID",
+        "BIDOPENDT",
+        "BRANCH",
+        "SOURCE",
+        "QUERYBID",
+        "QUERY_RECEIVED_ON",
+        "QUERY_REPLY_ON",
+        "QUERY_RESPONSE_STATUS",
+        "QUERY_RESPONSE_HOURS",
+        "ROUTE",
+        "VIA",
+        "VEHICLETYPE",
+        "WEIGHT",
+        "GWEIGHT",
+        "BIDDER_COUNT",
+        "BIDDER_CONTACTS",
+        "QUERY_AMOUNT",
+        "L_1_NAME",
+        "L_1_AMOUNT",
+        "L_2_NAME",
+        "L_2_AMOUNT",
+        "L_3_NAME",
+        "L_3_AMOUNT",
+        "L1_L2_GAP",
+        "GAP_STATUS",
+        "WINNER_NAME",
+        "WINNER_MODE",
+        "WINNERLEVEL",
+        "FINALRATE",
+        "SAVING_VS_L1",
+        "WINNER_VS_L1",
+        "MANUALBIDREASON",
+        "LHC_STATUS",
+        "LHCNO",
+        "LHC_AGEING_FROM",
+        "LHC_PENDING_AGE_DAYS",
+        "LHC_AGEING_BUCKET",
+        "HIREAMOUNT",
+        "FINAL_HIRE_STATUS",
+        "HIRE_FINAL_DIFF",
+        "GENERATEBYUSER",
+        "APPROVEDBYUSER",
+        "PARTYGODOWN",
+        "EXACTLOADINGPOINT",
+        "EXACTDELIVERYPOINT",
+        "REMARKS",
+    ]
+
+    available = [c for c in detail_columns if c in df.columns]
+
+    display_df = df[available].sort_values(
+        by=["BIDOPENDT", "BIDID"],
+        ascending=[False, False],
+        na_position="last",
+    )
+
+    with st.expander("📋 Show / Hide Detailed Bid Data", expanded=False):
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True,
+            height=520,
+            column_config={
+                "BIDID": st.column_config.NumberColumn("Bid ID", format="%d"),
+                "BIDDER_COUNT": st.column_config.NumberColumn(
+                    "Bidder Count", format="%d", width="small"
+                ),
+                "BIDDER_CONTACTS": st.column_config.TextColumn(
+                    "Bidders / Mobile / Amount", width="large"
+                ),
+                "QUERY_RECEIVED_ON": st.column_config.DatetimeColumn(
+                    "Query Received On", format="DD/MM/YYYY HH:mm"
+                ),
+                "QUERY_REPLY_ON": st.column_config.DatetimeColumn(
+                    "Reply Sent / Updated On", format="DD/MM/YYYY HH:mm"
+                ),
+                "QUERY_RESPONSE_STATUS": st.column_config.TextColumn("Query Reply Status"),
+                "QUERY_RESPONSE_HOURS": st.column_config.NumberColumn(
+                    "Query Response Hrs", format="%.2f"
+                ),
+                "QUERY_AMOUNT": st.column_config.NumberColumn(
+                    "Query Amount",
+                    format="₹ %.2f",
+                ),
+                "L_1_AMOUNT": st.column_config.NumberColumn(
+                    "L1 Amount",
+                    format="₹ %.2f",
+                ),
+                "L_2_AMOUNT": st.column_config.NumberColumn(
+                    "L2 Amount",
+                    format="₹ %.2f",
+                ),
+                "L_3_AMOUNT": st.column_config.NumberColumn(
+                    "L3 Amount",
+                    format="₹ %.2f",
+                ),
+                "L1_L2_GAP": st.column_config.NumberColumn(
+                    "L1-L2 Gap",
+                    format="₹ %.2f",
+                ),
+                "FINALRATE": st.column_config.NumberColumn(
+                    "Final Rate",
+                    format="₹ %.2f",
+                ),
+                "SAVING_VS_L1": st.column_config.NumberColumn(
+                    "Saving vs L1",
+                    format="₹ %.2f",
+                ),
+                "HIREAMOUNT": st.column_config.NumberColumn(
+                    "Hire Amount",
+                    format="₹ %.2f",
+                ),
+                "HIRE_FINAL_DIFF": st.column_config.NumberColumn(
+                    "Hire-Final Diff",
+                    format="₹ %.2f",
+                ),
+                "LHC_PENDING_AGE_DAYS": st.column_config.NumberColumn(
+                    "Ageing Days",
+                    format="%d",
+                ),
+                "LHC_AGEING_FROM": st.column_config.DatetimeColumn(
+                    "Ageing From",
+                    format="DD/MM/YYYY",
+                ),
+            },
+        )
+
+    csv_data = display_df.to_csv(index=False).encode("utf-8-sig")
+
+    st.download_button(
+        "⬇️ Download Filtered Data",
+        data=csv_data,
+        file_name="bidding_dashboard_filtered.csv",
+        mime="text/csv",
+        key="download_bidding_dashboard_csv",
+    )
+
+
+# ============================================================
+# MAIN PAGE
+# ============================================================
+
+def show_bidding_analysis():
+    st.markdown(
+        """
+        <style>
+        /* =====================================================
+           COMPACT BIDDING DASHBOARD - NBD STYLE
+           ===================================================== */
+        .block-container {
+            max-width:100% !important;
+            padding:.35rem .65rem .9rem !important;
+        }
+
+
+        /* =====================================================
+           EXECUTIVE HEADER + TOP NAVIGATION
+           Matches the compact navy/light-blue reference layout.
+           ===================================================== */
+        .bid-top-shell {
+            background:linear-gradient(180deg,#173f73 0%,#0f3769 100%);
+            border:1px solid #0b2f5c;
+            border-radius:7px 7px 0 0;
+            min-height:42px;
+            display:flex;
+            align-items:center;
+            padding:0 12px;
+            box-shadow:0 2px 7px rgba(15,42,67,.15);
+        }
+        .bid-top-title {
+            color:#ffffff;
+            font-size:19px;
+            font-weight:850;
+            line-height:1;
+            letter-spacing:.1px;
+            white-space:nowrap;
+        }
+
+        /* Header row containing title + period selector */
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor) {
+            background:linear-gradient(180deg,#173f73 0%,#0f3769 100%);
+            border:1px solid #0b2f5c;
+            border-radius:7px 7px 0 0;
+            min-height:42px;
+            padding:.20rem .55rem !important;
+            gap:.45rem !important;
+            align-items:center !important;
+            box-shadow:0 2px 7px rgba(15,42,67,.15);
+        }
+        .bid-header-title-text {
+            color:#ffffff;
+            font-size:19px;
+            font-weight:850;
+            line-height:1.05;
+            padding-left:2px;
+            white-space:nowrap;
+        }
+
+        /* Single period input on the right side of the navy header */
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
+        div[data-testid="stDateInput"] {
+            margin:0 !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
+        div[data-testid="stDateInput"] label {
+            display:none !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
+        div[data-baseweb="input"] {
+            min-height:32px !important;
+            height:32px !important;
+            background:#ffffff !important;
+            border:1px solid #c7d7eb !important;
+            border-radius:7px !important;
+            box-shadow:none !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
+        div[data-testid="stDateInput"] input {
+            min-height:30px !important;
+            height:30px !important;
+            font-size:10px !important;
+            font-weight:700 !important;
+            color:#334155 !important;
+            background:#ffffff !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-top-shell-anchor)
+        div[data-testid="stButton"] button {
+            min-height:32px !important;
+            height:32px !important;
+            padding:0 14px !important;
+            border-radius:7px !important;
+            border:1px solid #8fb7e5 !important;
+            background:#ffffff !important;
+            color:#0f3769 !important;
+            font-size:10px !important;
+            font-weight:850 !important;
+            box-shadow:none !important;
+        }
+
+        /* Tabs: light-blue navigation strip directly below header */
+        div[data-testid="stTabs"] > div[data-baseweb="tab-list"] {
+            background:#eef6ff !important;
+            border:1px solid #cfe1f5 !important;
+            border-top:none !important;
+            border-radius:0 0 7px 7px !important;
+            padding:5px 10px 6px !important;
+            gap:3px !important;
+            min-height:40px !important;
+            box-shadow:0 2px 5px rgba(15,42,67,.06) !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"] {
+            height:29px !important;
+            min-height:29px !important;
+            padding:0 14px !important;
+            border:1px solid #d9e7f6 !important;
+            border-radius:7px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f3f8fd 100%) !important;
+            color:#102a43 !important;
+            font-size:10px !important;
+            font-weight:750 !important;
+            box-shadow:0 1px 3px rgba(15,42,67,.05) !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"] p {
+            font-size:10px !important;
+            font-weight:750 !important;
+            color:inherit !important;
+            white-space:nowrap !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] {
+            background:linear-gradient(180deg,#3288ff 0%,#1f6fe5 100%) !important;
+            color:#ffffff !important;
+            border-color:#1f6fe5 !important;
+            box-shadow:0 2px 7px rgba(37,99,235,.24) !important;
+        }
+        div[data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] p {
+            color:#ffffff !important;
+        }
+        div[data-testid="stTabs"] div[data-baseweb="tab-highlight"] {
+            display:none !important;
+        }
+        div[data-testid="stTabs"] div[role="tabpanel"] {
+            padding-top:.55rem !important;
+        }
+
+        /* Same-page navigation buttons matching the reference header.
+           IMPORTANT: scoped only to this dashboard nav row so the host app sidebar
+           keeps its own colors/styling. */
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            display:flex !important;
+            flex-wrap:nowrap !important;
+            gap:4px !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stRadio"] div[role="radiogroup"] label {
+            display:flex !important;
+            align-items:center !important;
+            justify-content:center !important;
+            min-height:29px !important;
+            padding:0 14px !important;
+            margin:0 !important;
+            border:1px solid #d9e7f6 !important;
+            border-radius:7px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f3f8fd 100%) !important;
+            box-shadow:0 1px 3px rgba(15,42,67,.05) !important;
+            cursor:pointer !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
+            background:linear-gradient(180deg,#173f73 0%,#0f3769 100%) !important;
+            border-color:#0f3769 !important;
+            box-shadow:0 2px 7px rgba(15,55,105,.24) !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
+            display:none !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stRadio"] div[role="radiogroup"] label p {
+            font-size:10px !important;
+            font-weight:750 !important;
+            color:#102a43 !important;
+            white-space:nowrap !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) p {
+            color:#ffffff !important;
+        }
+
+
+
+        /* Combined navigation + period + run row below the navy title. */
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor) {
+            background:#eef6ff !important;
+            border:1px solid #cfe1f5 !important;
+            border-top:none !important;
+            border-radius:0 0 7px 7px !important;
+            padding:5px 10px 6px !important;
+            gap:6px !important;
+            min-height:40px !important;
+            align-items:center !important;
+            box-shadow:0 2px 5px rgba(15,42,67,.06) !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            background:transparent !important;
+            border:none !important;
+            border-radius:0 !important;
+            padding:0 !important;
+            min-height:29px !important;
+            box-shadow:none !important;
+            flex-wrap:nowrap !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stDateInput"] {
+            margin:0 !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stDateInput"] label {
+            display:none !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stDateInput"] div[data-baseweb="input"] {
+            min-height:29px !important;
+            height:29px !important;
+            border:1px solid #d9e7f6 !important;
+            border-radius:7px !important;
+            background:#ffffff !important;
+            box-shadow:0 1px 3px rgba(15,42,67,.05) !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stDateInput"] input {
+            min-height:27px !important;
+            height:27px !important;
+            font-size:10px !important;
+            font-weight:750 !important;
+            color:#102a43 !important;
+            background:#ffffff !important;
+        }
+        div[data-testid="stHorizontalBlock"]:has(.bid-nav-row-anchor)
+        div[data-testid="stButton"] button {
+            min-height:29px !important;
+            height:29px !important;
+            padding:0 12px !important;
+            border:1px solid #d9e7f6 !important;
+            border-radius:7px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#f3f8fd 100%) !important;
+            color:#0f3769 !important;
+            font-size:10px !important;
+            font-weight:850 !important;
+            box-shadow:0 1px 3px rgba(15,42,67,.05) !important;
+        }
+
+        div[data-testid="stVerticalBlock"] { gap:.55rem !important; }
+        div[data-testid="stHorizontalBlock"] { gap:.45rem !important; }
+
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius:9px !important;
+            border:1px solid #dbe4ef !important;
+            box-shadow:0 2px 7px rgba(15,42,67,.05) !important;
+            background:#fff !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] > div {
+            padding:.50rem .65rem !important;
+        }
+
+        /* Chart cards need a few pixels of safe top space so headings never clip. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.bid-chart-title) > div {
+            padding-top:.42rem !important;
+        }
+
+        label[data-testid="stWidgetLabel"] p {
+            font-size:10.5px !important;
+            line-height:1.25 !important;
+            margin-bottom:3px !important;
+        }
+        div[data-baseweb="select"] > div {
+            min-height:38px !important;
+            font-size:11px !important;
+        }
+        div[data-testid="stDateInput"] input {
+            min-height:32px !important;
+            height:32px !important;
+            font-size:10px !important;
+            padding-top:2px !important;
+            padding-bottom:2px !important;
+        }
+
+        div[data-testid="stDateInput"] div[data-baseweb="input"] {
+            min-height:32px !important;
+        }
+
+        /* Header date labels are rendered inline, to the LEFT of each date box. */
+        .bid-inline-date-label {
+            display:flex;
+            align-items:center;
+            justify-content:flex-end;
+            min-height:32px;
+            height:32px;
+            color:#334155;
+            font-size:9.5px;
+            font-weight:800;
+            line-height:1;
+            white-space:nowrap;
+            padding-right:2px;
+        }
+
+        /* Remove any extra vertical space around collapsed date labels in header. */
+        div[data-testid="stHorizontalBlock"]:has(.bid-header-anchor)
+        div[data-testid="stDateInput"] {
+            margin-top:0 !important;
+            margin-bottom:0 !important;
+        }
+
+        /* Collapsible filters */
+        div[data-testid="stExpander"] {
+            border:1px solid #dbe4ef !important;
+            border-radius:9px !important;
+            background:#ffffff !important;
+            box-shadow:0 2px 7px rgba(15,42,67,.04) !important;
+        }
+        div[data-testid="stExpander"] summary {
+            min-height:32px !important;
+            padding:.25rem .55rem !important;
+        }
+        div[data-testid="stExpander"] summary p {
+            font-size:10.5px !important;
+            font-weight:800 !important;
+            color:#0f2744 !important;
+        }
+        div[data-testid="stExpander"] details > div {
+            padding:.15rem .55rem .45rem !important;
+        }
+
+        .bid-title {
+            color:#102a43;
+            font-size:18px;
+            font-weight:850;
+            line-height:1.18;
+            margin:0;
+        }
+        .bid-subtitle {
+            color:#64748b;
+            font-size:9.5px;
+            line-height:1.25;
+            margin-top:2px;
+        }
+        .bid-period-badge {
+            display:inline-block;
+            padding:3px 7px;
+            border-radius:999px;
+            background:#eff6ff;
+            color:#1d4f91;
+            border:1px solid #bfdbfe;
+            font-size:8.5px;
+            font-weight:800;
+            letter-spacing:.1px;
+        }
+        .bid-period-line {
+            display:block;
+            width:100%;
+            box-sizing:border-box;
+            background:#0b2447;
+            color:#ffffff;
+            border:1px solid #17365D;
+            border-radius:7px;
+            padding:6px 10px;
+            margin:2px 0 4px 0;
+            font-size:9.5px;
+            font-weight:700;
+            line-height:1.25;
+            box-shadow:0 2px 6px rgba(11,36,71,.14);
+        }
+
+        .bid-filter-inline-title {
+            color:#0f2744;
+            font-size:13px;
+            font-weight:850;
+            line-height:1.1;
+            padding-top:24px;
+            white-space:nowrap;
+        }
+
+        .bid-kpi-group {
+            box-sizing:border-box;
+            height:64px;
+            min-height:64px;
+            border-radius:9px;
+            padding:8px 10px;
+            display:flex;
+            flex-direction:column;
+            justify-content:center;
+            border:1px solid #dbe4ef;
+            border-left:4px solid var(--group-accent,#2563eb);
+            background:var(--group-bg,#eff6ff);
+        }
+        .bid-kpi-group-title {
+            font-size:10px;
+            font-weight:900;
+            line-height:1.18;
+            color:#0f2744;
+        }
+        .bid-kpi-group-subtitle {
+            font-size:8.5px;
+            font-weight:750;
+            color:#64748b;
+            margin-top:3px;
+        }
+        .bid-kpi-group-blue   { --group-accent:#2563eb; --group-bg:#eff6ff; }
+        .bid-kpi-group-green  { --group-accent:#16a34a; --group-bg:#f0fdf4; }
+        .bid-kpi-group-purple { --group-accent:#7c3aed; --group-bg:#f5f3ff; }
+        .bid-kpi-group-amber  { --group-accent:#d97706; --group-bg:#fffbeb; }
+
+        .bid-kpi-card {
+            box-sizing:border-box;
+            background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+            border:1px solid #dbe4ef;
+            border-left:3px solid var(--accent,#2563eb);
+            border-radius:9px;
+            padding:6px 8px;
+            height:64px;
+            min-height:64px;
+            box-shadow:0 2px 7px rgba(15,23,42,.055);
+            transition:box-shadow .15s ease, transform .15s ease;
+        }
+        .bid-kpi-card:hover {
+            box-shadow:0 5px 14px rgba(15,23,42,.10);
+            transform:translateY(-1px);
+        }
+        div[data-testid="stElementContainer"]:has(.bid-kpi-card) {
+            min-height:64px !important;
+        }
+        .bid-kpi-label {
+            font-size:9px;
+            color:#64748b;
+            font-weight:750;
+            line-height:1.15;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+        }
+        .bid-kpi-value {
+            font-size:15px;
+            color:#0f172a;
+            font-weight:900;
+            margin-top:2px;
+            line-height:1.15;
+            white-space:nowrap;
+        }
+        .bid-kpi-note {
+            font-size:8.5px;
+            color:#2563eb;
+            font-weight:700;
+            margin-top:2px;
+            line-height:1.15;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+        }
+
+        .bid-kpi-blue   { --accent:#2563eb; }
+        .bid-kpi-green  { --accent:#16a34a; }
+        .bid-kpi-purple { --accent:#7c3aed; }
+        .bid-kpi-teal   { --accent:#0f9f8f; }
+        .bid-kpi-orange { --accent:#ea580c; }
+        .bid-kpi-amber  { --accent:#d97706; }
+        .bid-kpi-red    { --accent:#dc2626; }
+        .bid-kpi-cyan   { --accent:#0891b2; }
+        .bid-kpi-rose   { --accent:#e11d48; }
+        .bid-kpi-navy   { --accent:#0f2f63; }
+
+        .bid-trend-mode-label {
+            display:flex;
+            align-items:center;
+            justify-content:flex-end;
+            gap:4px;
+            min-height:24px;
+        }
+
+        /* Compact D / M / Q / Y buttons used only in Bid Trend card */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.bid-trend-marker)
+        div[data-testid="stButton"] button {
+            min-height:26px !important;
+            height:26px !important;
+            padding:0 .42rem !important;
+            border-radius:6px !important;
+            font-size:9.5px !important;
+            font-weight:850 !important;
+            line-height:1 !important;
+        }
+
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.bid-trend-marker)
+        div[data-testid="stButton"] button[kind="primary"] {
+            box-shadow:0 2px 6px rgba(37,99,235,.18) !important;
+        }
+
+        .bid-report-meta {
+            display:block;
+            width:100%;
+            box-sizing:border-box;
+            background:#f8fafc;
+            border:1px solid #dbe4ef;
+            border-left:3px solid #7c3aed;
+            border-radius:7px;
+            padding:6px 9px;
+            margin:4px 0 6px 0;
+            color:#334155;
+            font-size:9.5px;
+            line-height:1.35;
+        }
+
+        .bid-chart-title {
+            box-sizing:border-box;
+            display:block;
+            min-height:22px;
+            font-size:11px;
+            font-weight:850;
+            color:#0f2744;
+            line-height:1.35;
+            margin:0 0 4px 0;
+            padding:3px 0 3px 7px;
+            border-left:3px solid #2563eb;
+            overflow:visible;
+            white-space:nowrap;
+        }
+        div[data-testid="stPlotlyChart"] {
+            border-radius:7px !important;
+            overflow:hidden !important;
+        }
+        div[data-testid="stElementContainer"]:has(.bid-chart-title) {
+            min-height:22px !important;
+            margin-bottom:0 !important;
+            overflow:visible !important;
+        }
+
+        h3 {
+            font-size:12.5px !important;
+            font-weight:850 !important;
+            color:#0f2744 !important;
+            margin:1px 0 5px 0 !important;
+            line-height:1.2 !important;
+            border-left:3px solid #17365D;
+            padding-left:6px;
+        }
+        h4 {
+            font-size:11px !important;
+            font-weight:800 !important;
+            color:#334155 !important;
+            margin:2px 0 4px 0 !important;
+        }
+        hr { margin:.35rem 0 !important; }
+
+        /* Data tables: dark-blue outer frame + white header text. */
+        div[data-testid="stDataFrame"] {
+            border:2px solid #0b2447 !important;
+            border-radius:9px !important;
+            overflow:hidden !important;
+            box-shadow:0 3px 10px rgba(11,36,71,.12) !important;
+            --gdg-bg-header:#0b2447;
+            --gdg-bg-header-has-focus:#17365D;
+            --gdg-text-header:#ffffff;
+        }
+        div[data-testid="stDataFrame"] * { font-size:10.5px !important; }
+
+        /* Works on Streamlit versions exposing dataframe headers as DOM elements. */
+        div[data-testid="stDataFrame"] [role="columnheader"],
+        div[data-testid="stDataFrame"] [data-testid="stDataFrameHeaderCell"] {
+            background:#0b2447 !important;
+            color:#ffffff !important;
+            border-color:#17365D !important;
+        }
+        div[data-testid="stDataFrame"] [role="columnheader"] *,
+        div[data-testid="stDataFrame"] [data-testid="stDataFrameHeaderCell"] * {
+            color:#ffffff !important;
+            fill:#ffffff !important;
+        }
+
+        div[data-testid="stDownloadButton"] button,
+        div[data-testid="stButton"] button {
+            min-height:32px !important;
+            padding:.15rem .5rem !important;
+            border-radius:7px !important;
+            font-size:10px !important;
+            font-weight:750 !important;
+        }
+
+        @media (max-width: 1000px) {
+            div[data-testid="stHorizontalBlock"] {
+                flex-wrap:wrap !important;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    today = date.today()
+
+    if "bidding_from_date" not in st.session_state:
+        st.session_state["bidding_from_date"] = today - timedelta(days=7)
+
+    if "bidding_to_date" not in st.session_state:
+        st.session_state["bidding_to_date"] = today
+
+    # --------------------------------------------------------
+    # Executive header — title only
+    # --------------------------------------------------------
+    if "bidding_date_range" not in st.session_state:
+        st.session_state["bidding_date_range"] = (
+            st.session_state["bidding_from_date"],
+            st.session_state["bidding_to_date"],
+        )
+
+    header_col = st.columns(1, gap="small")[0]
+    with header_col:
+        st.markdown(
+            "<span class='bid-top-shell-anchor'></span>"
+            "<div class='bid-header-title-text'>Bidding Analysis Dashboard</div>",
+            unsafe_allow_html=True,
+        )
+
+    # --------------------------------------------------------
+    # SAME-PAGE NAVIGATION + PERIOD + RUN
+    # Date selector sits immediately after Detailed Data.
+    # --------------------------------------------------------
+    nav_col, period_col, run_col = st.columns(
+        [7.15, 1.55, .55],
+        gap="small",
+        vertical_alignment="center",
+    )
+
+    with nav_col:
+        st.markdown("<span class='bid-nav-row-anchor'></span>", unsafe_allow_html=True)
+        selected_section = st.radio(
+            "Dashboard Section",
+            [
+                "Overview",
+                "Query Monitoring",
+                "Vehicle Insights",
+                "Vendor Performance",
+                "Mobile Insights",
+                "Exceptions & Controls",
+                "Detailed Data",
+            ],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="bidding_section_nav",
+        )
+
+    with period_col:
+        selected_period = st.date_input(
+            "Period",
+            value=st.session_state["bidding_date_range"],
+            format="DD/MM/YYYY",
+            key="bidding_date_range_input",
+            label_visibility="collapsed",
+        )
+
+    with run_col:
+        run_clicked = st.button(
+            "Run",
+            key="bidding_run_period",
+            use_container_width=True,
+        )
+
+    if isinstance(selected_period, (tuple, list)) and len(selected_period) == 2:
+        selected_from, selected_to = selected_period
+    else:
+        selected_from = st.session_state["bidding_from_date"]
+        selected_to = st.session_state["bidding_to_date"]
+
+    if selected_from > selected_to:
+        st.error("From Date cannot be greater than To Date.")
+        return
+
+    cached_raw = st.session_state.get("bidding_raw_data")
+    needs_schema_refresh = (
+        isinstance(cached_raw, pd.DataFrame)
+        and not cached_raw.empty
+        and (
+            "BIDDER_VENDOR_LIST" not in cached_raw.columns
+            or "BIDDER_CONTACT_LIST" not in cached_raw.columns
+        )
+    )
+
+    should_load = (
+        "bidding_raw_data" not in st.session_state
+        or needs_schema_refresh
+        or run_clicked
+    )
+
+    if should_load:
+        from_date, to_date = selected_from, selected_to
+        st.session_state["bidding_from_date"] = from_date
+        st.session_state["bidding_to_date"] = to_date
+        st.session_state["bidding_date_range"] = (from_date, to_date)
+
+        try:
+            with st.spinner("Loading bidding data..."):
+                if needs_schema_refresh:
+                    load_bidding_data.clear()
+                raw_df = load_bidding_data(from_date, to_date)
+                st.session_state["bidding_raw_data"] = raw_df
+        except Exception as exc:
+            st.error("Unable to load bidding data from SQL Server.")
+            st.exception(exc)
+            return
+
+    raw_df = st.session_state.get("bidding_raw_data", pd.DataFrame())
+
+    # Re-run lightweight derived calculations on cached data as well.
+    if raw_df is not None and not raw_df.empty:
+        raw_df = prepare_bidding_data(raw_df)
+        st.session_state["bidding_raw_data"] = raw_df
+
+    if raw_df is None or raw_df.empty:
+        st.warning("No bidding data found for the selected date range.")
+        return
+
+    # Global filters appear below the navigation.
+    filtered_df = apply_dashboard_filters(raw_df)
+
+    if filtered_df.empty:
+        st.warning("No records match the selected filters.")
+        return
+
+    if selected_section == "Overview":
+        # Line Haul LHC is based on the selected LHC date range,
+        # independently from bidding-data global filters.
+        try:
+            with st.spinner("Loading Line Haul LHC counts..."):
+                linehaul_df = load_linehaul_lhc_data(
+                    st.session_state["bidding_from_date"],
+                    st.session_state["bidding_to_date"],
+                )
+            render_linehaul_lhc_kpis(
+                linehaul_df,
+                st.session_state["bidding_from_date"],
+                st.session_state["bidding_to_date"],
+            )
+        except Exception as exc:
+            st.warning(f"Unable to load Line Haul LHC counts: {exc}")
+        render_kpis(filtered_df)
+        render_zone_bidding_insights(filtered_df)
+        try:
+            with st.spinner("Loading bid finalization history..."):
+                bid_history_df = load_bid_finalization_history(
+                    st.session_state["bidding_to_date"],
+                    lookback_days=365,
+                )
+            render_bid_finalization_history(
+                filtered_df,
+                bid_history_df,
+                st.session_state["bidding_from_date"],
+                st.session_state["bidding_to_date"],
+            )
+        except Exception as exc:
+            st.warning(f"Unable to load bid finalization history: {exc}")
+        render_charts(filtered_df)
+    elif selected_section == "Query Monitoring":
+        render_query_response_analysis(filtered_df)
+    elif selected_section == "Vehicle Insights":
+        render_vehicle_type_insights(filtered_df)
+    elif selected_section == "Vendor Performance":
+        render_vendor_performance(filtered_df)
+    elif selected_section == "Mobile Insights":
+        render_mobile_number_insights(filtered_df)
+    elif selected_section == "Exceptions & Controls":
+        render_exceptions(filtered_df)
+    else:
+        render_detail_table(filtered_df)
+
