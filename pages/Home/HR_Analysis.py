@@ -514,6 +514,15 @@ st.markdown('''<style>
 [data-testid="stSelectbox"] label p,[data-testid="stMultiSelect"] label p {font-size:11px;}
 @media(max-width:850px){[data-testid="stMainBlockContainer"],.main .block-container{padding:.35rem .4rem !important;}
  .hr-topbar .hr-top-caption{display:none;}.hr-chip .val{font-size:22px;}}
+/* Gratuity KPI drill-down buttons */
+[class*="st-key-gratuity_kpi_"] button {
+    white-space: pre-line !important; text-align:left !important;
+    min-height:106px !important; border-radius:13px !important;
+    font-weight:750 !important; font-size:17px !important;
+    padding:14px !important; box-shadow:0 4px 12px rgba(18,45,82,.10);
+}
+[class*="st-key-gratuity_kpi_"] button p {white-space:pre-line !important;line-height:1.65 !important;}
+[class*="st-key-gratuity_kpi_"] button[kind="primary"] {background:#075985 !important;border-color:#075985 !important;color:white !important;}
 </style>''',unsafe_allow_html=True)
 
 
@@ -1141,7 +1150,6 @@ elif page=="Salary & Costs":
 
 elif page=="Gratuity Analysis":
     st.markdown('<div class="hr-section-header">Gratuity Analysis · Employee-wise Estimated Exposure</div>', unsafe_allow_html=True)
-    st.caption("Indicative management working. Standard 5-year test only; fixed-term, death/disablement, continuity/rejoining, special cases and actual paid gratuity require HR review. Not an actuarial valuation.")
     control_a, control_b, control_c = st.columns([1, 1, 2], gap="small")
     ceiling = control_a.number_input("Maximum payout cap (₹)", min_value=0, max_value=100000000,
                                      value=2000000, step=100000, key="hr_gratuity_cap")
@@ -1161,18 +1169,51 @@ elif page=="Gratuity Analysis":
         near_cutoff = pd.Timestamp(asof) + pd.DateOffset(months=near_months)
         near = report.loc[report.ACTIVE_HEADCOUNT.eq(1) & ~report.ELIGIBLE_STANDARD &
                           report.FIFTH_ANNIVERSARY.between(pd.Timestamp(asof), near_cutoff)]
-        hr_metric_grid([
-            ("Eligible for Gratuity", indian_number(len(eligible)), "Standard 5-year rule; salary available"),
-            ("Estimated Eligible Gratuity", "₹" + indian_number(eligible.ESTIMATED_EXPOSURE.sum()), "Potential benefit, not amount due today"),
-            ("Future Service Exposure", "₹" + indian_number(pending.ESTIMATED_EXPOSURE.sum()), "Indicative accrued value before eligibility"),
-            ("Nearing 5 Years", indian_number(len(near)), f"Within next {near_months} months"),
-        ])
-        review_count = int(report.ESTIMATED_EXPOSURE.isna().sum())
-        if review_count:
-            st.warning(f"{review_count} employee(s) lack valid salary or dates; their amount is excluded from totals. Download the report to review.")
-        st.info("Wage proxy = higher of mapped Basic and 50% of mapped monthly gross (Basic + HRA + mapped allowances). This is NOT a fully validated legal wage figure. Confirm DA, other remuneration, excluded heads and 50% wage rule with payroll/legal before finalisation. ₹20 lakh cap is editable.")
-        if report.WAGES_NEED_REVIEW.any():
-            st.caption(f"{int(report.WAGES_NEED_REVIEW.sum())} employee(s) use the 50% floor rather than Basic alone. Wage components need special verification.")
+        # Select a KPI to see the underlying employee records in the detail panel.
+        kpi_items = [
+            ("Eligible for Gratuity", indian_number(len(eligible)), eligible),
+            ("Estimated Eligible Gratuity", "₹" + indian_number(eligible.ESTIMATED_EXPOSURE.sum()), eligible),
+            ("Future Service Exposure", "₹" + indian_number(pending.ESTIMATED_EXPOSURE.sum()), pending),
+            ("Nearing 5 Years", indian_number(len(near)), near),
+        ]
+        if st.session_state.get("gratuity_kpi_active") not in [item[0] for item in kpi_items]:
+            st.session_state["gratuity_kpi_active"] = "Eligible for Gratuity"
+        kpi_columns = st.columns(4, gap="small")
+        for holder, (kpi_name, kpi_value, _) in zip(kpi_columns, kpi_items):
+            with holder:
+                chosen = st.session_state["gratuity_kpi_active"] == kpi_name
+                if st.button(f"{kpi_name}\n\n{kpi_value}", key="gratuity_kpi_" + kpi_name.lower().replace(" ", "_"),
+                             type="primary" if chosen else "secondary", use_container_width=True):
+                    st.session_state["gratuity_kpi_active"] = kpi_name
+                    st.rerun()
+        active_kpi = st.session_state["gratuity_kpi_active"]
+        selected = next(data for name, _, data in kpi_items if name == active_kpi)
+        with st.container(border=True):
+            st.markdown(f"**{active_kpi} — Employee Details ({len(selected):,})**")
+            detail_cols = ["COMPANY", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT",
+                           "DOJ", "SERVICE_YEARS_EXACT", "BASIC SALARY", "GROSS_MAPPED",
+                           "GRATUITY_WAGES_PROXY", "CALC_YEARS", "ESTIMATED_EXPOSURE",
+                           "FIFTH_ANNIVERSARY", "GRATUITY_STATUS"]
+            detail = selected[detail_cols].rename(columns={
+                "COMPANY": "Company", "EMPCODE": "Employee Code", "EMPNAME": "Employee Name",
+                "ZONE": "Zone", "BRANCH": "Branch", "DEPARTMENT": "Department",
+                "DOJ": "Joining Date", "SERVICE_YEARS_EXACT": "Service (Years)",
+                "BASIC SALARY": "Basic Salary (₹)", "GROSS_MAPPED": "Gross Salary (₹)",
+                "GRATUITY_WAGES_PROXY": "Gratuity Wages (₹)", "CALC_YEARS": "Formula Years",
+                "ESTIMATED_EXPOSURE": "Estimated Gratuity (₹)",
+                "FIFTH_ANNIVERSARY": "5-Year Completion Date", "GRATUITY_STATUS": "Status",
+            }).sort_values("Estimated Gratuity (₹)", ascending=False, na_position="last")
+            st.dataframe(detail, use_container_width=True, hide_index=True,
+                         column_config={
+                             "Basic Salary (₹)": st.column_config.NumberColumn(format="₹%.2f"),
+                             "Gross Salary (₹)": st.column_config.NumberColumn(format="₹%.2f"),
+                             "Gratuity Wages (₹)": st.column_config.NumberColumn(format="₹%.2f"),
+                             "Estimated Gratuity (₹)": st.column_config.NumberColumn(format="₹%.2f"),
+                         })
+            st.download_button("Download Selected KPI (CSV)",
+                               detail.to_csv(index=False).encode("utf-8-sig"),
+                               file_name="gratuity_" + active_kpi.lower().replace(" ", "_") + ".csv",
+                               mime="text/csv", key="gratuity_kpi_csv")
         a,b = st.columns(2, gap="medium")
         with a:
             st.markdown('<div class="hr-section-header">Estimated Gratuity Exposure by Company</div>',unsafe_allow_html=True)
@@ -1216,7 +1257,6 @@ elif page=="Gratuity Analysis":
         st.download_button("Download Gratuity Working (CSV)",
             data=formatted.to_csv(index=False).encode("utf-8-sig"),
             file_name="sugam_gratuity_analysis.csv",mime="text/csv",key="hr_gratuity_download")
-        st.caption("Exited employees are shown only when selected and cannot be treated as unpaid liability without checking settlements. Rejoining and cross-company continuous service are not automatically consolidated. Accounting provisions require actuarial assessment where applicable.")
 
 elif page=="Missing Salary Details":
     names = emp[["COMPANY", "EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "ACTIVE_HEADCOUNT"]].drop_duplicates(EMPLOYEE_KEYS)
@@ -1308,3 +1348,4 @@ elif page=="Rejoining Details":
         cols=["COMPANY","EMPCODE","EMPNAME","MATCH_METHOD","AADHAAR_MASKED","PAN_MASKED","ZONE","BRANCH","DEPARTMENT","DOJ","PREVIOUS_COMPANY","PREVIOUS_EMPCODE","PREVIOUS_DOJ","PREVIOUS_LWD","DAYS_BETWEEN","REJOINING_STATUS","STATUS"]
         show_employee_table(shown[cols].sort_values("DOJ",ascending=False))
         download_csv(shown[cols],"hr_rejoining_review")
+
