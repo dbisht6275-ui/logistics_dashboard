@@ -1308,4 +1308,3 @@ elif page=="Rejoining Details":
         cols=["COMPANY","EMPCODE","EMPNAME","MATCH_METHOD","AADHAAR_MASKED","PAN_MASKED","ZONE","BRANCH","DEPARTMENT","DOJ","PREVIOUS_COMPANY","PREVIOUS_EMPCODE","PREVIOUS_DOJ","PREVIOUS_LWD","DAYS_BETWEEN","REJOINING_STATUS","STATUS"]
         show_employee_table(shown[cols].sort_values("DOJ",ascending=False))
         download_csv(shown[cols],"hr_rejoining_review")
-
