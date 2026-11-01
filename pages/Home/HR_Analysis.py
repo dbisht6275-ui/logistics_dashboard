@@ -373,6 +373,99 @@ def download_csv(data, title):
 
 
 
+# ---------------- Gratuity analysis helpers ----------------
+# This is a management estimate, not an actuarial provision or legal determination.
+# Current mapped salary heads do not necessarily include every component under the
+# statutory wage definition. Review allowances/DA and any unmapped payroll heads.
+
+def gratuity_salary_at_date(salary_data, people):
+    """One effective salary component per employee/head at the employee's cutoff date.
+
+    For departed employees use the earlier last working date rather than today's wage.
+    A same-date conflicting revision invalidates the employee's estimate.
+    """
+    keys = EMPLOYEE_KEYS
+    cols = keys + ["CUTOFF_DATE"]
+    source = salary_data.loc[salary_data.SALARY_HEAD_CLEAN.isin(EARNING_HEADS)].copy()
+    if source.empty or people.empty:
+        return pd.DataFrame(columns=keys + ["BASIC SALARY", "GROSS_MAPPED", "SALARY_ISSUE", "COMPONENT_COUNT"])
+    scoped = source.merge(people[cols].drop_duplicates(keys), on=keys, how="inner")
+    valid = scoped.loc[
+        scoped.FROMDT.notna() & scoped.FROMDT.le(scoped.CUTOFF_DATE) &
+        (scoped.TODT.isna() | scoped.TODT.ge(scoped.CUTOFF_DATE))
+    ].copy()
+    if valid.empty:
+        return pd.DataFrame(columns=keys + ["BASIC SALARY", "GROSS_MAPPED", "SALARY_ISSUE", "COMPONENT_COUNT"])
+    gkeys = keys + ["SALARY_HEAD_CLEAN"]
+    valid = valid.loc[valid.FROMDT.eq(valid.groupby(gkeys, dropna=False).FROMDT.transform("max"))].copy()
+    count_distinct = valid.groupby(gkeys, dropna=False).AMOUNT.nunique(dropna=False)
+    conflicts = count_distinct.gt(1).rename("CONFLICT").reset_index()
+    valid = valid.sort_values("FROMDT").drop_duplicates(gkeys, keep="last")
+    valid = valid.merge(conflicts, on=gkeys, how="left")
+    summary = valid.groupby(keys, as_index=False).agg(
+        GROSS_MAPPED=("AMOUNT", "sum"),
+        COMPONENT_COUNT=("SALARY_HEAD_CLEAN", "nunique"),
+        HAS_CONFLICT=("CONFLICT", "any")
+    )
+    basic = valid.loc[valid.SALARY_HEAD_CLEAN.eq("BASIC SALARY"), keys + ["AMOUNT"]].rename(columns={"AMOUNT": "BASIC SALARY"})
+    summary = summary.merge(basic, on=keys, how="left")
+    summary["SALARY_ISSUE"] = np.select(
+        [summary.HAS_CONFLICT, summary["BASIC SALARY"].isna(), summary["BASIC SALARY"].le(0), summary.GROSS_MAPPED.le(0)],
+        ["Conflicting Salary Entries", "Basic Salary Missing", "Basic Salary Invalid", "Gross Salary Invalid"],
+        default=""
+    )
+    return summary.drop(columns=["HAS_CONFLICT"])
+
+
+def make_gratuity_report(employees, salary_data, asof, cap=2000000):
+    """Return employee-level indicative exposure and eligibility as of report date."""
+    ref = pd.Timestamp(asof).normalize()
+    names = employees.drop_duplicates(EMPLOYEE_KEYS).copy()
+    names = names.loc[names.DOJ.notna() & names.DOJ.le(ref)].copy()
+    if names.empty:
+        return names
+    names["CUTOFF_DATE"] = names.DATEOFLEAVING.where(
+        names.DATEOFLEAVING.notna() & names.DATEOFLEAVING.le(ref), ref)
+    names["INVALID_DATES"] = names.CUTOFF_DATE.lt(names.DOJ)
+    names["FIFTH_ANNIVERSARY"] = names.DOJ.apply(lambda d: d + pd.DateOffset(years=5))
+    names["ELIGIBLE_STANDARD"] = (~names.INVALID_DATES) & names.CUTOFF_DATE.ge(names.FIFTH_ANNIVERSARY)
+    names["COMPLETED_YEARS"] = [
+        (end.year - start.year) - ((end.month, end.day) < (start.month, start.day))
+        if pd.notna(start) and pd.notna(end) and end >= start else 0
+        for start, end in zip(names.DOJ, names.CUTOFF_DATE)
+    ]
+    anniv = [start + pd.DateOffset(years=int(y)) for start, y in zip(names.DOJ, names.COMPLETED_YEARS)]
+    sixmonths = [d + pd.DateOffset(months=6) for d in anniv]
+    names["CALC_YEARS"] = names.COMPLETED_YEARS + pd.Series(
+        [int(end > six) for end, six in zip(names.CUTOFF_DATE, sixmonths)], index=names.index
+    )
+    names["SERVICE_DAYS"] = (names.CUTOFF_DATE - names.DOJ).dt.days.clip(lower=0)
+    names["SERVICE_YEARS_EXACT"] = (names.SERVICE_DAYS / 365.25).round(2)
+    names["DAYS_TO_ELIGIBILITY"] = (names.FIFTH_ANNIVERSARY - ref).dt.days.clip(lower=0)
+    sal = gratuity_salary_at_date(salary_data, names)
+    names = names.merge(sal, on=EMPLOYEE_KEYS, how="left")
+    names["SALARY_ISSUE"] = names.SALARY_ISSUE.fillna("Salary Not Available")
+    # Provisional wage proxy: mapped Basic + the 50%-of-mapped-gross floor.
+    # Actual statutory wages must be validated including DA, excluded heads,
+    # remuneration in kind, overtime etc. before legal/accounting use.
+    names["GRATUITY_WAGES_PROXY"] = np.maximum(
+        names["BASIC SALARY"].fillna(0), names.GROSS_MAPPED.fillna(0) * .5)
+    names["WAGES_NEED_REVIEW"] = names.GROSS_MAPPED.notna() & (
+        names.GROSS_MAPPED.mul(.5) > names["BASIC SALARY"].fillna(0))
+    has_salary = names.SALARY_ISSUE.eq("")
+    names["ESTIMATED_EXPOSURE"] = np.where(
+        has_salary & ~names.INVALID_DATES,
+        np.minimum(cap, names.GRATUITY_WAGES_PROXY * 15 / 26 * names.CALC_YEARS), np.nan)
+    names["ESTIMATED_ELIGIBLE"] = np.where(names.ELIGIBLE_STANDARD, names.ESTIMATED_EXPOSURE, 0.0)
+    names["ESTIMATED_PRE_ELIGIBILITY"] = np.where(~names.ELIGIBLE_STANDARD, names.ESTIMATED_EXPOSURE, 0.0)
+    names["GRATUITY_STATUS"] = np.select(
+        [names.INVALID_DATES, ~has_salary, names.STATUS.eq("LEFT"), names.ELIGIBLE_STANDARD],
+        ["Review Dates", "Review Salary", "Exited - Payment Status Unknown", "Eligible - Standard 5Y"],
+        default="Not Yet Eligible - Standard 5Y"
+    )
+    return names
+
+
 # ----------------- HR dashboard presentation -----------------
 
 st.markdown('''<style>
@@ -437,6 +530,10 @@ HR_KPI_STYLES = {
     "Net Employee Change This Year": ("⚖️", "#0f766e", "#2dd4bf"),
     "Employee Leaving Rate (Estimate)": ("📊", "#7c3aed", "#a78bfa"),
     "New Joiners": ("🆕", "#0369a1", "#38bdf8"),
+    "Eligible for Gratuity": ("✅", "#047857", "#34d399"),
+    "Estimated Eligible Gratuity": ("₹", "#075985", "#0ea5e9"),
+    "Future Service Exposure": ("₹", "#9a3412", "#f97316"),
+    "Nearing 5 Years": ("⏳", "#155e75", "#22b8a6"),
     "Still Active": ("✅", "#047857", "#34d399"),
     "Exited After Joining": ("🚪", "#b45309", "#f59e0b"),
     "Employees Exited": ("🚪", "#9a3412", "#f97316"),
@@ -538,7 +635,7 @@ snapshot=salary_snapshot(salary,asof)
 # Filter on current employment; previous employment may be in another company.
 rejoining=rejoining_all.loc[employee_key_mask(rejoining_all,emp)].copy()
 sections=[("Overview","Overview"), ("New Joiners","New Joiners"), ("Exit Insights","Exit Insights"),
-          ("Salary & Costs","Salary & Costs"),("Missing Salary Details","Missing Salary"),("Employee List","Employees"),("Rejoining Details","Rejoining")]
+          ("Salary & Costs","Salary & Costs"),("Gratuity Analysis","Gratuity"),("Missing Salary Details","Missing Salary"),("Employee List","Employees"),("Rejoining Details","Rejoining")]
 if st.session_state.get("hr_selected_section") not in [k for k,_ in sections]:
     st.session_state["hr_selected_section"]="Overview"
 with st.container(key="hr_nav_row"):
@@ -1040,6 +1137,86 @@ elif page=="Salary & Costs":
             st.caption("Each salary period is shown separately. Current gross salary uses only salary records without an end date.")
         else:
             st.info("This employee has no mapped salary earnings history.")
+
+
+elif page=="Gratuity Analysis":
+    st.markdown('<div class="hr-section-header">Gratuity Analysis · Employee-wise Estimated Exposure</div>', unsafe_allow_html=True)
+    st.caption("Indicative management working. Standard 5-year test only; fixed-term, death/disablement, continuity/rejoining, special cases and actual paid gratuity require HR review. Not an actuarial valuation.")
+    control_a, control_b, control_c = st.columns([1, 1, 2], gap="small")
+    ceiling = control_a.number_input("Maximum payout cap (₹)", min_value=0, max_value=100000000,
+                                     value=2000000, step=100000, key="hr_gratuity_cap")
+    near_months = control_b.selectbox("Eligibility approaching in", [3, 6, 12, 24], index=2,
+                                      format_func=lambda x: f"{x} months", key="hr_gratuity_near")
+    include_exited = control_c.checkbox("Include exited employees in report (payment status unverified)", value=False,
+                                       key="hr_gratuity_exited")
+    report = make_gratuity_report(emp, salary, asof, cap=ceiling)
+    if not include_exited and not report.empty:
+        report = report.loc[report.ACTIVE_HEADCOUNT.eq(1)].copy()
+    if report.empty:
+        st.info("No employees found for selected filters and report date.")
+    else:
+        valid = report.loc[report.ESTIMATED_EXPOSURE.notna()]
+        eligible = report.loc[report.ELIGIBLE_STANDARD & report.ESTIMATED_EXPOSURE.notna()]
+        pending = report.loc[~report.ELIGIBLE_STANDARD & report.ESTIMATED_EXPOSURE.notna()]
+        near_cutoff = pd.Timestamp(asof) + pd.DateOffset(months=near_months)
+        near = report.loc[report.ACTIVE_HEADCOUNT.eq(1) & ~report.ELIGIBLE_STANDARD &
+                          report.FIFTH_ANNIVERSARY.between(pd.Timestamp(asof), near_cutoff)]
+        hr_metric_grid([
+            ("Eligible for Gratuity", indian_number(len(eligible)), "Standard 5-year rule; salary available"),
+            ("Estimated Eligible Gratuity", "₹" + indian_number(eligible.ESTIMATED_EXPOSURE.sum()), "Potential benefit, not amount due today"),
+            ("Future Service Exposure", "₹" + indian_number(pending.ESTIMATED_EXPOSURE.sum()), "Indicative accrued value before eligibility"),
+            ("Nearing 5 Years", indian_number(len(near)), f"Within next {near_months} months"),
+        ])
+        review_count = int(report.ESTIMATED_EXPOSURE.isna().sum())
+        if review_count:
+            st.warning(f"{review_count} employee(s) lack valid salary or dates; their amount is excluded from totals. Download the report to review.")
+        st.info("Wage proxy = higher of mapped Basic and 50% of mapped monthly gross (Basic + HRA + mapped allowances). This is NOT a fully validated legal wage figure. Confirm DA, other remuneration, excluded heads and 50% wage rule with payroll/legal before finalisation. ₹20 lakh cap is editable.")
+        if report.WAGES_NEED_REVIEW.any():
+            st.caption(f"{int(report.WAGES_NEED_REVIEW.sum())} employee(s) use the 50% floor rather than Basic alone. Wage components need special verification.")
+        a,b = st.columns(2, gap="medium")
+        with a:
+            st.markdown('<div class="hr-section-header">Estimated Gratuity Exposure by Company</div>',unsafe_allow_html=True)
+            data = valid.groupby("COMPANY", dropna=False).ESTIMATED_EXPOSURE.sum().sort_values()
+            if len(data):
+                fig=px.bar(x=data.values, y=data.index.astype(str), orientation="h", color_discrete_sequence=["#1682ae"])
+                fig.update_layout(xaxis_title="Estimated exposure (₹)", yaxis_title=None, showlegend=False)
+                hr_plot(fig,300)
+            else:st.info("No usable salary records")
+        with b:
+            st.markdown('<div class="hr-section-header">Standard Eligibility Breakdown</div>',unsafe_allow_html=True)
+            grouped=report.GRATUITY_STATUS.value_counts()
+            fig=px.bar(x=grouped.index.astype(str), y=grouped.values, color_discrete_sequence=["#20a79e"])
+            fig.update_layout(xaxis_title=None,yaxis_title="Employees",showlegend=False)
+            fig.update_xaxes(tickangle=-20)
+            hr_plot(fig,300)
+        st.markdown('<div class="hr-section-header">Employee-wise Gratuity Working</div>',unsafe_allow_html=True)
+        q=st.text_input("Search employee name or code", key="hr_gratuity_search")
+        shown=report.copy()
+        if q.strip():
+            match=(shown.EMPNAME.fillna("").astype(str).str.contains(q.strip(), case=False, regex=False) |
+                   shown.EMPCODE.fillna("").astype(str).str.contains(q.strip(), case=False, regex=False))
+            shown=shown.loc[match].copy()
+        columns=["COMPANY","EMPCODE","EMPNAME","ZONE","BRANCH","DEPARTMENT","DOJ","DATEOFLEAVING",
+                 "CUTOFF_DATE","SERVICE_YEARS_EXACT","CALC_YEARS","BASIC SALARY","GROSS_MAPPED",
+                 "GRATUITY_WAGES_PROXY","ELIGIBLE_STANDARD","ESTIMATED_EXPOSURE","GRATUITY_STATUS",
+                 "SALARY_ISSUE","WAGES_NEED_REVIEW","FIFTH_ANNIVERSARY"]
+        formatted=shown[columns].rename(columns={
+            "CUTOFF_DATE":"Calculation Date", "SERVICE_YEARS_EXACT":"Years of Service (Approx)",
+            "CALC_YEARS":"Years for Formula", "BASIC SALARY":"Monthly Basic (₹)",
+            "GROSS_MAPPED":"Mapped Gross (₹)","GRATUITY_WAGES_PROXY":"Gratuity Wage Proxy (₹)",
+            "ELIGIBLE_STANDARD":"5-Year Eligibility", "ESTIMATED_EXPOSURE":"Estimated Gratuity (₹)",
+            "GRATUITY_STATUS":"Gratuity Status","SALARY_ISSUE":"Data Issue",
+            "WAGES_NEED_REVIEW":"50% Wage Floor Used", "FIFTH_ANNIVERSARY":"Standard Eligibility Date"
+        }).sort_values("Estimated Gratuity (₹)",ascending=False,na_position="last")
+        money_cols=["Monthly Basic (₹)","Mapped Gross (₹)","Gratuity Wage Proxy (₹)","Estimated Gratuity (₹)"]
+        display=formatted.copy()
+        for c in money_cols:
+            display[c]=display[c].map(lambda v: indian_number(v,2))
+        show_employee_table(display)
+        st.download_button("Download Gratuity Working (CSV)",
+            data=formatted.to_csv(index=False).encode("utf-8-sig"),
+            file_name="sugam_gratuity_analysis.csv",mime="text/csv",key="hr_gratuity_download")
+        st.caption("Exited employees are shown only when selected and cannot be treated as unpaid liability without checking settlements. Rejoining and cross-company continuous service are not automatically consolidated. Accounting provisions require actuarial assessment where applicable.")
 
 elif page=="Missing Salary Details":
     names = emp[["COMPANY", "EMPLOYEEID", "EMPCODE", "EMPNAME", "ZONE", "BRANCH", "DEPARTMENT", "DOJ", "ACTIVE_HEADCOUNT"]].drop_duplicates(EMPLOYEE_KEYS)
