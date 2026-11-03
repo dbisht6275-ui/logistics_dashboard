@@ -453,18 +453,21 @@ def get_Delivery_summary_trunover(
                                 S.ZONENAME = 'SOUTH ZONE',
                                 4,
                                 IIF(
-                                    S.ZONENAME = 'WEST ZONE',
+                                    S.ZONENAME = 'GUJARAT WEST ZONE',
                                     5,
                                     IIF(
-                                        S.ZONENAME = 'NEPAL ZONE',
+                                        S.ZONENAME = 'WEST ZONE',
                                         6,
-                                        7
+                                        IIF(
+                                            S.ZONENAME = 'NEPAL ZONE',
+                                            7,
+                                        8
                                     )
                                 )
                             )
                         )
                     )
-                ),
+                )),
 
                 S.ZONENAME
         """
@@ -620,18 +623,21 @@ def get_delivery_summary_one_year_turnover(
                                 S.ZONENAME = 'SOUTH ZONE',
                                 4,
                                 IIF(
-                                    S.ZONENAME = 'WEST ZONE',
+                                    S.ZONENAME = 'GUJARAT WEST ZONE',
                                     5,
+                                IIF(
+                                    S.ZONENAME = 'WEST ZONE',
+                                    6,
                                     IIF(
                                         S.ZONENAME = 'NEPAL ZONE',
-                                        6,
-                                        7
+                                        7,
+                                        8
                                     )
                                 )
                             )
                         )
                     )
-                ),
+                )),
 
                 S.ZONENAME
         """
