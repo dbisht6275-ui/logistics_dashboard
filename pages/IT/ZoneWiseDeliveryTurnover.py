@@ -327,8 +327,9 @@ def get_zone_wise_delivery_turnover(
             IIF(S.ZONENAME='EAST ZONE',2,
             IIF(S.ZONENAME='NORTH ZONE',3,
             IIF(S.ZONENAME='SOUTH ZONE',4,
-            IIF(S.ZONENAME='WEST ZONE',5,
-            IIF(S.ZONENAME='NEPAL ZONE',6,''))))))
+            IIF(S.ZONENAME='GUJARAT WEST ZONE',5,
+            IIF(S.ZONENAME='WEST ZONE',6,
+            IIF(S.ZONENAME='NEPAL ZONE',7,'')))))))
         """
 
         df = pd.read_sql(
@@ -448,8 +449,9 @@ def get_zone_wise_delivery_one_year_turnover(
             IIF(S.ZONENAME='EAST ZONE',2,
             IIF(S.ZONENAME='NORTH ZONE',3,
             IIF(S.ZONENAME='SOUTH ZONE',4,
-            IIF(S.ZONENAME='WEST ZONE',5,
-            IIF(S.ZONENAME='NEPAL ZONE',6,''))))))
+            IIF(S.ZONENAME='GUJARAT WEST ZONE',5,
+            IIF(S.ZONENAME='WEST ZONE',6,
+            IIF(S.ZONENAME='NEPAL ZONE',7,'')))))))
         """
 
         df = pd.read_sql(
