@@ -551,15 +551,18 @@ def get_Booking_summary_trunover(
                         IIF(
                             S.ZONENAME = 'SOUTH ZONE', 4,
                             IIF(
-                                S.ZONENAME = 'WEST ZONE', 5,
+                                S.ZONENAME = 'GUJARAT WEST ZONE', 5,
+                             IIF(
+                                S.ZONENAME = 'WEST ZONE', 6,
+
                                 IIF(
-                                    S.ZONENAME = 'NEPAL ZONE', 6, 7
+                                    S.ZONENAME = 'NEPAL ZONE', 7, 8
                                 )
                             )
                         )
                     )
                 )
-            ),
+            )),
 
             S.ZONENAME
         """
@@ -724,15 +727,17 @@ def get_booking_summary_one_year_turnover(
                         IIF(
                             S.ZONENAME = 'SOUTH ZONE', 4,
                             IIF(
-                                S.ZONENAME = 'WEST ZONE', 5,
+                                S.ZONENAME = 'GUJARAT WEST ZONE', 5,
+                            IIF(
+                                S.ZONENAME = 'WEST ZONE', 6,
                                 IIF(
-                                    S.ZONENAME = 'NEPAL ZONE', 6, 7
+                                    S.ZONENAME = 'NEPAL ZONE', 7, 8
                                 )
                             )
                         )
                     )
                 )
-            ),
+            )),
 
             S.ZONENAME
         """
