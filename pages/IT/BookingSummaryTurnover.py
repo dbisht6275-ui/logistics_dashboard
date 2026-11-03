@@ -263,304 +263,125 @@ def get_Booking_summary_trunover(
         SELECT
             S.PARTICULAR,
             S.ZONENAME,
-            SUM(S.SML) AS LTL,
-            SUM(S.FTL) AS FTL,
+            SUM(S.SML)   AS LTL,
+            SUM(S.FTL)   AS FTL,
             SUM(S.TOTAL) AS TOTAL,
-
-            (SUM(S.SML) * 100.0)
-                / NULLIF(SUM(S.TOTAL), 0)
-                AS [% (SML.+LTL/TOTAL)],
-
-            (SUM(S.NPBKG) * 100.0)
-                / NULLIF(SUM(S.TOTAL), 0)
-                AS [% (NEPAL/TOTAL)]
-
+            (SUM(S.SML) * 100.0) / NULLIF(SUM(S.TOTAL), 0)   AS [% (SML.+LTL/TOTAL)],
+            (SUM(S.NPBKG) * 100.0) / NULLIF(SUM(S.TOTAL), 0) AS [% (NEPAL/TOTAL)]
         FROM
         (
+            -- ================= PERIOD 1 (/ 3 months) =================
             SELECT
                 '{part1}' AS PARTICULAR,
                 ZONE.ZONENAME,
-
-                IIF(
-                    CN.FTL <> 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
-                    0
-                ) AS SML,
-
-                IIF(
-                    CN.FTL = 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
-                    0
-                ) AS FTL,
-
-                (CN.TAMOUNT - CN.SERVICETAX)
-                    / 300000.0 AS TOTAL,
-
-                IIF(
-                    DST.ZONECODE = 'A0006',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
-                    0
-                ) AS NPBKG
-
+                IIF(CN.FTL <> 'Y', (CN.TAMOUNT - CN.SERVICETAX) / 300000.0, 0) AS SML,
+                IIF(CN.FTL =  'Y', (CN.TAMOUNT - CN.SERVICETAX) / 300000.0, 0) AS FTL,
+                (CN.TAMOUNT - CN.SERVICETAX) / 300000.0 AS TOTAL,
+                IIF(DST.ZONECODE = 'A0006', (CN.TAMOUNT - CN.SERVICETAX) / 300000.0, 0) AS NPBKG
             FROM CNMT CN WITH(NOLOCK)
-
-            INNER JOIN STATIONMAST ORG
-                ON ORG.STNCODE = CN.ORGCODE
-
-            INNER JOIN VIEWSTATIONMAST ZONE
-                ON ZONE.STNCODE = CN.ORGCODE
-
-            LEFT JOIN STATIONMAST DST
-                ON DST.STNCODE = CN.DESTCODE
-
-            WHERE
-                CN.GRDT >= '{from1_sql}'
-                AND CN.GRDT < DATEADD(DAY, 1, '{to1_sql}')
-                AND CN.GRTYPE <> 'N'
+            INNER JOIN STATIONMAST ORG      ON ORG.STNCODE  = CN.ORGCODE
+            INNER JOIN VIEWSTATIONMAST ZONE ON ZONE.STNCODE = CN.ORGCODE
+            LEFT  JOIN STATIONMAST DST      ON DST.STNCODE  = CN.DESTCODE
+            WHERE CN.GRDT >= '{from1_sql}'
+              AND CN.GRDT <  DATEADD(DAY, 1, '{to1_sql}')
+              AND CN.GRTYPE <> 'N'
 
             UNION ALL
 
             SELECT
-                '{total1}',
-                NULL,
-
-                IIF(
-                    CN.FTL <> 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
-                    0
-                ),
-
-                IIF(
-                    CN.FTL = 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
-                    0
-                ),
-
-                (CN.TAMOUNT - CN.SERVICETAX)
-                    / 300000.0,
-
-                IIF(
-                    DST.ZONECODE = 'A0006',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
-                    0
-                )
-
+                '{total1}', NULL,
+                IIF(CN.FTL <> 'Y', (CN.TAMOUNT - CN.SERVICETAX) / 300000.0, 0),
+                IIF(CN.FTL =  'Y', (CN.TAMOUNT - CN.SERVICETAX) / 300000.0, 0),
+                (CN.TAMOUNT - CN.SERVICETAX) / 300000.0,
+                IIF(DST.ZONECODE = 'A0006', (CN.TAMOUNT - CN.SERVICETAX) / 300000.0, 0)
             FROM CNMT CN WITH(NOLOCK)
-
-            INNER JOIN STATIONMAST ORG
-                ON ORG.STNCODE = CN.ORGCODE
-
-            INNER JOIN VIEWSTATIONMAST ZONE
-                ON ZONE.STNCODE = CN.ORGCODE
-
-            LEFT JOIN STATIONMAST DST
-                ON DST.STNCODE = CN.DESTCODE
-
-            WHERE
-                CN.GRDT >= '{from1_sql}'
-                AND CN.GRDT < DATEADD(DAY, 1, '{to1_sql}')
-                AND CN.GRTYPE <> 'N'
+            INNER JOIN STATIONMAST ORG      ON ORG.STNCODE  = CN.ORGCODE
+            INNER JOIN VIEWSTATIONMAST ZONE ON ZONE.STNCODE = CN.ORGCODE
+            LEFT  JOIN STATIONMAST DST      ON DST.STNCODE  = CN.DESTCODE
+            WHERE CN.GRDT >= '{from1_sql}'
+              AND CN.GRDT <  DATEADD(DAY, 1, '{to1_sql}')
+              AND CN.GRTYPE <> 'N'
 
             UNION ALL
 
+            -- ================= PERIOD 2 (/ 1 lakh) =================
             SELECT
                 '{part2}',
                 ZONE.ZONENAME,
-
-                IIF(
-                    CN.FTL <> 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                ),
-
-                IIF(
-                    CN.FTL = 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                ),
-
-                (CN.TAMOUNT - CN.SERVICETAX)
-                    / 100000.0,
-
-                IIF(
-                    DST.ZONECODE = 'A0006',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                )
-
+                IIF(CN.FTL <> 'Y', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0),
+                IIF(CN.FTL =  'Y', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0),
+                (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
+                IIF(DST.ZONECODE = 'A0006', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0)
             FROM CNMT CN WITH(NOLOCK)
-
-            INNER JOIN STATIONMAST ORG
-                ON ORG.STNCODE = CN.ORGCODE
-
-            INNER JOIN VIEWSTATIONMAST ZONE
-                ON ZONE.STNCODE = CN.ORGCODE
-
-            LEFT JOIN STATIONMAST DST
-                ON DST.STNCODE = CN.DESTCODE
-
-            WHERE
-                CN.GRDT >= '{from2_sql}'
-                AND CN.GRDT < DATEADD(DAY, 1, '{to2_sql}')
-                AND CN.GRTYPE <> 'N'
+            INNER JOIN STATIONMAST ORG      ON ORG.STNCODE  = CN.ORGCODE
+            INNER JOIN VIEWSTATIONMAST ZONE ON ZONE.STNCODE = CN.ORGCODE
+            LEFT  JOIN STATIONMAST DST      ON DST.STNCODE  = CN.DESTCODE
+            WHERE CN.GRDT >= '{from2_sql}'
+              AND CN.GRDT <  DATEADD(DAY, 1, '{to2_sql}')
+              AND CN.GRTYPE <> 'N'
 
             UNION ALL
 
             SELECT
-                '{total2}',
-                NULL,
-
-                IIF(
-                    CN.FTL <> 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                ),
-
-                IIF(
-                    CN.FTL = 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                ),
-
-                (CN.TAMOUNT - CN.SERVICETAX)
-                    / 100000.0,
-
-                IIF(
-                    DST.ZONECODE = 'A0006',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                )
-
+                '{total2}', NULL,
+                IIF(CN.FTL <> 'Y', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0),
+                IIF(CN.FTL =  'Y', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0),
+                (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
+                IIF(DST.ZONECODE = 'A0006', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0)
             FROM CNMT CN WITH(NOLOCK)
-
-            INNER JOIN STATIONMAST ORG
-                ON ORG.STNCODE = CN.ORGCODE
-
-            INNER JOIN VIEWSTATIONMAST ZONE
-                ON ZONE.STNCODE = CN.ORGCODE
-
-            LEFT JOIN STATIONMAST DST
-                ON DST.STNCODE = CN.DESTCODE
-
-            WHERE
-                CN.GRDT >= '{from2_sql}'
-                AND CN.GRDT < DATEADD(DAY, 1, '{to2_sql}')
-                AND CN.GRTYPE <> 'N'
+            INNER JOIN STATIONMAST ORG      ON ORG.STNCODE  = CN.ORGCODE
+            INNER JOIN VIEWSTATIONMAST ZONE ON ZONE.STNCODE = CN.ORGCODE
+            LEFT  JOIN STATIONMAST DST      ON DST.STNCODE  = CN.DESTCODE
+            WHERE CN.GRDT >= '{from2_sql}'
+              AND CN.GRDT <  DATEADD(DAY, 1, '{to2_sql}')
+              AND CN.GRTYPE <> 'N'
 
             UNION ALL
 
+            -- ================= PERIOD 3 (/ 1 lakh) =================
             SELECT
                 '{part3}',
                 ZONE.ZONENAME,
-
-                IIF(
-                    CN.FTL <> 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                ),
-
-                IIF(
-                    CN.FTL = 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                ),
-
-                (CN.TAMOUNT - CN.SERVICETAX)
-                    / 100000.0,
-
-                IIF(
-                    DST.ZONECODE = 'A0006',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                )
-
+                IIF(CN.FTL <> 'Y', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0),
+                IIF(CN.FTL =  'Y', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0),
+                (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
+                IIF(DST.ZONECODE = 'A0006', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0)
             FROM CNMT CN WITH(NOLOCK)
-
-            INNER JOIN STATIONMAST ORG
-                ON ORG.STNCODE = CN.ORGCODE
-
-            INNER JOIN VIEWSTATIONMAST ZONE
-                ON ZONE.STNCODE = CN.ORGCODE
-
-            LEFT JOIN STATIONMAST DST
-                ON DST.STNCODE = CN.DESTCODE
-
-            WHERE
-                CN.GRDT >= '{from3_sql}'
-                AND CN.GRDT < DATEADD(DAY, 1, '{to3_sql}')
-                AND CN.GRTYPE <> 'N'
+            INNER JOIN STATIONMAST ORG      ON ORG.STNCODE  = CN.ORGCODE
+            INNER JOIN VIEWSTATIONMAST ZONE ON ZONE.STNCODE = CN.ORGCODE
+            LEFT  JOIN STATIONMAST DST      ON DST.STNCODE  = CN.DESTCODE
+            WHERE CN.GRDT >= '{from3_sql}'
+              AND CN.GRDT <  DATEADD(DAY, 1, '{to3_sql}')
+              AND CN.GRTYPE <> 'N'
 
             UNION ALL
 
             SELECT
-                '{total3}',
-                NULL,
-
-                IIF(
-                    CN.FTL <> 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                ),
-
-                IIF(
-                    CN.FTL = 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                ),
-
-                (CN.TAMOUNT - CN.SERVICETAX)
-                    / 100000.0,
-
-                IIF(
-                    DST.ZONECODE = 'A0006',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
-                    0
-                )
-
+                '{total3}', NULL,
+                IIF(CN.FTL <> 'Y', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0),
+                IIF(CN.FTL =  'Y', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0),
+                (CN.TAMOUNT - CN.SERVICETAX) / 100000.0,
+                IIF(DST.ZONECODE = 'A0006', (CN.TAMOUNT - CN.SERVICETAX) / 100000.0, 0)
             FROM CNMT CN WITH(NOLOCK)
-
-            INNER JOIN STATIONMAST ORG
-                ON ORG.STNCODE = CN.ORGCODE
-
-            INNER JOIN VIEWSTATIONMAST ZONE
-                ON ZONE.STNCODE = CN.ORGCODE
-
-            LEFT JOIN STATIONMAST DST
-                ON DST.STNCODE = CN.DESTCODE
-
-            WHERE
-                CN.GRDT >= '{from3_sql}'
-                AND CN.GRDT < DATEADD(DAY, 1, '{to3_sql}')
-                AND CN.GRTYPE <> 'N'
-
+            INNER JOIN STATIONMAST ORG      ON ORG.STNCODE  = CN.ORGCODE
+            INNER JOIN VIEWSTATIONMAST ZONE ON ZONE.STNCODE = CN.ORGCODE
+            LEFT  JOIN STATIONMAST DST      ON DST.STNCODE  = CN.DESTCODE
+            WHERE CN.GRDT >= '{from3_sql}'
+              AND CN.GRDT <  DATEADD(DAY, 1, '{to3_sql}')
+              AND CN.GRTYPE <> 'N'
         ) AS S
-
         GROUP BY
             S.PARTICULAR,
             S.ZONENAME
-
         ORDER BY
             S.PARTICULAR,
-
-            IIF(
-                S.ZONENAME = 'NORTH EAST ZONE', 1,
-                IIF(
-                    S.ZONENAME = 'EAST ZONE', 2,
-                    IIF(
-                        S.ZONENAME = 'NORTH ZONE', 3,
-                        IIF(
-                            S.ZONENAME = 'SOUTH ZONE', 4,
-                            IIF(
-                                S.ZONENAME = 'WEST ZONE', 5,
-                                IIF(
-                                    S.ZONENAME = 'NEPAL ZONE', 6, 7
-                                )
-                            )
-                        )
-                    )
-                )
-            ),
-
+            IIF(S.ZONENAME = 'NORTH EAST ZONE', 1,
+            IIF(S.ZONENAME = 'EAST ZONE',       2,
+            IIF(S.ZONENAME = 'NORTH ZONE',      3,
+            IIF(S.ZONENAME = 'SOUTH ZONE',      4,
+            IIF(S.ZONENAME = 'WEST ZONE',       5,
+            IIF(S.ZONENAME = 'WEST ZONE',       6,
+            IIF(S.ZONENAME = 'NEPAL ZONE',      7, 8))))))),
             S.ZONENAME
         """
 
@@ -608,132 +429,56 @@ def get_booking_summary_one_year_turnover(
         SELECT
             S.PARTICULAR,
             S.ZONENAME,
-            SUM(S.SML) AS LTL,
-            SUM(S.FTL) AS FTL,
+            SUM(S.SML)   AS LTL,
+            SUM(S.FTL)   AS FTL,
             SUM(S.TOTAL) AS TOTAL,
-
-            (SUM(S.SML) * 100.0)
-                / NULLIF(SUM(S.TOTAL), 0)
-                AS [% (SML.+LTL/TOTAL)],
-
-            (SUM(S.NPBKG) * 100.0)
-                / NULLIF(SUM(S.TOTAL), 0)
-                AS [% (NEPAL/TOTAL)]
-
+            (SUM(S.SML) * 100.0) / NULLIF(SUM(S.TOTAL), 0)   AS [% (SML.+LTL/TOTAL)],
+            (SUM(S.NPBKG) * 100.0) / NULLIF(SUM(S.TOTAL), 0) AS [% (NEPAL/TOTAL)]
         FROM
         (
             SELECT
                 '{period_name}' AS PARTICULAR,
                 ZONE.ZONENAME,
-
-                IIF(
-                    CN.FTL <> 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
-                    0
-                ) AS SML,
-
-                IIF(
-                    CN.FTL = 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
-                    0
-                ) AS FTL,
-
-                (CN.TAMOUNT - CN.SERVICETAX)
-                    / 1200000.0 AS TOTAL,
-
-                IIF(
-                    DST.ZONECODE = 'A0006',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
-                    0
-                ) AS NPBKG
-
+                IIF(CN.FTL <> 'Y', (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0, 0) AS SML,
+                IIF(CN.FTL =  'Y', (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0, 0) AS FTL,
+                (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0 AS TOTAL,
+                IIF(DST.ZONECODE = 'A0006', (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0, 0) AS NPBKG
             FROM CNMT CN WITH(NOLOCK)
-
-            INNER JOIN STATIONMAST ORG
-                ON ORG.STNCODE = CN.ORGCODE
-
-            INNER JOIN VIEWSTATIONMAST ZONE
-                ON ZONE.STNCODE = CN.ORGCODE
-
-            LEFT JOIN STATIONMAST DST
-                ON DST.STNCODE = CN.DESTCODE
-
-            WHERE
-                CN.GRDT >= '{from_sql}'
-                AND CN.GRDT < DATEADD(DAY, 1, '{to_sql}')
-                AND CN.GRTYPE <> 'N'
+            INNER JOIN STATIONMAST ORG      ON ORG.STNCODE  = CN.ORGCODE
+            INNER JOIN VIEWSTATIONMAST ZONE ON ZONE.STNCODE = CN.ORGCODE
+            LEFT  JOIN STATIONMAST DST      ON DST.STNCODE  = CN.DESTCODE
+            WHERE CN.GRDT >= '{from_sql}'
+              AND CN.GRDT <  DATEADD(DAY, 1, '{to_sql}')
+              AND CN.GRTYPE <> 'N'
 
             UNION ALL
 
             SELECT
-                '{total_name}',
-                NULL,
-
-                IIF(
-                    CN.FTL <> 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
-                    0
-                ),
-
-                IIF(
-                    CN.FTL = 'Y',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
-                    0
-                ),
-
-                (CN.TAMOUNT - CN.SERVICETAX)
-                    / 1200000.0,
-
-                IIF(
-                    DST.ZONECODE = 'A0006',
-                    (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
-                    0
-                )
-
+                '{total_name}', NULL,
+                IIF(CN.FTL <> 'Y', (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0, 0),
+                IIF(CN.FTL =  'Y', (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0, 0),
+                (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0,
+                IIF(DST.ZONECODE = 'A0006', (CN.TAMOUNT - CN.SERVICETAX) / 1200000.0, 0)
             FROM CNMT CN WITH(NOLOCK)
-
-            INNER JOIN STATIONMAST ORG
-                ON ORG.STNCODE = CN.ORGCODE
-
-            INNER JOIN VIEWSTATIONMAST ZONE
-                ON ZONE.STNCODE = CN.ORGCODE
-
-            LEFT JOIN STATIONMAST DST
-                ON DST.STNCODE = CN.DESTCODE
-
-            WHERE
-                CN.GRDT >= '{from_sql}'
-                AND CN.GRDT < DATEADD(DAY, 1, '{to_sql}')
-                AND CN.GRTYPE <> 'N'
-
+            INNER JOIN STATIONMAST ORG      ON ORG.STNCODE  = CN.ORGCODE
+            INNER JOIN VIEWSTATIONMAST ZONE ON ZONE.STNCODE = CN.ORGCODE
+            LEFT  JOIN STATIONMAST DST      ON DST.STNCODE  = CN.DESTCODE
+            WHERE CN.GRDT >= '{from_sql}'
+              AND CN.GRDT <  DATEADD(DAY, 1, '{to_sql}')
+              AND CN.GRTYPE <> 'N'
         ) AS S
-
         GROUP BY
             S.PARTICULAR,
             S.ZONENAME
-
         ORDER BY
             S.PARTICULAR,
-
-            IIF(
-                S.ZONENAME = 'NORTH EAST ZONE', 1,
-                IIF(
-                    S.ZONENAME = 'EAST ZONE', 2,
-                    IIF(
-                        S.ZONENAME = 'NORTH ZONE', 3,
-                        IIF(
-                            S.ZONENAME = 'SOUTH ZONE', 4,
-                            IIF(
-                                S.ZONENAME = 'WEST ZONE', 5,
-                                IIF(
-                                    S.ZONENAME = 'NEPAL ZONE', 6, 7
-                                )
-                            )
-                        )
-                    )
-                )
-            ),
-
+            IIF(S.ZONENAME = 'NORTH EAST ZONE', 1,
+            IIF(S.ZONENAME = 'EAST ZONE',       2,
+            IIF(S.ZONENAME = 'NORTH ZONE',      3,
+            IIF(S.ZONENAME = 'SOUTH ZONE',      4,
+            IIF(S.ZONENAME = 'WEST ZONE',       5,
+            IIF(S.ZONENAME = 'GUJARAT WEST ZONE', 6,
+            IIF(S.ZONENAME = 'NEPAL ZONE',      7, 8))))))),
             S.ZONENAME
         """
 
