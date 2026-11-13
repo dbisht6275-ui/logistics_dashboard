@@ -1183,6 +1183,16 @@ def show_pnl_dashboard() -> None:
     end_date = pd.to_datetime(st.session_state["pnl_active_end_date"])
     prev_start = pd.to_datetime(st.session_state["pnl_active_prev_start"])
     prev_end = pd.to_datetime(st.session_state["pnl_active_prev_end"])
+
+    # The comparison label must work for both Financial Year and custom Date Range.
+    if pending_period_mode == "Financial Year":
+        prev_fy = get_previous_fy(fy)
+    else:
+        prev_fy = (
+            f"{prev_start.strftime('%d-%m-%Y')} to "
+            f"{prev_end.strftime('%d-%m-%Y')}"
+        )
+
     raw_df = stored_df.copy()
     raw_prev_df = stored_prev_df.copy() if stored_prev_df is not None else pd.DataFrame()
 
