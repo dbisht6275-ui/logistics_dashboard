@@ -19,6 +19,37 @@ _PNL_QUERY = text("""
         @prmgrno       = :grno
 """)
 
+_REBATE_QUERY = text("""
+    ;WITH CreditNoteGR AS
+    (
+        -- Keep one row for each Credit Note + Bill + GR combination.
+        -- If the same GR appears against multiple bills/credit-note rows,
+        -- its credit-note amounts are intentionally added in the GR-wise SUM.
+        SELECT DISTINCT
+            C.CREDITNOTEID,
+            CD.BILLNO,
+            CD.GRNO,
+            CN.GRDT,
+            TRY_CONVERT(DECIMAL(18, 2), C.CREDITNOTEAMOUNT) AS CREDITNOTEAMOUNT
+        FROM CREDITNOTEHEAD C
+        INNER JOIN CREDITNOTEDETAIL CD
+            ON CD.CREDITNOTEID = C.CREDITNOTEID
+        INNER JOIN CNMT CN WITH (NOLOCK)
+            ON CN.GRNO = CD.GRNO
+        WHERE (C.APPROVED NOT IN ('R', 'Y') OR C.APPROVED IS NULL)
+          AND C.CANCEL <> 'Y'
+          AND C.CREDITNOTETYPE = 'P'
+          AND CN.GRDT >= :from_date
+          AND CN.GRDT < DATEADD(DAY, 1, :to_date)
+          AND CD.GRNO IS NOT NULL
+    )
+    SELECT
+        GRNO AS grno,
+        SUM(ISNULL(CREDITNOTEAMOUNT, 0)) AS REBATE
+    FROM CreditNoteGR
+    GROUP BY GRNO
+""")
+
 
 def _normalise_column_name(value):
     return str(value).strip().replace("_", "").replace(" ", "").casefold()
@@ -85,6 +116,39 @@ def _fetch_pnl_sp_data(start_date, end_date):
     print(
         f"[P&L SP DB EXECUTION] {start_date} to {end_date} | rows={len(df):,} | "
         f"seconds={time.perf_counter() - started:.2f}"
+    )
+    return df
+
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=12)
+def _fetch_rebate_data(start_date, end_date):
+    """Fetch approved/valid rebate credit notes using the linked GR date."""
+    started = time.perf_counter()
+    engine = get_engine()
+    with engine.connect() as conn:
+        df = pd.read_sql_query(
+            _REBATE_QUERY,
+            conn,
+            params={"from_date": str(start_date), "to_date": str(end_date)},
+        )
+    if df is None or df.empty:
+        df = pd.DataFrame(columns=["grno", "REBATE"])
+    else:
+        gr_col = _find_column(df, ["GRNO", "grno", "gr_no"])
+        rebate_col = _find_column(df, ["REBATE", "CREDITNOTEAMOUNT"])
+        if gr_col is None or rebate_col is None:
+            raise ValueError(
+                "Rebate query must return GRNO and REBATE. "
+                f"Available columns: {list(df.columns)}"
+            )
+        df = df.rename(columns={gr_col: "grno", rebate_col: "REBATE"})
+        df["grno"] = _clean_grno(df["grno"])
+        df["REBATE"] = pd.to_numeric(df["REBATE"], errors="coerce").fillna(0.0)
+        df = df[df["grno"].notna() & df["grno"].ne("") & df["grno"].str.lower().ne("nan")]
+        df = df.groupby("grno", as_index=False)["REBATE"].sum()
+    print(
+        f"[P&L Rebate DB EXECUTION] GRDT {start_date} to {end_date} | "
+        f"rows={len(df):,} | seconds={time.perf_counter() - started:.2f}"
     )
     return df
 
@@ -181,7 +245,7 @@ def _prepare_pnl_sp_data(df):
     return out.groupby("grno", as_index=False, dropna=False)[numeric_columns].sum()
 
 
-def _merge_revenue_and_pnl(revenue_df, pnl_sp_df):
+def _merge_revenue_and_pnl(revenue_df, pnl_sp_df, rebate_df=None):
     revenue = _prepare_revenue_data(revenue_df)
     pnl_data = _prepare_pnl_sp_data(pnl_sp_df)
     if revenue.empty:
@@ -199,6 +263,7 @@ def _merge_revenue_and_pnl(revenue_df, pnl_sp_df):
                 "OTHERCHARGES",
                 "ADDITIONALFREIGHT",
                 "OTHERINCOME",
+                "REBATE",
             ]
             if column in revenue.columns
         ],
@@ -206,6 +271,20 @@ def _merge_revenue_and_pnl(revenue_df, pnl_sp_df):
     )
 
     result = revenue.merge(pnl_data, on="grno", how="left", validate="many_to_one")
+    if rebate_df is None or rebate_df.empty:
+        result["REBATE"] = 0.0
+    else:
+        rebate = rebate_df.copy()
+        rebate_gr = _find_column(rebate, ["GRNO", "grno", "gr_no"])
+        rebate_amount = _find_column(rebate, ["REBATE", "CREDITNOTEAMOUNT"])
+        if rebate_gr is None or rebate_amount is None:
+            raise ValueError("Rebate data requires GRNO and REBATE columns.")
+        rebate = rebate.rename(columns={rebate_gr: "grno", rebate_amount: "REBATE"})
+        rebate["grno"] = _clean_grno(rebate["grno"])
+        rebate["REBATE"] = pd.to_numeric(rebate["REBATE"], errors="coerce").fillna(0.0)
+        rebate = rebate.groupby("grno", as_index=False)["REBATE"].sum()
+        result = result.merge(rebate, on="grno", how="left", validate="many_to_one")
+        result["REBATE"] = pd.to_numeric(result["REBATE"], errors="coerce").fillna(0.0)
 
     numeric_columns = [
         "REVENUE",
@@ -237,16 +316,15 @@ def _fetch_complete_period(start_date, end_date, view_type):
     normalised_view = _normalise_view_type(view_type)
     started = time.perf_counter()
 
-    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="pnl-period") as executor:
+    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="pnl-period") as executor:
         revenue_future = executor.submit(
-            load_booking_data,
-            start_date,
-            end_date,
-            normalised_view,
+            load_booking_data, start_date, end_date, normalised_view
         )
         pnl_future = executor.submit(_fetch_pnl_sp_data, start_date, end_date)
+        rebate_future = executor.submit(_fetch_rebate_data, start_date, end_date)
         revenue_df = revenue_future.result()
         pnl_sp_df = pnl_future.result()
+        rebate_df = rebate_future.result()
 
     revenue_rows = len(revenue_df) if revenue_df is not None else 0
     pnl_rows = len(pnl_sp_df) if pnl_sp_df is not None else 0
@@ -262,7 +340,7 @@ def _fetch_complete_period(start_date, end_date, view_type):
         )
         return pd.DataFrame()
 
-    result = _merge_revenue_and_pnl(revenue_df, pnl_sp_df)
+    result = _merge_revenue_and_pnl(revenue_df, pnl_sp_df, rebate_df)
     print(
         f"[P&L Period Complete] view={normalised_view} | merged_rows={len(result):,} | "
         f"seconds={time.perf_counter() - started:.2f}"
@@ -278,7 +356,7 @@ def _fetch_both_views_period(start_date, end_date):
     """
     started = time.perf_counter()
 
-    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="pnl-both") as executor:
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="pnl-both") as executor:
         origin_revenue_future = executor.submit(
             load_booking_data, start_date, end_date, "ORIGIN"
         )
@@ -286,18 +364,20 @@ def _fetch_both_views_period(start_date, end_date):
             load_booking_data, start_date, end_date, "DESTINATION"
         )
         pnl_future = executor.submit(_fetch_pnl_sp_data, start_date, end_date)
+        rebate_future = executor.submit(_fetch_rebate_data, start_date, end_date)
 
         origin_revenue = origin_revenue_future.result()
         destination_revenue = destination_revenue_future.result()
         pnl_sp_df = pnl_future.result()
+        rebate_df = rebate_future.result()
 
     origin_df = (
-        _merge_revenue_and_pnl(origin_revenue, pnl_sp_df)
+        _merge_revenue_and_pnl(origin_revenue, pnl_sp_df, rebate_df)
         if origin_revenue is not None and not origin_revenue.empty
         else pd.DataFrame()
     )
     destination_df = (
-        _merge_revenue_and_pnl(destination_revenue, pnl_sp_df)
+        _merge_revenue_and_pnl(destination_revenue, pnl_sp_df, rebate_df)
         if destination_revenue is not None and not destination_revenue.empty
         else pd.DataFrame()
     )
