@@ -472,6 +472,7 @@ def normalize_pnl_columns(df: pd.DataFrame) -> pd.DataFrame:
         "REVENUE": ["REVENUE", "revenue", "business"],
         "EXPENSE": ["EXPENSE", "expense", "expenses", "cost"],
         "PNL": ["PNL", "pnl", "profitloss", "profit_loss", "profitandloss"],
+        "REBATE": ["REBATE", "rebate", "creditnoteamount", "credit_note_amount"],
         "Consignor": ["Consignor", "consignor"],
         "Consignee": ["Consignee", "consignee"],
         "Route": ["Route", "route"],
@@ -484,9 +485,11 @@ def normalize_pnl_columns(df: pd.DataFrame) -> pd.DataFrame:
             rename_map[source] = target
     out = out.rename(columns=rename_map)
 
-    for col in ["REVENUE", "EXPENSE", "PNL", "FIN_MONTH"]:
+    for col in ["REVENUE", "EXPENSE", "PNL", "REBATE", "FIN_MONTH"]:
         if col in out.columns:
             out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0)
+    if "REBATE" not in out.columns:
+        out["REBATE"] = 0.0
 
     if "grdt" in out.columns:
         out["grdt"] = pd.to_datetime(out["grdt"], errors="coerce")
@@ -1450,6 +1453,65 @@ def show_pnl_dashboard() -> None:
     for col, spec in zip(kpi_cols, kpi_specs):
         with col:
             render_kpi_card(*spec)
+
+    # =====================================================
+    # REBATE INSIGHT (credit notes linked by GR date)
+    # =====================================================
+    rebate_source = df.copy()
+    if "REBATE" not in rebate_source.columns:
+        rebate_source["REBATE"] = 0.0
+    rebate_source["REBATE"] = pd.to_numeric(
+        rebate_source["REBATE"], errors="coerce"
+    ).fillna(0.0)
+    if "grno" in rebate_source.columns:
+        # Loader has already SUMmed all credit-note rows per GR. The same GR-level
+        # rebate may repeat in the booking dataframe (e.g. multiple joined rows),
+        # so use MAX here to display that GR total once, not SUM it again.
+        rebate_by_gr = (
+            rebate_source.groupby("grno", as_index=False)
+            .agg(
+                REBATE=("REBATE", "max"),
+                branch=("branch", "first"),
+                zone=("zone", "first"),
+                grdt=("grdt", "first"),
+            )
+        )
+    else:
+        rebate_by_gr = pd.DataFrame(columns=["grno", "REBATE", "branch", "zone", "grdt"])
+    rebate_by_gr = rebate_by_gr[rebate_by_gr["REBATE"] > 0].copy()
+    total_rebate = float(rebate_by_gr["REBATE"].sum()) if not rebate_by_gr.empty else 0.0
+    rebate_gr_count = int(rebate_by_gr["grno"].nunique()) if not rebate_by_gr.empty else 0
+
+    with st.container(border=True):
+        st.markdown(
+            "<div style='font-size:15px;font-weight:800;color:#0f2744;margin:1px 0 2px 0;'>"
+            "Credit Note / Rebate Insight</div>",
+            unsafe_allow_html=True,
+        )
+        st.caption("Rebate is matched GR-wise and date-filtered using GRDT. Multiple credit-note rows against the same GR are summed; each GR total is counted once in this insight.")
+        rebate_cols = st.columns([1, 1, 2], gap="medium")
+        with rebate_cols[0]:
+            st.metric("Total Rebate", amount_text(total_rebate, conversion_type))
+        with rebate_cols[1]:
+            st.metric("GRs with Rebate", f"{rebate_gr_count:,}")
+        with rebate_cols[2]:
+            if not rebate_by_gr.empty:
+                top_rebate = rebate_by_gr.sort_values("REBATE", ascending=False).head(10).copy()
+                top_rebate["REBATE"] = top_rebate["REBATE"] / divisor
+                st.dataframe(
+                    top_rebate[[c for c in ["grno", "branch", "zone", "REBATE"] if c in top_rebate.columns]],
+                    hide_index=True,
+                    use_container_width=True,
+                    height=min(280, 42 + len(top_rebate) * 35),
+                    column_config={
+                        "grno": st.column_config.TextColumn("GR No"),
+                        "branch": st.column_config.TextColumn("Branch"),
+                        "zone": st.column_config.TextColumn("Zone"),
+                        "REBATE": st.column_config.NumberColumn(f"Rebate ({unit})", format="%.2f"),
+                    },
+                )
+            else:
+                st.info("No rebate credit notes found for the selected GR date range and filters.")
 
     # =====================================================
     # STEP 1: Overview-style P&L Trend, Load Type and Company
@@ -2877,7 +2939,7 @@ def show_pnl_dashboard() -> None:
                 "COMPNAME", "zone", "circle", "branch", "grno", "grdt", "GRTYPE",
                 "LOADTYPE", "Consignor", "Consignee", "Route", "REVENUE",
                 "DELIVERYINCOME", "ADDITIONALFREIGHT", "OTHERINCOME", "RAW_EXPENSE",
-                "EXPENSE", "PNL",
+                "EXPENSE", "PNL", "REBATE",
             ] if col in df.columns
         ]
         detail_df = df[detail_columns].copy()
@@ -2901,6 +2963,7 @@ def show_pnl_dashboard() -> None:
                 "RAW_EXPENSE": st.column_config.NumberColumn("Raw Expense (₹)", format="₹%.0f"),
                 "EXPENSE": st.column_config.NumberColumn("Adjusted Expense (₹)", format="₹%.0f"),
                 "PNL": st.column_config.NumberColumn("P&L (₹)", format="₹%.0f"),
+                "REBATE": st.column_config.NumberColumn("Rebate (₹)", format="₹%.0f"),
                 "grdt": st.column_config.DateColumn("GR Date", format="DD-MMM-YYYY"),
             },
         )
