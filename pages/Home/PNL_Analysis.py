@@ -1,5 +1,6 @@
 # P&L DASHBOARD VERSION: 1.0.3 - reuse loaded data on filter reruns
 import io
+from datetime import date
 from html import escape
 import pandas as pd
 import plotly.express as px
@@ -702,28 +703,57 @@ def render_kpi_card(
 
 def render_header(on_filter_change=None):
     with st.container(border=True, key="pnl_header_bar"):
-        title_col, view_label_col, view_col, fy_label_col, fy_col, run_col, content_col, right = st.columns(
-            [1.55, .45, .72, .22, .82, .82, 3.10, 1.05], gap="small", vertical_alignment="center"
+        title_col, view_label_col, view_col, mode_label_col, mode_col, period_col, run_col, right = st.columns(
+            [1.45, .42, .72, .48, .95, 2.05, .82, .75],
+            gap="small", vertical_alignment="center",
         )
         with title_col:
             st.markdown('<div class="pnl-header-marker">P&amp;L Dashboard</div>', unsafe_allow_html=True)
         with view_label_col:
-            st.markdown('<div class="pnl-inline-label">View Type</div>', unsafe_allow_html=True)
+            st.markdown('<div class="pnl-inline-label">View</div>', unsafe_allow_html=True)
         with view_col:
-            view_type = st.selectbox("View Type", ["Origin", "Destination"], key="pnl_view_type", label_visibility="collapsed", on_change=on_filter_change)
-        with fy_label_col:
-            st.markdown('<div class="pnl-inline-label">F.Y.</div>', unsafe_allow_html=True)
-        with fy_col:
-            fy = st.selectbox("Financial Year", FY_OPTIONS, key="pnl_fy", label_visibility="collapsed", on_change=on_filter_change)
+            view_type = st.selectbox(
+                "View Type", ["Origin", "Destination"], key="pnl_view_type",
+                label_visibility="collapsed", on_change=on_filter_change,
+            )
+        with mode_label_col:
+            st.markdown('<div class="pnl-inline-label">Period</div>', unsafe_allow_html=True)
+        with mode_col:
+            period_mode = st.selectbox(
+                "Period Type", ["Financial Year", "Date Range"],
+                key="pnl_period_mode", label_visibility="collapsed",
+                on_change=on_filter_change,
+            )
+
+        fy = None
+        from_date = None
+        to_date = None
+        with period_col:
+            if period_mode == "Financial Year":
+                fy = st.selectbox(
+                    "Financial Year", FY_OPTIONS, key="pnl_fy",
+                    label_visibility="collapsed", on_change=on_filter_change,
+                )
+            else:
+                date_cols = st.columns(2, gap="small")
+                today = date.today()
+                with date_cols[0]:
+                    from_date = st.date_input(
+                        "From Date", value=today.replace(day=1),
+                        key="pnl_from_date", format="DD-MM-YYYY",
+                    )
+                with date_cols[1]:
+                    to_date = st.date_input(
+                        "To Date", value=today, key="pnl_to_date",
+                        format="DD-MM-YYYY",
+                    )
+
         with run_col:
             run_report = st.button("▶ Run Report", key="pnl_run_report", type="primary", width="stretch")
-        with content_col:
-            # Keep this column as genuine empty space. Rendering filter chips
-            # here can create an overflowing layer over the controls.
-            st.markdown('<div aria-hidden="true" style="height:1px"></div>', unsafe_allow_html=True)
         with right:
             export_placeholder = st.empty()
-    return view_type, fy, run_report, export_placeholder
+
+    return view_type, period_mode, fy, from_date, to_date, run_report, export_placeholder
 
 
 def build_monthly_comparison(df: pd.DataFrame, prev_df: pd.DataFrame, divisor: float) -> pd.DataFrame:
@@ -1067,57 +1097,76 @@ def show_pnl_dashboard() -> None:
         st.session_state["pnl_report_ready"] = False
 
     def _invalidate_pnl_report():
-        # View Type/FY are report parameters, not dashboard filters.  Keep the
-        # last successfully loaded frames in memory until the replacement
-        # report has loaded; otherwise a widget rerun can discard valid data.
         st.session_state["pnl_report_parameters_changed"] = True
 
-    pending_view_type, pending_fy, run_report, export_placeholder = render_header(_invalidate_pnl_report)
+    (
+        pending_view_type, pending_period_mode, pending_fy,
+        pending_from_date, pending_to_date, run_report, export_placeholder
+    ) = render_header(_invalidate_pnl_report)
 
-    if pending_fy == "Select FY":
-        if run_report:
-            st.warning("Please select a financial year before running the report.")
-        else:
-            st.info("Select a financial year, then click ▶ Run Report.")
-        return
+    if pending_period_mode == "Financial Year":
+        if pending_fy == "Select FY":
+            if run_report:
+                st.warning("Please select a financial year before running the report.")
+            else:
+                st.info("Select a financial year, then click ▶ Run Report.")
+            return
+        selected_start, selected_end = get_date_range(pending_fy)
+        report_period_label = pending_fy
+    else:
+        if pending_from_date is None or pending_to_date is None:
+            st.warning("Please select both From Date and To Date.")
+            return
+        if pending_from_date > pending_to_date:
+            st.error("From Date cannot be later than To Date.")
+            return
+        selected_start, selected_end = pending_from_date, pending_to_date
+        report_period_label = (
+            f"{pending_from_date.strftime('%d-%m-%Y')} to "
+            f"{pending_to_date.strftime('%d-%m-%Y')}"
+        )
+
+    period_signature = (pending_period_mode, str(selected_start), str(selected_end))
 
     if run_report:
-        start_date, end_date = get_date_range(pending_fy)
-        prev_fy = get_previous_fy(pending_fy)
-        prev_start, prev_end = get_date_range(prev_fy)
+        period_days = (pd.to_datetime(selected_end) - pd.to_datetime(selected_start)).days + 1
+        previous_end = pd.to_datetime(selected_start) - pd.Timedelta(days=1)
+        previous_start = previous_end - pd.Timedelta(days=period_days - 1)
+        start_date, end_date = selected_start, selected_end
+        prev_start, prev_end = previous_start.date(), previous_end.date()
+
         try:
             with st.spinner("Loading P&L data..."):
                 raw_df, raw_prev_df = load_pnl_data_pair(
                     start_date, end_date, prev_start, prev_end, pending_view_type
                 )
         except Exception as exc:
-            # Do not destroy the previous successful report when a refresh
-            # fails. This also prevents subsequent filter reruns from querying
-            # the database again.
             st.error(f"Unable to load P&L data: {exc}")
             return
 
-        # These are the only assignments to the loaded report data. All other
-        # widgets below work on copies held in Session State, so changing
-        # Company/Zone/Circle/Branch/Quarter/Month/Load Type/Conversion never
-        # calls load_pnl_data_pair again.
         st.session_state["pnl_report_df"] = raw_df
         st.session_state["pnl_report_prev_df"] = raw_prev_df
-        st.session_state["pnl_active_fy"] = pending_fy
+        st.session_state["pnl_active_period_signature"] = period_signature
+        st.session_state["pnl_active_period_label"] = report_period_label
+        st.session_state["pnl_active_start_date"] = str(start_date)
+        st.session_state["pnl_active_end_date"] = str(end_date)
+        st.session_state["pnl_active_prev_start"] = str(prev_start)
+        st.session_state["pnl_active_prev_end"] = str(prev_end)
         st.session_state["pnl_active_view_type"] = pending_view_type
         st.session_state["pnl_report_parameters_changed"] = False
         st.session_state["pnl_report_ready"] = True
 
     if not st.session_state.get("pnl_report_ready", False):
-        st.info("Select a financial year, then click ▶ Run Report.")
+        st.info("Select a Financial Year or Date Range, then click ▶ Run Report.")
         return
-    active_fy = st.session_state.get("pnl_active_fy")
+
+    active_signature = st.session_state.get("pnl_active_period_signature")
     active_view_type = st.session_state.get("pnl_active_view_type")
-    if not active_fy or not active_view_type:
+    if not active_signature or not active_view_type:
         st.session_state["pnl_report_ready"] = False
-        st.info("Select a financial year, then click ▶ Run Report.")
+        st.info("Select a reporting period, then click ▶ Run Report.")
         return
-    if pending_fy != active_fy or pending_view_type != active_view_type:
+    if period_signature != active_signature or pending_view_type != active_view_type:
         st.info("Selections changed. Click ▶ Run Report to refresh the dashboard.")
         return
 
@@ -1128,13 +1177,12 @@ def show_pnl_dashboard() -> None:
         st.info("Click ▶ Run Report to load the dashboard.")
         return
 
-    fy = active_fy
+    fy = st.session_state.get("pnl_active_period_label", report_period_label)
     view_type = active_view_type
-    # Date context is also required by downstream trend charts on every
-    # Streamlit rerun, including reruns caused only by secondary filters.
-    start_date, end_date = get_date_range(fy)
-    prev_fy = get_previous_fy(fy)
-    prev_start, prev_end = get_date_range(prev_fy)
+    start_date = pd.to_datetime(st.session_state["pnl_active_start_date"])
+    end_date = pd.to_datetime(st.session_state["pnl_active_end_date"])
+    prev_start = pd.to_datetime(st.session_state["pnl_active_prev_start"])
+    prev_end = pd.to_datetime(st.session_state["pnl_active_prev_end"])
     raw_df = stored_df.copy()
     raw_prev_df = stored_prev_df.copy() if stored_prev_df is not None else pd.DataFrame()
 
@@ -1142,7 +1190,7 @@ def show_pnl_dashboard() -> None:
     prev_df = normalize_pnl_columns(raw_prev_df)
 
     if df.empty:
-        st.warning("No P&L data found for the selected financial year.")
+        st.warning("No P&L data found for the selected reporting period.")
         return
 
     missing = validate_pnl_data(df)
@@ -2857,7 +2905,7 @@ def show_pnl_dashboard() -> None:
         st.download_button(
             "Download P&L analysis (Excel)",
             data=excel_buffer.getvalue(),
-            file_name=f"pnl_analysis_{view_type.lower()}_{safe_fy}.xlsx",
+            file_name=f"pnl_analysis_{view_type.lower()}_{str(fy).replace(chr(32), chr(95)).replace(chr(47), chr(45))}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="pnl_excel_download",
             width="content",
