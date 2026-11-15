@@ -207,6 +207,7 @@ def _apply_pnl_business_rule(df, all_branches):
         "CLAIM",
         "BOOKING 6%",
         "DESTINATION 5%",
+        "HO ALLOCATION",
         "TOTAL EXPENSE",
     ]:
         if column not in out.columns:
@@ -221,9 +222,9 @@ def _apply_pnl_business_rule(df, all_branches):
         out["DESTINATION_TOTAL_INCOME"] = 0.0
         out["DESTINATION_DIRECT_EXPENSE"] = 0.0
 
-        # Business rule for consolidated All Branches:
-        # deduct only the 6% Booking charge. The 5% Delivery charge must not
-        # reduce consolidated Net Profit.
+        # Head Office expense is already allocated to branches (HO ALLOCATION),
+        # so Total Expense is the same in All Branches and Branch views.
+        out["BOOKING 6%"] = 0.0
         out["DESTINATION 5%"] = 0.0
         out["TOTAL EXPENSE"] = (
             out["SALARY"]
@@ -231,7 +232,7 @@ def _apply_pnl_business_rule(df, all_branches):
             + out["OVERHEAD EXPENSE"]
             + out["NEPAL OVERHEAD"]
             + out["CLAIM"]
-            + out["BOOKING 6%"]
+            + out["HO ALLOCATION"]
         )
 
     out["BUSINESS"] = out["ORIGIN_BUSINESS"] + out["DESTINATION_BUSINESS"]
@@ -265,6 +266,7 @@ def calculate_kpis(df):
             "claim": 0.0,
             "booking_6": 0.0,
             "destination_5": 0.0,
+            "ho_allocation": 0.0,
             "total_expense": 0.0,
             "net_profit": 0.0,
             "total_income": 0.0,
@@ -286,6 +288,7 @@ def calculate_kpis(df):
         "claim": float(df["CLAIM"].sum()),
         "booking_6": float(df["BOOKING 6%"].sum()) if "BOOKING 6%" in df.columns else 0.0,
         "destination_5": float(df["DESTINATION 5%"].sum()) if "DESTINATION 5%" in df.columns else 0.0,
+        "ho_allocation": float(df["HO ALLOCATION"].sum()) if "HO ALLOCATION" in df.columns else 0.0,
         "total_expense": float(df["TOTAL EXPENSE"].sum()),
         "net_profit": float(df["NET_PROFIT"].sum()),
         "total_income": float(df["TOTAL_INCOME"].sum()),
@@ -833,13 +836,14 @@ def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_bu
                 allocation.iloc[0] = difference
         out[column] = current_series + allocation
 
-    _reconcile("BOOKING 6%", 0.06, "ORIGIN_BUSINESS")
-
-    for column in ["SALARY", "GODOWN RENT", "OVERHEAD EXPENSE", "NEPAL OVERHEAD", "CLAIM", "BOOKING 6%", "DESTINATION 5%"]:
+    # 6% / 5% estimated charges retired: Head Office expense is allocated
+    # to branches in the data loader, so nothing to reconcile here.
+    for column in ["SALARY", "GODOWN RENT", "OVERHEAD EXPENSE", "NEPAL OVERHEAD", "CLAIM", "BOOKING 6%", "DESTINATION 5%", "HO ALLOCATION"]:
         if column not in out.columns:
             out[column] = 0.0
         out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
 
+    out["BOOKING 6%"] = 0.0
     out["DESTINATION 5%"] = 0.0
     out["TOTAL EXPENSE"] = (
         out["SALARY"]
@@ -847,7 +851,7 @@ def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_bu
         + out["OVERHEAD EXPENSE"]
         + out["NEPAL OVERHEAD"]
         + out["CLAIM"]
-        + out["BOOKING 6%"]
+        + out["HO ALLOCATION"]
     )
     out["NET_PROFIT"] = pd.to_numeric(out.get("COMBINED_PNL", 0.0), errors="coerce").fillna(0.0) - out["TOTAL EXPENSE"]
     out["NET_PROFIT_MARGIN"] = 0.0
@@ -2837,11 +2841,9 @@ def show_net_profit_dashboard():
         ("Overhead Expense", current["overhead"], previous["overhead"], "▦"),
         ("Nepal Overhead", current["nepal_overhead"], previous["nepal_overhead"], "NP"),
         ("Claim", current["claim"], previous["claim"], "◆"),
-        ("6% of Booking )", current["booking_6"], previous["booking_6"], "▣"),
+        ("Head Office Allocation", current["ho_allocation"], previous["ho_allocation"], "▣"),
         ("Godown Rent", current["godown"], previous["godown"], "▥"),
     ]
-    if not all_branches:
-        overhead_kpis.insert(4, ("5% of Delivery)", current["destination_5"], previous["destination_5"], "●"))
 
     overhead_items_html = "".join(
         overhead_kpi_item_html(title, cy, ly, conversion_type, icon)
@@ -2870,8 +2872,7 @@ def show_net_profit_dashboard():
             Overhead_Expense=("OVERHEAD EXPENSE", "sum"),
             Nepal_Overhead=("NEPAL OVERHEAD", "sum"),
             Claim=("CLAIM", "sum"),
-            Booking_6=("BOOKING 6%", "sum"),
-            Destination_5=("DESTINATION 5%", "sum"),
+            HO_Allocation=("HO ALLOCATION", "sum"),
             Total_Overhead=("TOTAL EXPENSE", "sum"),
             Net_Profit=("NET_PROFIT", "sum"),
         )
@@ -2885,8 +2886,7 @@ def show_net_profit_dashboard():
         + branch_summary["Overhead_Expense"]
         + branch_summary["Nepal_Overhead"]
         + branch_summary["Claim"]
-        + branch_summary["Booking_6"]
-        + branch_summary["Destination_5"]
+        + branch_summary["HO_Allocation"]
     )
     branch_summary["Net_Profit"] = (
         branch_summary["Combined_PNL"] - branch_summary["Total_Overhead"]
@@ -3071,8 +3071,7 @@ def show_net_profit_dashboard():
             "Overhead_Expense",
             "Nepal_Overhead",
             "Claim",
-            "Booking_6",
-            "Destination_5",
+            "HO_Allocation",
             "Total_Overhead",
             "Net_Profit",
         ]
@@ -3099,8 +3098,7 @@ def show_net_profit_dashboard():
                 "Overhead_Expense": f"Overhead Expense ({unit})",
                 "Nepal_Overhead": f"Nepal Overhead ({unit})",
                 "Claim": f"Claim ({unit})",
-                "Booking_6": f"Booking 6% ({unit})",
-                "Destination_5": f"Destination 5% ({unit})",
+                "HO_Allocation": f"HO Allocation ({unit})",
                 "Total_Overhead": f"Total Overhead ({unit})",
                 "Net_Profit": f"Net Profit ({unit})",
             }
@@ -3121,8 +3119,7 @@ def show_net_profit_dashboard():
             f"Overhead Expense ({unit})",
             f"Nepal Overhead ({unit})",
             f"Claim ({unit})",
-            f"Booking 6% ({unit})",
-            f"Destination 5% ({unit})",
+            f"HO Allocation ({unit})",
             f"Total Overhead ({unit})",
             f"Net Profit ({unit})",
             "Net Profit Margin %",
@@ -3197,8 +3194,7 @@ def show_net_profit_dashboard():
             "OVERHEAD EXPENSE",
             "NEPAL OVERHEAD",
             "CLAIM",
-            "BOOKING 6%",
-            "DESTINATION 5%",
+            "HO ALLOCATION",
             "TOTAL EXPENSE",
             "NET_PROFIT",
             "NET_PROFIT_MARGIN",
@@ -3223,8 +3219,7 @@ def show_net_profit_dashboard():
             "OVERHEAD EXPENSE",
             "NEPAL OVERHEAD",
             "CLAIM",
-            "BOOKING 6%",
-            "DESTINATION 5%",
+            "HO ALLOCATION",
             "TOTAL EXPENSE",
             "NET_PROFIT",
         ]
