@@ -7,7 +7,6 @@ import streamlit as st
 
 from services.data_loader import get_date_range
 from services.net_profit_data_loader import (
-    HEAD_OFFICE_CODE,
     load_india_overhead_detail,
     load_net_profit_data_pair,
     load_nepal_overhead_detail,
@@ -3398,146 +3397,55 @@ def show_net_profit_dashboard():
                 )
 
     # --------------------------------------------------------
-    # TAB 4: INDIA OVERHEAD DETAIL
-    # Branch overhead (Salary / Godown / ledger-wise Overhead / Claim) plus the
-    # Head Office share allocated to each branch. The Head Office pool that is
-    # being distributed is shown separately and is NOT part of the total.
+    # TAB 4: INDIA OVERHEAD LEDGER DETAIL
     # --------------------------------------------------------
     with india_detail_tab:
-        ind_src = india_overhead_detail_df
-        has_detail = ind_src is not None and not ind_src.empty
+        if india_overhead_detail_df is None or india_overhead_detail_df.empty:
+            st.info("No India overhead ledger detail is available for the selected period.")
+        else:
+            ind = _add_calendar_columns(india_overhead_detail_df)
 
-        ind = _add_calendar_columns(ind_src) if has_detail else pd.DataFrame()
-        if has_detail:
             if quarters:
                 ind = ind[ind["QUARTER"].isin(quarters)].copy()
             if months:
                 ind = ind[ind["MONTH"].isin(months)].copy()
-            is_ho_row = ind["BRANCHCODE"].astype(str).str.strip().eq(HEAD_OFFICE_CODE)
-            ho_pool = ind[is_ho_row].copy()
-            branch_rows = ind[~is_ho_row].copy()
 
+            # Branch / Zone / Circle filters are already represented by the
+            # filtered Net Profit dataframe. Use its surviving branch names as
+            # the allowed India branch scope. In unrestricted All-Branches mode
+            # keep all India ledger rows.
             if branches or zones or circles:
                 allowed_branch_keys = {
                     _normalise_branch_name(value)
                     for value in df.get("BRANCH", pd.Series(dtype="object")).dropna().tolist()
                 }
-                branch_keys = branch_rows["BRANCH"].fillna("").map(_normalise_branch_name)
-                branch_rows = branch_rows[branch_keys.isin(allowed_branch_keys)].copy()
-        else:
-            ho_pool = pd.DataFrame()
-            branch_rows = pd.DataFrame()
+                ind_branch_keys = ind["BRANCH"].fillna("").map(_normalise_branch_name)
+                ind = ind[ind_branch_keys.isin(allowed_branch_keys)].copy()
 
-        group_cols = ["BRANCHCODE", "BRANCH", "COMPONENT", "LEDCODE", "LEDNAME", "MAINGROUP"]
-        parts = []
-        if not branch_rows.empty:
-            parts.append(
-                branch_rows.groupby(group_cols, as_index=False, dropna=False)["NETAMT"].sum()
-            )
-
-        # Head Office share allocated to each branch (already month-filtered and
-        # branch-scoped because it comes from the filtered Net Profit dataframe).
-        if "HO ALLOCATION" in df.columns:
-            alloc = df.copy()
-            alloc["HO ALLOCATION"] = pd.to_numeric(
-                alloc["HO ALLOCATION"], errors="coerce"
-            ).fillna(0.0)
-            alloc = alloc[alloc["HO ALLOCATION"].ne(0.0)]
-            if not alloc.empty:
-                alloc = (
-                    alloc.groupby(["BRANCHCODE", "BRANCH"], as_index=False, dropna=False)[
-                        "HO ALLOCATION"
-                    ]
-                    .sum()
-                    .rename(columns={"HO ALLOCATION": "NETAMT"})
-                )
-                alloc["COMPONENT"] = "HO ALLOCATION"
-                alloc["LEDCODE"] = ""
-                alloc["LEDNAME"] = "Head Office expense share (by business)"
-                alloc["MAINGROUP"] = ""
-                parts.append(alloc[group_cols + ["NETAMT"]])
-
-        if not parts:
-            st.info("No India overhead detail is available for the selected period / filters.")
-        else:
-            component_order = {
-                "SALARY": 1, "GODOWN RENT": 2, "OVERHEAD EXPENSE": 3,
-                "CLAIM": 4, "HO ALLOCATION": 5,
-            }
-            ind_display = pd.concat(parts, ignore_index=True)
-            ind_display["NETAMT"] = pd.to_numeric(
-                ind_display["NETAMT"], errors="coerce"
-            ).fillna(0.0)
-            ind_display["_ord"] = ind_display["COMPONENT"].map(component_order).fillna(9)
-            ind_display = (
-                ind_display.sort_values(["BRANCH", "_ord", "LEDNAME", "LEDCODE"])
-                .drop(columns="_ord")
-                .reset_index(drop=True)
-            )
-
-            comp_totals = ind_display.groupby("COMPONENT")["NETAMT"].sum()
-            st.caption(
-                "Total India overhead in this view: "
-                f"₹ {float(ind_display['NETAMT'].sum()):,.2f}  |  "
-                + "  |  ".join(
-                    f"{ {'HO ALLOCATION': 'HO Allocation'}.get(name, name.title()) }: ₹ {float(value):,.2f}"
-                    for name, value in comp_totals.items()
-                )
-            )
-
-            st.dataframe(
-                ind_display,
-                width="stretch",
-                hide_index=True,
-                column_config={
-                    "BRANCHCODE": st.column_config.TextColumn("Branch Code"),
-                    "BRANCH": st.column_config.TextColumn("Branch"),
-                    "COMPONENT": st.column_config.TextColumn("Component"),
-                    "LEDCODE": st.column_config.TextColumn("Led Code"),
-                    "LEDNAME": st.column_config.TextColumn("Led Name"),
-                    "MAINGROUP": st.column_config.TextColumn("Main Group"),
-                    "NETAMT": st.column_config.NumberColumn(
-                        "Net Amount", format="₹ %.2f"
-                    ),
-                },
-            )
-
-            st.download_button(
-                "Download India Overhead Detail CSV",
-                data=ind_display.to_csv(index=False).encode("utf-8-sig"),
-                file_name=f"india_overhead_detail_{fy}.csv",
-                mime="text/csv",
-                key="np_download_india_overhead_detail",
-            )
-
-        if not ho_pool.empty:
-            with st.expander(
-                "Head Office expense pool (distributed to branches - not added again)",
-                expanded=False,
-            ):
-                ho_display = (
-                    ho_pool.groupby(
-                        ["COMPONENT", "LEDCODE", "LEDNAME", "MAINGROUP"],
+            if ind.empty:
+                st.info("No India overhead detail found for the active filters.")
+            else:
+                # One row per Branch + Ledger Code + Ledger Name + Main Group.
+                ind_display = (
+                    ind.groupby(
+                        ["BRANCH", "LEDCODE", "LEDNAME", "MAINGROUP"],
                         as_index=False,
                         dropna=False,
                     )["NETAMT"]
                     .sum()
-                )
-                ho_display["_ord"] = ho_display["COMPONENT"].map(component_order if parts else {}).fillna(9)
-                ho_display = (
-                    ho_display.sort_values(["_ord", "LEDNAME", "LEDCODE"])
-                    .drop(columns="_ord")
+                    .sort_values(["BRANCH", "LEDNAME", "LEDCODE"])
                     .reset_index(drop=True)
                 )
-                st.caption(
-                    f"Head Office pool total: ₹ {float(ho_display['NETAMT'].sum()):,.2f}"
-                )
+                ind_display["NETAMT"] = pd.to_numeric(
+                    ind_display["NETAMT"], errors="coerce"
+                ).fillna(0.0)
+
                 st.dataframe(
-                    ho_display,
+                    ind_display,
                     width="stretch",
                     hide_index=True,
                     column_config={
-                        "COMPONENT": st.column_config.TextColumn("Component"),
+                        "BRANCH": st.column_config.TextColumn("Branch"),
                         "LEDCODE": st.column_config.TextColumn("Led Code"),
                         "LEDNAME": st.column_config.TextColumn("Led Name"),
                         "MAINGROUP": st.column_config.TextColumn("Main Group"),
@@ -3545,6 +3453,14 @@ def show_net_profit_dashboard():
                             "Net Amount", format="₹ %.2f"
                         ),
                     },
+                )
+
+                st.download_button(
+                    "Download India Overhead Detail CSV",
+                    data=ind_display.to_csv(index=False).encode("utf-8-sig"),
+                    file_name=f"india_overhead_detail_{fy}.csv",
+                    mime="text/csv",
+                    key="np_download_india_overhead_detail",
                 )
 
     # --------------------------------------------------------
