@@ -7,7 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from services.pnl_data_loader import load_pnl_data_pair
+from services.pnl_data_loader import load_pnl_data_pair, load_credit_note_details
 from services.data_loader import get_date_range
 
 # =====================================================
@@ -75,9 +75,9 @@ def _inject_pnl_css() -> None:
         .pnl-title, .executive-title {
             color:var(--dash-navy); font-size:19px; font-weight:850; letter-spacing:-.3px; margin:0;
         }
-        .pnl-header-marker { display:flex; align-items:center; min-height:36px; color:var(--dash-navy); font-size:19px; font-weight:850; white-space:nowrap; }
-        .pnl-inline-label { display:flex; align-items:center; justify-content:flex-end; min-height:34px; color:#334155; font-size:10px; font-weight:700; line-height:1; white-space:nowrap; }
-        .st-key-pnl_header_bar div[data-testid="stVerticalBlockBorderWrapper"] { padding:8px 12px !important; margin-top:0 !important; margin-bottom:4px !important; border-radius:10px !important; transform:none !important; overflow:visible !important; }
+        .pnl-header-marker { display:flex; align-items:center; min-height:32px; color:var(--dash-navy); font-size:18px; font-weight:850; white-space:nowrap; }
+        .pnl-inline-label { display:flex; align-items:center; justify-content:flex-end; min-height:32px; color:#334155; font-size:10px; font-weight:700; line-height:1; white-space:nowrap; }
+        .st-key-pnl_header_bar div[data-testid="stVerticalBlockBorderWrapper"] { padding:5px 10px !important; margin-top:0 !important; margin-bottom:4px !important; border-radius:10px !important; transform:none !important; overflow:visible !important; }
         .st-key-pnl_header_bar div[data-testid="stVerticalBlockBorderWrapper"] > div { padding:0 !important; }
         .st-key-pnl_header_bar div[data-testid="stVerticalBlock"] { gap:0 !important; }
         .st-key-pnl_view_type div[data-testid="stSelectbox"] > label,
@@ -87,7 +87,7 @@ def _inject_pnl_css() -> None:
         .st-key-pnl_view_type div[data-testid="stSelectbox"], .st-key-pnl_fy div[data-testid="stSelectbox"] { gap:0 !important; margin:0 !important; }
         .st-key-pnl_view_type div[data-baseweb="select"] > div,
         .st-key-pnl_fy div[data-baseweb="select"] > div,
-        .st-key-pnl_run_report button { min-height:34px !important; height:34px !important; border-radius:8px !important; }
+        .st-key-pnl_run_report button { min-height:32px !important; height:32px !important; border-radius:8px !important; }
         .st-key-pnl_run_report button { margin:0 !important; padding:0 12px !important; border:1px solid #174ea6 !important; background:linear-gradient(180deg,#2468c9 0%,#174ea6 100%) !important; color:#fff !important; font-size:11px !important; font-weight:800 !important; white-space:nowrap !important; box-shadow:0 3px 7px rgba(23,78,166,.24) !important; }
         .st-key-pnl_run_report button p, .st-key-pnl_run_report button span { color:#fff !important; font-weight:800 !important; }
         .pnl-subtitle, .executive-subtitle { color:var(--dash-muted); font-size:11px; margin-top:2px; }
@@ -429,6 +429,16 @@ def _inject_pnl_css() -> None:
             background:#ffffff !important;
             box-shadow:0 0 0 2px rgba(37,99,235,.14), 0 3px 7px rgba(15,42,67,.12) !important;
         }
+        .st-key-pnl_header_bar div[data-testid="stDateInput"] { gap:2px !important; margin:0 !important; }
+        .st-key-pnl_header_bar div[data-testid="stDateInput"] label,
+        .st-key-pnl_header_bar div[data-testid="stDateInput"] [data-testid="stWidgetLabel"] {
+            min-height:15px !important; height:15px !important; margin:0 0 2px 1px !important;
+            padding:0 !important; line-height:15px !important; font-size:10px !important;
+        }
+        .st-key-pnl_header_bar div[data-testid="stDateInput"] input {
+            min-height:32px !important; height:32px !important; padding:0 8px !important;
+            font-size:11px !important; border-radius:8px !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -473,6 +483,8 @@ def normalize_pnl_columns(df: pd.DataFrame) -> pd.DataFrame:
         "EXPENSE": ["EXPENSE", "expense", "expenses", "cost"],
         "PNL": ["PNL", "pnl", "profitloss", "profit_loss", "profitandloss"],
         "REBATE": ["REBATE", "rebate", "creditnoteamount", "credit_note_amount"],
+        "CN_STATUS": ["CN_STATUS", "creditnotestatus", "credit_note_status", "approvalstatus", "approval_status"],
+        "CN_NO": ["CN_NO", "creditnoteno", "credit_note_no", "creditnotenumber", "credit_note_number"],
         "Consignor": ["Consignor", "consignor"],
         "Consignee": ["Consignee", "consignee"],
         "Route": ["Route", "route"],
@@ -707,7 +719,7 @@ def render_kpi_card(
 def render_header(on_filter_change=None):
     with st.container(border=True, key="pnl_header_bar"):
         title_col, view_label_col, view_col, mode_label_col, mode_col, period_col, run_col, right = st.columns(
-            [1.45, .42, .72, .48, .95, 2.05, .82, .75],
+            [1.55, .30, .78, .34, .95, 2.15, .88, .72],
             gap="small", vertical_alignment="center",
         )
         with title_col:
@@ -1434,6 +1446,88 @@ def show_pnl_dashboard() -> None:
                 on_click=lambda: st.session_state.update({export_key: False}),
             )
 
+    # =====================================================
+    # GR-linked un-approved Credit Notes (branch follows parent GR)
+    # =====================================================
+    # The loader query returns only non-rejected, non-approved ('Y') P-type
+    # credit notes. Attach branch/circle/zone from the filtered parent GR set,
+    # so every dashboard filter (especially Branch) is inherited from the GR.
+    try:
+        credit_note_details = load_credit_note_details(
+            start_date.date(), end_date.date()
+        )
+    except Exception as exc:
+        st.error(f"Unable to load Credit Note details: {exc}")
+        credit_note_details = pd.DataFrame(
+            columns=[
+                "CREDITNOTEID", "BILLNO", "grno", "grdt",
+                "APPROVAL_CODE", "CN_STATUS", "REBATE",
+            ]
+        )
+
+    gr_meta_cols = [
+        col for col in ["grno", "branch", "circle", "zone", "grdt"]
+        if col in df.columns
+    ]
+    if "grno" in gr_meta_cols and not credit_note_details.empty:
+        gr_meta = df[gr_meta_cols].copy()
+        gr_meta["grno"] = gr_meta["grno"].astype(str).str.strip().str.replace(
+            r"\.0$", "", regex=True
+        )
+        gr_meta = gr_meta.drop_duplicates("grno", keep="first")
+        credit_note_details["grno"] = (
+            credit_note_details["grno"].astype(str).str.strip().str.replace(
+                r"\.0$", "", regex=True
+            )
+        )
+        # Inner join deliberately limits Credit Notes to GRs surviving the
+        # selected Company/Zone/Circle/Branch/Quarter/Month/Load Type filters.
+        credit_note_details = credit_note_details.merge(
+            gr_meta, on="grno", how="inner", suffixes=("", "_GR")
+        )
+        if "grdt_GR" in credit_note_details.columns:
+            credit_note_details["grdt"] = credit_note_details["grdt_GR"].combine_first(
+                credit_note_details["grdt"]
+            )
+            credit_note_details = credit_note_details.drop(columns=["grdt_GR"])
+    else:
+        credit_note_details = pd.DataFrame(
+            columns=[
+                "CREDITNOTEID", "BILLNO", "grno", "grdt",
+                "APPROVAL_CODE", "CN_STATUS", "REBATE",
+                "branch", "circle", "zone",
+            ]
+        )
+
+    if not credit_note_details.empty:
+        credit_note_details["REBATE"] = pd.to_numeric(
+            credit_note_details["REBATE"], errors="coerce"
+        ).fillna(0.0)
+        rebate_by_gr = (
+            credit_note_details.groupby(
+                ["grno", "branch", "circle", "zone"], as_index=False, dropna=False
+            )
+            .agg(
+                REBATE=("REBATE", "sum"),
+                grdt=("grdt", "first"),
+                CN_STATUS=("CN_STATUS", "first"),
+            )
+        )
+        rebate_by_gr = rebate_by_gr[rebate_by_gr["REBATE"] > 0].copy()
+        unapproved_credit_total = float(credit_note_details["REBATE"].sum())
+        unapproved_credit_gr_count = int(credit_note_details["grno"].nunique())
+        credit_status_available = True
+    else:
+        rebate_by_gr = pd.DataFrame(
+            columns=["grno", "REBATE", "branch", "circle", "zone", "grdt", "CN_STATUS"]
+        )
+        unapproved_credit_total = 0.0
+        unapproved_credit_gr_count = 0
+        # Query itself enforces the un-approved status filter. An empty result
+        # therefore means there are no un-approved Credit Notes for these GRs.
+        credit_status_available = True
+
+
     current = calculate_pnl_kpis(df)
     previous = calculate_pnl_kpis(prev_df)
 
@@ -1449,69 +1543,31 @@ def show_pnl_dashboard() -> None:
         ("Avg P&L / GR", f'₹{current["avg_pnl_gr"]:,.0f}', f'₹{previous["avg_pnl_gr"]:,.0f}', pct_change(current["avg_pnl_gr"], previous["avg_pnl_gr"]), "📦", "#2563eb", False),
     ]
 
-    kpi_cols = st.columns(9, gap="small")
+    if credit_status_available:
+        unapproved_value = amount_text(unapproved_credit_total, conversion_type)
+        unapproved_subtitle = f"{unapproved_credit_gr_count:,} GRs"
+    else:
+        # Do not mislabel all credit notes as unapproved when approval status
+        # is not supplied by the data loader.
+        unapproved_value = "N/A"
+        unapproved_subtitle = "Approval status unavailable"
+    kpi_specs.append(("Unapproved CN", unapproved_value, unapproved_subtitle, None, "📝", "#d97706", False))
+
+    kpi_cols = st.columns(10, gap="small")
     for col, spec in zip(kpi_cols, kpi_specs):
         with col:
-            render_kpi_card(*spec)
-
-    # =====================================================
-    # REBATE INSIGHT (credit notes linked by GR date)
-    # =====================================================
-    rebate_source = df.copy()
-    if "REBATE" not in rebate_source.columns:
-        rebate_source["REBATE"] = 0.0
-    rebate_source["REBATE"] = pd.to_numeric(
-        rebate_source["REBATE"], errors="coerce"
-    ).fillna(0.0)
-    if "grno" in rebate_source.columns:
-        # Loader has already SUMmed all credit-note rows per GR. The same GR-level
-        # rebate may repeat in the booking dataframe (e.g. multiple joined rows),
-        # so use MAX here to display that GR total once, not SUM it again.
-        rebate_by_gr = (
-            rebate_source.groupby("grno", as_index=False)
-            .agg(
-                REBATE=("REBATE", "max"),
-                branch=("branch", "first"),
-                zone=("zone", "first"),
-                grdt=("grdt", "first"),
-            )
-        )
-    else:
-        rebate_by_gr = pd.DataFrame(columns=["grno", "REBATE", "branch", "zone", "grdt"])
-    rebate_by_gr = rebate_by_gr[rebate_by_gr["REBATE"] > 0].copy()
-    total_rebate = float(rebate_by_gr["REBATE"].sum()) if not rebate_by_gr.empty else 0.0
-    rebate_gr_count = int(rebate_by_gr["grno"].nunique()) if not rebate_by_gr.empty else 0
-
-    with st.container(border=True):
-        st.markdown(
-            "<div style='font-size:15px;font-weight:800;color:#0f2744;margin:1px 0 2px 0;'>"
-            "Credit Note / Rebate Insight</div>",
-            unsafe_allow_html=True,
-        )
-        st.caption("Rebate is matched GR-wise and date-filtered using GRDT. Multiple credit-note rows against the same GR are summed; each GR total is counted once in this insight.")
-        rebate_cols = st.columns([1, 1, 2], gap="medium")
-        with rebate_cols[0]:
-            st.metric("Total Rebate", amount_text(total_rebate, conversion_type))
-        with rebate_cols[1]:
-            st.metric("GRs with Rebate", f"{rebate_gr_count:,}")
-        with rebate_cols[2]:
-            if not rebate_by_gr.empty:
-                top_rebate = rebate_by_gr.sort_values("REBATE", ascending=False).head(10).copy()
-                top_rebate["REBATE"] = top_rebate["REBATE"] / divisor
-                st.dataframe(
-                    top_rebate[[c for c in ["grno", "branch", "zone", "REBATE"] if c in top_rebate.columns]],
-                    hide_index=True,
-                    use_container_width=True,
-                    height=min(280, 42 + len(top_rebate) * 35),
-                    column_config={
-                        "grno": st.column_config.TextColumn("GR No"),
-                        "branch": st.column_config.TextColumn("Branch"),
-                        "zone": st.column_config.TextColumn("Zone"),
-                        "REBATE": st.column_config.NumberColumn(f"Rebate ({unit})", format="%.2f"),
-                    },
+            if spec[0] == "Unapproved CN":
+                title, value, subtitle, _growth, icon, accent, _reverse = spec
+                st.markdown(
+                    f"<div class='kpi-3d-card' style='--kpi-accent:{accent};'>"
+                    f"<div class='kpi-3d-gloss'></div><div class='kpi-3d-head'>"
+                    f"<div class='kpi-3d-title'>{escape(title)}</div><div class='kpi-3d-icon'>{icon}</div></div>"
+                    f"<div class='kpi-3d-value'>{escape(value)}</div>"
+                    f"<div class='kpi-3d-footer'><span class='kpi-3d-ly'>{escape(subtitle)}</span></div></div>",
+                    unsafe_allow_html=True,
                 )
             else:
-                st.info("No rebate credit notes found for the selected GR date range and filters.")
+                render_kpi_card(*spec)
 
     # =====================================================
     # STEP 1: Overview-style P&L Trend, Load Type and Company
@@ -2850,7 +2906,7 @@ def show_pnl_dashboard() -> None:
                 st.markdown(branch_html, unsafe_allow_html=True)
 
     # Detailed tabs
-    tab1, tab2, tab3 = st.tabs(["Branch Summary", "Monthly Summary", "Detailed GR Records"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Branch Summary", "Monthly Summary", "Detailed GR Records", "Credit Note Details"])
 
     with tab1:
         display = branch_summary.sort_values("PNL", ascending=False).copy()
@@ -2948,13 +3004,29 @@ def show_pnl_dashboard() -> None:
             mask = detail_df.astype(str).apply(
                 lambda col: col.str.contains(search_text, case=False, na=False)
             ).any(axis=1)
-            detail_df = detail_df[mask]
+            detail_df = detail_df[mask].copy()
+
+        # Totals are computed after search, so they always match visible rows.
+        detail_revenue = pd.to_numeric(detail_df.get("REVENUE", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()
+        detail_expense = pd.to_numeric(detail_df.get("EXPENSE", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()
+        detail_gp = pd.to_numeric(detail_df.get("PNL", pd.Series(dtype=float)), errors="coerce").fillna(0).sum()
+        detail_gp_pct = (detail_gp / detail_revenue * 100) if detail_revenue else 0.0
+        summary_cols = st.columns(4, gap="small")
+        summary_metrics = [
+            ("Total Revenue", amount_text(detail_revenue, conversion_type)),
+            ("Total Expense", amount_text(detail_expense, conversion_type)),
+            ("Total GP", amount_text(detail_gp, conversion_type)),
+            ("GP %", f"{detail_gp_pct:.2f}%"),
+        ]
+        for metric_col, (metric_label, metric_value) in zip(summary_cols, summary_metrics):
+            with metric_col:
+                st.metric(metric_label, metric_value)
 
         st.dataframe(
             detail_df,
             width="stretch",
             hide_index=True,
-            height=460,
+            height=430,
             column_config={
                 "REVENUE": st.column_config.NumberColumn("Business/Freight (₹)", format="₹%.0f"),
                 "DELIVERYINCOME": st.column_config.NumberColumn("Delivery Income (₹)", format="₹%.0f"),
@@ -2962,8 +3034,8 @@ def show_pnl_dashboard() -> None:
                 "OTHERINCOME": st.column_config.NumberColumn("Other Income (₹)", format="₹%.0f"),
                 "RAW_EXPENSE": st.column_config.NumberColumn("Raw Expense (₹)", format="₹%.0f"),
                 "EXPENSE": st.column_config.NumberColumn("Adjusted Expense (₹)", format="₹%.0f"),
-                "PNL": st.column_config.NumberColumn("P&L (₹)", format="₹%.0f"),
-                "REBATE": st.column_config.NumberColumn("Rebate (₹)", format="₹%.0f"),
+                "PNL": st.column_config.NumberColumn("GP / P&L (₹)", format="₹%.0f"),
+                "REBATE": st.column_config.NumberColumn("Credit Note (₹)", format="₹%.0f"),
                 "grdt": st.column_config.DateColumn("GR Date", format="DD-MMM-YYYY"),
             },
         )
@@ -2983,6 +3055,83 @@ def show_pnl_dashboard() -> None:
             key="pnl_excel_download",
             width="content",
         )
+
+    with tab4:
+        st.caption(
+            "Un-approved Credit Notes are shown against their parent GR. "
+            "GR Branch, Circle and Zone are inherited from the GR record; "
+            "all dashboard filters are applied through that parent GR."
+        )
+        if credit_note_details.empty:
+            st.info("No un-approved Credit Notes found for the selected GR date range and filters.")
+        else:
+            credit_note_columns = [
+                col for col in [
+                    "CREDITNOTEID", "BILLNO", "grno", "grdt",
+                    "branch", "circle", "zone", "APPROVAL_CODE",
+                    "CN_STATUS", "REBATE",
+                ] if col in credit_note_details.columns
+            ]
+            credit_note_display = credit_note_details[credit_note_columns].copy()
+            credit_note_search = st.text_input(
+                "Search Credit Note ID, Bill, GR or Branch",
+                key="pnl_credit_note_search",
+            )
+            if credit_note_search:
+                cn_mask = credit_note_display.astype(str).apply(
+                    lambda col: col.str.contains(
+                        credit_note_search, case=False, na=False, regex=False
+                    )
+                ).any(axis=1)
+                credit_note_display = credit_note_display[cn_mask].copy()
+
+            cn_total_raw = pd.to_numeric(
+                credit_note_display.get("REBATE", pd.Series(dtype=float)),
+                errors="coerce",
+            ).fillna(0).sum()
+            cn_total = float(cn_total_raw) / divisor
+            unique_cn = (
+                credit_note_display["CREDITNOTEID"].nunique()
+                if "CREDITNOTEID" in credit_note_display.columns else 0
+            )
+            unique_gr = (
+                credit_note_display["grno"].nunique()
+                if "grno" in credit_note_display.columns else 0
+            )
+            cn_metric_cols = st.columns(3, gap="small")
+            with cn_metric_cols[0]:
+                st.metric("Un-approved CN Amount", f"₹{cn_total:,.2f} {unit}")
+            with cn_metric_cols[1]:
+                st.metric("Credit Notes", f"{unique_cn:,}")
+            with cn_metric_cols[2]:
+                st.metric("Parent GRs", f"{unique_gr:,}")
+
+            if "REBATE" in credit_note_display.columns:
+                credit_note_display["REBATE"] = (
+                    pd.to_numeric(credit_note_display["REBATE"], errors="coerce")
+                    .fillna(0) / divisor
+                )
+            st.dataframe(
+                credit_note_display,
+                width="stretch",
+                hide_index=True,
+                height=430,
+                column_config={
+                    "CREDITNOTEID": st.column_config.TextColumn("Credit Note ID"),
+                    "BILLNO": st.column_config.TextColumn("Bill No."),
+                    "grno": st.column_config.TextColumn("Parent GR No."),
+                    "grdt": st.column_config.DateColumn("GR Date", format="DD-MMM-YYYY"),
+                    "branch": st.column_config.TextColumn("GR Branch"),
+                    "circle": st.column_config.TextColumn("GR Circle"),
+                    "zone": st.column_config.TextColumn("GR Zone"),
+                    "APPROVAL_CODE": st.column_config.TextColumn("Approval Code"),
+                    "CN_STATUS": st.column_config.TextColumn("Status"),
+                    "REBATE": st.column_config.NumberColumn(
+                        f"Credit Note ({unit})", format="%.2f"
+                    ),
+                },
+            )
+
 
 
 # Optional alias if your app menu expects a shorter function name.
