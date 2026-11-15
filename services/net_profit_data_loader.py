@@ -1408,6 +1408,203 @@ def load_nepal_overhead_detail(start_date, end_date):
 
 
 # ============================================================
+# INDIA OVERHEAD DETAIL
+# ============================================================
+# Same source logic as the overhead query above (Salary, Godown Rent,
+# Voucher Overhead, Claim) but returned as detail rows so the dashboard
+# total can be traced:
+#   SALARY / GODOWN RENT  -> one row per Branch + Month
+#   OVERHEAD EXPENSE      -> one row per Branch + Ledger + Month
+#   CLAIM                 -> one row per Branch + Ledger + Month
+# Head Office (HEAD_OFFICE_CODE) rows are the pool that gets allocated.
+
+_INDIA_OVERHEAD_DETAIL_QUERY = text("""
+DECLARE @FROMDATE DATE = :from_date;
+DECLARE @TODATE   DATE = :to_date;
+
+SELECT
+    X.BRANCHCODE,
+    COALESCE(STN.STNNAME, X.BRANCHCODE) AS BRANCH,
+    X.COMPONENT,
+    X.LEDCODE,
+    X.LEDNAME,
+    X.MAINGROUP,
+    X.[YEAR],
+    X.[MONTHNO],
+    ROUND(SUM(X.NETAMT), 2) AS NETAMT
+FROM
+(
+    /* ---- SALARY ---- */
+    SELECT
+        SS.BRANCHCODE,
+        'SALARY' AS COMPONENT,
+        '' AS LEDCODE,
+        'Salary' AS LEDNAME,
+        '' AS MAINGROUP,
+        SS.[YEAR],
+        SS.[MONTHNO],
+        CAST(SUM(SS.NETAMT) AS DECIMAL(18,2)) AS NETAMT
+    FROM
+    (
+        SELECT
+            SD.BRANCHCODE,
+            YEAR(SD.FROMDT) AS [YEAR],
+            MONTH(SD.FROMDT) AS [MONTHNO],
+            CAST(
+                SUM(SD.EAMOUNT)
+                +
+                IIF(
+                    ESI.CNTR = 0,
+                    0,
+                    SUM(SD.EAMOUNT - SD.PFAMOUNT) * 3.25 / 100
+                )
+            AS NUMERIC(12,2)) AS NETAMT
+        FROM VIEWSALARYFORBRANCHPERFORMANCE SD
+        CROSS APPLY
+        (
+            SELECT COUNT(*) AS CNTR
+            FROM VIEWSALARY D
+            WHERE D.BRANCHCODE = SD.BRANCHCODE
+              AND D.EMPLOYEEID = SD.EMPLOYEEID
+              AND D.FROMDT BETWEEN @FROMDATE AND @TODATE
+              AND D.SALARYVNO IS NOT NULL
+              AND D.SALARYCATEGORY = 'S'
+              AND D.SALARYHEADID = 9
+        ) ESI
+        WHERE SD.FROMDT BETWEEN @FROMDATE AND @TODATE
+          AND SD.SALARYVNO IS NOT NULL
+          AND SD.SALARYCATEGORY = 'S'
+        GROUP BY
+            SD.BRANCHCODE,
+            YEAR(SD.FROMDT),
+            MONTH(SD.FROMDT),
+            ESI.CNTR
+    ) SS
+    GROUP BY SS.BRANCHCODE, SS.[YEAR], SS.[MONTHNO]
+
+    UNION ALL
+
+    /* ---- GODOWN RENT ---- */
+    SELECT
+        H.BRANCHCODE,
+        'GODOWN RENT',
+        '',
+        'Godown Rent',
+        '',
+        YEAR(H.FROMDT),
+        MONTH(H.FROMDT),
+        CAST(ISNULL(SUM(D.AMOUNT), 0) AS DECIMAL(18,2))
+    FROM PURCHASEMRNDETAIL D WITH (NOLOCK)
+    INNER JOIN PURCHASEMRNHEAD H WITH (NOLOCK)
+        ON H.MRNID = D.MRNID
+    WHERE D.ITEMCODE = '30'
+      AND H.CANCEL <> 'Y'
+      AND H.VNO IS NOT NULL
+      AND H.FROMDT BETWEEN @FROMDATE AND @TODATE
+      AND H.TODT BETWEEN @FROMDATE AND @TODATE
+    GROUP BY H.BRANCHCODE, YEAR(H.FROMDT), MONTH(H.FROMDT)
+
+    UNION ALL
+
+    /* ---- VOUCHER OVERHEAD EXPENSE (ledger wise) ---- */
+    SELECT
+        VM.BRANCHCODE,
+        'OVERHEAD EXPENSE',
+        VM.LEDCODE,
+        L.LEDNAME,
+        L.MAINGRP,
+        YEAR(VM.VDATE),
+        MONTH(VM.VDATE),
+        CAST(ISNULL(SUM(VM.DRAMOUNT - VM.CRAMOUNT), 0) AS DECIMAL(18,2))
+    FROM VIEWVOUCHER VM WITH (NOLOCK)
+    INNER JOIN VIEWLEDGER L
+        ON L.LEDCODE = VM.LEDCODE
+    WHERE VM.VDATE BETWEEN @FROMDATE AND @TODATE
+      AND L.MAINGRP = 'AM203'
+      AND L.LEDCODE <> '0000001172'
+    GROUP BY
+        VM.BRANCHCODE, VM.LEDCODE, L.LEDNAME, L.MAINGRP,
+        YEAR(VM.VDATE), MONTH(VM.VDATE)
+
+    UNION ALL
+
+    /* ---- CLAIM (ledger wise) ---- */
+    SELECT
+        VM.BRANCHCODE,
+        'CLAIM',
+        VM.LEDCODE,
+        L.LEDNAME,
+        L.MAINGRP,
+        YEAR(VM.VDATE),
+        MONTH(VM.VDATE),
+        CAST(ISNULL(SUM(VM.DRAMOUNT - VM.CRAMOUNT), 0) AS DECIMAL(18,2))
+    FROM VIEWVOUCHER VM WITH (NOLOCK)
+    LEFT JOIN VIEWLEDGER L
+        ON L.LEDCODE = VM.LEDCODE
+    WHERE VM.VDATE BETWEEN @FROMDATE AND @TODATE
+      AND VM.LEDCODE = '0000001289'
+    GROUP BY
+        VM.BRANCHCODE, VM.LEDCODE, L.LEDNAME, L.MAINGRP,
+        YEAR(VM.VDATE), MONTH(VM.VDATE)
+) X
+LEFT JOIN STATIONMAST STN
+    ON STN.STNCODE = X.BRANCHCODE
+GROUP BY
+    X.BRANCHCODE,
+    COALESCE(STN.STNNAME, X.BRANCHCODE),
+    X.COMPONENT,
+    X.LEDCODE,
+    X.LEDNAME,
+    X.MAINGROUP,
+    X.[YEAR],
+    X.[MONTHNO]
+ORDER BY
+    BRANCH,
+    X.COMPONENT,
+    X.LEDNAME,
+    X.[YEAR],
+    X.[MONTHNO];
+""")
+
+_INDIA_DETAIL_COLUMNS = [
+    "BRANCHCODE", "BRANCH", "COMPONENT", "LEDCODE", "LEDNAME",
+    "MAINGROUP", "YEAR", "MONTHNO", "NETAMT",
+]
+
+
+def _fetch_india_overhead_detail(start_date, end_date):
+    engine = get_engine()
+    with engine.connect() as conn:
+        df = pd.read_sql_query(
+            _INDIA_OVERHEAD_DETAIL_QUERY,
+            conn,
+            params={
+                "from_date": str(start_date),
+                "to_date": str(end_date),
+            },
+        )
+
+    if df is None or df.empty:
+        return pd.DataFrame(columns=_INDIA_DETAIL_COLUMNS)
+
+    out = df.copy()
+    for col in ["BRANCHCODE", "BRANCH", "COMPONENT", "LEDCODE", "LEDNAME", "MAINGROUP"]:
+        if col in out.columns:
+            out[col] = out[col].fillna("").astype(str).str.strip()
+    out["YEAR"] = pd.to_numeric(out["YEAR"], errors="coerce")
+    out["MONTHNO"] = pd.to_numeric(out["MONTHNO"], errors="coerce")
+    out["NETAMT"] = pd.to_numeric(out["NETAMT"], errors="coerce").fillna(0.0)
+    return out
+
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=2)
+def load_india_overhead_detail(start_date, end_date):
+    """Return India overhead detail (Salary, Godown, Overhead ledgers, Claim)."""
+    return _fetch_india_overhead_detail(start_date, end_date)
+
+
+
+# ============================================================
 # PUBLIC API
 # ============================================================
 
