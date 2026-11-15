@@ -34,8 +34,8 @@ def load_net_profit_branch_mast():
             ON ZONE.ZONECODE = S.ZONECODE
         left join viewstationmast c on c.stncode=s.stncode
         WHERE 
-            (S.OWNED = 'Y' OR S.ISAGENCY = 'Y')
-            AND LEN(S.STNCODE) = 3
+            (S.OWNED = 'Y' OR S.ISAGENCY = 'Y' OR S.STNCODE = '1001')
+            AND (LEN(S.STNCODE) = 3 OR S.STNCODE = '1001')
             AND S.STNCODE NOT IN (
                 '921', '911', '880', '881', '901', 
                 '650', '906', '931', '932', '938', '021', '100', '941', 
