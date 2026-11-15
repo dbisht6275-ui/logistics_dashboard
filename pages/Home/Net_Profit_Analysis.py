@@ -6,7 +6,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from services.data_loader import get_date_range
-from services.net_profit_data_loader import load_net_profit_data_pair, load_nepal_overhead_detail
+from services.net_profit_data_loader import (
+    HEAD_OFFICE_CODE,
+    load_india_overhead_detail,
+    load_net_profit_data_pair,
+    load_nepal_overhead_detail,
+)
 from services.pnl_data_loader import load_pnl_sp_revenue_total, load_pnl_data_pair
 from services.net_profit_branch_mast import load_net_profit_branch_mast
 
@@ -159,6 +164,26 @@ def apply_multi_filter(df, column, selected):
         return df
 
     return df[df[column].isin(selected)].copy()
+
+
+def _add_calendar_columns(frame):
+    """Add MONTH / FIN_MONTH / QUARTER (April-March FY) from MONTHNO."""
+    out = frame.copy()
+    out["YEAR"] = pd.to_numeric(out.get("YEAR"), errors="coerce")
+    out["MONTHNO"] = pd.to_numeric(out.get("MONTHNO"), errors="coerce")
+    out["MONTH"] = out["MONTHNO"].map({
+        1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
+        7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
+    })
+    out["FIN_MONTH"] = out["MONTHNO"].map({
+        4: 1, 5: 2, 6: 3, 7: 4, 8: 5, 9: 6,
+        10: 7, 11: 8, 12: 9, 1: 10, 2: 11, 3: 12,
+    })
+    out["QUARTER"] = out["FIN_MONTH"].map({
+        1: "Q1", 2: "Q1", 3: "Q1", 4: "Q2", 5: "Q2", 6: "Q2",
+        7: "Q3", 8: "Q3", 9: "Q3", 10: "Q4", 11: "Q4", 12: "Q4",
+    })
+    return out
 
 
 def _normalise_branch_name(value):
@@ -2295,6 +2320,7 @@ def show_net_profit_dashboard():
                 export_current = payload.get("raw_df")
                 export_previous = payload.get("raw_prev_df")
                 export_nepal = payload.get("nepal_overhead_detail_df")
+                export_india = payload.get("india_overhead_detail_df")
 
                 if export_current is not None and not export_current.empty:
                     st.download_button(
@@ -2312,6 +2338,15 @@ def show_net_profit_dashboard():
                         file_name="net_profit_previous_period.csv",
                         mime="text/csv",
                         key="np_header_export_previous",
+                        use_container_width=True,
+                    )
+                if export_india is not None and not export_india.empty:
+                    st.download_button(
+                        "India Overhead CSV",
+                        data=export_india.to_csv(index=False).encode("utf-8-sig"),
+                        file_name="india_overhead_detail.csv",
+                        mime="text/csv",
+                        key="np_header_export_india",
                         use_container_width=True,
                     )
                 if export_nepal is not None and not export_nepal.empty:
@@ -2483,6 +2518,9 @@ def show_net_profit_dashboard():
             nepal_overhead_detail_loaded = load_nepal_overhead_detail(
                 selected_start, selected_end
             )
+            india_overhead_detail_loaded = load_india_overhead_detail(
+                selected_start, selected_end
+            )
 
             # Consolidated All-Branches booking/origin revenue must come directly
             # from the P&L stored procedure. Keep the period totals in session too.
@@ -2500,6 +2538,7 @@ def show_net_profit_dashboard():
             "raw_prev_df": raw_prev_loaded,
             "branch_master_df": branch_master_loaded,
             "nepal_overhead_detail_df": nepal_overhead_detail_loaded,
+            "india_overhead_detail_df": india_overhead_detail_loaded,
             "sp_revenue_total": float(sp_loaded or 0.0),
             "sp_prev_revenue_total": float(sp_prev_loaded or 0.0),
         }
@@ -2540,6 +2579,9 @@ def show_net_profit_dashboard():
     branch_master_df = loaded_payload.get("branch_master_df", pd.DataFrame())
     nepal_overhead_detail_df = loaded_payload.get(
         "nepal_overhead_detail_df", pd.DataFrame()
+    )
+    india_overhead_detail_df = loaded_payload.get(
+        "india_overhead_detail_df", pd.DataFrame()
     )
     sp_revenue_total = float(loaded_payload.get("sp_revenue_total", 0.0) or 0.0)
     sp_prev_revenue_total = float(loaded_payload.get("sp_prev_revenue_total", 0.0) or 0.0)
@@ -2974,6 +3016,10 @@ def show_net_profit_dashboard():
             background:#ff454d !important;
             color:#111827 !important;
         }
+        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:nth-of-type(4) {
+            background:#f2b66d !important;
+            color:#111827 !important;
+        }
         div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:hover {
             opacity:1 !important;
             filter:saturate(1.08) brightness(.98) !important;
@@ -3024,6 +3070,11 @@ def show_net_profit_dashboard():
             background:#ff454d !important;
             color:#111827 !important;
         }
+        .st-key-np_bottom_render_tabs [role="tab"]:nth-of-type(4),
+        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"]:nth-of-type(4) {
+            background:#f2b66d !important;
+            color:#111827 !important;
+        }
         .st-key-np_bottom_render_tabs [role="tab"][aria-selected="true"],
         div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"][aria-selected="true"] {
             opacity:1 !important;
@@ -3044,11 +3095,12 @@ def show_net_profit_dashboard():
             '<span class="np-bottom-tabs-marker"></span>',
             unsafe_allow_html=True,
         )
-        detail_tab, audit_tab, nepal_detail_tab, gr_tab = st.tabs(
+        detail_tab, audit_tab, nepal_detail_tab, india_detail_tab, gr_tab = st.tabs(
             [
                 "Branch Net Profit Detail",
                 "Monthly Calculation Audit",
                 "Nepal Overhead Detail",
+                "India Overhead Detail",
                 "P&L GR Details",
             ]
         )
@@ -3346,7 +3398,157 @@ def show_net_profit_dashboard():
                 )
 
     # --------------------------------------------------------
-    # TAB 4: GR P&L DETAILED
+    # TAB 4: INDIA OVERHEAD DETAIL
+    # Branch overhead (Salary / Godown / ledger-wise Overhead / Claim) plus the
+    # Head Office share allocated to each branch. The Head Office pool that is
+    # being distributed is shown separately and is NOT part of the total.
+    # --------------------------------------------------------
+    with india_detail_tab:
+        ind_src = india_overhead_detail_df
+        has_detail = ind_src is not None and not ind_src.empty
+
+        ind = _add_calendar_columns(ind_src) if has_detail else pd.DataFrame()
+        if has_detail:
+            if quarters:
+                ind = ind[ind["QUARTER"].isin(quarters)].copy()
+            if months:
+                ind = ind[ind["MONTH"].isin(months)].copy()
+            is_ho_row = ind["BRANCHCODE"].astype(str).str.strip().eq(HEAD_OFFICE_CODE)
+            ho_pool = ind[is_ho_row].copy()
+            branch_rows = ind[~is_ho_row].copy()
+
+            if branches or zones or circles:
+                allowed_branch_keys = {
+                    _normalise_branch_name(value)
+                    for value in df.get("BRANCH", pd.Series(dtype="object")).dropna().tolist()
+                }
+                branch_keys = branch_rows["BRANCH"].fillna("").map(_normalise_branch_name)
+                branch_rows = branch_rows[branch_keys.isin(allowed_branch_keys)].copy()
+        else:
+            ho_pool = pd.DataFrame()
+            branch_rows = pd.DataFrame()
+
+        group_cols = ["BRANCHCODE", "BRANCH", "COMPONENT", "LEDCODE", "LEDNAME", "MAINGROUP"]
+        parts = []
+        if not branch_rows.empty:
+            parts.append(
+                branch_rows.groupby(group_cols, as_index=False, dropna=False)["NETAMT"].sum()
+            )
+
+        # Head Office share allocated to each branch (already month-filtered and
+        # branch-scoped because it comes from the filtered Net Profit dataframe).
+        if "HO ALLOCATION" in df.columns:
+            alloc = df.copy()
+            alloc["HO ALLOCATION"] = pd.to_numeric(
+                alloc["HO ALLOCATION"], errors="coerce"
+            ).fillna(0.0)
+            alloc = alloc[alloc["HO ALLOCATION"].ne(0.0)]
+            if not alloc.empty:
+                alloc = (
+                    alloc.groupby(["BRANCHCODE", "BRANCH"], as_index=False, dropna=False)[
+                        "HO ALLOCATION"
+                    ]
+                    .sum()
+                    .rename(columns={"HO ALLOCATION": "NETAMT"})
+                )
+                alloc["COMPONENT"] = "HO ALLOCATION"
+                alloc["LEDCODE"] = ""
+                alloc["LEDNAME"] = "Head Office expense share (by business)"
+                alloc["MAINGROUP"] = ""
+                parts.append(alloc[group_cols + ["NETAMT"]])
+
+        if not parts:
+            st.info("No India overhead detail is available for the selected period / filters.")
+        else:
+            component_order = {
+                "SALARY": 1, "GODOWN RENT": 2, "OVERHEAD EXPENSE": 3,
+                "CLAIM": 4, "HO ALLOCATION": 5,
+            }
+            ind_display = pd.concat(parts, ignore_index=True)
+            ind_display["NETAMT"] = pd.to_numeric(
+                ind_display["NETAMT"], errors="coerce"
+            ).fillna(0.0)
+            ind_display["_ord"] = ind_display["COMPONENT"].map(component_order).fillna(9)
+            ind_display = (
+                ind_display.sort_values(["BRANCH", "_ord", "LEDNAME", "LEDCODE"])
+                .drop(columns="_ord")
+                .reset_index(drop=True)
+            )
+
+            comp_totals = ind_display.groupby("COMPONENT")["NETAMT"].sum()
+            st.caption(
+                "Total India overhead in this view: "
+                f"₹ {float(ind_display['NETAMT'].sum()):,.2f}  |  "
+                + "  |  ".join(
+                    f"{ {'HO ALLOCATION': 'HO Allocation'}.get(name, name.title()) }: ₹ {float(value):,.2f}"
+                    for name, value in comp_totals.items()
+                )
+            )
+
+            st.dataframe(
+                ind_display,
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "BRANCHCODE": st.column_config.TextColumn("Branch Code"),
+                    "BRANCH": st.column_config.TextColumn("Branch"),
+                    "COMPONENT": st.column_config.TextColumn("Component"),
+                    "LEDCODE": st.column_config.TextColumn("Led Code"),
+                    "LEDNAME": st.column_config.TextColumn("Led Name"),
+                    "MAINGROUP": st.column_config.TextColumn("Main Group"),
+                    "NETAMT": st.column_config.NumberColumn(
+                        "Net Amount", format="₹ %.2f"
+                    ),
+                },
+            )
+
+            st.download_button(
+                "Download India Overhead Detail CSV",
+                data=ind_display.to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"india_overhead_detail_{fy}.csv",
+                mime="text/csv",
+                key="np_download_india_overhead_detail",
+            )
+
+        if not ho_pool.empty:
+            with st.expander(
+                "Head Office expense pool (distributed to branches - not added again)",
+                expanded=False,
+            ):
+                ho_display = (
+                    ho_pool.groupby(
+                        ["COMPONENT", "LEDCODE", "LEDNAME", "MAINGROUP"],
+                        as_index=False,
+                        dropna=False,
+                    )["NETAMT"]
+                    .sum()
+                )
+                ho_display["_ord"] = ho_display["COMPONENT"].map(component_order if parts else {}).fillna(9)
+                ho_display = (
+                    ho_display.sort_values(["_ord", "LEDNAME", "LEDCODE"])
+                    .drop(columns="_ord")
+                    .reset_index(drop=True)
+                )
+                st.caption(
+                    f"Head Office pool total: ₹ {float(ho_display['NETAMT'].sum()):,.2f}"
+                )
+                st.dataframe(
+                    ho_display,
+                    width="stretch",
+                    hide_index=True,
+                    column_config={
+                        "COMPONENT": st.column_config.TextColumn("Component"),
+                        "LEDCODE": st.column_config.TextColumn("Led Code"),
+                        "LEDNAME": st.column_config.TextColumn("Led Name"),
+                        "MAINGROUP": st.column_config.TextColumn("Main Group"),
+                        "NETAMT": st.column_config.NumberColumn(
+                            "Net Amount", format="₹ %.2f"
+                        ),
+                    },
+                )
+
+    # --------------------------------------------------------
+    # TAB 5: GR P&L DETAILED
     # Same filtered P&L insight source; no LOADTYPE filter is applied.
     # --------------------------------------------------------
     with gr_tab:
