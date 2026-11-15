@@ -873,6 +873,54 @@ def _coalesce_metadata(final, field):
     return pd.Series("Unknown", index=final.index)
 
 
+
+# ============================================================
+# HEAD OFFICE EXPENSE ALLOCATION
+# ============================================================
+# Replaces the old estimated "Booking 6% / Destination 5%" charges.
+# Head Office actual expense (Salary + Godown Rent + Overhead Expense + Claim
+# booked on the Head Office code) is distributed to branches month-wise in
+# proportion to each branch's Business (Booking + Delivery).
+# Done BEFORE any dashboard filter, so the denominator is always the full
+# branch list and the allocated amount always adds back to the HO expense.
+HEAD_OFFICE_CODE = "1001"
+HO_POOL_COLUMNS = ["SALARY", "GODOWN RENT", "OVERHEAD EXPENSE", "CLAIM"]
+
+
+def _allocate_head_office_expense(final):
+    out = final.copy()
+    out["HO ALLOCATION"] = 0.0
+
+    is_ho = out["BRANCHCODE"].astype(str).str.strip().eq(HEAD_OFFICE_CODE)
+    if not is_ho.any():
+        return out
+
+    for column in HO_POOL_COLUMNS:
+        out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
+
+    business = (
+        pd.to_numeric(out["ORIGIN_BUSINESS"], errors="coerce").fillna(0.0)
+        + pd.to_numeric(out["DESTINATION_BUSINESS"], errors="coerce").fillna(0.0)
+    ).clip(lower=0.0)
+    business = business.where(~is_ho, 0.0)  # HO itself takes no share
+
+    ho_pool = out[HO_POOL_COLUMNS].sum(axis=1).where(is_ho, 0.0)
+
+    month_keys = [out["YEAR"], out["MONTHNO"]]
+    pool_by_month = ho_pool.groupby(month_keys).transform("sum")
+    business_by_month = business.groupby(month_keys).transform("sum")
+
+    has_base = business_by_month.gt(0)
+    share = (business / business_by_month).where(has_base, 0.0)
+    out["HO ALLOCATION"] = (pool_by_month * share).fillna(0.0)
+
+    # Remove HO's own expense only for months where it was actually
+    # distributed (otherwise it would vanish when no branch has business).
+    clear_mask = is_ho & has_base
+    out.loc[clear_mask, HO_POOL_COLUMNS] = 0.0
+    return out
+
+
 def _build_net_profit(origin_df, destination_df, overhead_df):
     origin = _aggregate_view_pnl(origin_df, "ORIGIN")
     destination = _aggregate_view_pnl(destination_df, "DESTINATION")
@@ -1143,26 +1191,19 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
             errors="coerce",
         ).fillna(0.0)
 
-    # Canonical percentage-expense logic.
-    #
-    # The dashboard Business values come from the P&L datasets. Computing the
-    # 6% / 5% charges independently from CNMT and then joining them back by
-    # branch/month can create reconciliation gaps because the branch identity
-    # and merge-station logic is not guaranteed to be identical to the P&L SP.
-    # Use the already-aligned Origin/Destination Business values as the source
-    # of truth so the percentage charges reconcile with the dashboard business.
-    final["BOOKING 6%"] = final["ORIGIN_BUSINESS"] * 0.06
-    final["DESTINATION 5%"] = final["DESTINATION_BUSINESS"] * 0.05
+    # Estimated 6% / 5% charges are no longer used. Head Office actual
+    # expense is allocated to branches by Business share instead.
+    final["BOOKING 6%"] = 0.0
+    final["DESTINATION 5%"] = 0.0
+    final = _allocate_head_office_expense(final)
 
-    # Rebuild total overhead after replacing the two percentage components.
     final["TOTAL EXPENSE"] = (
         final["SALARY"]
         + final["GODOWN RENT"]
         + final["OVERHEAD EXPENSE"]
         + final["NEPAL OVERHEAD"]
         + final["CLAIM"]
-        + final["BOOKING 6%"]
-        + final["DESTINATION 5%"]
+        + final["HO ALLOCATION"]
     )
 
     # FINAL ACCOUNTING LOGIC:
