@@ -51,6 +51,40 @@ _REBATE_QUERY = text("""
 """)
 
 
+_CREDIT_NOTE_DETAIL_QUERY = text("""
+    ;WITH CreditNoteGR AS
+    (
+        SELECT DISTINCT
+            C.CREDITNOTEID,
+            CD.BILLNO,
+            CD.GRNO,
+            CN.GRDT,
+            C.APPROVED AS APPROVAL_CODE,
+            TRY_CONVERT(DECIMAL(18, 2), C.CREDITNOTEAMOUNT) AS CREDITNOTEAMOUNT
+        FROM CREDITNOTEHEAD C
+        INNER JOIN CREDITNOTEDETAIL CD
+            ON CD.CREDITNOTEID = C.CREDITNOTEID
+        INNER JOIN CNMT CN WITH (NOLOCK)
+            ON CN.GRNO = CD.GRNO
+        WHERE (C.APPROVED NOT IN ('R', 'Y') OR C.APPROVED IS NULL)
+          AND C.CANCEL <> 'Y'
+          AND C.CREDITNOTETYPE = 'P'
+          AND CN.GRDT >= :from_date
+          AND CN.GRDT < DATEADD(DAY, 1, :to_date)
+          AND CD.GRNO IS NOT NULL
+    )
+    SELECT
+        CREDITNOTEID AS CREDITNOTEID,
+        BILLNO AS BILLNO,
+        GRNO AS grno,
+        GRDT AS grdt,
+        APPROVAL_CODE AS APPROVAL_CODE,
+        'Un-approved' AS CN_STATUS,
+        ISNULL(CREDITNOTEAMOUNT, 0) AS REBATE
+    FROM CreditNoteGR
+""")
+
+
 def _normalise_column_name(value):
     return str(value).strip().replace("_", "").replace(" ", "").casefold()
 
@@ -151,6 +185,44 @@ def _fetch_rebate_data(start_date, end_date):
         f"rows={len(df):,} | seconds={time.perf_counter() - started:.2f}"
     )
     return df
+
+
+@st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=12)
+def load_credit_note_details(start_date, end_date):
+    """Return un-approved Credit Note rows at Credit Note + Bill + GR grain."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        df = pd.read_sql_query(
+            _CREDIT_NOTE_DETAIL_QUERY,
+            conn,
+            params={"from_date": str(start_date), "to_date": str(end_date)},
+        )
+
+    columns = [
+        "CREDITNOTEID", "BILLNO", "grno", "grdt",
+        "APPROVAL_CODE", "CN_STATUS", "REBATE",
+    ]
+    if df is None or df.empty:
+        return pd.DataFrame(columns=columns)
+
+    gr_col = _find_column(df, ["grno", "GRNO", "gr_no"])
+    amount_col = _find_column(df, ["REBATE", "CREDITNOTEAMOUNT"])
+    if gr_col is None or amount_col is None:
+        raise ValueError(
+            "Credit Note detail query must return GRNO and REBATE. "
+            f"Available columns: {list(df.columns)}"
+        )
+
+    df = df.rename(columns={gr_col: "grno", amount_col: "REBATE"})
+    df["grno"] = _clean_grno(df["grno"])
+    df["REBATE"] = pd.to_numeric(df["REBATE"], errors="coerce").fillna(0.0)
+    df["grdt"] = pd.to_datetime(df["grdt"], errors="coerce")
+    df = df[
+        df["grno"].notna()
+        & df["grno"].ne("")
+        & df["grno"].str.lower().ne("nan")
+    ].copy()
+    return df[columns].copy()
 
 
 def _prepare_revenue_data(df):
