@@ -3362,6 +3362,28 @@ def show_net_profit_dashboard():
     # TAB 2: MONTHLY CALCULATION AUDIT
     # --------------------------------------------------------
     with audit_tab:
+        # Monthly Audit must reconcile with Branch Net Profit Detail in BOTH
+        # All Branches and filtered views. In All Branches KPI mode,
+        # DESTINATION_PNL is intentionally zeroed for consolidated KPI maths;
+        # the audit is a branch-wise detail, so restore actual Destination P&L.
+        audit_df = df.copy()
+        if "DESTINATION_PNL_ACTUAL" in audit_df.columns:
+            audit_df["DESTINATION_PNL"] = pd.to_numeric(
+                audit_df["DESTINATION_PNL_ACTUAL"], errors="coerce"
+            ).fillna(0.0)
+
+        audit_df["COMBINED_PNL"] = (
+            pd.to_numeric(audit_df.get("ORIGIN_PNL", 0.0), errors="coerce").fillna(0.0)
+            + pd.to_numeric(audit_df.get("DESTINATION_PNL", 0.0), errors="coerce").fillna(0.0)
+        )
+
+        # Use exactly the Branch Net Profit Detail allocation base:
+        # total HO pool / all-branch Origin Business for the selected
+        # Quarter/Month scope, then allocate by each row's Booking + Delivery.
+        audit_df = _apply_branch_scope_ho_allocation(
+            audit_df, branch_detail_all_scope_df
+        )
+
         audit_columns = [
             "BRANCHCODE",
             "BRANCH",
@@ -3386,14 +3408,10 @@ def show_net_profit_dashboard():
         ]
 
         audit_columns = [
-            column for column in audit_columns if column in df.columns
+            column for column in audit_columns if column in audit_df.columns
         ]
 
-        audit_display = df[audit_columns].copy()
-
-        # Show the real Destination P&L (calc column is zeroed in All Branches mode).
-        if "DESTINATION_PNL_ACTUAL" in df.columns and "DESTINATION_PNL" in audit_display.columns:
-            audit_display["DESTINATION_PNL"] = df["DESTINATION_PNL_ACTUAL"]
+        audit_display = audit_df[audit_columns].copy()
 
         # Display the audit in the selected conversion unit, including Nepal Overhead.
         audit_money_columns = [
