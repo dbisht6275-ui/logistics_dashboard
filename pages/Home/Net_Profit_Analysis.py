@@ -2987,14 +2987,16 @@ def show_net_profit_dashboard():
         branch_summary.loc[valid_business, "Combined_PNL"]
         / branch_summary.loc[valid_business, "Revenue"] * 100
     )
-    # HO Allocation % = HO Allocation / (Booking Business + Delivery Business) * 100
-    _ho_base = branch_summary["Booking_Business"] + branch_summary["Delivery_Business"]
+    # HO Allocation % shows each branch's share of total business.
+    # This is intentionally different by branch and sums to ~100% overall.
     branch_summary["HO Allocation %"] = 0.0
-    _valid_ho_base = _ho_base.ne(0)
-    branch_summary.loc[_valid_ho_base, "HO Allocation %"] = (
-        branch_summary.loc[_valid_ho_base, "HO_Allocation"]
-        / _ho_base.loc[_valid_ho_base] * 100
-    )
+    _valid_business_total = _branch_business_total != 0
+    if _valid_business_total:
+        branch_summary["HO Allocation %"] = (
+            pd.to_numeric(branch_summary["Revenue"], errors="coerce").fillna(0.0)
+            / _branch_business_total
+            * 100
+        )
     branch_summary["Net Profit Margin %"] = 0.0
     branch_summary.loc[valid_business, "Net Profit Margin %"] = (
         branch_summary.loc[valid_business, "Net_Profit"]
