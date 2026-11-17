@@ -2613,6 +2613,11 @@ def show_net_profit_dashboard():
         else pd.DataFrame()
     )
 
+    # Keep an all-branch copy for the Branch Net Profit Detail HO allocation
+    # denominator, so selecting one branch does not reassign the entire HO pool
+    # to that branch.
+    branch_detail_all_scope_df = df.copy()
+
     # Use whichever hierarchy columns are actually available.
     with filter_cols[5]:
         zones = st.multiselect(
@@ -2717,6 +2722,12 @@ def show_net_profit_dashboard():
 
     df = _apply_same_filters(df, filters)
     prev_df = _apply_same_filters(prev_df, filters) if not prev_df.empty else prev_df
+    # Apply only the time filters to the all-branch allocation base. Branch,
+    # Zone and Circle selections must not change a branch's share of HO expense.
+    branch_detail_all_scope_df = _apply_same_filters(
+        branch_detail_all_scope_df,
+        {"QUARTER": quarters, "MONTH": months},
+    )
 
     if df.empty:
         st.warning("No data found for selected filters.")
@@ -2931,6 +2942,30 @@ def show_net_profit_dashboard():
     branch_summary["Combined_PNL"] = (
         branch_summary["Origin_PNL"] + branch_summary["Destination_PNL"]
     )
+
+    # Correct HO allocation for this detail table only:
+    # distribute the HO pool across branches in proportion to total business
+    # (Booking + Delivery). Keep the dashboard KPIs and source dataframe intact.
+    _ho_pool_for_detail = float(
+        pd.to_numeric(
+            branch_detail_all_scope_df.get("HO ALLOCATION", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
+            errors="coerce",
+        ).fillna(0.0).sum()
+    )
+    _branch_business_total = float(
+        pd.to_numeric(
+            branch_detail_all_scope_df.get("BUSINESS", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
+            errors="coerce",
+        ).fillna(0.0).sum()
+    )
+    if _branch_business_total != 0:
+        branch_summary["HO_Allocation"] = (
+            pd.to_numeric(branch_summary["Revenue"], errors="coerce").fillna(0.0)
+            / _branch_business_total
+            * _ho_pool_for_detail
+        )
+    else:
+        branch_summary["HO_Allocation"] = 0.0
 
     # Rebuild the branch-level accounting from the displayed components so the
     # detail table always reconciles exactly with the selected branch scope.
