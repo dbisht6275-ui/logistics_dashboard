@@ -2952,9 +2952,14 @@ def show_net_profit_dashboard():
             errors="coerce",
         ).fillna(0.0).sum()
     )
+    # Use the all-branch Booking/Origin business base as the allocation
+    # denominator. The raw BUSINESS field can include a second delivery-side
+    # contribution and was doubling the denominator in the detail view.
+    # Branch numerator remains the displayed Total Business (Booking + Delivery),
+    # matching the allocation basis supplied for this report.
     _branch_business_total = float(
         pd.to_numeric(
-            branch_detail_all_scope_df.get("BUSINESS", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
+            branch_detail_all_scope_df.get("ORIGIN_BUSINESS", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
             errors="coerce",
         ).fillna(0.0).sum()
     )
