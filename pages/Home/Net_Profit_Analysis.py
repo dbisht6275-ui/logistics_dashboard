@@ -2617,6 +2617,7 @@ def show_net_profit_dashboard():
     # denominator, so selecting one branch does not reassign the entire HO pool
     # to that branch.
     branch_detail_all_scope_df = df.copy()
+    branch_detail_prev_all_scope_df = prev_df.copy()
 
     # Use whichever hierarchy columns are actually available.
     with filter_cols[5]:
@@ -2728,6 +2729,14 @@ def show_net_profit_dashboard():
         branch_detail_all_scope_df,
         {"QUARTER": quarters, "MONTH": months},
     )
+    branch_detail_prev_all_scope_df = (
+        _apply_same_filters(
+            branch_detail_prev_all_scope_df,
+            {"QUARTER": quarters, "MONTH": months},
+        )
+        if not branch_detail_prev_all_scope_df.empty
+        else branch_detail_prev_all_scope_df
+    )
 
     if df.empty:
         st.warning("No data found for selected filters.")
@@ -2742,6 +2751,86 @@ def show_net_profit_dashboard():
         if not prev_df.empty
         else prev_df
     )
+
+    # Reallocate Head Office cost by month using the full all-branch business
+    # base, regardless of the selected Branch/Zone/Circle filters. This keeps
+    # a selected branch's share unchanged when the user drills into that branch.
+    def _reallocate_ho_monthly(target_df, all_scope_df):
+        if target_df is None or target_df.empty or all_scope_df is None or all_scope_df.empty:
+            return target_df
+        target_df = target_df.copy()
+        base_df = all_scope_df.copy()
+        month_keys = [c for c in ["YEAR", "MONTHNO"] if c in base_df.columns and c in target_df.columns]
+        if not month_keys:
+            month_keys = [c for c in ["YEAR", "MONTH"] if c in base_df.columns and c in target_df.columns]
+        if not month_keys:
+            month_keys = []
+
+        for frame in (base_df, target_df):
+            if "BUSINESS" not in frame.columns:
+                frame["BUSINESS"] = (
+                    pd.to_numeric(frame.get("ORIGIN_BUSINESS", 0), errors="coerce").fillna(0.0)
+                    + pd.to_numeric(frame.get("DESTINATION_BUSINESS", 0), errors="coerce").fillna(0.0)
+                )
+
+        base_df["BUSINESS"] = pd.to_numeric(base_df["BUSINESS"], errors="coerce").fillna(0.0)
+        target_df["BUSINESS"] = pd.to_numeric(target_df["BUSINESS"], errors="coerce").fillna(0.0)
+        base_df["HO ALLOCATION"] = pd.to_numeric(base_df.get("HO ALLOCATION", 0.0), errors="coerce").fillna(0.0)
+
+        if month_keys:
+            monthly_base = base_df.groupby(month_keys, dropna=False).agg(
+                _business_base=("BUSINESS", "sum"),
+                _ho_pool=("HO ALLOCATION", "sum"),
+            ).reset_index()
+            target_df = target_df.merge(monthly_base, on=month_keys, how="left", sort=False)
+            denominator = pd.to_numeric(target_df["_business_base"], errors="coerce").fillna(0.0)
+            pool = pd.to_numeric(target_df["_ho_pool"], errors="coerce").fillna(0.0)
+        else:
+            denominator_value = float(base_df["BUSINESS"].sum())
+            pool_value = float(base_df["HO ALLOCATION"].sum())
+            denominator = pd.Series(denominator_value, index=target_df.index, dtype=float)
+            pool = pd.Series(pool_value, index=target_df.index, dtype=float)
+
+        target_df["HO ALLOCATION"] = 0.0
+        valid = denominator.ne(0)
+        target_df.loc[valid, "HO ALLOCATION"] = (
+            target_df.loc[valid, "BUSINESS"] / denominator.loc[valid] * pool.loc[valid]
+        )
+        target_df["TOTAL EXPENSE"] = (
+            pd.to_numeric(target_df.get("SALARY", 0.0), errors="coerce").fillna(0.0)
+            + pd.to_numeric(target_df.get("GODOWN RENT", 0.0), errors="coerce").fillna(0.0)
+            + pd.to_numeric(target_df.get("OVERHEAD EXPENSE", 0.0), errors="coerce").fillna(0.0)
+            + pd.to_numeric(target_df.get("NEPAL OVERHEAD", 0.0), errors="coerce").fillna(0.0)
+            + pd.to_numeric(target_df.get("CLAIM", 0.0), errors="coerce").fillna(0.0)
+            + target_df["HO ALLOCATION"]
+        )
+        if "BOOKING 6%" in target_df.columns:
+            target_df["TOTAL EXPENSE"] += pd.to_numeric(target_df["BOOKING 6%"], errors="coerce").fillna(0.0)
+        if "DESTINATION 5%" in target_df.columns:
+            target_df["TOTAL EXPENSE"] += pd.to_numeric(target_df["DESTINATION 5%"], errors="coerce").fillna(0.0)
+        target_df["NET_PROFIT"] = (
+            pd.to_numeric(target_df.get("COMBINED_PNL", 0.0), errors="coerce").fillna(0.0)
+            - target_df["TOTAL EXPENSE"]
+        )
+        target_df["NET_PROFIT_MARGIN"] = 0.0
+        valid_business = target_df["BUSINESS"].ne(0)
+        target_df.loc[valid_business, "NET_PROFIT_MARGIN"] = (
+            target_df.loc[valid_business, "NET_PROFIT"]
+            / target_df.loc[valid_business, "BUSINESS"] * 100
+        )
+        return target_df.drop(columns=[c for c in ["_business_base", "_ho_pool"] if c in target_df.columns])
+
+    # Recalculate current and prior-period allocations for dashboard KPIs and
+    # the Monthly Calculation Audit, using their respective full branch bases.
+    branch_detail_all_scope_df = _apply_pnl_business_rule(
+        branch_detail_all_scope_df, all_branches=False
+    )
+    df = _reallocate_ho_monthly(df, branch_detail_all_scope_df)
+    if not prev_df.empty and not branch_detail_prev_all_scope_df.empty:
+        branch_detail_prev_all_scope_df = _apply_pnl_business_rule(
+            branch_detail_prev_all_scope_df, all_branches=False
+        )
+        prev_df = _reallocate_ho_monthly(prev_df, branch_detail_prev_all_scope_df)
 
     divisor, unit = get_conversion(conversion_type)
 
@@ -2952,14 +3041,11 @@ def show_net_profit_dashboard():
             errors="coerce",
         ).fillna(0.0).sum()
     )
-    # Use the all-branch Booking/Origin business base as the allocation
-    # denominator. The raw BUSINESS field can include a second delivery-side
-    # contribution and was doubling the denominator in the detail view.
-    # Branch numerator remains the displayed Total Business (Booking + Delivery),
-    # matching the allocation basis supplied for this report.
+    # Denominator is the all-branch Total Business (Booking + Delivery),
+    # matching the numerator displayed for each branch.
     _branch_business_total = float(
         pd.to_numeric(
-            branch_detail_all_scope_df.get("ORIGIN_BUSINESS", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
+            branch_detail_all_scope_df.get("BUSINESS", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
             errors="coerce",
         ).fillna(0.0).sum()
     )
