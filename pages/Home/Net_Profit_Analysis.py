@@ -832,6 +832,48 @@ def _load_authoritative_revenue_for_time_scope(period_start, period_end, quarter
     return total
 
 
+def _apply_branch_scope_ho_allocation(df, all_scope_df):
+    """Apply the same proportional HO allocation used by Branch Net Profit Detail.
+
+    The HO pool and denominator come from the complete branch scope for the
+    selected period; the selected rows receive only their business-proportionate share.
+    """
+    if df is None or df.empty:
+        return df
+    out = df.copy()
+    pool = pd.to_numeric(
+        all_scope_df.get("HO ALLOCATION", pd.Series(0.0, index=all_scope_df.index)),
+        errors="coerce",
+    ).fillna(0.0).sum()
+    denominator = pd.to_numeric(
+        all_scope_df.get("ORIGIN_BUSINESS", pd.Series(0.0, index=all_scope_df.index)),
+        errors="coerce",
+    ).fillna(0.0).sum()
+    business = pd.to_numeric(
+        out.get("BUSINESS", pd.Series(0.0, index=out.index)),
+        errors="coerce",
+    ).fillna(0.0)
+    out["HO ALLOCATION"] = business / denominator * pool if denominator else 0.0
+    expense_columns = [
+        "SALARY", "GODOWN RENT", "OVERHEAD EXPENSE",
+        "NEPAL OVERHEAD", "CLAIM", "HO ALLOCATION",
+    ]
+    for column in expense_columns:
+        if column not in out.columns:
+            out[column] = 0.0
+        out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
+    out["TOTAL EXPENSE"] = out[expense_columns].sum(axis=1)
+    out["NET_PROFIT"] = (
+        pd.to_numeric(out.get("COMBINED_PNL", 0.0), errors="coerce").fillna(0.0)
+        - out["TOTAL EXPENSE"]
+    )
+    out["NET_PROFIT_MARGIN"] = 0.0
+    valid_business = business.ne(0)
+    out.loc[valid_business, "NET_PROFIT_MARGIN"] = (
+        out.loc[valid_business, "NET_PROFIT"] / business.loc[valid_business] * 100
+    )
+    return out
+
 def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_business):
     """Reconcile consolidated All-Branches percentage charge.
 
@@ -2617,6 +2659,7 @@ def show_net_profit_dashboard():
     # denominator, so selecting one branch does not reassign the entire HO pool
     # to that branch.
     branch_detail_all_scope_df = df.copy()
+    branch_detail_all_scope_prev_df = prev_df.copy() if not prev_df.empty else pd.DataFrame()
 
     # Use whichever hierarchy columns are actually available.
     with filter_cols[5]:
@@ -2728,6 +2771,11 @@ def show_net_profit_dashboard():
         branch_detail_all_scope_df,
         {"QUARTER": quarters, "MONTH": months},
     )
+    if not branch_detail_all_scope_prev_df.empty:
+        branch_detail_all_scope_prev_df = _apply_same_filters(
+            branch_detail_all_scope_prev_df,
+            {"QUARTER": quarters, "MONTH": months},
+        )
 
     if df.empty:
         st.warning("No data found for selected filters.")
@@ -2742,6 +2790,16 @@ def show_net_profit_dashboard():
         if not prev_df.empty
         else prev_df
     )
+
+    # When Zone/Circle/Branch filters restrict the view, KPIs must carry the
+    # same proportional HO allocation as Branch Net Profit Detail. All Branches
+    # mode remains unchanged.
+    if not all_branches:
+        df = _apply_branch_scope_ho_allocation(df, branch_detail_all_scope_df)
+        if not prev_df.empty:
+            prev_df = _apply_branch_scope_ho_allocation(
+                prev_df, branch_detail_all_scope_prev_df
+            )
 
     divisor, unit = get_conversion(conversion_type)
 
@@ -2937,15 +2995,14 @@ def show_net_profit_dashboard():
 
     # Branch Net Profit Detail always shows the COMPLETE branch view (same as a
     # single-branch filter): Gross P&L = Origin P&L + Destination P&L, even in
-    # All Branches mode. This affects ONLY this table; KPI cards are unchanged.
+    # All Branches mode.
     branch_summary["Destination_PNL"] = branch_summary["Destination_PNL_Actual"]
     branch_summary["Combined_PNL"] = (
         branch_summary["Origin_PNL"] + branch_summary["Destination_PNL"]
     )
 
-    # Correct HO allocation for this detail table only:
-    # distribute the HO pool across branches in proportion to total business
-    # (Booking + Delivery). Keep the dashboard KPIs and source dataframe intact.
+    # Rebuild the same proportional HO allocation used by the selected-scope
+    # KPIs: distribute the full HO pool by branch Total Business (Booking + Delivery).
     _ho_pool_for_detail = float(
         pd.to_numeric(
             branch_detail_all_scope_df.get("HO ALLOCATION", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
