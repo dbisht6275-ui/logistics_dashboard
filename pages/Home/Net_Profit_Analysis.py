@@ -3337,10 +3337,10 @@ def show_net_profit_dashboard():
 
         if all_branches:
             st.caption(
-                "Note: Ye table branch-wise complete view hai (Gross P&L = "
-                "Origin P&L + Destination P&L). Isliye iska total upar ke "
-                "All Branches KPI cards se alag ho sakta hai, kyunki KPI mein "
-                "sirf Origin P&L liya jaata hai (double counting se bachne ke liye)."
+                "Note: This table shows complete branch-wise details (Gross P&L = "
+                "Origin P&L + Destination P&L). Therefore, its total may differ from "
+                "the All Branches KPI cards above, as the KPIs include only Origin P&L "
+                "to avoid double counting."
             )
 
         st.dataframe(
