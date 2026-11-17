@@ -238,6 +238,10 @@ def _apply_pnl_business_rule(df, all_branches):
             out[column] = 0.0
         out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
 
+    # Keep the real Destination P&L for display (Detail / Audit tabs) even when
+    # consolidated mode zeroes it out for the Gross P&L / Net Profit maths.
+    out["DESTINATION_PNL_ACTUAL"] = out["DESTINATION_PNL"]
+
     if all_branches:
         # Consolidated P&L must not count the same GR-level P&L twice.
         # IMPORTANT: Destination Business is intentionally retained because
@@ -2907,6 +2911,7 @@ def show_net_profit_dashboard():
             Delivery_Business=("DESTINATION_BUSINESS", "sum"),
             Origin_PNL=("ORIGIN_PNL", "sum"),
             Destination_PNL=("DESTINATION_PNL", "sum"),
+            Destination_PNL_Actual=("DESTINATION_PNL_ACTUAL", "sum"),
             Combined_PNL=("COMBINED_PNL", "sum"),
             Salary=("SALARY", "sum"),
             Godown_Rent=("GODOWN RENT", "sum"),
@@ -3110,6 +3115,11 @@ def show_net_profit_dashboard():
     with detail_tab:
         display = branch_summary.copy()
 
+        # Destination P&L: show the real value (consolidated mode zeroes the
+        # calculation column, so use the preserved *_Actual column).
+        display["Destination_PNL"] = display["Destination_PNL_Actual"]
+        display = display.drop(columns=["Destination_PNL_Actual"])
+
         money_columns = [
             "Revenue",
             "Booking_Business",
@@ -3132,7 +3142,15 @@ def show_net_profit_dashboard():
                 pd.to_numeric(display[column], errors="coerce")
                 .fillna(0.0)
                 / divisor
-            )
+            ).round(2)
+
+        for _pct_col in ["P&L %", "Net Profit Margin %"]:
+            if _pct_col in display.columns:
+                display[_pct_col] = (
+                    pd.to_numeric(display[_pct_col], errors="coerce")
+                    .fillna(0.0)
+                    .round(2)
+                )
 
         display = display.rename(
             columns={
@@ -3194,25 +3212,28 @@ def show_net_profit_dashboard():
                 ]
             return ["" for _ in row.index]
 
-        styled_display = display.style.apply(
-            _highlight_negative_np_row,
-            axis=1,
+        _num_fmt = {
+            c: ("{:.2f}%" if c in ("P&L %", "Net Profit Margin %") else "{:.2f}")
+            for c in display.columns
+            if c not in ("Branch Code", "Branch")
+        }
+        styled_display = (
+            display.style.apply(_highlight_negative_np_row, axis=1)
+            .format(_num_fmt)
         )
+
+        if all_branches:
+            st.caption(
+                "Note: All Branches mode mein Gross P&L = Origin P&L only "
+                "(double counting se bachne ke liye). Destination P&L yahan "
+                "sirf information ke liye dikh raha hai, Gross P&L / Net Profit "
+                "mein add nahi hota."
+            )
 
         st.dataframe(
             styled_display,
             width="stretch",
             hide_index=True,
-            column_config={
-                "P&L %": st.column_config.NumberColumn(
-                    "P&L %",
-                    format="%.2f%%",
-                ),
-                "Net Profit Margin %": st.column_config.NumberColumn(
-                    "Net Profit Margin %",
-                    format="%.2f%%",
-                ),
-            },
         )
 
         csv_data = display.to_csv(index=False).encode("utf-8-sig")
@@ -3257,6 +3278,10 @@ def show_net_profit_dashboard():
 
         audit_display = df[audit_columns].copy()
 
+        # Show the real Destination P&L (calc column is zeroed in All Branches mode).
+        if "DESTINATION_PNL_ACTUAL" in df.columns and "DESTINATION_PNL" in audit_display.columns:
+            audit_display["DESTINATION_PNL"] = df["DESTINATION_PNL_ACTUAL"]
+
         # Display the audit in the selected conversion unit, including Nepal Overhead.
         audit_money_columns = [
             "BUSINESS",
@@ -3279,7 +3304,14 @@ def show_net_profit_dashboard():
                 audit_display[column] = (
                     pd.to_numeric(audit_display[column], errors="coerce").fillna(0.0)
                     / divisor
-                )
+                ).round(2)
+
+        if "NET_PROFIT_MARGIN" in audit_display.columns:
+            audit_display["NET_PROFIT_MARGIN"] = (
+                pd.to_numeric(audit_display["NET_PROFIT_MARGIN"], errors="coerce")
+                .fillna(0.0)
+                .round(2)
+            )
 
         audit_display = audit_display.rename(
             columns={
@@ -3297,10 +3329,16 @@ def show_net_profit_dashboard():
         if audit_sort:
             audit_display = audit_display.sort_values(audit_sort)
 
+        _audit_cfg = {
+            col: st.column_config.NumberColumn(col, format="%.2f")
+            for col in audit_display.columns
+            if col not in ("BRANCHCODE", "BRANCH", "YEAR", "MONTHNO", "MONTH")
+        }
         st.dataframe(
             audit_display,
             width="stretch",
             hide_index=True,
+            column_config=_audit_cfg,
         )
         st.download_button(
             "Download Monthly Calculation Audit CSV",
