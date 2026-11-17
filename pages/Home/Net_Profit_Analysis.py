@@ -2924,6 +2924,14 @@ def show_net_profit_dashboard():
         )
     )
 
+    # Branch Net Profit Detail always shows the COMPLETE branch view (same as a
+    # single-branch filter): Gross P&L = Origin P&L + Destination P&L, even in
+    # All Branches mode. This affects ONLY this table; KPI cards are unchanged.
+    branch_summary["Destination_PNL"] = branch_summary["Destination_PNL_Actual"]
+    branch_summary["Combined_PNL"] = (
+        branch_summary["Origin_PNL"] + branch_summary["Destination_PNL"]
+    )
+
     # Rebuild the branch-level accounting from the displayed components so the
     # detail table always reconciles exactly with the selected branch scope.
     branch_summary["Total_Overhead"] = (
@@ -2943,6 +2951,14 @@ def show_net_profit_dashboard():
     branch_summary.loc[valid_business, "P&L %"] = (
         branch_summary.loc[valid_business, "Combined_PNL"]
         / branch_summary.loc[valid_business, "Revenue"] * 100
+    )
+    # HO Allocation % = HO Allocation / (Booking Business + Delivery Business) * 100
+    _ho_base = branch_summary["Booking_Business"] + branch_summary["Delivery_Business"]
+    branch_summary["HO Allocation %"] = 0.0
+    _valid_ho_base = _ho_base.ne(0)
+    branch_summary.loc[_valid_ho_base, "HO Allocation %"] = (
+        branch_summary.loc[_valid_ho_base, "HO_Allocation"]
+        / _ho_base.loc[_valid_ho_base] * 100
     )
     branch_summary["Net Profit Margin %"] = 0.0
     branch_summary.loc[valid_business, "Net Profit Margin %"] = (
@@ -3115,9 +3131,6 @@ def show_net_profit_dashboard():
     with detail_tab:
         display = branch_summary.copy()
 
-        # Destination P&L: show the real value (consolidated mode zeroes the
-        # calculation column, so use the preserved *_Actual column).
-        display["Destination_PNL"] = display["Destination_PNL_Actual"]
         display = display.drop(columns=["Destination_PNL_Actual"])
 
         money_columns = [
@@ -3144,7 +3157,7 @@ def show_net_profit_dashboard():
                 / divisor
             ).round(2)
 
-        for _pct_col in ["P&L %", "Net Profit Margin %"]:
+        for _pct_col in ["P&L %", "HO Allocation %", "Net Profit Margin %"]:
             if _pct_col in display.columns:
                 display[_pct_col] = (
                     pd.to_numeric(display[_pct_col], errors="coerce")
@@ -3189,6 +3202,7 @@ def show_net_profit_dashboard():
             f"Nepal Overhead ({unit})",
             f"Claim ({unit})",
             f"HO Allocation ({unit})",
+            "HO Allocation %",
             f"Total Overhead ({unit})",
             f"Net Profit ({unit})",
             "Net Profit Margin %",
@@ -3213,7 +3227,7 @@ def show_net_profit_dashboard():
             return ["" for _ in row.index]
 
         _num_fmt = {
-            c: ("{:.2f}%" if c in ("P&L %", "Net Profit Margin %") else "{:.2f}")
+            c: ("{:.2f}%" if c in ("P&L %", "HO Allocation %", "Net Profit Margin %") else "{:.2f}")
             for c in display.columns
             if c not in ("Branch Code", "Branch")
         }
@@ -3224,10 +3238,10 @@ def show_net_profit_dashboard():
 
         if all_branches:
             st.caption(
-                "Note: All Branches mode mein Gross P&L = Origin P&L only "
-                "(double counting se bachne ke liye). Destination P&L yahan "
-                "sirf information ke liye dikh raha hai, Gross P&L / Net Profit "
-                "mein add nahi hota."
+                "Note: Ye table branch-wise complete view hai (Gross P&L = "
+                "Origin P&L + Destination P&L). Isliye iska total upar ke "
+                "All Branches KPI cards se alag ho sakta hai, kyunki KPI mein "
+                "sirf Origin P&L liya jaata hai (double counting se bachne ke liye)."
             )
 
         st.dataframe(
