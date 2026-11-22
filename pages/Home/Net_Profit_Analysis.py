@@ -837,14 +837,24 @@ def _apply_branch_scope_ho_allocation(df, all_scope_df):
         all_scope_df.get("HO ALLOCATION", pd.Series(0.0, index=all_scope_df.index)),
         errors="coerce",
     ).fillna(0.0).sum()
-    denominator = pd.to_numeric(
+    # Match the loader's allocation basis exactly: Origin + Destination
+    # Business, excluding the Head Office row from both denominator and share.
+    all_codes = all_scope_df.get("BRANCHCODE", pd.Series("", index=all_scope_df.index)).astype(str).str.strip()
+    all_origin = pd.to_numeric(
         all_scope_df.get("ORIGIN_BUSINESS", pd.Series(0.0, index=all_scope_df.index)),
         errors="coerce",
-    ).fillna(0.0).sum()
+    ).fillna(0.0)
+    all_destination = pd.to_numeric(
+        all_scope_df.get("DESTINATION_BUSINESS", pd.Series(0.0, index=all_scope_df.index)),
+        errors="coerce",
+    ).fillna(0.0)
+    denominator = (all_origin + all_destination).where(all_codes.ne("1001"), 0.0).clip(lower=0.0).sum()
     business = pd.to_numeric(
         out.get("BUSINESS", pd.Series(0.0, index=out.index)),
         errors="coerce",
-    ).fillna(0.0)
+    ).fillna(0.0).clip(lower=0.0)
+    out_codes = out.get("BRANCHCODE", pd.Series("", index=out.index)).astype(str).str.strip()
+    business = business.where(out_codes.ne("1001"), 0.0)
     out["HO ALLOCATION"] = business / denominator * pool if denominator else 0.0
     expense_columns = [
         "SALARY", "GODOWN RENT", "OVERHEAD EXPENSE",
@@ -2933,22 +2943,29 @@ def show_net_profit_dashboard():
             errors="coerce",
         ).fillna(0.0).sum()
     )
-    # Use the all-branch Booking/Origin business base as the allocation
-    # denominator. The raw BUSINESS field can include a second delivery-side
-    # contribution and was doubling the denominator in the detail view.
-    # Branch numerator remains the displayed Total Business (Booking + Delivery),
-    # matching the allocation basis supplied for this report.
+    # Use the exact same allocation base as the loader: Origin + Destination
+    # Business across all non-HO branches. This ensures detail allocation sums
+    # back to the complete HO pool shown in the Net Profit KPI.
+    _all_codes = branch_detail_all_scope_df.get(
+        "BRANCHCODE", pd.Series("", index=branch_detail_all_scope_df.index)
+    ).astype(str).str.strip()
+    _all_origin = pd.to_numeric(
+        branch_detail_all_scope_df.get("ORIGIN_BUSINESS", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
+        errors="coerce",
+    ).fillna(0.0)
+    _all_destination = pd.to_numeric(
+        branch_detail_all_scope_df.get("DESTINATION_BUSINESS", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
+        errors="coerce",
+    ).fillna(0.0)
     _branch_business_total = float(
-        pd.to_numeric(
-            branch_detail_all_scope_df.get("ORIGIN_BUSINESS", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
-            errors="coerce",
-        ).fillna(0.0).sum()
+        (_all_origin + _all_destination).where(_all_codes.ne("1001"), 0.0).clip(lower=0.0).sum()
     )
+    _detail_codes = branch_summary["BRANCHCODE"].astype(str).str.strip()
+    _detail_business = pd.to_numeric(branch_summary["Revenue"], errors="coerce").fillna(0.0).clip(lower=0.0)
+    _detail_business = _detail_business.where(_detail_codes.ne("1001"), 0.0)
     if _branch_business_total != 0:
         branch_summary["HO_Allocation"] = (
-            pd.to_numeric(branch_summary["Revenue"], errors="coerce").fillna(0.0)
-            / _branch_business_total
-            * _ho_pool_for_detail
+            _detail_business / _branch_business_total * _ho_pool_for_detail
         )
     else:
         branch_summary["HO_Allocation"] = 0.0
@@ -2979,9 +2996,7 @@ def show_net_profit_dashboard():
     _valid_business_total = _branch_business_total != 0
     if _valid_business_total:
         branch_summary["HO Allocation %"] = (
-            pd.to_numeric(branch_summary["Revenue"], errors="coerce").fillna(0.0)
-            / _branch_business_total
-            * 100
+            _detail_business / _branch_business_total * 100
         )
     branch_summary["Net Profit Margin %"] = 0.0
     branch_summary.loc[valid_business, "Net Profit Margin %"] = (
