@@ -22,7 +22,8 @@ from services.net_profit_branch_mast import load_net_profit_branch_mast
 #       = Branch Operational P&L - Branch Overhead
 #
 # Overhead:
-#   Salary + Godown Rent + Voucher Overhead + Nepal Overhead + Claim + HO Allocation
+#   India Voucher Overhead + Nepal Overhead + Claim + HO Allocation
+#   Salary View and Purchase MRN are not used for India overhead.
 # ============================================================
 
 _CACHE_TTL_SECONDS = 24 * 60 * 60
@@ -31,95 +32,6 @@ _CACHE_TTL_SECONDS = 24 * 60 * 60
 _OVERHEAD_QUERY = text("""
 DECLARE @FROMDATE DATE = :from_date;
 DECLARE @TODATE   DATE = :to_date;
-
-/* ================= SALARY ================= */
-
-IF OBJECT_ID('tempdb..#SALARY') IS NOT NULL
-    DROP TABLE #SALARY;
-
-SELECT
-    SS.BRANCHCODE,
-    SS.[YEAR],
-    SS.[MONTHNO],
-    SUM(SS.NETAMT) AS NETAMT
-INTO #SALARY
-FROM
-(
-    SELECT
-        SD.BRANCHCODE,
-        YEAR(SD.FROMDT) AS [YEAR],
-        MONTH(SD.FROMDT) AS [MONTHNO],
-
-        CAST(
-            SUM(SD.EAMOUNT)
-            +
-            IIF(
-                ESI.CNTR = 0,
-                0,
-                SUM(SD.EAMOUNT - SD.PFAMOUNT) * 3.25 / 100
-            )
-        AS NUMERIC(12,2)) AS NETAMT
-
-    FROM VIEWSALARYFORBRANCHPERFORMANCE SD
-
-    CROSS APPLY
-    (
-        SELECT COUNT(*) AS CNTR
-        FROM VIEWSALARY D
-        WHERE D.BRANCHCODE = SD.BRANCHCODE
-          AND D.EMPLOYEEID = SD.EMPLOYEEID
-          AND D.FROMDT BETWEEN @FROMDATE AND @TODATE
-          AND D.SALARYVNO IS NOT NULL
-          AND D.SALARYCATEGORY = 'S'
-          AND D.SALARYHEADID = 9
-    ) ESI
-
-    WHERE SD.FROMDT BETWEEN @FROMDATE AND @TODATE
-      AND SD.SALARYVNO IS NOT NULL
-      AND SD.SALARYCATEGORY = 'S'
-
-    GROUP BY
-        SD.BRANCHCODE,
-        YEAR(SD.FROMDT),
-        MONTH(SD.FROMDT),
-        ESI.CNTR
-
-) SS
-
-GROUP BY
-    SS.BRANCHCODE,
-    SS.[YEAR],
-    SS.[MONTHNO];
-
-
-/* ================= GODOWN RENT ================= */
-
-IF OBJECT_ID('tempdb..#GODOWN') IS NOT NULL
-    DROP TABLE #GODOWN;
-
-SELECT
-    H.BRANCHCODE,
-    YEAR(H.FROMDT) AS [YEAR],
-    MONTH(H.FROMDT) AS [MONTHNO],
-    ISNULL(SUM(D.AMOUNT), 0) AS NETAMT
-INTO #GODOWN
-
-FROM PURCHASEMRNDETAIL D WITH (NOLOCK)
-
-INNER JOIN PURCHASEMRNHEAD H WITH (NOLOCK)
-    ON H.MRNID = D.MRNID
-
-WHERE D.ITEMCODE = '30'
-  AND H.CANCEL <> 'Y'
-  AND H.VNO IS NOT NULL
-  AND H.FROMDT BETWEEN @FROMDATE AND @TODATE
-  AND H.TODT BETWEEN @FROMDATE AND @TODATE
-
-GROUP BY
-    H.BRANCHCODE,
-    YEAR(H.FROMDT),
-    MONTH(H.FROMDT);
-
 
 /* ================= VOUCHER OVERHEAD EXPENSE ================= */
 
@@ -250,16 +162,6 @@ INTO #MONTHS
 FROM
 (
     SELECT BRANCHCODE, [YEAR], [MONTHNO]
-    FROM #SALARY
-
-    UNION
-
-    SELECT BRANCHCODE, [YEAR], [MONTHNO]
-    FROM #GODOWN
-
-    UNION
-
-    SELECT BRANCHCODE, [YEAR], [MONTHNO]
     FROM #VOUCHEREXP
 
     UNION
@@ -275,8 +177,8 @@ FROM
 /*
    Keep India overhead and Nepal overhead as separate rows.
    This is intentional: some Nepal accounting branch codes overlap / map to
-   different India station codes. Combining them in SQL can move India salary,
-   rent or voucher overhead to a Nepal branch name.
+   different India station codes. Combining them in SQL can move India voucher
+   overhead to a Nepal branch name.
 */
 
 /* -------- INDIA / NORMAL OVERHEAD ROWS -------- */
@@ -287,16 +189,14 @@ SELECT
     M.[MONTHNO] AS [MONTH NO],
     DATENAME(MONTH, DATEFROMPARTS(M.[YEAR], M.[MONTHNO], 1)) AS [MONTH],
 
-    ROUND(ISNULL(SAL.NETAMT, 0), 2) AS [SALARY],
-    ROUND(ISNULL(GOD.NETAMT, 0), 2) AS [GODOWN RENT],
+    CAST(0.00 AS DECIMAL(18,2)) AS [SALARY],
+    CAST(0.00 AS DECIMAL(18,2)) AS [GODOWN RENT],
     ROUND(ISNULL(VEXP.NETAMT, 0), 2) AS [OVERHEAD EXPENSE],
     CAST(0.00 AS DECIMAL(18,2)) AS [NEPAL OVERHEAD],
     ROUND(ISNULL(CL.NETAMT, 0), 2) AS [CLAIM],
 
     ROUND(
-          ISNULL(SAL.NETAMT, 0)
-        + ISNULL(GOD.NETAMT, 0)
-        + ISNULL(VEXP.NETAMT, 0)
+          ISNULL(VEXP.NETAMT, 0)
         + ISNULL(CL.NETAMT, 0),
         2
     ) AS [TOTAL EXPENSE]
@@ -305,16 +205,6 @@ FROM #MONTHS M
 
 LEFT JOIN STATIONMAST STN
     ON STN.STNCODE = M.BRANCHCODE
-
-LEFT JOIN #SALARY SAL
-    ON SAL.BRANCHCODE = M.BRANCHCODE
-   AND SAL.[YEAR] = M.[YEAR]
-   AND SAL.[MONTHNO] = M.[MONTHNO]
-
-LEFT JOIN #GODOWN GOD
-    ON GOD.BRANCHCODE = M.BRANCHCODE
-   AND GOD.[YEAR] = M.[YEAR]
-   AND GOD.[MONTHNO] = M.[MONTHNO]
 
 LEFT JOIN #VOUCHEREXP VEXP
     ON VEXP.BRANCHCODE = M.BRANCHCODE
@@ -768,8 +658,8 @@ def _coalesce_metadata(final, field):
 # HEAD OFFICE EXPENSE ALLOCATION
 # ============================================================
 # Uses actual Head Office expenses instead of estimated percentage charges.
-# Head Office actual expense (Salary + Godown Rent + Overhead Expense + Claim
-# booked on the Head Office code) is distributed to branches month-wise in
+# Head Office actual expense (Voucher Overhead + Claim booked on the Head
+# Office code) is distributed to branches month-wise in
 # proportion to each branch's Business (Booking + Delivery).
 # Done BEFORE any dashboard filter, so the denominator is always the full
 # branch list and the allocated amount always adds back to the HO expense.
@@ -1291,12 +1181,10 @@ def load_nepal_overhead_detail(start_date, end_date):
 # ============================================================
 # INDIA OVERHEAD DETAIL
 # ============================================================
-# Same source logic as the overhead query above (Salary, Godown Rent,
-# Voucher Overhead, Claim) but returned as detail rows so the dashboard
-# total can be traced:
-#   SALARY / GODOWN RENT  -> one row per Branch + Month
+# India overhead detail is sourced from accounting vouchers and Claim.
 #   OVERHEAD EXPENSE      -> one row per Branch + Ledger + Month
 #   CLAIM                 -> one row per Branch + Ledger + Month
+# Salary View and Purchase MRN sources are intentionally not used.
 # Head Office (HEAD_OFFICE_CODE) rows are the pool that gets allocated.
 
 _INDIA_OVERHEAD_DETAIL_QUERY = text("""
@@ -1315,78 +1203,6 @@ SELECT
     ROUND(SUM(X.NETAMT), 2) AS NETAMT
 FROM
 (
-    /* ---- SALARY ---- */
-    SELECT
-        SS.BRANCHCODE,
-        'SALARY' AS COMPONENT,
-        '' AS LEDCODE,
-        'Salary' AS LEDNAME,
-        '' AS MAINGROUP,
-        SS.[YEAR],
-        SS.[MONTHNO],
-        CAST(SUM(SS.NETAMT) AS DECIMAL(18,2)) AS NETAMT
-    FROM
-    (
-        SELECT
-            SD.BRANCHCODE,
-            YEAR(SD.FROMDT) AS [YEAR],
-            MONTH(SD.FROMDT) AS [MONTHNO],
-            CAST(
-                SUM(SD.EAMOUNT)
-                +
-                IIF(
-                    ESI.CNTR = 0,
-                    0,
-                    SUM(SD.EAMOUNT - SD.PFAMOUNT) * 3.25 / 100
-                )
-            AS NUMERIC(12,2)) AS NETAMT
-        FROM VIEWSALARYFORBRANCHPERFORMANCE SD
-        CROSS APPLY
-        (
-            SELECT COUNT(*) AS CNTR
-            FROM VIEWSALARY D
-            WHERE D.BRANCHCODE = SD.BRANCHCODE
-              AND D.EMPLOYEEID = SD.EMPLOYEEID
-              AND D.FROMDT BETWEEN @FROMDATE AND @TODATE
-              AND D.SALARYVNO IS NOT NULL
-              AND D.SALARYCATEGORY = 'S'
-              AND D.SALARYHEADID = 9
-        ) ESI
-        WHERE SD.FROMDT BETWEEN @FROMDATE AND @TODATE
-          AND SD.SALARYVNO IS NOT NULL
-          AND SD.SALARYCATEGORY = 'S'
-        GROUP BY
-            SD.BRANCHCODE,
-            YEAR(SD.FROMDT),
-            MONTH(SD.FROMDT),
-            ESI.CNTR
-    ) SS
-    GROUP BY SS.BRANCHCODE, SS.[YEAR], SS.[MONTHNO]
-
-    UNION ALL
-
-    /* ---- GODOWN RENT ---- */
-    SELECT
-        H.BRANCHCODE,
-        'GODOWN RENT',
-        '',
-        'Godown Rent',
-        '',
-        YEAR(H.FROMDT),
-        MONTH(H.FROMDT),
-        CAST(ISNULL(SUM(D.AMOUNT), 0) AS DECIMAL(18,2))
-    FROM PURCHASEMRNDETAIL D WITH (NOLOCK)
-    INNER JOIN PURCHASEMRNHEAD H WITH (NOLOCK)
-        ON H.MRNID = D.MRNID
-    WHERE D.ITEMCODE = '30'
-      AND H.CANCEL <> 'Y'
-      AND H.VNO IS NOT NULL
-      AND H.FROMDT BETWEEN @FROMDATE AND @TODATE
-      AND H.TODT BETWEEN @FROMDATE AND @TODATE
-    GROUP BY H.BRANCHCODE, YEAR(H.FROMDT), MONTH(H.FROMDT)
-
-    UNION ALL
-
     /* ---- VOUCHER OVERHEAD EXPENSE (ledger wise) ---- */
     SELECT
         VM.BRANCHCODE,
@@ -1481,8 +1297,8 @@ def _fetch_india_overhead_detail(start_date, end_date):
 
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=2)
-def load_india_overhead_detail(start_date, end_date, cache_version="india-detail-groups-v2"):
-    """Return India overhead detail (Salary, Godown, Overhead ledgers, Claim)."""
+def load_india_overhead_detail(start_date, end_date, cache_version="india-voucher-only-v3"):
+    """Return India overhead detail from voucher ledgers and Claim only."""
     return _fetch_india_overhead_detail(start_date, end_date)
 
 
