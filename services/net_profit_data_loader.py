@@ -22,7 +22,7 @@ from services.net_profit_branch_mast import load_net_profit_branch_mast
 #       = Branch Operational P&L - Branch Overhead
 #
 # Overhead:
-#   Salary + Godown Rent + Voucher Overhead + Claim + Booking 6% + Destination 5%
+#   Salary + Godown Rent + Voucher Overhead + Nepal Overhead + Claim + HO Allocation
 # ============================================================
 
 _CACHE_TTL_SECONDS = 24 * 60 * 60
@@ -236,84 +236,6 @@ GROUP BY
     MONTH(VDATE);
 
 
-/* ================= BOOKING 6% ================= */
-
-IF OBJECT_ID('tempdb..#BOOKING6') IS NOT NULL
-    DROP TABLE #BOOKING6;
-
-SELECT
-    CN.ORGCODE AS BRANCHCODE,
-    YEAR(CN.GRDT) AS [YEAR],
-    MONTH(CN.GRDT) AS [MONTHNO],
-
-    ROUND(
-        ISNULL(
-            SUM(
-                ISNULL(CN.TAMOUNT, 0)
-                - ISNULL(CN.SERVICETAX, 0)
-            ),
-            0
-        ) * 6 / 100,
-        2
-    ) AS NETAMT
-
-INTO #BOOKING6
-
-FROM CNMT CN WITH (NOLOCK)
-
-WHERE CN.GRDT BETWEEN @FROMDATE AND @TODATE
-  AND CN.GRTYPE <> 'N'
-
-GROUP BY
-    CN.ORGCODE,
-    YEAR(CN.GRDT),
-    MONTH(CN.GRDT);
-
-
-/* ================= DESTINATION 5% ================= */
-
-IF OBJECT_ID('tempdb..#DESTINATION5') IS NOT NULL
-    DROP TABLE #DESTINATION5;
-
-SELECT
-
-    COALESCE(MRG.STNCODE, DEST.STNCODE) AS BRANCHCODE,
-
-    YEAR(CN.GRDT) AS [YEAR],
-    MONTH(CN.GRDT) AS [MONTHNO],
-
-    ROUND(
-        ISNULL(
-            SUM(
-                ISNULL(CN.TAMOUNT, 0)
-                - ISNULL(CN.SERVICETAX, 0)
-            ),
-            0
-        ) * 5 / 100,
-        2
-    ) AS NETAMT
-
-INTO #DESTINATION5
-
-FROM CNMT CN WITH (NOLOCK)
-
-INNER JOIN STATIONMAST DEST
-    ON DEST.STNCODE = CN.DESTCODE
-
-LEFT JOIN STATIONMAST MRG
-    ON MRG.STNCODE = DEST.MERGESTNCODE
-
-WHERE CN.GRDT BETWEEN @FROMDATE AND @TODATE
-  AND CN.GRTYPE <> 'N'
-
-GROUP BY
-
-    COALESCE(MRG.STNCODE, DEST.STNCODE),
-
-    YEAR(CN.GRDT),
-    MONTH(CN.GRDT);
-
-
 /* ================= MONTH / BRANCH LIST ================= */
 
 IF OBJECT_ID('tempdb..#MONTHS') IS NOT NULL
@@ -345,16 +267,6 @@ FROM
     SELECT BRANCHCODE, [YEAR], [MONTHNO]
     FROM #CLAIM
 
-    UNION
-
-    SELECT BRANCHCODE, [YEAR], [MONTHNO]
-    FROM #BOOKING6
-
-    UNION
-
-    SELECT BRANCHCODE, [YEAR], [MONTHNO]
-    FROM #DESTINATION5
-
 ) M;
 
 
@@ -380,16 +292,12 @@ SELECT
     ROUND(ISNULL(VEXP.NETAMT, 0), 2) AS [OVERHEAD EXPENSE],
     CAST(0.00 AS DECIMAL(18,2)) AS [NEPAL OVERHEAD],
     ROUND(ISNULL(CL.NETAMT, 0), 2) AS [CLAIM],
-    ROUND(ISNULL(BK6.NETAMT, 0), 2) AS [BOOKING 6%],
-    ROUND(ISNULL(DEST5.NETAMT, 0), 2) AS [DESTINATION 5%],
 
     ROUND(
           ISNULL(SAL.NETAMT, 0)
         + ISNULL(GOD.NETAMT, 0)
         + ISNULL(VEXP.NETAMT, 0)
-        + ISNULL(CL.NETAMT, 0)
-        + ISNULL(BK6.NETAMT, 0)
-        + ISNULL(DEST5.NETAMT, 0),
+        + ISNULL(CL.NETAMT, 0),
         2
     ) AS [TOTAL EXPENSE]
 
@@ -418,16 +326,6 @@ LEFT JOIN #CLAIM CL
    AND CL.[YEAR] = M.[YEAR]
    AND CL.[MONTHNO] = M.[MONTHNO]
 
-LEFT JOIN #BOOKING6 BK6
-    ON BK6.BRANCHCODE = M.BRANCHCODE
-   AND BK6.[YEAR] = M.[YEAR]
-   AND BK6.[MONTHNO] = M.[MONTHNO]
-
-LEFT JOIN #DESTINATION5 DEST5
-    ON DEST5.BRANCHCODE = M.BRANCHCODE
-   AND DEST5.[YEAR] = M.[YEAR]
-   AND DEST5.[MONTHNO] = M.[MONTHNO]
-
 UNION ALL
 
 /* -------- NEPAL OVERHEAD ONLY ROWS -------- */
@@ -443,8 +341,6 @@ SELECT
     CAST(0.00 AS DECIMAL(18,2)) AS [OVERHEAD EXPENSE],
     ROUND(ISNULL(NEP.NETAMT, 0), 2) AS [NEPAL OVERHEAD],
     CAST(0.00 AS DECIMAL(18,2)) AS [CLAIM],
-    CAST(0.00 AS DECIMAL(18,2)) AS [BOOKING 6%],
-    CAST(0.00 AS DECIMAL(18,2)) AS [DESTINATION 5%],
     ROUND(ISNULL(NEP.NETAMT, 0), 2) AS [TOTAL EXPENSE]
 
 FROM #NEPALOVERHEAD NEP;
@@ -756,8 +652,6 @@ def _prepare_overhead(df):
         "OVERHEAD EXPENSE",
         "NEPAL OVERHEAD",
         "CLAIM",
-        "BOOKING 6%",
-        "DESTINATION 5%",
         "TOTAL EXPENSE",
     ]
 
@@ -777,8 +671,6 @@ def _prepare_overhead(df):
         "OVERHEAD EXPENSE": ["OVERHEAD EXPENSE", "OVERHEAD_EXPENSE"],
         "NEPAL OVERHEAD": ["NEPAL OVERHEAD", "NEPAL_OVERHEAD", "NEPALOVERHEAD"],
         "CLAIM": ["CLAIM"],
-        "BOOKING 6%": ["BOOKING 6%", "BOOKING_6", "BOOKING6"],
-        "DESTINATION 5%": ["DESTINATION 5%", "DESTINATION_5", "DESTINATION5"],
         "TOTAL EXPENSE": ["TOTAL EXPENSE", "TOTAL_EXPENSE"],
     }
 
@@ -823,8 +715,6 @@ def _prepare_overhead(df):
         "OVERHEAD EXPENSE",
         "NEPAL OVERHEAD",
         "CLAIM",
-        "BOOKING 6%",
-        "DESTINATION 5%",
         "TOTAL EXPENSE",
     ]:
         if column not in out.columns:
@@ -877,7 +767,7 @@ def _coalesce_metadata(final, field):
 # ============================================================
 # HEAD OFFICE EXPENSE ALLOCATION
 # ============================================================
-# Replaces the old estimated "Booking 6% / Destination 5%" charges.
+# Uses actual Head Office expenses instead of estimated percentage charges.
 # Head Office actual expense (Salary + Godown Rent + Overhead Expense + Claim
 # booked on the Head Office code) is distributed to branches month-wise in
 # proportion to each branch's Business (Booking + Delivery).
@@ -1094,8 +984,6 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
             "OVERHEAD EXPENSE",
             "NEPAL OVERHEAD",
             "CLAIM",
-            "BOOKING 6%",
-            "DESTINATION 5%",
             "TOTAL EXPENSE",
         ]
     ].copy()
@@ -1110,8 +998,6 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         "OVERHEAD EXPENSE",
         "NEPAL OVERHEAD",
         "CLAIM",
-        "BOOKING 6%",
-        "DESTINATION 5%",
         "TOTAL EXPENSE",
     ]
 
@@ -1182,8 +1068,6 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
         "OVERHEAD EXPENSE",
         "NEPAL OVERHEAD",
         "CLAIM",
-        "BOOKING 6%",
-        "DESTINATION 5%",
         "TOTAL EXPENSE",
     ]:
         final[column] = pd.to_numeric(
@@ -1191,10 +1075,7 @@ def _build_net_profit(origin_df, destination_df, overhead_df):
             errors="coerce",
         ).fillna(0.0)
 
-    # Estimated 6% / 5% charges are no longer used. Head Office actual
-    # expense is allocated to branches by Business share instead.
-    final["BOOKING 6%"] = 0.0
-    final["DESTINATION 5%"] = 0.0
+    # Head Office actual expense is allocated to branches by Business share.
     final = _allocate_head_office_expense(final)
 
     final["TOTAL EXPENSE"] = (
@@ -1646,7 +1527,8 @@ def _fetch_complete_net_profit_period(start_date, end_date):
     # Only Current FY and Previous FY are required by the dashboard.
     max_entries=2,
 )
-def load_net_profit_data(start_date, end_date):
+def load_net_profit_data(start_date, end_date, logic_version="ho-allocation-v2"):
+    # logic_version is part of Streamlit's cache key; bump it when accounting logic changes.
     return _fetch_complete_net_profit_period(
         start_date,
         end_date,
