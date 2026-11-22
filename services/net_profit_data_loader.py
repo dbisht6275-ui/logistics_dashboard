@@ -1393,18 +1393,20 @@ FROM
         'OVERHEAD EXPENSE',
         VM.LEDCODE,
         L.LEDNAME,
-        L.MAINGRP,
+        LG.GROUPNAME,
         YEAR(VM.VDATE),
         MONTH(VM.VDATE),
         CAST(ISNULL(SUM(VM.DRAMOUNT - VM.CRAMOUNT), 0) AS DECIMAL(18,2))
     FROM VIEWVOUCHER VM WITH (NOLOCK)
     INNER JOIN VIEWLEDGER L
         ON L.LEDCODE = VM.LEDCODE
+    INNER JOIN VIEWLEDGERGROUPMASTER LG
+        ON LG.LEDCODE = L.LEDCODE
     WHERE VM.VDATE BETWEEN @FROMDATE AND @TODATE
-      AND L.MAINGRP = 'AM203'
+      AND L.MAINGRP IN ('AM203','AM148','AM152','AM205')
       AND L.LEDCODE <> '0000001172'
     GROUP BY
-        VM.BRANCHCODE, VM.LEDCODE, L.LEDNAME, L.MAINGRP,
+        VM.BRANCHCODE, VM.LEDCODE, L.LEDNAME, LG.GROUPNAME,
         YEAR(VM.VDATE), MONTH(VM.VDATE)
 
     UNION ALL
@@ -1479,7 +1481,7 @@ def _fetch_india_overhead_detail(start_date, end_date):
 
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=2)
-def load_india_overhead_detail(start_date, end_date):
+def load_india_overhead_detail(start_date, end_date, cache_version="india-detail-groups-v2"):
     """Return India overhead detail (Salary, Godown, Overhead ledgers, Claim)."""
     return _fetch_india_overhead_detail(start_date, end_date)
 
