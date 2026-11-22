@@ -229,8 +229,6 @@ def _apply_pnl_business_rule(df, all_branches):
         "OVERHEAD EXPENSE",
         "NEPAL OVERHEAD",
         "CLAIM",
-        "BOOKING 6%",
-        "DESTINATION 5%",
         "HO ALLOCATION",
         "TOTAL EXPENSE",
     ]:
@@ -252,8 +250,6 @@ def _apply_pnl_business_rule(df, all_branches):
 
         # Head Office expense is already allocated to branches (HO ALLOCATION),
         # so Total Expense is the same in All Branches and Branch views.
-        out["BOOKING 6%"] = 0.0
-        out["DESTINATION 5%"] = 0.0
         out["TOTAL EXPENSE"] = (
             out["SALARY"]
             + out["GODOWN RENT"]
@@ -292,8 +288,6 @@ def calculate_kpis(df):
             "overhead": 0.0,
             "nepal_overhead": 0.0,
             "claim": 0.0,
-            "booking_6": 0.0,
-            "destination_5": 0.0,
             "ho_allocation": 0.0,
             "total_expense": 0.0,
             "net_profit": 0.0,
@@ -314,8 +308,6 @@ def calculate_kpis(df):
         "overhead": float(df["OVERHEAD EXPENSE"].sum()),
         "nepal_overhead": float(df["NEPAL OVERHEAD"].sum()) if "NEPAL OVERHEAD" in df.columns else 0.0,
         "claim": float(df["CLAIM"].sum()),
-        "booking_6": float(df["BOOKING 6%"].sum()) if "BOOKING 6%" in df.columns else 0.0,
-        "destination_5": float(df["DESTINATION 5%"].sum()) if "DESTINATION 5%" in df.columns else 0.0,
         "ho_allocation": float(df["HO ALLOCATION"].sum()) if "HO ALLOCATION" in df.columns else 0.0,
         "total_expense": float(df["TOTAL EXPENSE"].sum()),
         "net_profit": float(df["NET_PROFIT"].sum()),
@@ -872,62 +864,6 @@ def _apply_branch_scope_ho_allocation(df, all_scope_df):
     out.loc[valid_business, "NET_PROFIT_MARGIN"] = (
         out.loc[valid_business, "NET_PROFIT"] / business.loc[valid_business] * 100
     )
-    return out
-
-def _reconcile_percentage_charges_to_authoritative_business(df, authoritative_business):
-    """Reconcile consolidated All-Branches percentage charge.
-
-    Business rule: consolidated All Branches deducts only 6% of Booking.
-    The 5% Delivery charge is set to zero in this view. The helper aligns the
-    Booking 6% charge to the authoritative P&L SP revenue total, then rebuilds
-    Total Expense and Net Profit so every downstream view remains consistent.
-    """
-    if df is None or df.empty or authoritative_business is None:
-        return df
-
-    out = df.copy()
-    business_base = float(authoritative_business or 0.0)
-
-    def _reconcile(column, rate, weight_column):
-        target = business_base * rate
-        current_series = pd.to_numeric(out.get(column, 0.0), errors="coerce").fillna(0.0)
-        difference = target - float(current_series.sum())
-        if abs(difference) <= 0.005:
-            out[column] = current_series
-            return
-
-        weights = pd.to_numeric(out.get(weight_column, 0.0), errors="coerce").fillna(0.0).abs()
-        weight_total = float(weights.sum())
-        if weight_total > 0:
-            allocation = weights / weight_total * difference
-        else:
-            allocation = pd.Series(0.0, index=out.index, dtype="float64")
-            if len(allocation):
-                allocation.iloc[0] = difference
-        out[column] = current_series + allocation
-
-    # 6% / 5% estimated charges retired: Head Office expense is allocated
-    # to branches in the data loader, so nothing to reconcile here.
-    for column in ["SALARY", "GODOWN RENT", "OVERHEAD EXPENSE", "NEPAL OVERHEAD", "CLAIM", "BOOKING 6%", "DESTINATION 5%", "HO ALLOCATION"]:
-        if column not in out.columns:
-            out[column] = 0.0
-        out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
-
-    out["BOOKING 6%"] = 0.0
-    out["DESTINATION 5%"] = 0.0
-    out["TOTAL EXPENSE"] = (
-        out["SALARY"]
-        + out["GODOWN RENT"]
-        + out["OVERHEAD EXPENSE"]
-        + out["NEPAL OVERHEAD"]
-        + out["CLAIM"]
-        + out["HO ALLOCATION"]
-    )
-    out["NET_PROFIT"] = pd.to_numeric(out.get("COMBINED_PNL", 0.0), errors="coerce").fillna(0.0) - out["TOTAL EXPENSE"]
-    out["NET_PROFIT_MARGIN"] = 0.0
-    business = pd.to_numeric(out.get("BUSINESS", 0.0), errors="coerce").fillna(0.0)
-    valid = business.ne(0)
-    out.loc[valid, "NET_PROFIT_MARGIN"] = out.loc[valid, "NET_PROFIT"] / business.loc[valid] * 100
     return out
 
 
@@ -2812,9 +2748,8 @@ def show_net_profit_dashboard():
     authoritative_scope = all_branches and not (zones or circles)
 
     if authoritative_scope:
-        # Full committed period is already stored from the Run click. For
-        # Quarter/Month slices, resolve the authoritative SP total once per
-        # unique filter combination and then keep it in session_state.
+        # Use authoritative P&L SP revenue only as the All-Branches Business
+        # and margin denominator. No percentage-based expense is applied.
         if not quarters and not months:
             booking_business_current = sp_revenue_total
             booking_business_previous = sp_prev_revenue_total
@@ -2838,27 +2773,16 @@ def show_net_profit_dashboard():
                 )
             booking_business_current = float(revenue_cache[filter_key] or 0.0)
             booking_business_previous = float(revenue_cache[prev_filter_key] or 0.0)
-
-        # All Branches business rule: only 6% Booking is deducted. Reconcile that
-        # charge to the same authoritative revenue base and rebuild Net Profit.
-        df = _reconcile_percentage_charges_to_authoritative_business(
-            df, booking_business_current
-        )
-        if not prev_df.empty:
-            prev_df = _reconcile_percentage_charges_to_authoritative_business(
-                prev_df, booking_business_previous
-            )
     else:
         booking_business_current = float(df["ORIGIN_BUSINESS"].sum()) if "ORIGIN_BUSINESS" in df.columns else 0.0
         booking_business_previous = float(prev_df["ORIGIN_BUSINESS"].sum()) if (prev_df is not None and not prev_df.empty and "ORIGIN_BUSINESS" in prev_df.columns) else 0.0
 
-    # Recalculate KPIs only after percentage-expense reconciliation so every
-    # downstream card/table uses the same accounting values.
+    # Recalculate KPIs from the current overhead + HO allocation logic.
     current = calculate_kpis(df)
     previous = calculate_kpis(prev_df)
 
     # GP % denominator must match the Business KPI shown on the dashboard.
-    # In consolidated All-Branches mode the card displays Booking/Origin
+    # In consolidated All-Branches mode the card displays Origin
     # Business only, while calculate_kpis() uses Origin + Destination Business.
     # Recalculate only the consolidated margin here; explicit branch selection
     # continues to use the existing combined-business calculation.
