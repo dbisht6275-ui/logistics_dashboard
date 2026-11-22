@@ -3489,7 +3489,7 @@ def show_net_profit_dashboard():
                         "BRANCH": st.column_config.TextColumn("Branch"),
                         "LEDCODE": st.column_config.TextColumn("Led Code"),
                         "LEDNAME": st.column_config.TextColumn("Led Name"),
-                        "MAINGROUP": st.column_config.TextColumn("Main Group"),
+                        "MAINGROUP": st.column_config.TextColumn("Group Name"),
                         "NETAMT": st.column_config.NumberColumn(
                             "Net Amount", format="₹ %.2f"
                         ),
