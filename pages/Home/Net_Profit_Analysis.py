@@ -185,6 +185,77 @@ def _add_calendar_columns(frame):
     return out
 
 
+_NP_TOTAL_GRADIENTS = [
+    ("#6366f1", "#8b5cf6"), ("#0ea5e9", "#22d3ee"), ("#10b981", "#34d399"),
+    ("#f59e0b", "#fbbf24"), ("#ec4899", "#f472b6"), ("#14b8a6", "#2dd4bf"),
+]
+
+
+def _np_search_and_totals(frame, key, search_cols, sum_cols, ratio_cols=None,
+                          pct_sum_cols=None):
+    """Search box + small gradient total cards for a detail table.
+
+    - search_cols : columns searched (case-insensitive 'contains')
+    - sum_cols    : value columns that get a column total
+    - ratio_cols  : {pct_col: (numerator_col, denominator_col)} -> weighted %
+    - pct_sum_cols: pct columns that are plain sums (e.g. share of business)
+    Returns the filtered frame (totals always reflect the search result).
+    """
+    ratio_cols = ratio_cols or {}
+    pct_sum_cols = pct_sum_cols or []
+
+    query = st.text_input(
+        "🔍 Search",
+        key=f"{key}_search",
+        placeholder="Branch, code, month ...",
+    ).strip()
+
+    out = frame
+    if query:
+        mask = pd.Series(False, index=out.index)
+        for col in search_cols:
+            if col in out.columns:
+                mask |= out[col].astype(str).str.contains(
+                    query, case=False, na=False, regex=False
+                )
+        out = out[mask]
+
+    cards = [("Rows", f"{len(out):,}")]
+    for col in sum_cols:
+        if col in out.columns:
+            total = pd.to_numeric(out[col], errors="coerce").fillna(0.0).sum()
+            cards.append((col, f"{total:,.2f}"))
+    for col, (num, den) in ratio_cols.items():
+        if col in out.columns and num in out.columns and den in out.columns:
+            n = pd.to_numeric(out[num], errors="coerce").fillna(0.0).sum()
+            d = pd.to_numeric(out[den], errors="coerce").fillna(0.0).sum()
+            cards.append((col, f"{(n / d * 100) if d else 0.0:,.2f}%"))
+    for col in pct_sum_cols:
+        if col in out.columns:
+            total = pd.to_numeric(out[col], errors="coerce").fillna(0.0).sum()
+            cards.append((col, f"{total:,.2f}%"))
+
+    html = []
+    for i, (label, value) in enumerate(cards):
+        c1, c2 = _NP_TOTAL_GRADIENTS[i % len(_NP_TOTAL_GRADIENTS)]
+        html.append(
+            f'<div style="background:linear-gradient(135deg,{c1},{c2});'
+            f'color:#fff;border-radius:10px;padding:6px 12px;min-width:110px;'
+            f'box-shadow:0 2px 6px rgba(0,0,0,.15);">'
+            f'<div style="font-size:10px;opacity:.9;white-space:nowrap;">'
+            f'{"Total " if label != "Rows" and not label.startswith("Total") else ""}{label}</div>'
+            f'<div style="font-size:15px;font-weight:700;white-space:nowrap;">'
+            f'{value}</div></div>'
+        )
+    st.markdown(
+        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px 0;">'
+        + "".join(html) + "</div>",
+        unsafe_allow_html=True,
+    )
+    return out
+
+
+
 def _normalise_branch_name(value):
     return " ".join(str(value).strip().casefold().split())
 
@@ -3251,6 +3322,33 @@ def show_net_profit_dashboard():
 
         net_profit_display_col = f"Net Profit ({unit})"
 
+        display = _np_search_and_totals(
+            display,
+            key="np_branch_detail",
+            search_cols=["Branch Code", "Branch"],
+            sum_cols=[
+                f"Booking Business ({unit})",
+                f"Delivery Business ({unit})",
+                f"Total Business ({unit})",
+                f"Origin P&L ({unit})",
+                f"Destination P&L ({unit})",
+                f"Gross P&L ({unit})",
+                f"Salary ({unit})",
+                f"Godown Rent ({unit})",
+                f"Overhead Expense ({unit})",
+                f"Nepal Overhead ({unit})",
+                f"Claim ({unit})",
+                f"HO Allocation ({unit})",
+                f"Total Overhead ({unit})",
+                f"Net Profit ({unit})",
+            ],
+            ratio_cols={
+                "P&L %": (f"Gross P&L ({unit})", f"Total Business ({unit})"),
+                "Net Profit Margin %": (f"Net Profit ({unit})", f"Total Business ({unit})"),
+            },
+            pct_sum_cols=["HO Allocation %"],
+        )
+
         def _highlight_negative_np_row(row):
             is_negative = (
                 net_profit_display_col in row.index
@@ -3398,6 +3496,16 @@ def show_net_profit_dashboard():
         ]
         if audit_sort:
             audit_display = audit_display.sort_values(audit_sort)
+
+        audit_display = _np_search_and_totals(
+            audit_display,
+            key="np_monthly_audit",
+            search_cols=["BRANCHCODE", "BRANCH", "YEAR", "MONTH"],
+            sum_cols=[f"{c} ({unit})" for c in audit_money_columns],
+            ratio_cols={
+                "NET_PROFIT_MARGIN": (f"NET_PROFIT ({unit})", f"BUSINESS ({unit})"),
+            },
+        )
 
         _audit_cfg = {
             col: st.column_config.NumberColumn(col, format="%.2f")
