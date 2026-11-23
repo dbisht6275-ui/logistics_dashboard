@@ -1,3812 +1,1190 @@
-from html import escape
+import gc
+import html
+from datetime import date, timedelta
+from io import BytesIO
 
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 
-from services.data_loader import get_date_range
-from services.net_profit_data_loader import (
-    load_india_overhead_detail,
-    load_net_profit_data_pair,
-    load_nepal_overhead_detail,
-)
-from services.pnl_data_loader import load_pnl_sp_revenue_total, load_pnl_data_pair
-from services.net_profit_branch_mast import load_net_profit_branch_mast
+from services.data_CustomerAnalysis import load_booking_data
 
-# ============================================================
-# NET PROFIT DASHBOARD
-# Separate dashboard.
-# Existing PNL_Analysis.py is not changed.
-# ============================================================
 
-FY_OPTIONS = [
-    "Select FY",
-    "2026-2027",
-    "2025-2026",
-    "2024-2025",
-    "2023-2024",
-]
+# =====================================================
+# Constants / styling
+# =====================================================
+BLUE = "#2563eb"
+GREEN = "#16a34a"
+RED = "#dc2626"
+ORANGE = "#d97706"
+PURPLE = "#7c3aed"
 
-MONTH_ORDER = [
-    "Apr", "May", "Jun", "Jul", "Aug", "Sep",
-    "Oct", "Nov", "Dec", "Jan", "Feb", "Mar",
-]
 
-QUARTER_ORDER = ["Q1", "Q2", "Q3", "Q4"]
-
-# ============================================================
-# HELPERS
-# ============================================================
-
-def get_previous_fy(fy):
-    start_year, end_year = map(int, fy.split("-"))
-    return f"{start_year - 1}-{end_year - 1}"
-
-def get_conversion(conversion_type):
-    if conversion_type == "Lac":
-        return 100_000, "Lac"
-    return 10_000_000, "Cr"
-
-def amount_text(value, conversion_type):
-    divisor, unit = get_conversion(conversion_type)
-    return f"₹{float(value or 0) / divisor:,.2f} {unit}"
-
-def pct_change(current, previous):
-    current = float(current or 0)
-    previous = float(previous or 0)
-
-    if previous == 0:
-        return 0.0
-
-    return ((current - previous) / abs(previous)) * 100
-
-def safe_options(df, column):
-    if df is None or df.empty or column not in df.columns:
-        return []
-
-    values = (
-        df[column]
-        .dropna()
-        .astype(str)
-        .str.strip()
-    )
-
-    values = values[values.ne("")]
-
-    return sorted(
-        values.unique().tolist(),
-        key=str.casefold,
-    )
-
-def _normalise_column_name(value):
-    """Normalise a column heading so spaces, underscores, hyphens and case do not matter."""
-    return "".join(ch for ch in str(value).casefold() if ch.isalnum())
-
-def _find_column(df, *candidates):
-    """Return the actual dataframe column matching any candidate using a tolerant header match."""
-    if df is None or df.empty:
-        return None
-
-    lookup = {_normalise_column_name(col): col for col in df.columns}
-    for candidate in candidates:
-        found = lookup.get(_normalise_column_name(candidate))
-        if found is not None:
-            return found
-    return None
-
-def _attach_branch_hierarchy(df, branch_master_df):
-    """Attach clean Zone/Circle values, preferring Branch Master for missing/Unknown values."""
-    if df is None or df.empty:
-        return df
-
-    out = df.copy()
-    branch_col = _find_column(out, "BRANCH")
-    master_branch_col = _find_column(branch_master_df, "BRANCH")
-
-    hierarchy_candidates = {
-        "zone": ("zone", "ZONE", "ZONE NAME", "ZONENAME", "ZONE_NAME", "ZONE DESC", "ZONEDESC"),
-        "circle": (
-            "circle", "CIRCLE", "CIRCLE NAME", "CIRCLENAME", "CIRCLE_NAME",
-            "CIRCLE DESC", "CIRCLEDESC", "CIRCLE DESCRIPTION", "CIRCLEDESCRIPTION"
-        ),
-    }
-
-    invalid_values = {"", "unknown", "none", "nan", "na", "n/a", "null", "-"}
-
-    for canonical, candidates in hierarchy_candidates.items():
-        source_col = _find_column(out, *candidates)
-        master_col = _find_column(branch_master_df, *candidates)
-
-        # Start with the hierarchy value already present in the P&L data, if any.
-        if source_col is not None:
-            out[canonical] = out[source_col]
-        else:
-            out[canonical] = pd.NA
-
-        # Branch Master is the authoritative fallback. This also fixes rows where
-        # the source column exists but contains 'Unknown'/blank values.
-        if branch_col is not None and master_branch_col is not None and master_col is not None:
-            master_clean = branch_master_df[[master_branch_col, master_col]].copy()
-            master_clean["_branch_key"] = master_clean[master_branch_col].map(_normalise_branch_name)
-            master_clean["_hierarchy_value"] = master_clean[master_col].astype("string").str.strip()
-
-            master_clean = master_clean[
-                ~master_clean["_hierarchy_value"].fillna("").str.casefold().isin(invalid_values)
-            ]
-
-            hierarchy_map = (
-                master_clean.drop_duplicates("_branch_key")
-                .set_index("_branch_key")["_hierarchy_value"]
-            )
-            fallback = out[branch_col].map(_normalise_branch_name).map(hierarchy_map)
-
-            current_text = out[canonical].astype("string").str.strip()
-            invalid_mask = current_text.fillna("").str.casefold().isin(invalid_values)
-            out.loc[invalid_mask, canonical] = fallback.loc[invalid_mask]
-
-        # Do not expose Unknown/blank pseudo-values in the filter lists.
-        current_text = out[canonical].astype("string").str.strip()
-        invalid_mask = current_text.fillna("").str.casefold().isin(invalid_values)
-        out.loc[invalid_mask, canonical] = pd.NA
-
-    return out
-
-
-def apply_multi_filter(df, column, selected):
-    if (
-        df is None
-        or df.empty
-        or column not in df.columns
-        or not selected
-    ):
-        return df
-
-    return df[df[column].isin(selected)].copy()
-
-
-def _add_calendar_columns(frame):
-    """Add MONTH / FIN_MONTH / QUARTER (April-March FY) from MONTHNO."""
-    out = frame.copy()
-    out["YEAR"] = pd.to_numeric(out.get("YEAR"), errors="coerce")
-    out["MONTHNO"] = pd.to_numeric(out.get("MONTHNO"), errors="coerce")
-    out["MONTH"] = out["MONTHNO"].map({
-        1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
-        7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
-    })
-    out["FIN_MONTH"] = out["MONTHNO"].map({
-        4: 1, 5: 2, 6: 3, 7: 4, 8: 5, 9: 6,
-        10: 7, 11: 8, 12: 9, 1: 10, 2: 11, 3: 12,
-    })
-    out["QUARTER"] = out["FIN_MONTH"].map({
-        1: "Q1", 2: "Q1", 3: "Q1", 4: "Q2", 5: "Q2", 6: "Q2",
-        7: "Q3", 8: "Q3", 9: "Q3", 10: "Q4", 11: "Q4", 12: "Q4",
-    })
-    return out
-
-
-_NP_TOTAL_GRADIENTS = [
-    ("#6366f1", "#8b5cf6"), ("#0ea5e9", "#22d3ee"), ("#10b981", "#34d399"),
-    ("#f59e0b", "#fbbf24"), ("#ec4899", "#f472b6"), ("#14b8a6", "#2dd4bf"),
-]
-
-
-def _np_search_and_totals(frame, key, search_cols, sum_cols, ratio_cols=None,
-                          pct_sum_cols=None):
-    """Search box + small gradient total cards for a detail table.
-
-    - search_cols : columns searched (case-insensitive 'contains')
-    - sum_cols    : value columns that get a column total
-    - ratio_cols  : {pct_col: (numerator_col, denominator_col)} -> weighted %
-    - pct_sum_cols: pct columns that are plain sums (e.g. share of business)
-    Returns the filtered frame (totals always reflect the search result).
-    """
-    ratio_cols = ratio_cols or {}
-    pct_sum_cols = pct_sum_cols or []
-
-    query = st.text_input(
-        "🔍 Search",
-        key=f"{key}_search",
-        placeholder="Branch, code, month ...",
-    ).strip()
-
-    out = frame
-    if query:
-        mask = pd.Series(False, index=out.index)
-        for col in search_cols:
-            if col in out.columns:
-                mask |= out[col].astype(str).str.contains(
-                    query, case=False, na=False, regex=False
-                )
-        out = out[mask]
-
-    cards = [("Rows", f"{len(out):,}")]
-    for col in sum_cols:
-        if col in out.columns:
-            total = pd.to_numeric(out[col], errors="coerce").fillna(0.0).sum()
-            cards.append((col, f"{total:,.2f}"))
-    for col, (num, den) in ratio_cols.items():
-        if col in out.columns and num in out.columns and den in out.columns:
-            n = pd.to_numeric(out[num], errors="coerce").fillna(0.0).sum()
-            d = pd.to_numeric(out[den], errors="coerce").fillna(0.0).sum()
-            cards.append((col, f"{(n / d * 100) if d else 0.0:,.2f}%"))
-    for col in pct_sum_cols:
-        if col in out.columns:
-            total = pd.to_numeric(out[col], errors="coerce").fillna(0.0).sum()
-            cards.append((col, f"{total:,.2f}%"))
-
-    html = []
-    for i, (label, value) in enumerate(cards):
-        c1, c2 = _NP_TOTAL_GRADIENTS[i % len(_NP_TOTAL_GRADIENTS)]
-        html.append(
-            f'<div style="background:linear-gradient(135deg,{c1},{c2});'
-            f'color:#fff;border-radius:10px;padding:6px 12px;min-width:110px;'
-            f'box-shadow:0 2px 6px rgba(0,0,0,.15);">'
-            f'<div style="font-size:10px;opacity:.9;white-space:nowrap;">'
-            f'{"Total " if label != "Rows" and not label.startswith("Total") else ""}{label}</div>'
-            f'<div style="font-size:15px;font-weight:700;white-space:nowrap;">'
-            f'{value}</div></div>'
-        )
-    st.markdown(
-        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px 0;">'
-        + "".join(html) + "</div>",
-        unsafe_allow_html=True,
-    )
-    return out
-
-
-
-def _normalise_branch_name(value):
-    return " ".join(str(value).strip().casefold().split())
-
-
-def _filter_to_branch_scope(df, branch_names):
-    if df is None or df.empty or "BRANCH" not in df.columns or not branch_names:
-        return df
-
-    allowed = {_normalise_branch_name(value) for value in branch_names}
-    branch_key = df["BRANCH"].fillna("").map(_normalise_branch_name)
-    return df[branch_key.isin(allowed)].copy()
-
-
-def _apply_pnl_business_rule(df, all_branches):
-    """
-    P&L rule:
-    - All branches -> Origin-view P&L only, to avoid double-counting GR-level P&L.
-    - Explicit branch selection -> Origin P&L + Destination P&L.
-
-    Business / Revenue rule:
-    - Always Booking + Delivery (Origin Business + Destination Business),
-      including All Branches / Select All cases.
-
-    Overhead is deducted once in both P&L cases.
-    """
-    if df is None or df.empty:
-        return df
-
-    out = df.copy()
-
-    for column in [
-        "ORIGIN_PNL",
-        "DESTINATION_PNL",
-        "ORIGIN_BUSINESS",
-        "DESTINATION_BUSINESS",
-        "ORIGIN_TOTAL_INCOME",
-        "DESTINATION_TOTAL_INCOME",
-        "ORIGIN_DIRECT_EXPENSE",
-        "DESTINATION_DIRECT_EXPENSE",
-        "SALARY",
-        "GODOWN RENT",
-        "OVERHEAD EXPENSE",
-        "NEPAL OVERHEAD",
-        "CLAIM",
-        "HO ALLOCATION",
-        "TOTAL EXPENSE",
-    ]:
-        if column not in out.columns:
-            out[column] = 0.0
-        out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
-
-    # Keep the real Destination P&L for display (Detail / Audit tabs) even when
-    # consolidated mode zeroes it out for the Gross P&L / Net Profit maths.
-    out["DESTINATION_PNL_ACTUAL"] = out["DESTINATION_PNL"]
-
-    if all_branches:
-        # Consolidated P&L must not count the same GR-level P&L twice.
-        # IMPORTANT: Destination Business is intentionally retained because
-        # Business / Revenue must always show Booking + Delivery.
-        out["DESTINATION_PNL"] = 0.0
-        out["DESTINATION_TOTAL_INCOME"] = 0.0
-        out["DESTINATION_DIRECT_EXPENSE"] = 0.0
-
-        # Head Office expense is already allocated to branches (HO ALLOCATION),
-        # so Total Expense is the same in All Branches and Branch views.
-        out["TOTAL EXPENSE"] = (
-            out["SALARY"]
-            + out["GODOWN RENT"]
-            + out["OVERHEAD EXPENSE"]
-            + out["NEPAL OVERHEAD"]
-            + out["CLAIM"]
-            + out["HO ALLOCATION"]
-        )
-
-    out["BUSINESS"] = out["ORIGIN_BUSINESS"] + out["DESTINATION_BUSINESS"]
-    out["TOTAL_INCOME"] = out["ORIGIN_TOTAL_INCOME"] + out["DESTINATION_TOTAL_INCOME"]
-    out["DIRECT_EXPENSE"] = out["ORIGIN_DIRECT_EXPENSE"] + out["DESTINATION_DIRECT_EXPENSE"]
-    out["COMBINED_PNL"] = out["ORIGIN_PNL"] + out["DESTINATION_PNL"]
-    out["NET_PROFIT"] = out["COMBINED_PNL"] - out["TOTAL EXPENSE"]
-
-    # Net Profit % must use the same business denominator shown on the dashboard.
-    out["NET_PROFIT_MARGIN"] = 0.0
-    valid_business = out["BUSINESS"].ne(0)
-    out.loc[valid_business, "NET_PROFIT_MARGIN"] = (
-        out.loc[valid_business, "NET_PROFIT"]
-        / out.loc[valid_business, "BUSINESS"]
-        * 100
-    )
-
-    return out
-
-
-def calculate_kpis(df):
-    if df is None or df.empty:
-        return {
-            "origin_pnl": 0.0,
-            "destination_pnl": 0.0,
-            "combined_pnl": 0.0,
-            "salary": 0.0,
-            "godown": 0.0,
-            "overhead": 0.0,
-            "nepal_overhead": 0.0,
-            "claim": 0.0,
-            "ho_allocation": 0.0,
-            "total_expense": 0.0,
-            "net_profit": 0.0,
-            "total_income": 0.0,
-            "origin_business": 0.0,
-            "destination_business": 0.0,
-            "business": 0.0,
-            "gp_margin": 0.0,
-            "margin": 0.0,
-        }
-
-    values = {
-        "origin_pnl": float(df["ORIGIN_PNL"].sum()),
-        "destination_pnl": float(df["DESTINATION_PNL"].sum()),
-        "combined_pnl": float(df["COMBINED_PNL"].sum()),
-        "salary": float(df["SALARY"].sum()),
-        "godown": float(df["GODOWN RENT"].sum()),
-        "overhead": float(df["OVERHEAD EXPENSE"].sum()),
-        "nepal_overhead": float(df["NEPAL OVERHEAD"].sum()) if "NEPAL OVERHEAD" in df.columns else 0.0,
-        "claim": float(df["CLAIM"].sum()),
-        "ho_allocation": float(df["HO ALLOCATION"].sum()) if "HO ALLOCATION" in df.columns else 0.0,
-        "total_expense": float(df["TOTAL EXPENSE"].sum()),
-        "net_profit": float(df["NET_PROFIT"].sum()),
-        "total_income": float(df["TOTAL_INCOME"].sum()),
-        "origin_business": float(df["ORIGIN_BUSINESS"].sum()) if "ORIGIN_BUSINESS" in df.columns else 0.0,
-        "destination_business": float(df["DESTINATION_BUSINESS"].sum()) if "DESTINATION_BUSINESS" in df.columns else 0.0,
-        "business": float(df["BUSINESS"].sum()) if "BUSINESS" in df.columns else 0.0,
-    }
-
-    values["margin"] = (
-        values["net_profit"] / values["business"] * 100
-        if values["business"]
-        else 0.0
-    )
-    values["gp_margin"] = (
-        values["combined_pnl"] / values["business"] * 100
-        if values["business"]
-        else 0.0
-    )
-
-    return values
-
-
-def _inject_css():
+def apply_nbd_style() -> None:
     st.markdown(
         """
         <style>
-        :root {
-            --np-navy:#102a43;
-            --np-blue:#2563eb;
-            --np-text:#0f172a;
-            --np-muted:#64748b;
-            --np-border:#e2e8f0;
-            --np-soft:#f8fafc;
-            --np-green:#15803d;
-            --np-red:#dc2626;
-            --np-kpi-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        }
-
+        /* Safe compact layout: smaller spacing without forcing widget heights. */
         .block-container {
-            max-width:100% !important;
-            padding:.35rem .75rem .65rem !important;
+            max-width: 100% !important;
+            padding: .35rem .65rem .9rem !important;
         }
 
-        div[data-testid="stVerticalBlock"] { gap:.34rem !important; }
-        div[data-testid="stHorizontalBlock"] { row-gap:.28rem !important; }
-
-        /* Executive header */
-        .np-header {
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap:16px;
-            padding:7px 12px 8px;
-            margin:0 0 2px;
-            border:0;
-            border-radius:0;
-            background:transparent;
-        }
-        .st-key-np_executive_header > div[data-testid="stVerticalBlockBorderWrapper"] {
-            border:1px solid #dbe4ef !important; border-radius:14px !important;
-            background:#ffffff !important; box-shadow:0 4px 14px rgba(15,42,67,.07) !important;
-        }
-        .st-key-np_executive_header > div[data-testid="stVerticalBlockBorderWrapper"] > div {padding:.65rem .8rem .75rem !important;}
-        .np-header-badge {padding:5px 10px;border-radius:999px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font:700 10px var(--np-kpi-font);white-space:nowrap;}
-        .np-header-left-only {padding:2px 2px 4px !important;margin:0 !important;}
-        .np-header-badge-action {
-            min-height:34px;display:flex;align-items:center;justify-content:center;
-            padding:0 12px;border-radius:9px;background:#eff6ff;color:#1d4ed8;
-            border:1px solid #bfdbfe;font-size:10px;font-weight:750;
-            box-sizing:border-box;
-        }
-        .st-key-np_reset_filters button,
-        .st-key-np_executive_header div[data-testid="stPopover"] > button {
-            min-height:34px !important;height:34px !important;border-radius:9px !important;
-            border:1px solid #dbe4ef !important;background:#ffffff !important;
-            color:#17324d !important;font-size:10px !important;font-weight:650 !important;
-            box-shadow:0 1px 2px rgba(15,42,67,.04) !important;
-            white-space:nowrap !important;
-        }
-        .st-key-np_reset_filters button:hover,
-        .st-key-np_executive_header div[data-testid="stPopover"] > button:hover {
-            border-color:#b8c8da !important;background:#f8fbff !important;
-        }
-        .np-title {
-            color:var(--np-text);
-            font-family:var(--np-kpi-font);
-            font-size:18px;
-            font-weight:800;
-            line-height:1.1;
-            letter-spacing:-.35px;
-        }
-        .np-subtitle {
-            color:var(--np-muted);
-            font-family:var(--np-kpi-font);
-            font-size:10px;
-            margin-top:2px;
-        }
-        @media (max-width:768px) {
-            .np-header {align-items:flex-start;gap:8px;padding:5px 2px 7px;}
-            .np-title {font-size:17px;}
-            .np-header-badge {display:none;}
-            .st-key-np_executive_header div[data-testid="stHorizontalBlock"] {flex-direction:column!important;}
-            .st-key-np_executive_header div[data-testid="stColumn"] {width:100%!important;min-width:100%!important;flex:1 1 100%!important;}
-        }
-        /* Filters */
-        div[data-testid="stSelectbox"] label,
-        div[data-testid="stMultiSelect"] label {
-            font-family:var(--np-kpi-font) !important;
-            font-size:10px !important;
-            font-weight:650 !important;
-            color:#475569 !important;
-            margin-bottom:1px !important;
-        }
-        div[data-baseweb="select"] > div {
-            min-height:34px !important;
-            border-color:#dce5ef !important;
-            border-radius:8px !important;
-            background:#fff !important;
-            font-size:11px !important;
-            box-shadow:none !important;
-        }
-        div[data-baseweb="select"] span { font-size:11px !important; }
-        div[data-baseweb="tag"] {
-            height:21px !important;
-            border-radius:6px !important;
-            font-size:9px !important;
-        }
-
-        /* Primary KPI cards */
-        .np-card {
-            min-height:86px;
-            margin:0 2px;
-            border:1px solid rgba(148,163,184,.24);
-            border-radius:11px;
-            padding:11px 54px 9px 12px;
-            background:linear-gradient(110deg,var(--np-card-from),var(--np-card-to));
-            box-shadow:0 2px 7px rgba(15,23,42,.10);
-            position:relative;
-            overflow:hidden;
-        }
-        .np-theme-business {--np-card-from:#fffafb;--np-card-to:#f8ccd7;--np-icon-bg:#22c96b;--np-accent:#07883f;}
-        .np-theme-origin {--np-card-from:#f9fdff;--np-card-to:#c6eef9;--np-icon-bg:#ff4148;--np-accent:#05739a;}
-        .np-theme-destination {--np-card-from:#fffdfd;--np-card-to:#f7d4d0;--np-icon-bg:#4285ed;--np-accent:#d33124;}
-        .np-theme-combined {--np-card-from:#fbfbff;--np-card-to:#d6d4e8;--np-icon-bg:#8b55ef;--np-accent:#4338a8;}
-        .np-theme-expense {--np-card-from:#fffdfa;--np-card-to:#ecded3;--np-icon-bg:#ff7110;--np-accent:#b34a00;}
-        .np-theme-profit {--np-card-from:#fffdfd;--np-card-to:#decfd2;--np-icon-bg:#a84df2;--np-accent:#7e22ce;}
-        .np-theme-margin {--np-card-from:#f9feff;--np-card-to:#c9eaf0;--np-icon-bg:#10abc1;--np-accent:#087f91;}
-        .np-card-icon {
-            position:absolute;
-            right:12px;
-            top:11px;
-            width:38px;
-            height:38px;
-            border-radius:50%;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            color:#ffffff;
-            background:var(--np-icon-bg);
-            font-family:var(--np-kpi-font);
-            font-size:19px;
-            line-height:1;
-            font-weight:800;
-            box-shadow:0 2px 5px rgba(15,23,42,.10);
-        }
-        .np-card-title {
-            font-family:var(--np-kpi-font);
-            font-size:11px;
-            color:#172033;
-            font-weight:650;
-            white-space:nowrap;
-            overflow:hidden;
-            text-overflow:ellipsis;
-        }
-        .np-card-value {
-            margin-top:3px;
-            font-family:var(--np-kpi-font);
-            font-size:17px;
-            line-height:1.15;
-            color:#050b18;
-            font-weight:800;
-            white-space:nowrap;
-        }
-        .np-card-footer {
-            margin-top:7px;
-            font-family:var(--np-kpi-font);
-            font-size:9.5px;
-            font-weight:550;
-            color:#64748b;
-            white-space:nowrap;
-        }
-        .np-positive { color:var(--np-green); font-weight:700; }
-        .np-negative { color:var(--np-red); font-weight:700; }
-
-        /* Secondary expense strip */
-        .np-overhead-strip {
-            width:100%;
-            min-height:58px;
-            border:1px solid var(--np-border);
-            border-radius:10px;
-            background:#fbfdff;
-            display:flex;
-            align-items:stretch;
-            overflow:hidden;
-            margin:0 0 2px;
-        }
-        .np-overhead-item {
-            flex:1 1 0;
-            min-width:0;
-            padding:6px 9px;
-            display:flex;
-            align-items:center;
-            gap:7px;
-            position:relative;
-        }
-        .np-overhead-item:not(:last-child)::after {
-            content:"";
-            position:absolute;
-            right:0;
-            top:9px;
-            bottom:9px;
-            width:1px;
-            background:#e5edf5;
-        }
-        .np-overhead-icon {
-            width:25px;
-            height:25px;
-            min-width:25px;
-            border-radius:7px;
-            background:#eef6ff;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            color:#2563eb;
-            font-size:12px;
-        }
-        .np-overhead-body { min-width:0; flex:1; }
-        .np-overhead-title {
-            font-family:var(--np-kpi-font);
-            font-size:8.5px;
-            color:#64748b;
-            font-weight:700;
-            white-space:nowrap;
-            overflow:hidden;
-            text-overflow:ellipsis;
-        }
-        .np-overhead-value {
-            margin-top:1px;
-            font-family:var(--np-kpi-font);
-            font-size:12.5px;
-            color:#0f172a;
-            font-weight:750;
-            white-space:nowrap;
-        }
-        .np-overhead-footer {
-            margin-top:1px;
-            font-family:var(--np-kpi-font);
-            font-size:8px;
-            color:#94a3b8;
-            white-space:nowrap;
-        }
-
-        .np-section-title {
-            font-family:var(--np-kpi-font);
-            font-size:12px;
-            color:#0f172a;
-            font-weight:750;
-            margin:0 0 2px 0;
-        }
+        /* Keep enough vertical breathing room so Streamlit labels never overlap. */
+        div[data-testid="stVerticalBlock"] { gap: .55rem !important; }
+        div[data-testid="stHorizontalBlock"] { gap: .45rem !important; }
 
         div[data-testid="stVerticalBlockBorderWrapper"] {
-            border:1px solid var(--np-border) !important;
-            border-radius:10px !important;
-            background:#ffffff !important;
-            box-shadow:none !important;
+            border-radius: 9px !important;
+            border: 1px solid #dbe4ef !important;
+            box-shadow: 0 2px 7px rgba(15,42,67,.05) !important;
+            background: #fff !important;
         }
         div[data-testid="stVerticalBlockBorderWrapper"] > div {
-            padding-top:.45rem !important;
-            padding-bottom:.45rem !important;
+            padding: .50rem .65rem !important;
         }
 
-        [data-testid="stDataFrame"] {
-            border:1px solid var(--np-border);
-            border-radius:8px;
-            overflow:hidden;
+        /* Compact text only. Do not force fixed widget heights; that caused overlap. */
+        label[data-testid="stWidgetLabel"] p {
+            font-size: 10.5px !important;
+            line-height: 1.25 !important;
+            margin-bottom: 3px !important;
+        }
+        div[data-baseweb="select"] > div {
+            min-height: 38px !important;
+            font-size: 11px !important;
+        }
+        div[data-testid="stDateInput"] input {
+            min-height: 36px !important;
+            font-size: 11px !important;
         }
 
-        /* Dataframe header: dark navy background with white labels. */
-        [data-testid="stDataFrame"] [role="columnheader"] {
-            background:#102a43 !important;
-            color:#ffffff !important;
-            font-weight:700 !important;
+
+        /* Period colour coding: Current dates share one background, Comparison dates another. */
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(1) div[data-testid="stDateInput"] div[data-baseweb="input"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(2) div[data-testid="stDateInput"] div[data-baseweb="input"] {
+            background:#e8f1ff !important;
+            border-color:#93b7ea !important;
         }
-        [data-testid="stDataFrame"] [role="columnheader"] * {
-            color:#ffffff !important;
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(1) div[data-testid="stDateInput"] input,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(2) div[data-testid="stDateInput"] input {
+            background:#e8f1ff !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(3) div[data-testid="stDateInput"] div[data-baseweb="input"],
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(4) div[data-testid="stDateInput"] div[data-baseweb="input"] {
+            background:#fff2e2 !important;
+            border-color:#e7b877 !important;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(3) div[data-testid="stDateInput"] input,
+        div[data-testid="stVerticalBlockBorderWrapper"]:has(.nbd-title)
+        div[data-testid="stHorizontalBlock"]:has(div[data-testid="stDateInput"])
+        > div[data-testid="stColumn"]:nth-child(4) div[data-testid="stDateInput"] input {
+            background:#fff2e2 !important;
         }
 
-        div[data-testid="stDownloadButton"] button {
-            min-height:32px !important;
-            border-radius:8px !important;
-            border:1px solid #dbe4ef !important;
-            font-size:10px !important;
-            font-weight:650 !important;
-            padding:.3rem .7rem !important;
+        .nbd-title {
+            color:#102a43;
+            font-size:18px;
+            font-weight:850;
+            line-height:1.18;
+            margin:0;
+        }
+        .nbd-subtitle {
+            color:#64748b;
+            font-size:9.5px;
+            line-height:1.25;
+            margin-top:2px;
+        }
+        .nbd-period-badge {
+            display:inline-block;
+            padding:3px 7px;
+            border-radius:999px;
+            background:#ecfdf5;
+            color:#166534;
+            border:1px solid #bbf7d0;
+            font-size:8.5px;
+            font-weight:800;
+            letter-spacing:.1px;
         }
 
-        details[data-testid="stExpander"] {
-            border:1px solid var(--np-border) !important;
+        .nbd-kpi {
+            box-sizing:border-box;
+            background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);
+            border:1px solid #dbe4ef;
+            border-left:3px solid var(--accent,#2563eb);
+            border-radius:9px;
+            padding:6px 8px;
+            height:64px;
+            min-height:64px;
+            box-shadow:0 2px 7px rgba(15,23,42,.055);
+            transition:box-shadow .15s ease, transform .15s ease;
+        }
+        .nbd-kpi:hover {
+            box-shadow:0 5px 14px rgba(15,23,42,.10);
+            transform:translateY(-1px);
+        }
+        div[data-testid="stElementContainer"]:has(.nbd-kpi) {
+            min-height:64px !important;
+        }
+        .nbd-kpi-title {
+            font-size:9px;
+            color:#64748b;
+            font-weight:750;
+            line-height:1.15;
+        }
+        .nbd-kpi-value {
+            font-size:15px;
+            color:#0f172a;
+            font-weight:900;
+            margin-top:2px;
+            line-height:1.15;
+            white-space:nowrap;
+        }
+        .nbd-kpi-note {
+            font-size:8.5px;
+            color:#64748b;
+            margin-top:2px;
+            line-height:1.15;
+            white-space:nowrap;
+        }
+        .nbd-section-title {
+            font-size:12.5px;
+            font-weight:850;
+            color:#0f2744;
+            margin:1px 0 5px 0;
+            line-height:1.2;
+            border-left:3px solid #17365D;
+            padding-left:6px;
+        }
+        .nbd-filter-inline-title {
+            color:#0f2744;
+            font-size:13px;
+            font-weight:850;
+            line-height:1.1;
+            padding-top:24px;
+            white-space:nowrap;
+        }
+        .nbd-duplicate-badge {
+            display:inline-flex;
+            align-items:center;
+            gap:5px;
+            margin-top:3px;
+            padding:3px 8px;
+            border-radius:999px;
+            background:#fff7d6;
+            border:1px solid #f2cf66;
+            color:#7c4a03;
+            font-size:9px;
+            font-weight:800;
+            line-height:1.2;
+        }
+        .nbd-report-meta {
+            display:block;
+            width:100%;
+            box-sizing:border-box;
+            background:#0b2447;
+            color:#ffffff;
+            border:1px solid #17365D;
+            border-radius:7px;
+            padding:6px 10px;
+            margin:2px 0 4px 0;
+            font-size:9.5px;
+            font-weight:700;
+            line-height:1.25;
+            box-shadow:0 2px 6px rgba(11,36,71,.14);
+        }
+
+        div[data-testid="stCaptionContainer"] p {
+            font-size:9.5px !important;
+            line-height:1.25 !important;
+            margin:0 !important;
+        }
+        div[data-testid="stDataFrame"] {
+            border:1px solid #cbd5e1 !important;
             border-radius:9px !important;
+            overflow:hidden !important;
+            box-shadow:0 3px 10px rgba(15,23,42,.06) !important;
         }
-        details[data-testid="stExpander"] summary p {
-            font-size:10px !important;
-            font-weight:650 !important;
+        div[data-testid="stDataFrame"] * { font-size: 10.5px !important; }
+
+        /* Streamlit dataframe header: dark navy with white labels.
+           Multiple selectors are kept for compatibility across Streamlit versions. */
+        div[data-testid="stDataFrame"] [role="columnheader"],
+        div[data-testid="stDataFrame"] div[role="columnheader"] {
+            background:#17365D !important;
+            color:#ffffff !important;
+            font-weight:800 !important;
+        }
+        div[data-testid="stDataFrame"] [role="columnheader"] *,
+        div[data-testid="stDataFrame"] div[role="columnheader"] * {
+            color:#ffffff !important;
+            font-weight:800 !important;
         }
 
-        /* P&L insight buttons - copied from the P&L dashboard visual language. */
-        div[class*="st-key-np_pnl_trend_btn_"] {margin:0 !important;padding:0 !important;}
-        div[class*="st-key-np_pnl_trend_btn_"] div[data-testid="stButton"],
-        div[class*="st-key-np_pnl_branch_slab_btn_"] div[data-testid="stButton"],
-        div[class*="st-key-np_pnl_view_btn_"] div[data-testid="stButton"] {width:100% !important;margin:0 !important;}
-        div[class*="st-key-np_pnl_trend_btn_"] button,
-        div[class*="st-key-np_pnl_branch_slab_btn_"] button,
-        div[class*="st-key-np_pnl_view_btn_"] button {
-            width:100% !important;min-height:34px !important;height:34px !important;padding:4px 8px !important;
-            margin:0 !important;border:1px solid #d8e2ee !important;border-radius:8px !important;
-            background:linear-gradient(180deg,#ffffff 0%,#f7f9fc 100%) !important;color:#334155 !important;
-            box-shadow:inset 0 1px 0 rgba(255,255,255,.95),0 1px 2px rgba(15,23,42,.05) !important;
-            transform:none !important;font-size:11px !important;font-weight:650 !important;white-space:nowrap !important;
+        /* Additional selectors used by newer Streamlit dataframe builds. */
+        div[data-testid="stDataFrame"] [data-testid="column-header"],
+        div[data-testid="stDataFrame"] [data-testid="column-header"] > div {
+            background:#0b2447 !important;
+            color:#ffffff !important;
+            font-weight:800 !important;
         }
-        div[class*="st-key-np_pnl_trend_btn_"] button:hover,
-        div[class*="st-key-np_pnl_branch_slab_btn_"] button:hover,
-        div[class*="st-key-np_pnl_view_btn_"] button:hover {
-            border-color:#9bb7d8 !important;background:linear-gradient(180deg,#ffffff 0%,#eef5ff 100%) !important;
-            color:#174a7e !important;box-shadow:inset 0 1px 0 #ffffff,0 2px 5px rgba(15,42,67,.08) !important;
+
+        div[data-testid="stDownloadButton"] button,
+        div[data-testid="stButton"] button,
+        div[data-testid="stPopover"] button {
+            min-height:38px !important;
+            padding:.2rem .6rem !important;
+            border-radius:7px !important;
+            font-size:10.5px !important;
+            font-weight:750 !important;
         }
-        div[class*="st-key-np_pnl_trend_btn_"] button[data-testid="stBaseButton-primary"],
-        div[class*="st-key-np_pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"],
-        div[class*="st-key-np_pnl_view_btn_"] button[data-testid="stBaseButton-primary"] {
-            border-color:#123f73 !important;background:linear-gradient(180deg,#174f8d 0%,#123f73 100%) !important;
-            color:#ffffff !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 2px 5px rgba(15,42,67,.18) !important;
+
+        @media (max-width: 768px) {
+            .block-container {padding:.3rem .45rem .75rem !important;}
+            div[data-testid="stHorizontalBlock"] {
+                flex-direction:column !important;
+                align-items:stretch !important;
+            }
+            div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+                width:100% !important; min-width:100% !important;
+            }
         }
-        div[class*="st-key-np_pnl_trend_btn_"] button[data-testid="stBaseButton-primary"] p,
-        div[class*="st-key-np_pnl_trend_btn_"] button[data-testid="stBaseButton-primary"] span,
-        div[class*="st-key-np_pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] p,
-        div[class*="st-key-np_pnl_branch_slab_btn_"] button[data-testid="stBaseButton-primary"] span,
-        div[class*="st-key-np_pnl_view_btn_"] button[data-testid="stBaseButton-primary"] p,
-        div[class*="st-key-np_pnl_view_btn_"] button[data-testid="stBaseButton-primary"] span {color:#ffffff !important;}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-def render_kpi_card(
-    title,
-    current,
-    previous,
-    conversion_type=None,
-    percent=False,
-    reverse_good=False,
-    disabled=False,
-):
-    card_styles = {
-        "Origin Business": ("np-theme-business", "₹"),
-        "Destination Business": ("np-theme-origin", "▤"),
-        "Origin P&L": ("np-theme-origin", "↗"),
-        "Destination P&L": ("np-theme-destination", "↘"),
-        "Gross P&L": ("np-theme-combined", "⇄"),
-        "GP %": ("np-theme-margin", "%"),
-        "Indirect Exp": ("np-theme-expense", "▰"),
-        "Net Profit": ("np-theme-profit", "₹"),
-        "Net Profit %": ("np-theme-margin", "%"),
+
+# =====================================================
+# Data normalization
+# =====================================================
+def _compact_name(value) -> str:
+    return "".join(ch for ch in str(value).lower() if ch.isalnum())
+
+
+def _first_existing_column(df: pd.DataFrame, candidates) -> str | None:
+    if df is None or df.empty:
+        return None
+    compact_map = {_compact_name(col): col for col in df.columns}
+    for candidate in candidates:
+        hit = compact_map.get(_compact_name(candidate))
+        if hit is not None:
+            return hit
+    return None
+
+
+def normalize_nbd_data(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None:
+        return pd.DataFrame()
+
+    df = df.copy()
+    rename_candidates = {
+        "Zone": ["zone"],
+        "Circle": ["circle"],
+        "Branch": ["branch", "branchname"],
+        "Consignor": ["consignor", "consignorname", "cngrname"],
+        "ConsignorCode": ["cngrcode", "consignorcode", "cngrcode"],
+        "Consignee": ["consignee", "consigneename", "cngeename"],
+        "ConsigneeCode": ["cngecode", "consigneecode", "cngeecode"],
+        "Revenue": ["revenue", "freight", "business", "sale", "sales"],
+        "LoadType": ["loadtype", "load_type", "servicetype", "service_type"],
+        "BusinessDate": [
+            "businessdate", "bookingdate", "bookingdt", "grdt", "grdate",
+            "gr_date", "lrdate", "lr_date", "cndate", "docketdate",
+        ],
+        "Mobile": [
+            "mobile", "mobileno", "mobile_no", "mobilenumber", "phone",
+            "phoneno", "phone_no", "contact", "contactno", "contact_no",
+        ],
+        "GSTIN": ["gstin", "gst", "gstno", "gst_no", "gstnumber", "gst_number"],
     }
-    card_theme, card_icon = card_styles.get(
-        title, ("np-theme-origin", "●")
+
+    compact_map = {_compact_name(col): col for col in df.columns}
+    rename_map = {}
+    for target, candidates in rename_candidates.items():
+        if target in df.columns:
+            continue
+        for candidate in candidates:
+            source = compact_map.get(_compact_name(candidate))
+            if source is not None and source != target:
+                rename_map[source] = target
+                break
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
+    if "Revenue" in df.columns:
+        df["Revenue"] = pd.to_numeric(df["Revenue"], errors="coerce").fillna(0.0)
+
+    if "LoadType" not in df.columns:
+        df["LoadType"] = ""
+    else:
+        df["LoadType"] = df["LoadType"].fillna("").astype(str).str.strip()
+
+    if "BusinessDate" in df.columns:
+        df["BusinessDate"] = pd.to_datetime(df["BusinessDate"], errors="coerce", dayfirst=True)
+
+    for col in ("Zone", "Circle", "Branch", "Consignor", "Consignee", "Mobile", "GSTIN"):
+        if col in df.columns:
+            df[col] = df[col].fillna("").astype(str).str.strip()
+
+    return df
+
+
+# =====================================================
+# Data loading
+# =====================================================
+@st.cache_data(show_spinner=False, ttl=900, max_entries=8)
+def _load_period(start_iso: str, end_iso: str, view_type: str) -> pd.DataFrame:
+    raw = load_booking_data(start_iso, end_iso, view_type)
+    return normalize_nbd_data(raw)
+
+
+def _clear_nbd_result() -> None:
+    for key in (
+        "nbd_current_df",
+        "nbd_compare_df",
+        "nbd_run_signature",
+        "nbd_report_ready",
+    ):
+        st.session_state.pop(key, None)
+    gc.collect()
+
+
+# =====================================================
+# Business logic
+# =====================================================
+def _customer_config(view_type: str) -> dict:
+    if view_type == "origin":
+        return {
+            "code": "ConsignorCode",
+            "name": "Consignor",
+            "label": "Consignor",
+        }
+    return {
+        "code": "ConsigneeCode",
+        "name": "Consignee",
+        "label": "Consignee",
+    }
+
+
+def _validate_columns(df: pd.DataFrame, view_type: str, period_name: str) -> tuple[bool, str]:
+    config = _customer_config(view_type)
+    required = [config["code"], config["name"], "Revenue"]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        return False, f"{period_name}: stored procedure is missing required columns: {missing}. Available columns: {list(df.columns)}"
+    return True, ""
+
+
+def _canon(value) -> str:
+    return " ".join(str(value or "").strip().split()).casefold()
+
+
+def _match_scope_value(df: pd.DataFrame, column: str, value):
+    if value in (None, "") or column not in df.columns or df.empty:
+        return None
+    target = _canon(value)
+    normalized = df[column].fillna("").astype(str).map(_canon)
+    matched = df.loc[normalized.eq(target), column]
+    return matched.iloc[0] if not matched.empty else value
+
+
+def apply_role_scope(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply login data_scope used elsewhere in the dashboard."""
+    if df is None or df.empty:
+        return df
+
+    scope = st.session_state.get("data_scope", {}) or {}
+    scoped = df
+
+    for scope_key, column in (("zone", "Zone"), ("circle", "Circle"), ("branch", "Branch")):
+        requested = scope.get(scope_key)
+        if requested and column in scoped.columns:
+            exact = _match_scope_value(scoped, column, requested)
+            target = _canon(exact)
+            normalized = scoped[column].fillna("").astype(str).map(_canon)
+            scoped = scoped[normalized.eq(target)]
+
+    return scoped
+
+
+def _safe_options(frames, column: str) -> list[str]:
+    values = set()
+    for frame in frames:
+        if frame is not None and not frame.empty and column in frame.columns:
+            cleaned = frame[column].dropna().astype(str).str.strip()
+            values.update(v for v in cleaned if v)
+    return sorted(values, key=str.casefold)
+
+
+def _apply_multi(df: pd.DataFrame, column: str, values) -> pd.DataFrame:
+    if df is None or df.empty or column not in df.columns or not values:
+        return df
+    return df[df[column].isin(values)]
+
+
+def _apply_common_filters(
+    df: pd.DataFrame,
+    zones,
+    circles,
+    branches,
+    load_types,
+    customers,
+    customer_name_col: str,
+) -> pd.DataFrame:
+    filtered = df
+    filtered = _apply_multi(filtered, "Zone", zones)
+    filtered = _apply_multi(filtered, "Circle", circles)
+    filtered = _apply_multi(filtered, "Branch", branches)
+    filtered = _apply_multi(filtered, "LoadType", load_types)
+    filtered = _apply_multi(filtered, customer_name_col, customers)
+    return filtered
+
+
+def _first_non_blank(series: pd.Series) -> str:
+    for value in series:
+        if pd.notna(value):
+            text = str(value).strip()
+            if text and text.lower() not in {"nan", "none"}:
+                return text
+    return ""
+
+
+def _load_group(load_type: str) -> str:
+    text = _compact_name(load_type)
+    if "ftl" in text:
+        return "FTL"
+    # PTL is included with LTL for this NBD report because both represent
+    # part-load business. If your source uses only LTL, this has no effect.
+    if "ltl" in text or "ptl" in text:
+        return "LTL"
+    return "OTHER"
+
+
+def _period_customer_summary(
+    df: pd.DataFrame,
+    code_col: str,
+    name_col: str,
+    prefix: str,
+    group_keys: list[str],
+) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame(columns=[*group_keys, name_col])
+
+    work = df.copy()
+    work["__LoadGroup"] = work["LoadType"].map(_load_group)
+
+    # In Customer + Geography layout the same customer code is allowed to
+    # appear once per booking location. In Customer Only layout group_keys
+    # contains only the customer code, so the customer remains unique.
+    keys = [col for col in group_keys if col in work.columns]
+    if code_col not in keys:
+        keys.append(code_col)
+
+    base = (
+        work.groupby(keys, as_index=False, dropna=False)
+        .agg(**{f"{prefix} Sale": ("Revenue", "sum")})
     )
 
-    if disabled:
-        st.markdown(
-            f"""
-            <div class="np-card np-card-disabled {card_theme}">
-                <div class="np-card-icon">{escape(card_icon)}</div>
-                <div class="np-card-title">{escape(title)}</div>
-                <div class="np-card-value">--</div>
-                <div class="np-card-footer">Select a branch to view</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+    for group_name in ("LTL", "FTL"):
+        part = (
+            work[work["__LoadGroup"] == group_name]
+            .groupby(keys, as_index=False, dropna=False)
+            .agg(**{f"{prefix} {group_name}": ("Revenue", "sum")})
         )
-        return
+        base = base.merge(part, on=keys, how="left")
 
-    if percent:
-        current_text = f"{current:,.2f}%"
-        previous_text = f"{previous:,.2f}%"
-        growth = current - previous
-        growth_label = f"{growth:+.2f} pp"
-        good = growth <= 0 if reverse_good else growth >= 0
+    names = (
+        work.groupby(keys, as_index=False, dropna=False)
+        .agg(**{name_col: (name_col, _first_non_blank)})
+    )
+    base = base.merge(names, on=keys, how="left")
+
+    for col in (f"{prefix} LTL", f"{prefix} FTL"):
+        if col not in base.columns:
+            base[col] = 0.0
+        base[col] = pd.to_numeric(base[col], errors="coerce").fillna(0.0)
+
+    return base
+
+
+def build_nbd_report(
+    current_df: pd.DataFrame,
+    compare_df: pd.DataFrame,
+    view_type: str,
+    customer_only: bool = False,
+) -> pd.DataFrame:
+    config = _customer_config(view_type)
+    code_col = config["code"]
+    name_col = config["name"]
+
+    current_df = current_df.copy()
+    compare_df = compare_df.copy()
+
+    # Customer + Geography must NOT collapse a customer code across branches.
+    # A code can legitimately book from multiple locations, therefore the
+    # geographic identity becomes part of the report key.
+    geo_cols = ["Zone", "Circle", "Branch"]
+    if customer_only:
+        group_keys = [code_col]
     else:
-        current_text = amount_text(current, conversion_type)
-        previous_text = amount_text(previous, conversion_type)
-        growth = pct_change(current, previous)
-        growth_label = f"{growth:+.1f}%"
-        good = growth <= 0 if reverse_good else growth >= 0
+        for frame in (current_df, compare_df):
+            for col in geo_cols:
+                if col not in frame.columns:
+                    frame[col] = ""
+                else:
+                    frame[col] = frame[col].fillna("").astype(str).str.strip()
+        group_keys = [*geo_cols, code_col]
 
-    class_name = "np-positive" if good else "np-negative"
+    current = _period_customer_summary(
+        current_df, code_col, name_col, "Current", group_keys
+    )
+    compare = _period_customer_summary(
+        compare_df, code_col, name_col, "Compare", group_keys
+    )
 
+    current_by_key = current.drop(columns=[name_col], errors="ignore")
+    compare_by_key = compare.drop(columns=[name_col], errors="ignore")
+
+    # Keep every unique customer/location combination from either period.
+    key_frames = []
+    if not current_by_key.empty:
+        key_frames.append(current_by_key[group_keys])
+    if not compare_by_key.empty:
+        key_frames.append(compare_by_key[group_keys])
+
+    if key_frames:
+        keys_df = pd.concat(key_frames, ignore_index=True).drop_duplicates()
+    else:
+        keys_df = pd.DataFrame(columns=group_keys)
+
+    report = (
+        keys_df
+        .merge(compare_by_key, on=group_keys, how="left")
+        .merge(current_by_key, on=group_keys, how="left")
+    )
+
+    numeric_cols = [
+        "Compare Sale", "Compare LTL", "Compare FTL",
+        "Current Sale", "Current LTL", "Current FTL",
+    ]
+    for col in numeric_cols:
+        if col not in report.columns:
+            report[col] = 0.0
+        report[col] = pd.to_numeric(report[col], errors="coerce").fillna(0.0)
+
+    # Customer name/contact details are also resolved at the same reporting key.
+    detail_frames = []
+    for frame, priority in ((compare_df, 1), (current_df, 2)):
+        if frame is None or frame.empty:
+            continue
+
+        available = list(group_keys)
+        for col in (name_col, "Mobile", "GSTIN"):
+            if col in frame.columns and col not in available:
+                available.append(col)
+
+        detail = frame[available].copy()
+        detail["__priority"] = priority
+        detail_frames.append(detail)
+
+    if detail_frames:
+        details = pd.concat(detail_frames, ignore_index=True, sort=False)
+        details = details.sort_values("__priority", ascending=False)
+
+        agg_map = {name_col: _first_non_blank}
+        for col in ("Mobile", "GSTIN"):
+            if col in details.columns:
+                agg_map[col] = _first_non_blank
+
+        details = (
+            details.groupby(group_keys, as_index=False, dropna=False)
+            .agg(agg_map)
+        )
+        report = report.merge(details, on=group_keys, how="left")
+    else:
+        report[name_col] = ""
+
+    report["Customer Type"] = ""
+    report.loc[(report["Current Sale"] > 0) & (report["Compare Sale"] <= 0), "Customer Type"] = "NEW"
+    report.loc[(report["Current Sale"] <= 0) & (report["Compare Sale"] > 0), "Customer Type"] = "LOST"
+    report.loc[(report["Current Sale"] > 0) & (report["Compare Sale"] > 0), "Customer Type"] = "REGULAR"
+    report = report[report["Customer Type"].ne("")].copy()
+
+    report["Change"] = report["Current Sale"] - report["Compare Sale"]
+    report["Growth %"] = report.apply(
+        lambda r: ((r["Current Sale"] - r["Compare Sale"]) / r["Compare Sale"] * 100.0)
+        if r["Compare Sale"] > 0 else (100.0 if r["Current Sale"] > 0 else 0.0),
+        axis=1,
+    )
+
+    # Ensure optional display columns always exist.
+    for col in ("Zone", "Circle", "Branch", "Mobile", "GSTIN"):
+        if col not in report.columns:
+            report[col] = ""
+
+    display_cols = [
+        "Zone", "Circle", "Branch", code_col, name_col, "Mobile", "GSTIN",
+        "Compare Sale", "Compare LTL", "Compare FTL",
+        "Current Sale", "Current LTL", "Current FTL",
+        "Change", "Growth %", "Customer Type",
+    ]
+    report = report[display_cols]
+
+    status_order = pd.Categorical(
+        report["Customer Type"],
+        categories=["NEW", "REGULAR", "LOST"],
+        ordered=True,
+    )
+    report = report.assign(__status=status_order).sort_values(
+        ["__status", "Current Sale", "Compare Sale"],
+        ascending=[True, False, False],
+    ).drop(columns="__status").reset_index(drop=True)
+
+    return report
+
+
+# =====================================================
+# Export / formatting
+# =====================================================
+def _money(value: float) -> str:
+    return f"Rs.{float(value or 0):,.0f}"
+
+
+def _kpi(title: str, value: str, note: str, color: str) -> None:
     st.markdown(
         f"""
-        <div class="np-card {card_theme}">
-            <div class="np-card-icon">{escape(card_icon)}</div>
-            <div class="np-card-title">{escape(title)}</div>
-            <div class="np-card-value">{escape(current_text)}</div>
-            <div class="np-card-footer">
-                LY: {escape(previous_text)}
-                &nbsp;·&nbsp;
-                <span class="{class_name}">{escape(growth_label)}</span>
-            </div>
+        <div class="nbd-kpi" style="--accent:{color};">
+          <div class="nbd-kpi-title">{html.escape(title)}</div>
+          <div class="nbd-kpi-value">{html.escape(value)}</div>
+          <div class="nbd-kpi-note">{html.escape(note)}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def overhead_kpi_item_html(title, current, previous, conversion_type, icon):
-    current_text = amount_text(current, conversion_type)
-    previous_text = amount_text(previous, conversion_type)
-    growth = pct_change(current, previous)
-    growth_label = f"{growth:+.2f}%"
+@st.cache_data(show_spinner=False, max_entries=4)
+def export_nbd_excel(
+    report_df: pd.DataFrame,
+    current_start: date,
+    current_end: date,
+    compare_start: date,
+    compare_end: date,
+) -> bytes:
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        export_df = report_df.copy()
+        export_df.to_excel(writer, sheet_name="NBD MIS", index=False, startrow=4)
 
-    # Lower overhead is favourable; higher overhead is adverse.
-    class_name = "np-positive" if growth <= 0 else "np-negative"
-    arrow = "▼" if growth < 0 else "▲" if growth > 0 else "–"
+        workbook = writer.book
+        worksheet = writer.sheets["NBD MIS"]
 
-    # Keep the HTML left-aligned. Leading 4+ spaces are interpreted by Markdown
-    # as a code block, which causes the raw <div> markup to appear on screen.
-    return (
-        f'<div class="np-overhead-item">'
-        f'<div class="np-overhead-icon">{escape(icon)}</div>'
-        f'<div class="np-overhead-body">'
-        f'<div class="np-overhead-title">{escape(title)}</div>'
-        f'<div class="np-overhead-value">{escape(current_text)}</div>'
-        f'<div class="np-overhead-footer">'
-        f'LY: {escape(previous_text)}&nbsp;|&nbsp;'
-        f'<span class="{class_name}">{escape(arrow)} {escape(growth_label)}</span>'
-        f'</div></div></div>'
-    )
+        title_fmt = workbook.add_format({
+            "bold": True, "font_size": 15, "font_color": "#17365D",
+        })
+        period_fmt = workbook.add_format({
+            "bold": True, "font_size": 10, "font_color": "#475569",
+        })
+        header_fmt = workbook.add_format({
+            "bold": True, "bg_color": "#17365D", "font_color": "#FFFFFF",
+            "border": 0, "align": "center", "valign": "vcenter",
+        })
+        money_fmt = workbook.add_format({"num_format": "#,##0.00;[Red](#,##0.00);-"})
+        pct_fmt = workbook.add_format({"num_format": "0.0%;[Red](0.0%);-"})
 
-
-def _apply_same_filters(df, filters):
-    # Filtering creates a new frame only when a filter is active. Avoid a full
-    # unconditional copy of both FY datasets on every Streamlit rerun.
-    out = df
-
-    for column, selected in filters.items():
-        out = apply_multi_filter(out, column, selected)
-
-    return out
-
-
-def _load_authoritative_revenue_for_time_scope(period_start, period_end, quarters=None, months=None):
-    """Return authoritative P&L SP revenue for the selected time scope.
-
-    When Month/Quarter filters are active in All-Branches mode, using the
-    branch-joined ORIGIN_BUSINESS sum can differ from the stored-procedure
-    revenue total. Build the selected calendar-month slices and sum the SP
-    revenue for those slices so FY+Month/Quarter matches an equivalent
-    Custom Date run.
-    """
-    if period_start is None or period_end is None:
-        return 0.0
-
-    start = pd.Timestamp(period_start).normalize()
-    end = pd.Timestamp(period_end).normalize()
-    if start > end:
-        return 0.0
-
-    selected_months = set(months or [])
-    selected_quarters = set(quarters or [])
-
-    # No time filter: one authoritative call for the whole committed period.
-    if not selected_months and not selected_quarters:
-        return float(load_pnl_sp_revenue_total(start.date(), end.date()) or 0.0)
-
-    month_to_quarter = {
-        "Apr": "Q1", "May": "Q1", "Jun": "Q1",
-        "Jul": "Q2", "Aug": "Q2", "Sep": "Q2",
-        "Oct": "Q3", "Nov": "Q3", "Dec": "Q3",
-        "Jan": "Q4", "Feb": "Q4", "Mar": "Q4",
-    }
-
-    total = 0.0
-    cursor = start.replace(day=1)
-    last_month = end.replace(day=1)
-
-    while cursor <= last_month:
-        month_label = cursor.strftime("%b")
-        quarter_label = month_to_quarter.get(month_label)
-
-        month_selected = (not selected_months) or (month_label in selected_months)
-        quarter_selected = (not selected_quarters) or (quarter_label in selected_quarters)
-
-        if month_selected and quarter_selected:
-            month_start = max(cursor, start)
-            month_end = min(cursor + pd.offsets.MonthEnd(0), end)
-            if month_start <= month_end:
-                total += float(
-                    load_pnl_sp_revenue_total(
-                        month_start.date(), month_end.date()
-                    ) or 0.0
-                )
-
-        cursor = cursor + pd.offsets.MonthBegin(1)
-
-    return total
-
-
-def _apply_branch_scope_ho_allocation(df, all_scope_df):
-    """Apply the same proportional HO allocation used by Branch Net Profit Detail.
-
-    The HO pool and denominator come from the complete branch scope for the
-    selected period; the selected rows receive only their business-proportionate share.
-    """
-    if df is None or df.empty:
-        return df
-    out = df.copy()
-    pool = pd.to_numeric(
-        all_scope_df.get("HO ALLOCATION", pd.Series(0.0, index=all_scope_df.index)),
-        errors="coerce",
-    ).fillna(0.0).sum()
-    # Match the loader's allocation basis exactly: Origin + Destination
-    # Business, excluding the Head Office row from both denominator and share.
-    all_codes = all_scope_df.get("BRANCHCODE", pd.Series("", index=all_scope_df.index)).astype(str).str.strip()
-    all_origin = pd.to_numeric(
-        all_scope_df.get("ORIGIN_BUSINESS", pd.Series(0.0, index=all_scope_df.index)),
-        errors="coerce",
-    ).fillna(0.0)
-    all_destination = pd.to_numeric(
-        all_scope_df.get("DESTINATION_BUSINESS", pd.Series(0.0, index=all_scope_df.index)),
-        errors="coerce",
-    ).fillna(0.0)
-    denominator = (all_origin + all_destination).where(all_codes.ne("1001"), 0.0).clip(lower=0.0).sum()
-    business = pd.to_numeric(
-        out.get("BUSINESS", pd.Series(0.0, index=out.index)),
-        errors="coerce",
-    ).fillna(0.0).clip(lower=0.0)
-    out_codes = out.get("BRANCHCODE", pd.Series("", index=out.index)).astype(str).str.strip()
-    business = business.where(out_codes.ne("1001"), 0.0)
-    out["HO ALLOCATION"] = business / denominator * pool if denominator else 0.0
-    expense_columns = [
-        "SALARY", "GODOWN RENT", "OVERHEAD EXPENSE",
-        "NEPAL OVERHEAD", "CLAIM", "HO ALLOCATION",
-    ]
-    for column in expense_columns:
-        if column not in out.columns:
-            out[column] = 0.0
-        out[column] = pd.to_numeric(out[column], errors="coerce").fillna(0.0)
-    out["TOTAL EXPENSE"] = out[expense_columns].sum(axis=1)
-    out["NET_PROFIT"] = (
-        pd.to_numeric(out.get("COMBINED_PNL", 0.0), errors="coerce").fillna(0.0)
-        - out["TOTAL EXPENSE"]
-    )
-    out["NET_PROFIT_MARGIN"] = 0.0
-    valid_business = business.ne(0)
-    out.loc[valid_business, "NET_PROFIT_MARGIN"] = (
-        out.loc[valid_business, "NET_PROFIT"] / business.loc[valid_business] * 100
-    )
-    return out
-
-
-# ============================================================
-# P&L INSIGHT HELPERS (ISOLATED FROM NET PROFIT CALCULATIONS)
-# ============================================================
-
-def _normalise_insight_pnl(df):
-    """Normalise P&L SP output for insight visuals only.
-
-    IMPORTANT: this dataframe is never used by Net Profit KPIs/tables.
-    Load-type analysis is intentionally not used in Phase 1.
-    """
-    if df is None or df.empty:
-        return pd.DataFrame()
-
-    out = df.copy()
-    aliases = {
-        "COMPNAME": ("COMPNAME", "company", "companyname"),
-        "zone": ("zone", "zonename", "ZONE"),
-        "circle": ("circle", "circlename", "hubname", "CIRCLE"),
-        "branch": ("branch", "branchname", "BRANCH"),
-        "grno": ("grno", "gr_no", "grnumber", "GRNO"),
-        "grdt": ("grdt", "grdate", "bookingdate", "GRDT"),
-        "FIN_MONTH": ("FIN_MONTH", "fin_month", "financialmonth"),
-        "REVENUE": ("REVENUE", "revenue", "business"),
-        "EXPENSE": ("EXPENSE", "expense", "expenses", "cost"),
-        "PNL": ("PNL", "pnl", "profitloss", "profit_loss", "profitandloss"),
-        "Consignor": ("Consignor", "consignor", "consignorname"),
-        "Consignee": ("Consignee", "consignee", "consigneename"),
-        "Route": ("Route", "route", "routename"),
-    }
-
-    rename_map = {}
-    for target, candidates in aliases.items():
-        source = _find_column(out, *candidates)
-        if source is not None and source != target:
-            rename_map[source] = target
-    out = out.rename(columns=rename_map)
-
-    for col in ["REVENUE", "EXPENSE", "PNL", "FIN_MONTH"]:
-        if col in out.columns:
-            out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0)
-
-    if "grdt" in out.columns:
-        out["grdt"] = pd.to_datetime(out["grdt"], errors="coerce")
-
-    month_map = {1: "Apr", 2: "May", 3: "Jun", 4: "Jul", 5: "Aug", 6: "Sep", 7: "Oct", 8: "Nov", 9: "Dec", 10: "Jan", 11: "Feb", 12: "Mar"}
-    quarter_map = {1: "Q1", 2: "Q1", 3: "Q1", 4: "Q2", 5: "Q2", 6: "Q2", 7: "Q3", 8: "Q3", 9: "Q3", 10: "Q4", 11: "Q4", 12: "Q4"}
-    if "FIN_MONTH" in out.columns:
-        out["FIN_MONTH"] = pd.to_numeric(out["FIN_MONTH"], errors="coerce").fillna(0).astype(int)
-        out["MONTH"] = out["FIN_MONTH"].map(month_map)
-        out["QUARTER"] = out["FIN_MONTH"].map(quarter_map)
-
-    return out
-
-
-def _apply_insight_values(df, column, selected):
-    """Case-insensitive multi-value filter for the isolated P&L insight dataset."""
-    if df is None or df.empty or column not in df.columns or not selected:
-        return df
-    selected_keys = {_normalise_branch_name(value) for value in selected}
-    keys = df[column].fillna("").astype(str).map(_normalise_branch_name)
-    return df[keys.isin(selected_keys)].copy()
-
-
-def _filter_pnl_insight_scope(df, zones, circles, branches, quarters, months):
-    out = df.copy() if df is not None else pd.DataFrame()
-    out = _apply_insight_values(out, "zone", zones)
-    out = _apply_insight_values(out, "circle", circles)
-    out = _apply_insight_values(out, "branch", branches)
-    out = _apply_insight_values(out, "QUARTER", quarters)
-    out = _apply_insight_values(out, "MONTH", months)
-    return out
-
-
-def _build_pnl_insight_trend(current_df, previous_df, trend_type, start_date, prev_start):
-    """Return CY and LY P&L on a comparable financial-period key."""
-    if current_df is None or current_df.empty or "PNL" not in current_df.columns:
-        return pd.DataFrame(columns=["Period", "PNL", "PY_PNL"])
-
-    cur = current_df.copy()
-    prev = previous_df.copy() if previous_df is not None else pd.DataFrame()
-
-    if trend_type in ("Daily", "Weekly") and "grdt" not in cur.columns:
-        trend_type = "Monthly"
-
-    if trend_type == "Daily":
-        cur = cur[cur["grdt"].notna()].copy()
-        cur["Key"] = (cur["grdt"].dt.normalize() - pd.Timestamp(start_date)).dt.days
-        cy = cur.groupby("Key", as_index=False)["PNL"].sum()
-        cy["Period"] = (pd.Timestamp(start_date) + pd.to_timedelta(cy["Key"], unit="D")).dt.strftime("%d-%b")
-        if not prev.empty and "grdt" in prev.columns:
-            prev = prev[prev["grdt"].notna()].copy()
-            prev["Key"] = (prev["grdt"].dt.normalize() - pd.Timestamp(prev_start)).dt.days
-            py = prev.groupby("Key", as_index=False)["PNL"].sum().rename(columns={"PNL": "PY_PNL"})
-        else:
-            py = pd.DataFrame(columns=["Key", "PY_PNL"])
-    elif trend_type == "Weekly":
-        cur = cur[cur["grdt"].notna()].copy()
-        cur["Key"] = ((cur["grdt"].dt.normalize() - pd.Timestamp(start_date)).dt.days // 7).astype(int)
-        cy = cur.groupby("Key", as_index=False)["PNL"].sum()
-        cy["Period"] = "W" + (cy["Key"] + 1).astype(str)
-        if not prev.empty and "grdt" in prev.columns:
-            prev = prev[prev["grdt"].notna()].copy()
-            prev["Key"] = ((prev["grdt"].dt.normalize() - pd.Timestamp(prev_start)).dt.days // 7).astype(int)
-            py = prev.groupby("Key", as_index=False)["PNL"].sum().rename(columns={"PNL": "PY_PNL"})
-        else:
-            py = pd.DataFrame(columns=["Key", "PY_PNL"])
-    elif trend_type == "Quarterly":
-        cy = cur.groupby("QUARTER", as_index=False)["PNL"].sum().rename(columns={"QUARTER": "Period"})
-        cy["Period"] = pd.Categorical(cy["Period"], QUARTER_ORDER, ordered=True)
-        cy = cy.sort_values("Period")
-        cy["Key"] = cy["Period"].astype(str)
-        if not prev.empty and "QUARTER" in prev.columns:
-            py = prev.groupby("QUARTER", as_index=False)["PNL"].sum().rename(columns={"QUARTER": "Key", "PNL": "PY_PNL"})
-        else:
-            py = pd.DataFrame(columns=["Key", "PY_PNL"])
-    else:
-        cy = cur.groupby("MONTH", as_index=False)["PNL"].sum().rename(columns={"MONTH": "Period"})
-        cy["Period"] = pd.Categorical(cy["Period"], MONTH_ORDER, ordered=True)
-        cy = cy.sort_values("Period")
-        cy["Key"] = cy["Period"].astype(str)
-        if not prev.empty and "MONTH" in prev.columns:
-            py = prev.groupby("MONTH", as_index=False)["PNL"].sum().rename(columns={"MONTH": "Key", "PNL": "PY_PNL"})
-        else:
-            py = pd.DataFrame(columns=["Key", "PY_PNL"])
-
-    result = cy.merge(py[["Key", "PY_PNL"]], on="Key", how="left")
-    result["PY_PNL"] = pd.to_numeric(result["PY_PNL"], errors="coerce").fillna(0.0)
-    return result
-
-
-def _top_pnl_insight_table(df, prev_df, group_col, entity_name, divisor, unit, widget_key, subtitle=""):
-    """Original P&L-dashboard style Top-N insight table."""
-    if group_col not in df.columns:
-        st.info(f"{entity_name.rstrip('s')} column is not available in P&L insight data.")
-        return
-
-    title_col, selector_col = st.columns([4.2, 1.0], gap="small", vertical_alignment="center")
-    with selector_col:
-        top_n = st.selectbox(
-            f"{entity_name} to display", [10, 20, 30, 40], index=0,
-            format_func=lambda value: f"Top {value}", key=f"{widget_key}_top_n",
-            label_visibility="collapsed",
+        worksheet.write("A1", "SUGAM PARIVAHAN PVT. LTD. - NBD CUSTOMER MIS", title_fmt)
+        worksheet.write(
+            "A2",
+            f"Current Period: {current_start:%d/%m/%Y} to {current_end:%d/%m/%Y}",
+            period_fmt,
         )
-    with title_col:
-        st.markdown(
-            f"<div style='font-size:18px;font-weight:400;color:#0f2744;margin:1px 0 9px 2px;'>"
-            f"Top {top_n} {entity_name} by P&amp;L</div>"
-            f"<div style='font-size:12px;font-weight:400;color:#64748b;margin-top:-4px;'>{escape(subtitle)}</div>",
-            unsafe_allow_html=True,
+        worksheet.write(
+            "A3",
+            f"Comparison Period: {compare_start:%d/%m/%Y} to {compare_end:%d/%m/%Y}",
+            period_fmt,
         )
 
-    current_data = df[[group_col, "PNL"]].copy()
-    current_data[group_col] = current_data[group_col].fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
-    current_rank = current_data[current_data[group_col].ne("Unknown")].groupby(group_col, dropna=False)["PNL"].sum().reset_index(name="Current PNL")
-    if prev_df is not None and not prev_df.empty and group_col in prev_df.columns and "PNL" in prev_df.columns:
-        previous_data = prev_df[[group_col, "PNL"]].copy()
-        previous_data[group_col] = previous_data[group_col].fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
-        previous_rank = previous_data[previous_data[group_col].ne("Unknown")].groupby(group_col, dropna=False)["PNL"].sum().reset_index(name="Previous PNL")
-    else:
-        previous_rank = pd.DataFrame(columns=[group_col, "Previous PNL"])
+        for col_idx, col_name in enumerate(export_df.columns):
+            worksheet.write(4, col_idx, col_name, header_fmt)
+            width = max(12, min(28, len(str(col_name)) + 4))
+            worksheet.set_column(col_idx, col_idx, width)
 
-    ranking = current_rank.merge(previous_rank, on=group_col, how="left")
-    ranking["Previous PNL"] = pd.to_numeric(ranking["Previous PNL"], errors="coerce").fillna(0.0)
-    ranking["P&L Display"] = (pd.to_numeric(ranking["Current PNL"], errors="coerce").fillna(0.0) / divisor).round(2)
-    total_abs_pnl = float(ranking["Current PNL"].abs().sum())
-    ranking["Share %"] = ranking["Current PNL"].abs() / total_abs_pnl * 100 if total_abs_pnl else 0.0
-    ranking["Growth %"] = ranking.apply(lambda row: pct_change(row["Current PNL"], row["Previous PNL"]) if row["Previous PNL"] != 0 else None, axis=1)
-    ranking = ranking.sort_values("Current PNL", ascending=False).head(top_n).reset_index(drop=True)
-    if ranking.empty:
-        st.info(f"No {entity_name.lower()} P&L is available for the selected filters.")
-        return
+        for col_name in [
+            "Compare Sale", "Compare LTL", "Compare FTL",
+            "Current Sale", "Current LTL", "Current FTL", "Change",
+        ]:
+            if col_name in export_df.columns:
+                idx = export_df.columns.get_loc(col_name)
+                worksheet.set_column(idx, idx, 16, money_fmt)
 
-    max_abs_value = max(float(ranking["P&L Display"].abs().max()), 1.0)
-    prefix = "cust" if entity_name == "Customers" else "route"
-    bar_gradient = "linear-gradient(90deg,#60a5fa,#2563eb)" if prefix == "cust" else "linear-gradient(90deg,#2dd4bf,#0f766e)"
-    singular_name = "Customer" if entity_name == "Customers" else "Route"
-    rows=[]
-    for idx,row in ranking.iterrows():
-        pnl_display=float(row["P&L Display"] or 0); share_pct=float(row["Share %"] or 0)
-        bar_width=min((abs(pnl_display)/max_abs_value)*100,100); growth=row["Growth %"]
-        if pd.isna(growth): growth_html=f"<span class='{prefix}-growth new'>NEW</span>"
-        else:
-            positive=growth>=0; growth_class="up" if positive else "down"; growth_arrow="▲" if positive else "▼"
-            growth_html=f"<span class='{prefix}-growth {growth_class}'>{growth_arrow} {abs(growth):.1f}%</span>"
-        full_name=escape(str(row[group_col])); value_color="#0f172a" if pnl_display>=0 else "#dc2626"
-        rows.append("<tr>"+f"<td class='{prefix}-rank'>{idx+1}</td>"+f"<td class='{prefix}-name' title='{full_name}'>{full_name}</td>"+f"<td class='{prefix}-revenue'><div class='{prefix}-value' style='color:{value_color};'>₹{pnl_display:.2f} {escape(str(unit))}</div><div class='{prefix}-bar-track'><div class='{prefix}-bar-fill' style='width:{bar_width:.1f}%'></div></div></td>"+f"<td class='{prefix}-share'>{share_pct:.1f}%</td>"+f"<td class='{prefix}-yoy'>{growth_html}</td></tr>")
+        if "Growth %" in export_df.columns:
+            idx = export_df.columns.get_loc("Growth %")
+            # dataframe stores percent points (e.g. 25.0). Excel percent needs .25.
+            for row_no, value in enumerate(export_df["Growth %"], start=5):
+                worksheet.write_number(row_no, idx, float(value) / 100.0, pct_fmt)
+            worksheet.set_column(idx, idx, 12, pct_fmt)
 
-    table_html=f"""
-    <style>
-      .{prefix}-insight-wrap{{width:100%;overflow-x:auto;margin-top:5px;border:1px solid #e2e8f0;border-radius:10px;background:#ffffff;}}
-      .{prefix}-insight-table{{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px;color:#334155;}}
-      .{prefix}-insight-table th{{padding:7px 6px;background:#f8fafc;color:#64748b;font-size:12px;font-weight:400;text-align:left;border-bottom:1px solid #e2e8f0;white-space:nowrap;}}
-      .{prefix}-insight-table td{{padding:8px 6px;border-bottom:1px solid #edf2f7;vertical-align:middle;}}
-      .{prefix}-insight-table tr:last-child td{{border-bottom:0;}} .{prefix}-insight-table tbody tr:hover{{background:#f8fbff;}}
-      .{prefix}-rank{{width:4%;padding-left:2px!important;padding-right:2px!important;text-align:center;font-weight:400;color:#64748b;}}
-      .{prefix}-name{{width:38%;padding-left:3px!important;font-weight:400;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}}
-      .{prefix}-revenue{{width:32%;}} .{prefix}-value{{font-weight:400;margin-bottom:3px;}}
-      .{prefix}-bar-track{{width:100%;height:5px;border-radius:999px;background:#e8eef8;overflow:hidden;}}
-      .{prefix}-bar-fill{{height:5px;border-radius:999px;background:{bar_gradient};}}
-      .{prefix}-share{{width:12%;text-align:right;font-weight:400;color:#475569;}} .{prefix}-yoy{{width:14%;text-align:right;}}
-      .{prefix}-growth{{display:inline-block;min-width:50px;text-align:right;font-size:11px;font-weight:400;}}
-      .{prefix}-growth.up{{color:#16a34a;}} .{prefix}-growth.down{{color:#dc2626;}} .{prefix}-growth.new{{color:#7c3aed;}}
-    </style>
-    <div class="{prefix}-insight-wrap"><table class="{prefix}-insight-table"><colgroup><col style="width:4%"><col style="width:38%"><col style="width:32%"><col style="width:12%"><col style="width:14%"></colgroup><thead><tr><th style="text-align:center;">#</th><th>{singular_name}</th><th>P&amp;L ({escape(str(unit))})</th><th style="text-align:right;">% Share</th><th style="text-align:right;">vs LY</th></tr></thead><tbody>{''.join(rows)}</tbody></table></div>"""
-    if hasattr(st,"html"): st.html(table_html)
-    else: st.markdown(table_html,unsafe_allow_html=True)
+        worksheet.freeze_panes(5, 0)
+        worksheet.autofilter(4, 0, 4 + len(export_df), max(0, len(export_df.columns) - 1))
 
-def _render_phase1_pnl_insights(
-    start_date, end_date, prev_start, prev_end,
-    fy, prev_fy,
-    zones, circles, branches, quarters, months, valid_branches,
-    divisor, unit,
-    net_profit_df=None, net_profit_prev_df=None,
+    return output.getvalue()
+
+
+# =====================================================
+# UI helpers
+# =====================================================
+def _default_dates():
+    today = date.today()
+    # Current: first day of current month to today.
+    current_start = today.replace(day=1)
+    current_end = today
+    # Comparison: previous 12 months ending the day before current start.
+    compare_end = current_start - timedelta(days=1)
+    compare_start = (pd.Timestamp(current_start) - pd.DateOffset(years=1)).date()
+    return current_start, current_end, compare_start, compare_end
+
+
+def _render_filters(
+    current_df: pd.DataFrame,
+    compare_df: pd.DataFrame,
+    name_col: str,
+    customer_only: bool = False,
 ):
-    """Render isolated P&L insights in the same visual language as Net Profit."""
-    st.markdown("<div style='height:3px'></div>", unsafe_allow_html=True)
+    """Render filters for the selected NBD layout.
+
+    Customer Only intentionally removes Zone/Circle/Branch slicers. Login
+    data_scope is still enforced before this function, so users cannot bypass
+    their assigned geography by choosing the customer-only layout.
+    """
+    scope = st.session_state.get("data_scope", {}) or {}
+    frames = [current_df, compare_df]
+
+    if customer_only:
+        # No geography slicers in this view. The data has already been scoped
+        # by apply_role_scope(), so only operational filters remain visible.
+        zones, circles, branches = [], [], []
+        title_col, c1, c2 = st.columns([0.42, 1, 2], gap="small")
+        with title_col:
+            st.markdown("<div class='nbd-filter-inline-title'>Filters</div>", unsafe_allow_html=True)
+        with c1:
+            load_types = st.multiselect(
+                "Load Type",
+                _safe_options(frames, "LoadType"),
+                placeholder="All load types",
+                key="nbd_customer_only_load_type",
+            )
+        load_frames = [_apply_multi(frame, "LoadType", load_types) for frame in frames]
+        with c2:
+            customers = st.multiselect(
+                "Customer",
+                _safe_options(load_frames, name_col),
+                placeholder="All customers",
+                key="nbd_customer_only_customer",
+            )
+        return zones, circles, branches, load_types, customers
+
+    cols = st.columns([0.42, 1, 1, 1.1, 1, 1.5], gap="small")
+
+    with cols[0]:
+        st.markdown("<div class='nbd-filter-inline-title'>Filters</div>", unsafe_allow_html=True)
+
+    with cols[1]:
+        if scope.get("zone"):
+            zones = [scope["zone"]]
+            st.multiselect("Zone", zones, default=zones, disabled=True, key="nbd_geo_zone_locked")
+        else:
+            zones = st.multiselect(
+                "Zone", _safe_options(frames, "Zone"), placeholder="All zones", key="nbd_geo_zone"
+            )
+
+    zone_frames = [_apply_multi(frame, "Zone", zones) for frame in frames]
+
+    with cols[2]:
+        if scope.get("circle"):
+            circles = [scope["circle"]]
+            st.multiselect("Circle", circles, default=circles, disabled=True, key="nbd_geo_circle_locked")
+        else:
+            circles = st.multiselect(
+                "Circle", _safe_options(zone_frames, "Circle"), placeholder="All circles", key="nbd_geo_circle"
+            )
+
+    circle_frames = [_apply_multi(frame, "Circle", circles) for frame in zone_frames]
+
+    with cols[3]:
+        if scope.get("branch"):
+            branches = [scope["branch"]]
+            st.multiselect("Branch", branches, default=branches, disabled=True, key="nbd_geo_branch_locked")
+        else:
+            branches = st.multiselect(
+                "Branch", _safe_options(circle_frames, "Branch"), placeholder="All branches", key="nbd_geo_branch"
+            )
+
+    branch_frames = [_apply_multi(frame, "Branch", branches) for frame in circle_frames]
+
+    with cols[4]:
+        load_types = st.multiselect(
+            "Load Type",
+            _safe_options(branch_frames, "LoadType"),
+            placeholder="All load types",
+            key="nbd_geo_load_type",
+        )
+
+    load_frames = [_apply_multi(frame, "LoadType", load_types) for frame in branch_frames]
+
+    with cols[5]:
+        customers = st.multiselect(
+            "Customer",
+            _safe_options(load_frames, name_col),
+            placeholder="All customers",
+            key="nbd_geo_customer",
+        )
+
+    return zones, circles, branches, load_types, customers
+
+
+# =====================================================
+# Main page
+# =====================================================
+def show_NBDAnalysis() -> None:
+    apply_nbd_style()
+
+    default_current_start, default_current_end, default_compare_start, default_compare_end = _default_dates()
 
     with st.container(border=True):
-        title_col, view_col = st.columns([5, 1], gap="small", vertical_alignment="center")
+        title_col, mode_col = st.columns([5.2, 1.2], vertical_alignment="center")
         with title_col:
             st.markdown(
-                '<div class="np-section-title" style="margin-bottom:1px;">P&amp;L Insights</div>'
-                '<div class="np-subtitle" style="margin:0 0 1px 1px;">'
-                'Operational P&amp;L analysis using the active Net Profit filters'
-                '</div>',
+                "<div class='nbd-title'>NBD Customer Analysis</div>"
+                "<div class='nbd-subtitle'>Independent manual-period comparison for NEW, LOST and REGULAR customers.</div>",
                 unsafe_allow_html=True,
+            )
+        with mode_col:
+            st.markdown("<span class='nbd-period-badge'>MANUAL PERIOD MODE</span>", unsafe_allow_html=True)
+
+        d1, d2, d3, d4, view_col, layout_col, run_col = st.columns(
+            [1, 1, 1, 1, .78, 1.18, 1.05], gap="small", vertical_alignment="bottom"
+        )
+
+        with d1:
+            current_start = st.date_input(
+                "Current From",
+                value=st.session_state.get("nbd_current_start", default_current_start),
+                key="nbd_current_start",
+                format="DD/MM/YYYY",
+            )
+        with d2:
+            current_end = st.date_input(
+                "Current To",
+                value=st.session_state.get("nbd_current_end", default_current_end),
+                key="nbd_current_end",
+                format="DD/MM/YYYY",
+            )
+        with d3:
+            compare_start = st.date_input(
+                "Comparison From",
+                value=st.session_state.get("nbd_compare_start", default_compare_start),
+                key="nbd_compare_start",
+                format="DD/MM/YYYY",
+            )
+        with d4:
+            compare_end = st.date_input(
+                "Comparison To",
+                value=st.session_state.get("nbd_compare_end", default_compare_end),
+                key="nbd_compare_end",
+                format="DD/MM/YYYY",
             )
         with view_col:
-            view_options = ["Origin", "Destination"]
-            insight_view = st.session_state.get("np_pnl_insight_view_value", "Origin")
-            if insight_view not in view_options:
-                insight_view = "Origin"
-                st.session_state["np_pnl_insight_view_value"] = "Origin"
+            view_type = st.selectbox(
+                "View",
+                ["origin", "destination"],
+                format_func=lambda x: "Origin" if x == "origin" else "Destination",
+                key="nbd_view_type",
+            )
+        with layout_col:
+            report_layout = st.selectbox(
+                "Report Layout",
+                ["Customer + Geography", "Customer Only"],
+                key="nbd_report_layout",
+                help="Customer Only removes Zone, Circle and Branch from filters and output.",
+            )
+        with run_col:
+            run_report = st.button("▶ Run NBD Report", type="primary", use_container_width=True)
 
-            view_btn_cols = st.columns(2, gap="small")
-            for view_index, view_label in enumerate(view_options):
-                with view_btn_cols[view_index]:
-                    if st.button(
-                        view_label,
-                        key=f"np_pnl_view_btn_{view_index}",
-                        type="primary" if insight_view == view_label else "secondary",
-                        use_container_width=True,
-                    ):
-                        st.session_state["np_pnl_insight_view_value"] = view_label
-                        st.rerun()
-
-    # Load each P&L insight view only once per committed period. Streamlit reruns
-    # the page for every widget change, but Zone/Circle/Branch/Quarter/Month
-    # filters must reuse the already-loaded data instead of calling the loader.
-    insight_period_key = (
-        str(start_date), str(end_date), str(prev_start), str(prev_end), insight_view
+    signature = (
+        current_start.isoformat(), current_end.isoformat(),
+        compare_start.isoformat(), compare_end.isoformat(), view_type,
     )
-    insight_cache_key = f"np_pnl_insight_payload_{insight_view.lower()}"
-    insight_payload = st.session_state.get(insight_cache_key)
 
-    if not insight_payload or insight_payload.get("period_key") != insight_period_key:
+    if current_start > current_end:
+        st.error("Current From cannot be after Current To.")
+        return
+    if compare_start > compare_end:
+        st.error("Comparison From cannot be after Comparison To.")
+        return
+
+    if run_report:
+        st.session_state["nbd_report_ready"] = False
         try:
-            with st.spinner(f"Loading {insight_view} P&L insights..."):
-                raw_insight_df, raw_insight_prev_df = load_pnl_data_pair(
-                    start_date, end_date, prev_start, prev_end, insight_view
-                )
-            st.session_state[insight_cache_key] = {
-                "period_key": insight_period_key,
-                "current": raw_insight_df,
-                "previous": raw_insight_prev_df,
-            }
+            with st.spinner("Loading NBD current and comparison periods..."):
+                current_df = _load_period(current_start.isoformat(), current_end.isoformat(), view_type)
+                compare_df = _load_period(compare_start.isoformat(), compare_end.isoformat(), view_type)
         except Exception as exc:
-            st.warning(f"P&L insights could not be loaded: {exc}")
-            return pd.DataFrame(), pd.DataFrame()
-    else:
-        raw_insight_df = insight_payload.get("current", pd.DataFrame())
-        raw_insight_prev_df = insight_payload.get("previous", pd.DataFrame())
+            st.error(f"Unable to load NBD data: {exc}")
+            return
 
-    insight_df = _normalise_insight_pnl(raw_insight_df)
-    insight_prev_df = _normalise_insight_pnl(raw_insight_prev_df)
-    if insight_df.empty or not {"PNL", "FIN_MONTH"}.issubset(insight_df.columns):
-        st.info("P&L insight data is not available for the selected financial year.")
-        return pd.DataFrame(), pd.DataFrame()
+        ok, message = _validate_columns(current_df, view_type, "Current period")
+        if not ok:
+            st.error(message)
+            return
+        ok, message = _validate_columns(compare_df, view_type, "Comparison period")
+        if not ok:
+            st.error(message)
+            return
 
-    insight_df = _apply_insight_values(insight_df, "branch", valid_branches)
-    if not insight_prev_df.empty:
-        insight_prev_df = _apply_insight_values(insight_prev_df, "branch", valid_branches)
+        current_df = apply_role_scope(current_df)
+        compare_df = apply_role_scope(compare_df)
 
-    # Same FY / Zone / Circle / Branch / Quarter / Month scope. No LOADTYPE logic.
-    insight_df = _filter_pnl_insight_scope(insight_df, zones, circles, branches, quarters, months)
-    if not insight_prev_df.empty:
-        insight_prev_df = _filter_pnl_insight_scope(
-            insight_prev_df, zones, circles, branches, quarters, months
-        )
+        st.session_state["nbd_current_df"] = current_df
+        st.session_state["nbd_compare_df"] = compare_df
+        st.session_state["nbd_run_signature"] = signature
+        st.session_state["nbd_report_ready"] = True
 
-    if insight_df.empty:
-        st.info("No P&L insight data found for the selected Net Profit filters.")
-        return pd.DataFrame(), pd.DataFrame()
+    if not st.session_state.get("nbd_report_ready", False):
+        st.info("Select the four manual dates and click ▶ Run NBD Report.")
+        return
 
-    trend_col, zone_col = st.columns([1, 1], gap="medium")
-    with trend_col:
-        with st.container(border=True):
-            title_left, grain_col = st.columns([2.3, 1.7], gap="small", vertical_alignment="center")
-            with title_left:
-                st.markdown('<div class="np-section-title">P&amp;L Performance Trend</div>', unsafe_allow_html=True)
-            with grain_col:
-                trend_options = ["Daily", "Weekly", "Monthly", "Quarterly"]
-                trend_type = st.session_state.get("np_pnl_insight_trend_type", "Monthly")
-                if trend_type not in trend_options:
-                    trend_type = "Monthly"
-                    st.session_state["np_pnl_insight_trend_type"] = "Monthly"
-                trend_btn_cols = st.columns(len(trend_options), gap="small")
-                for trend_index, trend_label in enumerate(trend_options):
-                    with trend_btn_cols[trend_index]:
-                        if st.button(
-                            trend_label, key=f"np_pnl_trend_btn_{trend_index}",
-                            type="primary" if trend_type == trend_label else "secondary",
-                            use_container_width=True,
-                        ):
-                            st.session_state["np_pnl_insight_trend_type"] = trend_label
-                            st.rerun()
-            trend_df = _build_pnl_insight_trend(
-                insight_df, insight_prev_df, trend_type, start_date, prev_start
-            )
-            trend_df["CY"] = pd.to_numeric(trend_df["PNL"], errors="coerce").fillna(0.0) / divisor
-            trend_df["LY"] = pd.to_numeric(trend_df["PY_PNL"], errors="coerce").fillna(0.0) / divisor
-            trend_df["Growth %"] = trend_df.apply(
-                lambda row: pct_change(row["CY"], row["LY"]), axis=1
-            )
-            trend_df["Growth Label"] = trend_df["Growth %"].apply(
-                lambda value: f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
-            )
+    if st.session_state.get("nbd_run_signature") != signature:
+        st.warning("Period or View has changed. Click ▶ Run NBD Report to refresh the data.")
+        return
 
-            fig_trend = go.Figure()
-            fig_trend.add_trace(go.Bar(
-                x=trend_df["Period"], y=trend_df["LY"], name=f"LY ({prev_fy})",
-                marker=dict(color="#cbd5e1", line=dict(color="#94a3b8", width=1.2)),
-                text=trend_df["LY"], texttemplate="%{text:.2f}", textposition="outside",
-                textfont=dict(size=10, color="#475569", family="Arial"), cliponaxis=False,
-                hovertemplate=f"<b>%{{x}}</b><br>LY P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
-            ))
-            fig_trend.add_trace(go.Bar(
-                x=trend_df["Period"], y=trend_df["CY"], name=f"Current ({fy})",
-                marker=dict(color="#2563eb", line=dict(color="#1d4ed8", width=1.2)),
-                text=trend_df["CY"], texttemplate="%{text:.2f}", textposition="outside",
-                textfont=dict(size=10, color="#2563eb", family="Arial"), cliponaxis=False,
-                hovertemplate=f"<b>%{{x}}</b><br>CY P&L: ₹%{{y:.2f}} {unit}<extra></extra>",
-            ))
+    current_df = st.session_state.get("nbd_current_df", pd.DataFrame())
+    compare_df = st.session_state.get("nbd_compare_df", pd.DataFrame())
+    config = _customer_config(view_type)
+    code_col = config["code"]
+    name_col = config["name"]
 
-            trend_abs_max = max(
-                float(pd.concat([trend_df["CY"].abs(), trend_df["LY"].abs()]).max() or 0),
-                1.0,
-            )
-            if len(trend_df) <= 40:
-                for _, trend_row in trend_df.iterrows():
-                    growth_value = float(trend_row["Growth %"] or 0)
-                    current_value = float(trend_row["CY"] or 0)
-                    previous_value = float(trend_row["LY"] or 0)
-                    positive_top = max(current_value, previous_value, 0)
-                    negative_bottom = min(current_value, previous_value, 0)
-                    annotation_gap = trend_abs_max * (0.20 if trend_type == "Monthly" else 0.14)
-                    annotation_y = positive_top + annotation_gap if positive_top > 0 else negative_bottom - annotation_gap
-                    fig_trend.add_annotation(
-                        x=trend_row["Period"], y=annotation_y,
-                        text=trend_row["Growth Label"], showarrow=False,
-                        font=dict(
-                            size=10,
-                            color="#166534" if growth_value >= 0 else "#dc2626",
-                            family="Arial",
-                        ),
-                    )
+    customer_only = report_layout == "Customer Only"
 
-            fig_trend.add_hline(y=0, line_width=1, line_color="#64748b")
-            fig_trend.update_layout(
-                barmode="group", height=300, margin=dict(l=6, r=6, t=34, b=4),
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#fbfdff",
-                legend=dict(orientation="h", yanchor="bottom", y=1.04, x=0, font=dict(size=10)),
-                xaxis_title="", yaxis_title=f"P&L ({unit})", bargap=0.22, bargroupgap=0.08,
-            )
-            fig_trend.update_xaxes(showgrid=False)
-            fig_trend.update_yaxes(showgrid=False)
-            st.plotly_chart(fig_trend, width="stretch", config={"displayModeBar": False})
-
-    with zone_col:
-        with st.container(border=True):
-            title_col, filter_col = st.columns([2, 2], gap="small", vertical_alignment="center")
-
-            np_trend_options = ["Monthly", "Quarterly"]
-            np_trend_type = st.session_state.get("np_net_profit_performance_trend_value", "Monthly")
-            if np_trend_type not in np_trend_options:
-                np_trend_type = "Monthly"
-                st.session_state["np_net_profit_performance_trend_value"] = "Monthly"
-
-            with title_col:
-                st.markdown(
-                    '<div style="font-size:14px;font-weight:400;color:#0f172a;">Net Profit Performance Trend</div>',
-                    unsafe_allow_html=True,
-                )
-
-            with filter_col:
-                np_trend_btn_cols = st.columns(len(np_trend_options), gap="small")
-                for trend_index, trend_label in enumerate(np_trend_options):
-                    with np_trend_btn_cols[trend_index]:
-                        if st.button(
-                            trend_label,
-                            key=f"np_pnl_trend_btn_np_perf_{trend_index}",
-                            type="primary" if np_trend_type == trend_label else "secondary",
-                            use_container_width=True,
-                        ):
-                            st.session_state["np_net_profit_performance_trend_value"] = trend_label
-                            st.rerun()
-
-            def _build_np_trend(current_df, previous_df, trend_type):
-                if current_df is None or current_df.empty or "NET_PROFIT" not in current_df.columns:
-                    return pd.DataFrame(columns=["Period", "CY", "LY"]), "No Net Profit data available."
-
-                current_df = current_df.copy()
-                previous_df = previous_df.copy() if previous_df is not None else pd.DataFrame()
-
-                date_candidates = ["grdt", "GRDT", "grdate", "GRDATE", "bookingdate", "BOOKINGDATE", "date", "DATE"]
-                cur_date = next((c for c in date_candidates if c in current_df.columns), None)
-                prev_date = next((c for c in date_candidates if c in previous_df.columns), None)
-
-                if trend_type in ("Daily", "Weekly"):
-                    if cur_date is None:
-                        return pd.DataFrame(columns=["Period", "CY", "LY"]), f"{trend_type} Net Profit cannot be calculated because no date column is available."
-
-                    cur = current_df[[cur_date, "NET_PROFIT"]].copy()
-                    cur[cur_date] = pd.to_datetime(cur[cur_date], errors="coerce")
-                    cur = cur[cur[cur_date].notna()]
-                    if cur.empty:
-                        return pd.DataFrame(columns=["Period", "CY", "LY"]), f"No {trend_type.lower()} Net Profit data available."
-
-                    if trend_type == "Daily":
-                        cur["Key"] = (cur[cur_date].dt.normalize() - pd.Timestamp(start_date)).dt.days
-                        cy = cur.groupby("Key", as_index=False)["NET_PROFIT"].sum().rename(columns={"NET_PROFIT": "CY"})
-                        cy["Period"] = (pd.Timestamp(start_date) + pd.to_timedelta(cy["Key"], unit="D")).dt.strftime("%d %b")
-                    else:
-                        cur["Key"] = ((cur[cur_date].dt.normalize() - pd.Timestamp(start_date)).dt.days // 7)
-                        cy = cur.groupby("Key", as_index=False)["NET_PROFIT"].sum().rename(columns={"NET_PROFIT": "CY"})
-                        cy["Period"] = "W" + (cy["Key"] + 1).astype(str)
-
-                    if not previous_df.empty and prev_date and "NET_PROFIT" in previous_df.columns:
-                        prev = previous_df[[prev_date, "NET_PROFIT"]].copy()
-                        prev[prev_date] = pd.to_datetime(prev[prev_date], errors="coerce")
-                        prev = prev[prev[prev_date].notna()]
-                        if trend_type == "Daily":
-                            prev["Key"] = (prev[prev_date].dt.normalize() - pd.Timestamp(prev_start)).dt.days
-                        else:
-                            prev["Key"] = ((prev[prev_date].dt.normalize() - pd.Timestamp(prev_start)).dt.days // 7)
-                        ly = prev.groupby("Key", as_index=False)["NET_PROFIT"].sum().rename(columns={"NET_PROFIT": "LY"})
-                    else:
-                        ly = pd.DataFrame(columns=["Key", "LY"])
-
-                    result = cy.merge(ly, on="Key", how="left")
-                    result["LY"] = pd.to_numeric(result["LY"], errors="coerce").fillna(0.0)
-                    return result[["Period", "CY", "LY"]], None
-
-                if trend_type == "Quarterly":
-                    if "QUARTER" not in current_df.columns:
-                        return pd.DataFrame(columns=["Period", "CY", "LY"]), "Quarter is unavailable in Net Profit data."
-                    cy = current_df.groupby("QUARTER", as_index=False)["NET_PROFIT"].sum().rename(columns={"QUARTER": "Period", "NET_PROFIT": "CY"})
-                    cy["Period"] = pd.Categorical(cy["Period"], categories=QUARTER_ORDER, ordered=True)
-                    cy = cy.sort_values("Period")
-                    cy["Key"] = cy["Period"].astype(str)
-                    if not previous_df.empty and "QUARTER" in previous_df.columns:
-                        ly = previous_df.groupby("QUARTER", as_index=False)["NET_PROFIT"].sum().rename(columns={"QUARTER": "Key", "NET_PROFIT": "LY"})
-                    else:
-                        ly = pd.DataFrame(columns=["Key", "LY"])
-                else:
-                    if "MONTH" not in current_df.columns:
-                        return pd.DataFrame(columns=["Period", "CY", "LY"]), "Month is unavailable in Net Profit data."
-                    cy = current_df.groupby("MONTH", as_index=False)["NET_PROFIT"].sum().rename(columns={"MONTH": "Period", "NET_PROFIT": "CY"})
-                    cy["Period"] = pd.Categorical(cy["Period"], categories=MONTH_ORDER, ordered=True)
-                    cy = cy.sort_values("Period")
-                    cy["Key"] = cy["Period"].astype(str)
-                    if not previous_df.empty and "MONTH" in previous_df.columns:
-                        ly = previous_df.groupby("MONTH", as_index=False)["NET_PROFIT"].sum().rename(columns={"MONTH": "Key", "NET_PROFIT": "LY"})
-                    else:
-                        ly = pd.DataFrame(columns=["Key", "LY"])
-
-                result = cy.merge(ly, on="Key", how="left")
-                result["LY"] = pd.to_numeric(result["LY"], errors="coerce").fillna(0.0)
-                return result[["Period", "CY", "LY"]], None
-
-            np_trend_df, np_trend_error = _build_np_trend(net_profit_df, net_profit_prev_df, np_trend_type)
-
-            if np_trend_error:
-                st.info(np_trend_error)
-            elif np_trend_df.empty:
-                st.info("No Net Profit trend data is available for the selected filters.")
-            else:
-                np_trend_df["CY Display"] = pd.to_numeric(np_trend_df["CY"], errors="coerce").fillna(0.0) / divisor
-                np_trend_df["LY Display"] = pd.to_numeric(np_trend_df["LY"], errors="coerce").fillna(0.0) / divisor
-                np_trend_df["Growth %"] = np_trend_df.apply(lambda row: pct_change(row["CY"], row["LY"]), axis=1)
-                np_trend_df["Growth Label"] = np_trend_df["Growth %"].apply(
-                    lambda value: f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
-                )
-
-                fig_np_trend = go.Figure()
-                fig_np_trend.add_trace(go.Bar(
-                    x=np_trend_df["Period"], y=np_trend_df["LY Display"],
-                    name=f"LY ({prev_fy})",
-                    marker=dict(color="#d8dee9", line=dict(color="#94a3b8", width=1.2)),
-                    text=np_trend_df["LY Display"], texttemplate="%{text:.2f}", textposition="outside",
-                    textfont=dict(size=10, color="#475569", family="Arial"), cliponaxis=False,
-                    hovertemplate=f"<b>%{{x}}</b><br>LY Net Profit: ₹%{{y:.2f}} {unit}<extra></extra>",
-                ))
-                fig_np_trend.add_trace(go.Bar(
-                    x=np_trend_df["Period"], y=np_trend_df["CY Display"],
-                    name=f"Current ({fy})",
-                    marker=dict(color="#14b8a6", line=dict(color="#0f766e", width=1.3)),
-                    text=np_trend_df["CY Display"], texttemplate="%{text:.2f}", textposition="outside",
-                    textfont=dict(size=10, color="#0f766e", family="Arial"), cliponaxis=False,
-                    hovertemplate=f"<b>%{{x}}</b><br>Net Profit: ₹%{{y:.2f}} {unit}<extra></extra>",
-                ))
-
-                trend_abs_max = max(float(pd.concat([np_trend_df["CY Display"].abs(), np_trend_df["LY Display"].abs()]).max() or 0), 1.0)
-                if len(np_trend_df) <= 40:
-                    for _, trend_row in np_trend_df.iterrows():
-                        growth_value = float(trend_row["Growth %"] or 0)
-                        current_value = float(trend_row["CY Display"] or 0)
-                        previous_value = float(trend_row["LY Display"] or 0)
-                        positive_top = max(current_value, previous_value, 0)
-                        negative_bottom = min(current_value, previous_value, 0)
-                        gap = trend_abs_max * (0.20 if np_trend_type == "Monthly" else 0.14)
-                        annotation_y = positive_top + gap if positive_top > 0 else negative_bottom - gap
-                        fig_np_trend.add_annotation(
-                            x=trend_row["Period"], y=annotation_y,
-                            text=trend_row["Growth Label"], showarrow=False,
-                            font=dict(size=10, color="#15803d" if growth_value >= 0 else "#dc2626", family="Arial"),
-                        )
-
-                fig_np_trend.add_hline(y=0, line_width=1, line_color="#64748b")
-                fig_np_trend.update_layout(
-                    barmode="group", height=300, margin=dict(l=6, r=6, t=34, b=4),
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#fbfdff",
-                    legend=dict(orientation="h", yanchor="bottom", y=1.04, x=0, font=dict(size=10)),
-                    xaxis_title="", yaxis_title=f"Net Profit ({unit})",
-                    bargap=0.22, bargroupgap=0.08,
-                )
-                fig_np_trend.update_xaxes(showgrid=False)
-                fig_np_trend.update_yaxes(showgrid=False)
-                st.plotly_chart(fig_np_trend, width="stretch", config={"displayModeBar": False})
-
-
-    # P&L and Net Profit period-growth charts above the Branch Monthly Avg insight.
-    pnl_period_col, np_period_col = st.columns([1, 1], gap="medium")
-
-    def _period_growth(values):
-        result = pd.Series(index=values.index, dtype="float64")
-        if len(values):
-            result.iloc[0] = float("nan")
-        for idx in range(1, len(values)):
-            previous_value = float(values.iloc[idx - 1] or 0)
-            current_value = float(values.iloc[idx] or 0)
-            result.iloc[idx] = (
-                ((current_value - previous_value) / abs(previous_value)) * 100
-                if previous_value != 0 else float("nan")
-            )
-        return result
-
-    def _growth_axis_range(values):
-        clean = pd.to_numeric(values, errors="coerce").dropna()
-        if clean.empty:
-            return [-100, 100]
-        low = float(clean.min())
-        high = float(clean.max())
-        pad = max((high - low) * 0.30, 18.0)
-        return [min(low - pad, -10), max(high + pad, 10)]
-
-    with pnl_period_col:
-        # --------------------------------------------------------
-        # P&L W / M / Q
-        # --------------------------------------------------------
-        with st.container(border=True):
-            pnl_period_options = ["W", "M", "Q"]
-            pnl_period = st.session_state.get("np_pnl_period_value", "M")
-            if pnl_period not in pnl_period_options:
-                pnl_period = "M"
-                st.session_state["np_pnl_period_value"] = "M"
-
-            pnl_title_col, pnl_btn_col = st.columns(
-                [2.4, 1.0], gap="small", vertical_alignment="center"
-            )
-            pnl_period_name = {
-                "W": "Weekly",
-                "M": "Monthly",
-                "Q": "Quarterly",
-            }[pnl_period]
-
-            with pnl_title_col:
-                st.markdown(
-                    f'<div class="np-section-title">{pnl_period_name} '
-                    f'P&amp;L &amp; Growth</div>',
-                    unsafe_allow_html=True,
-                )
-
-            with pnl_btn_col:
-                pnl_btn_cols = st.columns(3, gap="small")
-                for period_index, period_label in enumerate(pnl_period_options):
-                    with pnl_btn_cols[period_index]:
-                        if st.button(
-                            period_label,
-                            key=f"np_pnl_trend_btn_pnl_period_{period_index}",
-                            type="primary" if pnl_period == period_label else "secondary",
-                            use_container_width=True,
-                        ):
-                            st.session_state["np_pnl_period_value"] = period_label
-                            st.rerun()
-
-            pnl_period_df = pd.DataFrame()
-            pnl_period_error = None
-
-            if pnl_period == "W":
-                if "grdt" not in insight_df.columns:
-                    pnl_period_error = "Weekly P&L is unavailable because GR date is missing."
-                else:
-                    pnl_week = insight_df[["grdt", "PNL"]].copy()
-                    pnl_week["grdt"] = pd.to_datetime(
-                        pnl_week["grdt"], errors="coerce"
-                    )
-                    pnl_week = pnl_week[pnl_week["grdt"].notna()]
-                    if pnl_week.empty:
-                        pnl_period_error = "Weekly P&L is unavailable for the selected filters."
-                    else:
-                        pnl_week["Week No"] = (
-                            (
-                                pnl_week["grdt"].dt.normalize()
-                                - pd.Timestamp(start_date)
-                            ).dt.days // 7
-                        ).astype(int) + 1
-                        pnl_period_df = (
-                            pnl_week.groupby("Week No", as_index=False)["PNL"]
-                            .sum()
-                            .sort_values("Week No")
-                            .reset_index(drop=True)
-                        )
-                        pnl_period_df["Period"] = (
-                            "W" + pnl_period_df["Week No"].astype(str)
-                        )
-
-            elif pnl_period == "Q":
-                if "QUARTER" not in insight_df.columns:
-                    pnl_period_error = "Quarterly P&L is unavailable."
-                else:
-                    pnl_period_df = (
-                        insight_df.groupby("QUARTER", as_index=False)["PNL"]
-                        .sum()
-                    )
-                    pnl_period_df["QUARTER"] = pd.Categorical(
-                        pnl_period_df["QUARTER"],
-                        categories=QUARTER_ORDER,
-                        ordered=True,
-                    )
-                    pnl_period_df = (
-                        pnl_period_df.sort_values("QUARTER")
-                        .reset_index(drop=True)
-                    )
-                    pnl_period_df["Period"] = pnl_period_df["QUARTER"].astype(str)
-
-            else:
-                pnl_period_df = (
-                    insight_df.groupby("MONTH", as_index=False)["PNL"]
-                    .sum()
-                )
-                pnl_period_df["MONTH"] = pd.Categorical(
-                    pnl_period_df["MONTH"],
-                    categories=MONTH_ORDER,
-                    ordered=True,
-                )
-                pnl_period_df = (
-                    pnl_period_df.sort_values("MONTH")
-                    .reset_index(drop=True)
-                )
-                pnl_period_df["Period"] = pnl_period_df["MONTH"].astype(str)
-
-            if pnl_period_error:
-                st.info(pnl_period_error)
-            elif pnl_period_df.empty:
-                st.info(f"No {pnl_period_name.lower()} P&L data is available.")
-            else:
-                pnl_period_df["Display"] = (
-                    pd.to_numeric(
-                        pnl_period_df["PNL"], errors="coerce"
-                    ).fillna(0.0) / divisor
-                )
-                pnl_period_df["Growth"] = _period_growth(
-                    pnl_period_df["PNL"]
-                )
-                pnl_period_df["Growth Label"] = pnl_period_df["Growth"].apply(
-                    lambda value: (
-                        f"{'▲' if value >= 0 else '▼'} {abs(value):.1f}%"
-                        if pd.notna(value) else ""
-                    )
-                )
-                pnl_growth_colors = [
-                    "#16a34a"
-                    if pd.notna(value) and value >= 0
-                    else "#dc2626"
-                    for value in pnl_period_df["Growth"]
-                ]
-
-                fig_period_pnl = go.Figure()
-                fig_period_pnl.add_trace(
-                    go.Bar(
-                        x=pnl_period_df["Period"],
-                        y=pnl_period_df["Display"],
-                        name="P&L",
-                        marker=dict(
-                            color="#99f6e4",
-                            line=dict(color="#0f766e", width=1.4),
-                        ),
-                        text=pnl_period_df["Display"],
-                        texttemplate="₹%{text:.2f}",
-                        textposition="outside",
-                        textfont=dict(
-                            size=9, color="#0f766e", family="Arial"
-                        ),
-                        cliponaxis=False,
-                        hovertemplate=(
-                            f"<b>%{{x}}</b><br>"
-                            f"P&L: ₹%{{y:.2f}} {unit}<extra></extra>"
-                        ),
-                    )
-                )
-                fig_period_pnl.add_trace(
-                    go.Scatter(
-                        x=pnl_period_df["Period"],
-                        y=pnl_period_df["Growth"],
-                        name=f"{pnl_period_name} Growth",
-                        mode="lines+markers+text",
-                        yaxis="y2",
-                        line=dict(color="#7c3aed", width=2.6),
-                        marker=dict(
-                            size=7,
-                            color=pnl_growth_colors,
-                            line=dict(color="#ffffff", width=1.5),
-                        ),
-                        text=pnl_period_df["Growth Label"],
-                        textposition="top center",
-                        textfont=dict(size=10, color="#6d28d9"),
-                        connectgaps=False,
-                        hovertemplate=(
-                            f"<b>%{{x}}</b><br>{pnl_period_name} "
-                            "Growth: %{y:.1f}%<extra></extra>"
-                        ),
-                    )
-                )
-
-                fig_period_pnl.add_hline(
-                    y=0, line_color="#94a3b8", line_width=1
-                )
-                fig_period_pnl.update_layout(
-                    height=235,
-                    margin=dict(l=4, r=10, t=34, b=2),
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="#fbfdff",
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.03,
-                        x=0,
-                        font=dict(size=9),
-                    ),
-                    bargap=0.30,
-                    xaxis=dict(showgrid=False, tickfont=dict(size=9)),
-                    yaxis=dict(
-                        title=f"P&L ({unit})",
-                        showgrid=False,
-                        tickfont=dict(size=9),
-                        title_font=dict(size=10),
-                    ),
-                    yaxis2=dict(
-                        title="Growth %",
-                        overlaying="y",
-                        side="right",
-                        showgrid=False,
-                        ticksuffix="%",
-                        tickfont=dict(size=9),
-                        title_font=dict(size=10),
-                        range=_growth_axis_range(
-                            pnl_period_df["Growth"]
-                        ),
-                    ),
-                )
-                st.plotly_chart(
-                    fig_period_pnl,
-                    width="stretch",
-                    config={"displayModeBar": False},
-                )
-
-    with np_period_col:
-        # --------------------------------------------------------
-        # NET PROFIT W / M / Q
-        # --------------------------------------------------------
-        with st.container(border=True):
-            np_period_options = ["M", "Q"]
-            np_period = st.session_state.get("np_net_profit_period_value", "M")
-            if np_period not in np_period_options:
-                np_period = "M"
-                st.session_state["np_net_profit_period_value"] = "M"
-
-            np_title_col, np_btn_col = st.columns(
-                [2.4, 1.0], gap="small", vertical_alignment="center"
-            )
-            np_period_name = {
-                "W": "Weekly",
-                "M": "Monthly",
-                "Q": "Quarterly",
-            }[np_period]
-
-            with np_title_col:
-                st.markdown(
-                    f'<div class="np-section-title">{np_period_name} '
-                    f'Net Profit &amp; Growth</div>',
-                    unsafe_allow_html=True,
-                )
-
-            with np_btn_col:
-                np_btn_cols = st.columns(3, gap="small")
-                for period_index, period_label in enumerate(np_period_options):
-                    with np_btn_cols[period_index]:
-                        if st.button(
-                            period_label,
-                            key=f"np_pnl_trend_btn_netprofit_period_{period_index}",
-                            type="primary" if np_period == period_label else "secondary",
-                            use_container_width=True,
-                        ):
-                            st.session_state[
-                                "np_net_profit_period_value"
-                            ] = period_label
-                            st.rerun()
-
-            if (
-                net_profit_df is None
-                or net_profit_df.empty
-                or "NET_PROFIT" not in net_profit_df.columns
-            ):
-                st.info("Net Profit trend is not available for the selected filters.")
-            else:
-                net_period_df = pd.DataFrame()
-                net_period_error = None
-
-                if np_period == "W":
-                    net_date_col = _find_column(
-                        net_profit_df,
-                        "grdt",
-                        "grdate",
-                        "bookingdate",
-                        "date",
-                    )
-                    if net_date_col is None:
-                        net_period_error = (
-                            "Weekly Net Profit cannot be calculated from the "
-                            "current Net Profit dataset because it has no "
-                            "transaction/date column."
-                        )
-                    else:
-                        net_week = net_profit_df[
-                            [net_date_col, "NET_PROFIT"]
-                        ].copy()
-                        net_week[net_date_col] = pd.to_datetime(
-                            net_week[net_date_col], errors="coerce"
-                        )
-                        net_week = net_week[
-                            net_week[net_date_col].notna()
-                        ]
-                        if net_week.empty:
-                            net_period_error = (
-                                "Weekly Net Profit is unavailable for the "
-                                "selected filters."
-                            )
-                        else:
-                            net_week["Week No"] = (
-                                (
-                                    net_week[net_date_col].dt.normalize()
-                                    - pd.Timestamp(start_date)
-                                ).dt.days // 7
-                            ).astype(int) + 1
-                            net_period_df = (
-                                net_week.groupby(
-                                    "Week No", as_index=False
-                                )["NET_PROFIT"]
-                                .sum()
-                                .sort_values("Week No")
-                                .reset_index(drop=True)
-                            )
-                            net_period_df["Period"] = (
-                                "W" + net_period_df["Week No"].astype(str)
-                            )
-
-                elif np_period == "Q":
-                    if "QUARTER" not in net_profit_df.columns:
-                        net_period_error = (
-                            "Quarterly Net Profit is unavailable."
-                        )
-                    else:
-                        net_period_df = (
-                            net_profit_df.groupby(
-                                "QUARTER", as_index=False
-                            )["NET_PROFIT"]
-                            .sum()
-                        )
-                        net_period_df["QUARTER"] = pd.Categorical(
-                            net_period_df["QUARTER"],
-                            categories=QUARTER_ORDER,
-                            ordered=True,
-                        )
-                        net_period_df = (
-                            net_period_df.sort_values("QUARTER")
-                            .reset_index(drop=True)
-                        )
-                        net_period_df["Period"] = (
-                            net_period_df["QUARTER"].astype(str)
-                        )
-
-                else:
-                    if "MONTH" not in net_profit_df.columns:
-                        net_period_error = (
-                            "Monthly Net Profit is unavailable."
-                        )
-                    else:
-                        net_period_df = (
-                            net_profit_df.groupby(
-                                "MONTH", as_index=False
-                            )["NET_PROFIT"]
-                            .sum()
-                        )
-                        net_period_df["MONTH"] = pd.Categorical(
-                            net_period_df["MONTH"],
-                            categories=MONTH_ORDER,
-                            ordered=True,
-                        )
-                        net_period_df = (
-                            net_period_df.sort_values("MONTH")
-                            .reset_index(drop=True)
-                        )
-                        net_period_df["Period"] = (
-                            net_period_df["MONTH"].astype(str)
-                        )
-
-                if net_period_error:
-                    st.info(net_period_error)
-                elif net_period_df.empty:
-                    st.info(
-                        f"No {np_period_name.lower()} Net Profit data is available."
-                    )
-                else:
-                    net_period_df["Display"] = (
-                        pd.to_numeric(
-                            net_period_df["NET_PROFIT"],
-                            errors="coerce",
-                        ).fillna(0.0) / divisor
-                    )
-                    net_period_df["Growth"] = _period_growth(
-                        net_period_df["NET_PROFIT"]
-                    )
-                    net_period_df["Growth Label"] = (
-                        net_period_df["Growth"].apply(
-                            lambda value: (
-                                f"{'▲' if value >= 0 else '▼'} "
-                                f"{abs(value):.1f}%"
-                                if pd.notna(value) else ""
-                            )
-                        )
-                    )
-                    net_growth_colors = [
-                        "#16a34a"
-                        if pd.notna(value) and value >= 0
-                        else "#dc2626"
-                        for value in net_period_df["Growth"]
-                    ]
-
-                    fig_period_np = go.Figure()
-                    fig_period_np.add_trace(
-                        go.Bar(
-                            x=net_period_df["Period"],
-                            y=net_period_df["Display"],
-                            name="Net Profit",
-                            marker=dict(
-                                color="#ddd6fe",
-                                line=dict(
-                                    color="#7c3aed", width=1.4
-                                ),
-                            ),
-                            text=net_period_df["Display"],
-                            texttemplate="₹%{text:.2f}",
-                            textposition="outside",
-                            textfont=dict(
-                                size=9,
-                                color="#6d28d9",
-                                family="Arial",
-                            ),
-                            cliponaxis=False,
-                            hovertemplate=(
-                                f"<b>%{{x}}</b><br>"
-                                f"Net Profit: ₹%{{y:.2f}} "
-                                f"{unit}<extra></extra>"
-                            ),
-                        )
-                    )
-                    fig_period_np.add_trace(
-                        go.Scatter(
-                            x=net_period_df["Period"],
-                            y=net_period_df["Growth"],
-                            name=f"{np_period_name} Growth",
-                            mode="lines+markers+text",
-                            yaxis="y2",
-                            line=dict(
-                                color="#f59e0b", width=2.6
-                            ),
-                            marker=dict(
-                                size=7,
-                                color=net_growth_colors,
-                                line=dict(
-                                    color="#ffffff", width=1.5
-                                ),
-                            ),
-                            text=net_period_df["Growth Label"],
-                            textposition="top center",
-                            textfont=dict(
-                                size=10, color="#b45309"
-                            ),
-                            connectgaps=False,
-                            hovertemplate=(
-                                f"<b>%{{x}}</b><br>"
-                                f"{np_period_name} Growth: "
-                                "%{y:.1f}%<extra></extra>"
-                            ),
-                        )
-                    )
-
-                    fig_period_np.add_hline(
-                        y=0, line_color="#94a3b8", line_width=1
-                    )
-                    fig_period_np.update_layout(
-                        height=235,
-                        margin=dict(l=4, r=10, t=34, b=2),
-                        paper_bgcolor="rgba(0,0,0,0)",
-                        plot_bgcolor="#fbfdff",
-                        legend=dict(
-                            orientation="h",
-                            yanchor="bottom",
-                            y=1.03,
-                            x=0,
-                            font=dict(size=9),
-                        ),
-                        bargap=0.30,
-                        xaxis=dict(
-                            showgrid=False, tickfont=dict(size=9)
-                        ),
-                        yaxis=dict(
-                            title=f"Net Profit ({unit})",
-                            showgrid=False,
-                            tickfont=dict(size=9),
-                            title_font=dict(size=10),
-                        ),
-                        yaxis2=dict(
-                            title="Growth %",
-                            overlaying="y",
-                            side="right",
-                            showgrid=False,
-                            ticksuffix="%",
-                            tickfont=dict(size=9),
-                            title_font=dict(size=10),
-                            range=_growth_axis_range(
-                                net_period_df["Growth"]
-                            ),
-                        ),
-                    )
-                    st.plotly_chart(
-                        fig_period_np,
-                        width="stretch",
-                        config={"displayModeBar": False},
-                    )
-
-# Full-width original-style Branch Monthly Avg P&L insight.
     with st.container(border=True):
+        zones, circles, branches, load_types, customers = _render_filters(
+            current_df, compare_df, name_col, customer_only=customer_only
+        )
+        if customer_only:
+            st.caption("Customer Only view: Zone, Circle and Branch are intentionally hidden. Login data-scope restrictions still apply in the background.")
+
+    current_filtered = _apply_common_filters(
+        current_df, zones, circles, branches, load_types, customers, name_col
+    )
+    compare_filtered = _apply_common_filters(
+        compare_df, zones, circles, branches, load_types, customers, name_col
+    )
+
+    report = build_nbd_report(
+        current_filtered, compare_filtered, view_type, customer_only=customer_only
+    )
+    if customer_only and not report.empty:
+        report = report.drop(columns=["Zone", "Circle", "Branch"], errors="ignore")
+
+    # In Customer + Geography, the same customer code may legitimately appear
+    # on multiple rows because it books from multiple locations. Keep those rows
+    # separate, but flag the repeated code so the user can spot it immediately.
+    duplicate_code_values = set()
+    if not customer_only and not report.empty and code_col in report.columns:
+        _code_text = report[code_col].fillna("").astype(str).str.strip()
+        _valid_code = _code_text.ne("") & ~_code_text.str.casefold().isin({"nan", "none"})
+        _duplicate_mask = _valid_code & _code_text.duplicated(keep=False)
+        duplicate_code_values = set(_code_text[_duplicate_mask].tolist())
+
+    total_customers = len(report)
+    new_count = int((report["Customer Type"] == "NEW").sum()) if not report.empty else 0
+    lost_count = int((report["Customer Type"] == "LOST").sum()) if not report.empty else 0
+    regular_count = int((report["Customer Type"] == "REGULAR").sum()) if not report.empty else 0
+    current_sale = float(report["Current Sale"].sum()) if not report.empty else 0.0
+    compare_sale = float(report["Compare Sale"].sum()) if not report.empty else 0.0
+    change = current_sale - compare_sale
+    growth = ((change / compare_sale) * 100.0) if compare_sale > 0 else (100.0 if current_sale > 0 else 0.0)
+
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7, gap="small")
+    with k1: _kpi("Total Customers", f"{total_customers:,}", "Across both periods", BLUE)
+    with k2: _kpi("New", f"{new_count:,}", "Current only", GREEN)
+    with k3: _kpi("Regular", f"{regular_count:,}", "Active in both", PURPLE)
+    with k4: _kpi("Lost", f"{lost_count:,}", "Comparison only", RED)
+    with k5: _kpi("Current Business", _money(current_sale), f"{current_start:%d/%m/%Y} to {current_end:%d/%m/%Y}", BLUE)
+    with k6: _kpi("Compare Business", _money(compare_sale), f"{compare_start:%d/%m/%Y} to {compare_end:%d/%m/%Y}", ORANGE)
+    with k7: _kpi("Growth", f"{growth:+.1f}%", _money(change), GREEN if growth >= 0 else RED)
+
+    status_options = ["NEW", "REGULAR", "LOST"]
+    table_head_left, table_head_mid, table_head_right = st.columns([4.5, 1.3, 1.4], vertical_alignment="center")
+    with table_head_left:
         st.markdown(
-            '<div class="np-section-title" '
-            'style="font-size:16px;margin:2px 0 10px 1px;line-height:1.25;">'
-            'Branches by Monthly Avg P&amp;L</div>',
+            f"<div class='nbd-report-meta'>"
+            f"Current: {current_start:%d/%m/%Y} to {current_end:%d/%m/%Y} &nbsp;|&nbsp; "
+            f"Comparison: {compare_start:%d/%m/%Y} to {compare_end:%d/%m/%Y} &nbsp;|&nbsp; "
+            f"Layout: {html.escape(report_layout)}"
+            f"</div>",
             unsafe_allow_html=True,
         )
-
-        if "branch" not in insight_df.columns:
-            st.info("Branch is not available in P&L insight data.")
-        else:
-            current_month_count = max(
-                int(insight_df["FIN_MONTH"].dropna().nunique()), 1
+        if not customer_only and duplicate_code_values:
+            repeated_rows = int(
+                report[code_col].fillna("").astype(str).str.strip().isin(duplicate_code_values).sum()
             )
-            previous_month_count = (
-                max(int(insight_prev_df["FIN_MONTH"].dropna().nunique()), 1)
-                if (
-                    insight_prev_df is not None
-                    and not insight_prev_df.empty
-                    and "FIN_MONTH" in insight_prev_df.columns
-                )
-                else current_month_count
-            )
-
-            current_branch_avg = (
-                insight_df.groupby("branch", dropna=False, as_index=False)["PNL"]
-                .sum()
-                .rename(columns={"PNL": "CY_PNL"})
-            )
-            current_branch_avg["branch"] = (
-                current_branch_avg["branch"]
-                .fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
-            )
-
-            if (
-                insight_prev_df is not None
-                and not insight_prev_df.empty
-                and {"branch", "PNL"}.issubset(insight_prev_df.columns)
-            ):
-                previous_branch_avg = (
-                    insight_prev_df.groupby(
-                        "branch", dropna=False, as_index=False
-                    )["PNL"]
-                    .sum()
-                    .rename(columns={"PNL": "LY_PNL"})
-                )
-                previous_branch_avg["branch"] = (
-                    previous_branch_avg["branch"]
-                    .fillna("Unknown").astype(str).str.strip().replace("", "Unknown")
-                )
-            else:
-                previous_branch_avg = pd.DataFrame(
-                    columns=["branch", "LY_PNL"]
-                )
-
-            branch_avg = current_branch_avg.merge(
-                previous_branch_avg, on="branch", how="left"
-            )
-            branch_avg["LY_PNL"] = pd.to_numeric(
-                branch_avg["LY_PNL"], errors="coerce"
-            ).fillna(0.0)
-            branch_avg["Monthly Avg P&L"] = (
-                branch_avg["CY_PNL"] / current_month_count
-            )
-            branch_avg["LY Monthly Avg P&L"] = (
-                branch_avg["LY_PNL"] / previous_month_count
-            )
-
-            slab_options = [
-                "All", "Loss", "₹0–5 Lac", "₹5–10 Lac",
-                "₹10–15 Lac", "₹15–25 Lac",
-                "₹25–50 Lac", "₹50 Lac & Above",
-            ]
-            selected_slab = st.session_state.get(
-                "np_pnl_insight_branch_slab", "All"
-            )
-            if selected_slab not in slab_options:
-                selected_slab = "All"
-                st.session_state["np_pnl_insight_branch_slab"] = "All"
-
-            # Full-width panel: all 8 buttons fit in a single row like P&L dashboard.
-            slab_button_cols = st.columns(len(slab_options), gap="small")
-            for slab_index, slab_label in enumerate(slab_options):
-                with slab_button_cols[slab_index]:
-                    if st.button(
-                        slab_label,
-                        key=f"np_pnl_branch_slab_btn_{slab_index}",
-                        type=(
-                            "primary"
-                            if selected_slab == slab_label
-                            else "secondary"
-                        ),
-                        use_container_width=True,
-                    ):
-                        st.session_state[
-                            "np_pnl_insight_branch_slab"
-                        ] = slab_label
-                        st.rerun()
-
-            slab_ranges = {
-                "All": (None, None),
-                "Loss": (None, 0),
-                "₹0–5 Lac": (0, 500_000),
-                "₹5–10 Lac": (500_000, 1_000_000),
-                "₹10–15 Lac": (1_000_000, 1_500_000),
-                "₹15–25 Lac": (1_500_000, 2_500_000),
-                "₹25–50 Lac": (2_500_000, 5_000_000),
-                "₹50 Lac & Above": (5_000_000, None),
-            }
-
-            scoped = branch_avg.copy()
-            slab_low, slab_high = slab_ranges[selected_slab]
-            if selected_slab == "Loss":
-                scoped = scoped[scoped["Monthly Avg P&L"] < 0]
-            else:
-                if slab_low is not None:
-                    scoped = scoped[
-                        scoped["Monthly Avg P&L"] >= slab_low
-                    ]
-                if slab_high is not None:
-                    scoped = scoped[
-                        scoped["Monthly Avg P&L"] < slab_high
-                    ]
-
-            scoped = scoped.sort_values(
-                "Monthly Avg P&L", ascending=False
-            ).reset_index(drop=True)
-
-            total_abs_branch_pnl = float(
-                branch_avg["Monthly Avg P&L"].abs().sum()
-            )
-            selected_cy_total = float(scoped["Monthly Avg P&L"].sum())
-            selected_ly_total = float(scoped["LY Monthly Avg P&L"].sum())
-            selected_share = (
-                float(scoped["Monthly Avg P&L"].abs().sum())
-                / total_abs_branch_pnl * 100
-                if total_abs_branch_pnl else 0.0
-            )
-            selected_growth = (
-                (selected_cy_total - selected_ly_total)
-                / abs(selected_ly_total) * 100
-                if selected_ly_total != 0
-                else None
-            )
-
-            if selected_growth is None:
-                summary_growth_html = (
-                    '<span style="color:#7c3aed;font-weight:700;">NEW</span>'
-                )
-            else:
-                summary_growth_color = (
-                    "#16a34a" if selected_growth >= 0 else "#dc2626"
-                )
-                summary_growth_arrow = (
-                    "▲" if selected_growth >= 0 else "▼"
-                )
-                summary_growth_html = (
-                    f'<span style="color:{summary_growth_color};'
-                    f'font-weight:700;">{summary_growth_arrow} '
-                    f'{abs(selected_growth):.1f}%</span>'
-                )
-
             st.markdown(
-                f'<div style="color:#31557d;font-size:12px;font-weight:500;'
-                f'margin:8px 0 8px 1px;">'
-                f'Showing {len(scoped):,} branches in {escape(selected_slab)}. '
-                f'CY Avg P&amp;L: <b>₹{selected_cy_total / divisor:,.2f} '
-                f'{escape(unit)}</b> · '
-                f'LY Avg P&amp;L: <b>₹{selected_ly_total / divisor:,.2f} '
-                f'{escape(unit)}</b> · '
-                f'Share: <b>{selected_share:.2f}%</b> · '
-                f'Growth: {summary_growth_html}. Scroll to view all.'
-                f'</div>',
+                f"<span class='nbd-duplicate-badge'>◆ {len(duplicate_code_values):,} repeated customer codes • "
+                f"{repeated_rows:,} location rows highlighted</span>",
                 unsafe_allow_html=True,
             )
 
-            if scoped.empty:
-                st.info(
-                    f"No branch falls in the {selected_slab} "
-                    "monthly-average P&L slab."
-                )
-            else:
-                max_abs_value = max(
-                    float(scoped["Monthly Avg P&L"].abs().max()), 1.0
-                )
-                rows = []
+    # Compact Customer Type filter. A normal multiselect renders one chip per
+    # selected value and becomes two rows when NEW + REGULAR + LOST are all
+    # selected. Keep the header row fixed-height by showing a single popover
+    # summary instead; the user can still select any combination inside it.
+    for _status in status_options:
+        _key = f"nbd_status_{_status.lower()}"
+        if _key not in st.session_state:
+            st.session_state[_key] = True
 
-                for idx, row in scoped.iterrows():
-                    cy_value = float(row["Monthly Avg P&L"] or 0)
-                    ly_value = float(row["LY Monthly Avg P&L"] or 0)
-                    width_pct = min(
-                        abs(cy_value) / max_abs_value * 100, 100
-                    )
-                    fill_color = (
-                        "#2563eb" if cy_value >= 0 else "#dc2626"
-                    )
-                    amount_color = (
-                        "#111827" if cy_value >= 0 else "#dc2626"
-                    )
-                    branch_name = escape(str(row["branch"]))
-                    share = (
-                        abs(cy_value) / total_abs_branch_pnl * 100
-                        if total_abs_branch_pnl else 0.0
-                    )
-                    growth = (
-                        (cy_value - ly_value) / abs(ly_value) * 100
-                        if ly_value != 0 else None
-                    )
+    selected_status = [
+        _status for _status in status_options
+        if st.session_state.get(f"nbd_status_{_status.lower()}", False)
+    ]
 
-                    if growth is None:
-                        growth_html = (
-                            '<span style="color:#7c3aed;'
-                            'font-weight:700;">NEW</span>'
-                        )
-                    else:
-                        growth_color = (
-                            "#16a34a" if growth >= 0 else "#dc2626"
-                        )
-                        growth_arrow = "▲" if growth >= 0 else "▼"
-                        growth_html = (
-                            f'<span style="color:{growth_color};'
-                            f'font-weight:700;">{growth_arrow} '
-                            f'{abs(growth):.1f}%</span>'
-                        )
-
-                    rows.append(
-                        '<div style="margin-bottom:7px;padding:8px 10px;'
-                        'border:1px solid #dbe4ef;border-radius:12px;'
-                        'background:#fbfdff;">'
-                        '<div style="display:grid;'
-                        'grid-template-columns:44px minmax(180px,240px) '
-                        'minmax(220px,1fr) 115px 105px 78px 92px;'
-                        'align-items:center;gap:10px;">'
-                        f'<div style="text-align:center;font-size:13px;'
-                        f'color:#334155;">{idx + 1}</div>'
-                        f'<div style="font-size:14px;color:#0f2744;'
-                        f'white-space:nowrap;overflow:hidden;'
-                        f'text-overflow:ellipsis;">{branch_name}</div>'
-                        '<div style="height:7px;background:#e8eef5;'
-                        'border-radius:999px;overflow:hidden;">'
-                        f'<div style="width:{width_pct:.1f}%;height:7px;'
-                        f'background:{fill_color};border-radius:999px;">'
-                        '</div></div>'
-                        f'<div style="text-align:right;color:{amount_color};'
-                        f'font-size:13px;font-weight:700;white-space:nowrap;">'
-                        f'₹{cy_value / divisor:,.2f} {escape(unit)}</div>'
-                        f'<div style="text-align:right;color:#64748b;'
-                        f'font-size:12px;white-space:nowrap;">'
-                        f'₹{ly_value / divisor:,.2f} {escape(unit)}</div>'
-                        f'<div style="text-align:right;color:#31557d;'
-                        f'font-size:12px;font-weight:600;white-space:nowrap;">'
-                        f'{share:.2f}%</div>'
-                        f'<div style="text-align:right;font-size:12px;'
-                        f'white-space:nowrap;">{growth_html}</div>'
-                        '</div></div>'
-                    )
-
-                header = (
-                    '<div style="display:grid;'
-                    'grid-template-columns:44px minmax(180px,240px) '
-                    'minmax(220px,1fr) 115px 105px 78px 92px;'
-                    'align-items:center;gap:10px;padding:0 10px 6px;'
-                    'color:#64748b;font-size:10px;font-weight:700;">'
-                    '<div style="text-align:center;">#</div>'
-                    '<div>Branch</div>'
-                    '<div>P&amp;L Scale</div>'
-                    '<div style="text-align:right;">CY Avg</div>'
-                    '<div style="text-align:right;">LY Avg</div>'
-                    '<div style="text-align:right;">Share</div>'
-                    '<div style="text-align:right;">Growth</div>'
-                    '</div>'
-                )
-                branch_html = (
-                    header
-                    + '<div style="max-height:500px;overflow-y:auto;'
-                    'padding-right:3px;">'
-                    + "".join(rows)
-                    + "</div>"
-                )
-
-                if hasattr(st, "html"):
-                    st.html(branch_html)
-                else:
-                    st.markdown(branch_html, unsafe_allow_html=True)
-
-
-    customer_col, route_col = st.columns(2, gap="medium")
-    customer_field = "Consignee" if insight_view == "Destination" else "Consignor"
-    with customer_col:
-        with st.container(border=True):
-            _top_pnl_insight_table(
-                insight_df, insight_prev_df, customer_field, "Customers", divisor, unit, "np_pnl_customer",
-                subtitle=("Customer basis: Consignee | Current FY P&L, share and YoY movement." if insight_view == "Destination" else "Customer basis: Consignor | Current FY P&L, share and YoY movement."),
-            )
-    with route_col:
-        with st.container(border=True):
-            _top_pnl_insight_table(
-                insight_df, insight_prev_df, "Route", "Routes", divisor, unit, "np_pnl_route",
-                subtitle=("Destination → Origin | Current FY P&L, share and YoY movement." if insight_view == "Destination" else "Origin → Destination | Current FY P&L, share and YoY movement."),
-            )
-
-
-# ============================================================
-# DASHBOARD
-# ============================================================
-
-    return insight_df, insight_prev_df
-
-
-def show_net_profit_dashboard():
-    _inject_css()
-
-    executive_header = st.container(key="np_executive_header", border=True)
-
-    # Top header: title on the left, compact action controls on the right.
-    header_left, header_actions = executive_header.columns(
-        [7.2, 2.8], gap="small", vertical_alignment="center"
-    )
-
-    with header_left:
-        st.markdown(
-            """
-            <div class="np-header np-header-left-only">
-                <div>
-                    <div class="np-title">Net Profit Analysis</div>
-                    <div class="np-subtitle">Business, P&amp;L and indirect expense performance by branch</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    with header_actions:
-        action_cols = st.columns([1.15, 0.95, 1.18], gap="small", vertical_alignment="center")
-
-        with action_cols[0]:
-            if st.button(
-                "⟳  Reset Filters",
-                key="np_reset_filters",
-                use_container_width=True,
-            ):
-                for key in [
-                    "np_zone",
-                    "np_circle",
-                    "np_branch",
-                    "np_quarter",
-                    "np_month",
-                    "np_conversion",
-                    "np_pnl_insight_view_value",
-                    "np_pnl_insight_trend_type",
-                    "np_net_profit_performance_trend_value",
-                ]:
-                    st.session_state.pop(key, None)
-                st.rerun()
-
-        with action_cols[1]:
-            with st.popover("⇩  Export  ▾", use_container_width=True):
-                payload = st.session_state.get("np_loaded_payload") or {}
-                export_current = payload.get("raw_df")
-                export_previous = payload.get("raw_prev_df")
-                export_nepal = payload.get("nepal_overhead_detail_df")
-                export_india = payload.get("india_overhead_detail_df")
-
-                if export_current is not None and not export_current.empty:
-                    st.download_button(
-                        "Current Period CSV",
-                        data=export_current.to_csv(index=False).encode("utf-8-sig"),
-                        file_name="net_profit_current_period.csv",
-                        mime="text/csv",
-                        key="np_header_export_current",
-                        use_container_width=True,
-                    )
-                if export_previous is not None and not export_previous.empty:
-                    st.download_button(
-                        "Previous Period CSV",
-                        data=export_previous.to_csv(index=False).encode("utf-8-sig"),
-                        file_name="net_profit_previous_period.csv",
-                        mime="text/csv",
-                        key="np_header_export_previous",
-                        use_container_width=True,
-                    )
-                if export_india is not None and not export_india.empty:
-                    st.download_button(
-                        "India Overhead CSV",
-                        data=export_india.to_csv(index=False).encode("utf-8-sig"),
-                        file_name="india_overhead_detail.csv",
-                        mime="text/csv",
-                        key="np_header_export_india",
-                        use_container_width=True,
-                    )
-                if export_nepal is not None and not export_nepal.empty:
-                    st.download_button(
-                        "Nepal Overhead CSV",
-                        data=export_nepal.to_csv(index=False).encode("utf-8-sig"),
-                        file_name="nepal_overhead_detail.csv",
-                        mime="text/csv",
-                        key="np_header_export_nepal",
-                        use_container_width=True,
-                    )
-                if (
-                    export_current is None or export_current.empty
-                ) and (export_previous is None or export_previous.empty) and (
-                    export_nepal is None or export_nepal.empty
-                ):
-                    st.caption("Run the dashboard first to enable exports.")
-
-        with action_cols[2]:
-            st.markdown(
-                '<div class="np-header-badge np-header-badge-action">MANAGEMENT VIEW</div>',
-                unsafe_allow_html=True,
-            )
-
-    # --------------------------------------------------------
-    # PRIMARY FILTERS
-    # --------------------------------------------------------
-
-    # Keep every primary filter on one clean row. Hierarchy filters are
-    # ordered Zone -> Circle -> Branch so they cascade naturally.
-    filter_cols = executive_header.columns(
-        [1.0, 1.15, 1.05, 1.05, 0.95, 1.0, 1.05, 1.35, 1.1, 1.1, 1.05],
-        gap="small",
-    )
-
-    with filter_cols[0]:
-        period_mode = st.selectbox(
-            "Period Mode",
-            ["Financial Year", "Custom Date"],
-            key="np_period_mode",
-        )
-
-    with filter_cols[1]:
-        fy = st.selectbox(
-            "Financial Year",
-            FY_OPTIONS,
-            key="np_fy",
-            disabled=period_mode != "Financial Year",
-        )
-
-    # Build the period selection first. Data is loaded only after the user
-    # presses Run. The committed selection is kept in session_state so
-    # changing Zone / Circle / Branch / Quarter / Month does not require
-    # pressing Run again.
-    selected_start = None
-    selected_end = None
-    selected_fy_label = None
-    selected_prev_fy_label = None
-    selected_prev_start = None
-    selected_prev_end = None
-    period_selection_valid = True
-
-    if period_mode == "Financial Year":
-        if fy != "Select FY":
-            selected_start, selected_end = get_date_range(fy)
-            selected_prev_fy_label = get_previous_fy(fy)
-            selected_prev_start, selected_prev_end = get_date_range(selected_prev_fy_label)
-            selected_fy_label = fy
-
-        with filter_cols[2]:
-            st.date_input(
-                "From Date",
-                value=selected_start if selected_start is not None else pd.Timestamp.today().date(),
-                disabled=True,
-                key="np_from_date_fy",
-                format="DD/MM/YYYY",
-            )
-
-        with filter_cols[3]:
-            st.date_input(
-                "To Date",
-                value=selected_end if selected_end is not None else pd.Timestamp.today().date(),
-                disabled=True,
-                key="np_to_date_fy",
-                format="DD/MM/YYYY",
-            )
-
-        period_selection_valid = fy != "Select FY"
+    if len(selected_status) == len(status_options):
+        status_summary = "All Customer Types"
+    elif not selected_status:
+        status_summary = "No Customer Type"
+    elif len(selected_status) == 1:
+        status_summary = selected_status[0]
     else:
-        today = pd.Timestamp.today().date()
-        default_from = today.replace(day=1)
+        status_summary = f"{len(selected_status)} types selected"
 
-        with filter_cols[2]:
-            custom_start = st.date_input(
-                "From Date",
-                value=st.session_state.get("np_custom_from_date", default_from),
-                key="np_custom_from_date",
-                format="DD/MM/YYYY",
-            )
+    with table_head_mid:
+        with st.popover(status_summary, use_container_width=True):
+            action_left, action_right = st.columns(2, gap="small")
+            with action_left:
+                if st.button("Select All", key="nbd_status_select_all", use_container_width=True):
+                    for _status in status_options:
+                        st.session_state[f"nbd_status_{_status.lower()}"] = True
+                    st.rerun()
+            with action_right:
+                if st.button("Clear", key="nbd_status_clear", use_container_width=True):
+                    for _status in status_options:
+                        st.session_state[f"nbd_status_{_status.lower()}"] = False
+                    st.rerun()
 
-        with filter_cols[3]:
-            custom_end = st.date_input(
-                "To Date",
-                value=st.session_state.get("np_custom_to_date", today),
-                key="np_custom_to_date",
-                format="DD/MM/YYYY",
-            )
+            for _status in status_options:
+                st.checkbox(
+                    _status,
+                    key=f"nbd_status_{_status.lower()}",
+                )
 
-        if custom_start > custom_end:
-            period_selection_valid = False
-        else:
-            selected_start = custom_start
-            selected_end = custom_end
-            selected_prev_start = (pd.Timestamp(custom_start) - pd.DateOffset(years=1)).date()
-            selected_prev_end = (pd.Timestamp(custom_end) - pd.DateOffset(years=1)).date()
-            selected_fy_label = f"{custom_start.strftime('%d-%b-%Y')} to {custom_end.strftime('%d-%b-%Y')}"
-            selected_prev_fy_label = f"{selected_prev_start.strftime('%d-%b-%Y')} to {selected_prev_end.strftime('%d-%b-%Y')}"
+    # Re-read checkbox state after rendering so the report responds immediately
+    # to individual checkbox changes on the same Streamlit rerun.
+    selected_status = [
+        _status for _status in status_options
+        if st.session_state.get(f"nbd_status_{_status.lower()}", False)
+    ]
 
-    with filter_cols[4]:
-        # Keep Run vertically aligned with the input controls above/beside it.
-        st.markdown(
-            '<div style="height:34px;"></div>',
-            unsafe_allow_html=True,
+    display_report = report[report["Customer Type"].isin(selected_status)].copy() if selected_status else report.iloc[0:0].copy()
+
+    with table_head_right:
+        export_bytes = export_nbd_excel(
+            display_report,
+            current_start, current_end, compare_start, compare_end,
         )
-        run_clicked = st.button(
-            "▶ Run",
-            key="np_run_period",
-            type="primary",
+        st.download_button(
+            "Download NBD Excel",
+            data=export_bytes,
+            file_name=f"NBD_MIS_{current_start:%Y%m%d}_{current_end:%Y%m%d}_vs_{compare_start:%Y%m%d}_{compare_end:%Y%m%d}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
 
-    if run_clicked:
-        if not period_selection_valid:
-            if period_mode == "Financial Year":
-                st.warning("Please select financial year.")
-            else:
-                st.warning("From Date cannot be after To Date.")
-            return
-
-        committed = {
-            "mode": period_mode,
-            "start_date": selected_start,
-            "end_date": selected_end,
-            "prev_start": selected_prev_start,
-            "prev_end": selected_prev_end,
-            "fy": selected_fy_label,
-            "prev_fy": selected_prev_fy_label,
-        }
-        period_key = (
-            str(selected_start), str(selected_end),
-            str(selected_prev_start), str(selected_prev_end),
-        )
-
-        # IMPORTANT: Heavy SQL/P&L processing happens only when Run is clicked.
-        # All dashboard filters below operate on these session-state DataFrames.
-        with st.spinner("Loading Origin, Destination and branch overhead..."):
-            branch_master_loaded = load_net_profit_branch_mast()
-            valid_branches_loaded = safe_options(branch_master_loaded, "BRANCH")
-            if not valid_branches_loaded:
-                st.warning("No valid branches found in Branch/Agency Master for selected financial year.")
-                return
-
-            raw_loaded, raw_prev_loaded = load_net_profit_data_pair(
-                selected_start,
-                selected_end,
-                selected_prev_start,
-                selected_prev_end,
-            )
-            nepal_overhead_detail_loaded = load_nepal_overhead_detail(
-                selected_start, selected_end
-            )
-            india_overhead_detail_loaded = load_india_overhead_detail(
-                selected_start, selected_end
-            )
-
-            # Consolidated All-Branches booking/origin revenue must come directly
-            # from the P&L stored procedure. Keep the period totals in session too.
-            sp_loaded = load_pnl_sp_revenue_total(selected_start, selected_end)
-            sp_prev_loaded = load_pnl_sp_revenue_total(selected_prev_start, selected_prev_end)
-
-        if raw_loaded is None or raw_loaded.empty:
-            st.warning("No Net Profit data found for selected financial year.")
-            return
-
-        st.session_state["np_committed_period"] = committed
-        st.session_state["np_loaded_payload"] = {
-            "period_key": period_key,
-            "raw_df": raw_loaded,
-            "raw_prev_df": raw_prev_loaded,
-            "branch_master_df": branch_master_loaded,
-            "nepal_overhead_detail_df": nepal_overhead_detail_loaded,
-            "india_overhead_detail_df": india_overhead_detail_loaded,
-            "sp_revenue_total": float(sp_loaded or 0.0),
-            "sp_prev_revenue_total": float(sp_prev_loaded or 0.0),
-        }
-
-        # A new period invalidates any lazily loaded P&L insight view and
-        # any authoritative month/quarter revenue previously resolved.
-        for key in [
-            "np_pnl_insight_payload_origin",
-            "np_pnl_insight_payload_destination",
-            "np_authoritative_revenue_cache",
-        ]:
-            st.session_state.pop(key, None)
-
-    committed_period = st.session_state.get("np_committed_period")
-    loaded_payload = st.session_state.get("np_loaded_payload")
-    if not committed_period or not loaded_payload:
-        st.info("Select Financial Year or Custom Date, then click Run.")
+    if display_report.empty:
+        st.info("No NBD customer data found for the selected periods and filters.")
         return
 
-    start_date = committed_period["start_date"]
-    end_date = committed_period["end_date"]
-    prev_start = committed_period["prev_start"]
-    prev_end = committed_period["prev_end"]
-    fy = committed_period["fy"]
-    prev_fy = committed_period["prev_fy"]
+    # =============================================================
+    # Fast full-table rendering (no pagination)
+    # =============================================================
+    # IMPORTANT: keep the dataframe native/Arrow-backed. Pandas Styler creates
+    # per-cell CSS and becomes very slow for large NBD reports. Streamlit's
+    # native dataframe renderer is virtualized, so only visible rows are painted
+    # in the browser even though the complete filtered report remains available
+    # for scrolling, sorting and searching.
+    table_report = display_report
 
-    expected_period_key = (
-        str(start_date), str(end_date), str(prev_start), str(prev_end)
-    )
-    if loaded_payload.get("period_key") != expected_period_key:
-        st.info("Period selection changed. Click Run to load the new period.")
-        return
-
-    # Reuse the exact DataFrames loaded by Run. No SQL call happens here when
-    # Zone/Circle/Branch/Quarter/Month/Conversion widgets rerun the Streamlit page.
-    raw_df = loaded_payload.get("raw_df", pd.DataFrame())
-    raw_prev_df = loaded_payload.get("raw_prev_df", pd.DataFrame())
-    branch_master_df = loaded_payload.get("branch_master_df", pd.DataFrame())
-    nepal_overhead_detail_df = loaded_payload.get(
-        "nepal_overhead_detail_df", pd.DataFrame()
-    )
-    india_overhead_detail_df = loaded_payload.get(
-        "india_overhead_detail_df", pd.DataFrame()
-    )
-    sp_revenue_total = float(loaded_payload.get("sp_revenue_total", 0.0) or 0.0)
-    sp_prev_revenue_total = float(loaded_payload.get("sp_prev_revenue_total", 0.0) or 0.0)
-
-    valid_branches = safe_options(branch_master_df, "BRANCH")
-    if not valid_branches:
-        st.warning("No valid branches found in Branch/Agency Master for selected financial year.")
-        return
-
-    if raw_df is None or raw_df.empty:
-        st.warning("No Net Profit data found for selected financial year.")
-        return
-
-    # Restrict P&L/overhead to branches returned by Branch/Agency Master.
-    # Also backfill Zone/Circle from Branch Master when the raw P&L data does not carry them.
-    df = _attach_branch_hierarchy(
-        _filter_to_branch_scope(raw_df, valid_branches),
-        branch_master_df,
-    )
-    prev_df = (
-        _attach_branch_hierarchy(
-            _filter_to_branch_scope(raw_prev_df, valid_branches),
-            branch_master_df,
-        )
-        if raw_prev_df is not None
-        else pd.DataFrame()
-    )
-
-    # Keep an all-branch copy for the Branch Net Profit Detail HO allocation
-    # denominator, so selecting one branch does not reassign the entire HO pool
-    # to that branch.
-    branch_detail_all_scope_df = df.copy()
-    branch_detail_all_scope_prev_df = prev_df.copy() if not prev_df.empty else pd.DataFrame()
-
-    # Use whichever hierarchy columns are actually available.
-    with filter_cols[5]:
-        zones = st.multiselect(
-            "Zone",
-            safe_options(df, "zone"),
-            key="np_zone",
-            placeholder="All zones",
-            disabled="zone" not in df.columns,
+    # Lightweight duplicate indicator for Customer + Geography. Full-row
+    # Pandas Styler highlighting is intentionally avoided because it is the main
+    # source of lag on large tables. The repeated-code badge above the table is
+    # retained, and repeated rows get a small marker without expensive styling.
+    if not customer_only and duplicate_code_values and code_col in table_report.columns:
+        table_report = table_report.copy()
+        _table_codes = table_report[code_col].fillna("").astype(str).str.strip()
+        table_report.insert(
+            0,
+            "Repeated",
+            _table_codes.isin(duplicate_code_values).map({True: "◆", False: ""}),
         )
 
-    # Circle choices must follow the current Branch/Zone scope.  Building the
-    # option list from the unscoped dataframe can leave the widget empty when
-    # hierarchy values are populated from Branch Master.
-    circle_scope = df
-    circle_scope = apply_multi_filter(circle_scope, "zone", zones)
-    circle_options = safe_options(circle_scope, "circle")
-
-    with filter_cols[6]:
-        circles = st.multiselect(
-            "Circle",
-            circle_options,
-            key="np_circle",
-            placeholder="All circles",
-            disabled=("circle" not in df.columns or not circle_options),
-        )
-
-    # Branch choices follow the selected Zone/Circle scope.
-    branch_scope = df
-    branch_scope = apply_multi_filter(branch_scope, "zone", zones)
-    branch_scope = apply_multi_filter(branch_scope, "circle", circles)
-    branch_options = safe_options(branch_scope, "BRANCH")
-
-    with filter_cols[7]:
-        branches = st.multiselect(
-            "Branch",
-            branch_options,
-            key="np_branch",
-            placeholder="All branches",
-        )
-
-    # Quarter choices come only from rows available in the selected FY and
-    # current Zone -> Circle -> Branch scope.
-    quarter_scope = branch_scope
-    quarter_scope = apply_multi_filter(quarter_scope, "BRANCH", branches)
-    available_quarters = set(safe_options(quarter_scope, "QUARTER"))
-    quarter_options = [
-        quarter for quarter in QUARTER_ORDER
-        if quarter in available_quarters
+    currency_columns = [
+        "Compare Sale", "Compare LTL", "Compare FTL",
+        "Current Sale", "Current LTL", "Current FTL", "Change",
     ]
-    if "np_quarter" in st.session_state:
-        st.session_state["np_quarter"] = [
-            quarter for quarter in st.session_state["np_quarter"]
-            if quarter in quarter_options
-        ]
-
-    with filter_cols[8]:
-        quarters = st.multiselect(
-            "Quarter",
-            quarter_options,
-            key="np_quarter",
-            placeholder="All quarters",
-            disabled=not quarter_options,
-        )
-
-    # Month choices cascade from the selected FY, hierarchy and Quarter.
-    month_scope = quarter_scope
-    month_scope = apply_multi_filter(month_scope, "QUARTER", quarters)
-    available_months = set(safe_options(month_scope, "MONTH"))
-    month_options = [
-        month for month in MONTH_ORDER
-        if month in available_months
-    ]
-    if "np_month" in st.session_state:
-        st.session_state["np_month"] = [
-            month for month in st.session_state["np_month"]
-            if month in month_options
-        ]
-
-    with filter_cols[9]:
-        months = st.multiselect(
-            "Month",
-            month_options,
-            key="np_month",
-            placeholder="All months",
-            disabled=not month_options,
-        )
-
-    with filter_cols[10]:
-        conversion_type = st.selectbox(
-            "₹ Conversion",
-            ["Crore", "Lac"],
-            key="np_conversion",
-        )
-
-    filters = {
-        "BRANCH": branches,
-        "zone": zones,
-        "circle": circles,
-        "QUARTER": quarters,
-        "MONTH": months,
+    column_config = {
+        col: st.column_config.NumberColumn(col, format="₹%.0f")
+        for col in currency_columns
+        if col in table_report.columns
     }
-
-    df = _apply_same_filters(df, filters)
-    prev_df = _apply_same_filters(prev_df, filters) if not prev_df.empty else prev_df
-    # Apply only the time filters to the all-branch allocation base. Branch,
-    # Zone and Circle selections must not change a branch's share of HO expense.
-    branch_detail_all_scope_df = _apply_same_filters(
-        branch_detail_all_scope_df,
-        {"QUARTER": quarters, "MONTH": months},
-    )
-    if not branch_detail_all_scope_prev_df.empty:
-        branch_detail_all_scope_prev_df = _apply_same_filters(
-            branch_detail_all_scope_prev_df,
-            {"QUARTER": quarters, "MONTH": months},
+    if "Growth %" in table_report.columns:
+        column_config["Growth %"] = st.column_config.NumberColumn(
+            "Growth %", format="%.1f%%"
+        )
+    if "Repeated" in table_report.columns:
+        column_config["Repeated"] = st.column_config.TextColumn(
+            "",
+            width="small",
+            help="◆ = same customer code appears in more than one geography row",
         )
 
-    if df.empty:
-        st.warning("No data found for selected filters.")
-        return
-
-    # No explicit branch selection means consolidated All Branches mode.
-    # In this mode only Origin-view P&L is used.
-    all_branches = not branches and not circles and not zones
-    df = _apply_pnl_business_rule(df, all_branches=all_branches)
-    prev_df = (
-        _apply_pnl_business_rule(prev_df, all_branches=all_branches)
-        if not prev_df.empty
-        else prev_df
+    st.dataframe(
+        table_report,
+        use_container_width=True,
+        hide_index=True,
+        height=580,
+        column_config=column_config,
     )
 
-    # When Zone/Circle/Branch filters restrict the view, KPIs must carry the
-    # same proportional HO allocation as Branch Net Profit Detail. All Branches
-    # mode remains unchanged.
-    if not all_branches:
-        df = _apply_branch_scope_ho_allocation(df, branch_detail_all_scope_df)
-        if not prev_df.empty:
-            prev_df = _apply_branch_scope_ho_allocation(
-                prev_df, branch_detail_all_scope_prev_df
-            )
-
-    divisor, unit = get_conversion(conversion_type)
-
-    # Business KPI display rule:
-    # - All Branches with no Zone/Circle restriction: always use the authoritative
-    #   P&L SP revenue for the active time scope. This includes FY, Quarter and
-    #   Month selections, so FY + Sep reconciles with Custom Date Sep.
-    # - Zone/Circle or explicit Branch selections remain based on the filtered
-    #   Net Profit dataset because the consolidated SP has no hierarchy filter.
-    authoritative_scope = all_branches and not (zones or circles)
-
-    if authoritative_scope:
-        # Use authoritative P&L SP revenue only as the All-Branches Business
-        # and margin denominator. No percentage-based expense is applied.
-        if not quarters and not months:
-            booking_business_current = sp_revenue_total
-            booking_business_previous = sp_prev_revenue_total
-        else:
-            revenue_cache = st.session_state.setdefault("np_authoritative_revenue_cache", {})
-            filter_key = (
-                str(start_date), str(end_date),
-                tuple(sorted(quarters or [])), tuple(sorted(months or [])),
-            )
-            prev_filter_key = (
-                str(prev_start), str(prev_end),
-                tuple(sorted(quarters or [])), tuple(sorted(months or [])),
-            )
-            if filter_key not in revenue_cache:
-                revenue_cache[filter_key] = _load_authoritative_revenue_for_time_scope(
-                    start_date, end_date, quarters=quarters, months=months
-                )
-            if prev_filter_key not in revenue_cache:
-                revenue_cache[prev_filter_key] = _load_authoritative_revenue_for_time_scope(
-                    prev_start, prev_end, quarters=quarters, months=months
-                )
-            booking_business_current = float(revenue_cache[filter_key] or 0.0)
-            booking_business_previous = float(revenue_cache[prev_filter_key] or 0.0)
-    else:
-        booking_business_current = float(df["ORIGIN_BUSINESS"].sum()) if "ORIGIN_BUSINESS" in df.columns else 0.0
-        booking_business_previous = float(prev_df["ORIGIN_BUSINESS"].sum()) if (prev_df is not None and not prev_df.empty and "ORIGIN_BUSINESS" in prev_df.columns) else 0.0
-
-    # Recalculate KPIs from the current overhead + HO allocation logic.
-    current = calculate_kpis(df)
-    previous = calculate_kpis(prev_df)
-
-    # GP % denominator must match the Business KPI shown on the dashboard.
-    # In consolidated All-Branches mode the card displays Origin
-    # Business only, while calculate_kpis() uses Origin + Destination Business.
-    # Recalculate only the consolidated margin here; explicit branch selection
-    # continues to use the existing combined-business calculation.
-    if all_branches:
-        current["gp_margin"] = (
-            current["combined_pnl"] / booking_business_current * 100
-            if booking_business_current
-            else 0.0
-        )
-        previous["gp_margin"] = (
-            previous["combined_pnl"] / booking_business_previous * 100
-            if booking_business_previous
-            else 0.0
+    # Explain any source limitations instead of fabricating fields.
+    missing_optional = []
+    if "Mobile" not in current_df.columns and "Mobile" not in compare_df.columns:
+        missing_optional.append("Mobile")
+    if "GSTIN" not in current_df.columns and "GSTIN" not in compare_df.columns:
+        missing_optional.append("GSTIN")
+    if missing_optional:
+        st.caption(
+            "Source note: " + ", ".join(missing_optional) +
+            " is not present in the stored-procedure output, so that column remains blank."
         )
 
-        # Net Profit % must use the same Business denominator shown on the dashboard.
-        # In consolidated All-Branches mode, the authoritative business base is the
-        # P&L SP revenue total stored in booking_business_current/previous.
-        current["margin"] = (
-            current["net_profit"] / booking_business_current * 100
-            if booking_business_current
-            else 0.0
-        )
-        previous["margin"] = (
-            previous["net_profit"] / booking_business_previous * 100
-            if booking_business_previous
-            else 0.0
-        )
 
-    # --------------------------------------------------------
-    # KPI ROW 1
-    # --------------------------------------------------------
+# Friendly aliases in case app.py uses a shorter function name.
+def show_NBD() -> None:
+    show_NBDAnalysis()
 
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
 
-    kpis = [
-        ("Origin Business", booking_business_current, booking_business_previous, False, False),
-    ]
-
-    # In All Branches mode Delivery Business must not be shown at all.
-    if not all_branches:
-        kpis.append(
-            (
-                "Destination Business",
-                current["destination_business"],
-                previous["destination_business"],
-                False,
-                False,
-            )
-        )
-
-    # Individual Origin and Destination P&L cards are relevant only when the
-    # user explicitly selects one or more branches.
-    if not all_branches:
-        kpis.extend(
-            [
-                ("Origin P&L", current["origin_pnl"], previous["origin_pnl"], False, False),
-                ("Destination P&L", current["destination_pnl"], previous["destination_pnl"], False, False),
-            ]
-        )
-
-    kpis.extend(
-        [
-            ("Gross P&L", current["combined_pnl"], previous["combined_pnl"], False, False),
-            ("GP %", current["gp_margin"], previous["gp_margin"], False, False),
-            ("Indirect Exp", current["total_expense"], previous["total_expense"], True, False),
-            ("Net Profit", current["net_profit"], previous["net_profit"], False, False),
-            ("Net Profit %", current["margin"], previous["margin"], False, False),
-        ]
-    )
-
-    kpi_cols = st.columns(len(kpis), gap=None)
-
-    for index, (title, cy, ly, reverse_good, disabled) in enumerate(kpis):
-        with kpi_cols[index]:
-            render_kpi_card(
-                title,
-                cy,
-                ly,
-                conversion_type=conversion_type,
-                percent=(title in {"GP %", "Net Profit %"}),
-                reverse_good=reverse_good,
-                disabled=disabled,
-            )
-
-    # --------------------------------------------------------
-    # KPI ROW 2: OVERHEAD BREAKUP
-    # --------------------------------------------------------
-
-    st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
-
-    overhead_kpis = [
-        ("Salary", current["salary"], previous["salary"], "●"),
-        ("Overhead Expense", current["overhead"], previous["overhead"], "▦"),
-        ("Nepal Overhead", current["nepal_overhead"], previous["nepal_overhead"], "NP"),
-        ("Claim", current["claim"], previous["claim"], "◆"),
-        ("Head Office Allocation", current["ho_allocation"], previous["ho_allocation"], "▣"),
-        ("Godown Rent", current["godown"], previous["godown"], "▥"),
-    ]
-
-    overhead_items_html = "".join(
-        overhead_kpi_item_html(title, cy, ly, conversion_type, icon)
-        for title, cy, ly, icon in overhead_kpis
-    )
-    st.markdown(
-        f'<div class="np-overhead-strip">{overhead_items_html}</div>',
-        unsafe_allow_html=True,
-    )
-
-    # --------------------------------------------------------
-    # BRANCH SUMMARY (feeds Branch Net Profit Detail; no chart rendered)
-    # --------------------------------------------------------
-
-    branch_summary = (
-        df.groupby(["BRANCHCODE", "BRANCH"], as_index=False, dropna=False)
-        .agg(
-            Revenue=("BUSINESS", "sum"),
-            Booking_Business=("ORIGIN_BUSINESS", "sum"),
-            Delivery_Business=("DESTINATION_BUSINESS", "sum"),
-            Origin_PNL=("ORIGIN_PNL", "sum"),
-            Destination_PNL=("DESTINATION_PNL", "sum"),
-            Destination_PNL_Actual=("DESTINATION_PNL_ACTUAL", "sum"),
-            Combined_PNL=("COMBINED_PNL", "sum"),
-            Salary=("SALARY", "sum"),
-            Godown_Rent=("GODOWN RENT", "sum"),
-            Overhead_Expense=("OVERHEAD EXPENSE", "sum"),
-            Nepal_Overhead=("NEPAL OVERHEAD", "sum"),
-            Claim=("CLAIM", "sum"),
-            HO_Allocation=("HO ALLOCATION", "sum"),
-            Total_Overhead=("TOTAL EXPENSE", "sum"),
-            Net_Profit=("NET_PROFIT", "sum"),
-        )
-    )
-
-    # Branch Net Profit Detail always shows the COMPLETE branch view (same as a
-    # single-branch filter): Gross P&L = Origin P&L + Destination P&L, even in
-    # All Branches mode.
-    branch_summary["Destination_PNL"] = branch_summary["Destination_PNL_Actual"]
-    branch_summary["Combined_PNL"] = (
-        branch_summary["Origin_PNL"] + branch_summary["Destination_PNL"]
-    )
-
-    # Rebuild the same proportional HO allocation used by the selected-scope
-    # KPIs: distribute the full HO pool by branch Total Business (Booking + Delivery).
-    _ho_pool_for_detail = float(
-        pd.to_numeric(
-            branch_detail_all_scope_df.get("HO ALLOCATION", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
-            errors="coerce",
-        ).fillna(0.0).sum()
-    )
-    # Use the exact same allocation base as the loader: Origin + Destination
-    # Business across all non-HO branches. This ensures detail allocation sums
-    # back to the complete HO pool shown in the Net Profit KPI.
-    _all_codes = branch_detail_all_scope_df.get(
-        "BRANCHCODE", pd.Series("", index=branch_detail_all_scope_df.index)
-    ).astype(str).str.strip()
-    _all_origin = pd.to_numeric(
-        branch_detail_all_scope_df.get("ORIGIN_BUSINESS", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
-        errors="coerce",
-    ).fillna(0.0)
-    _all_destination = pd.to_numeric(
-        branch_detail_all_scope_df.get("DESTINATION_BUSINESS", pd.Series(0.0, index=branch_detail_all_scope_df.index)),
-        errors="coerce",
-    ).fillna(0.0)
-    _branch_business_total = float(
-        (_all_origin + _all_destination).where(_all_codes.ne("1001"), 0.0).clip(lower=0.0).sum()
-    )
-    _detail_codes = branch_summary["BRANCHCODE"].astype(str).str.strip()
-    _detail_business = pd.to_numeric(branch_summary["Revenue"], errors="coerce").fillna(0.0).clip(lower=0.0)
-    _detail_business = _detail_business.where(_detail_codes.ne("1001"), 0.0)
-    if _branch_business_total != 0:
-        branch_summary["HO_Allocation"] = (
-            _detail_business / _branch_business_total * _ho_pool_for_detail
-        )
-    else:
-        branch_summary["HO_Allocation"] = 0.0
-
-    # Rebuild the branch-level accounting from the displayed components so the
-    # detail table always reconciles exactly with the selected branch scope.
-    branch_summary["Total_Overhead"] = (
-        branch_summary["Salary"]
-        + branch_summary["Godown_Rent"]
-        + branch_summary["Overhead_Expense"]
-        + branch_summary["Nepal_Overhead"]
-        + branch_summary["Claim"]
-        + branch_summary["HO_Allocation"]
-    )
-    branch_summary["Net_Profit"] = (
-        branch_summary["Combined_PNL"] - branch_summary["Total_Overhead"]
-    )
-
-    branch_summary["P&L %"] = 0.0
-    valid_business = branch_summary["Revenue"].ne(0)
-    branch_summary.loc[valid_business, "P&L %"] = (
-        branch_summary.loc[valid_business, "Combined_PNL"]
-        / branch_summary.loc[valid_business, "Revenue"] * 100
-    )
-    # HO Allocation % shows each branch's share of total business.
-    # This is intentionally different by branch and sums to ~100% overall.
-    branch_summary["HO Allocation %"] = 0.0
-    _valid_business_total = _branch_business_total != 0
-    if _valid_business_total:
-        branch_summary["HO Allocation %"] = (
-            _detail_business / _branch_business_total * 100
-        )
-    branch_summary["Net Profit Margin %"] = 0.0
-    branch_summary.loc[valid_business, "Net Profit Margin %"] = (
-        branch_summary.loc[valid_business, "Net_Profit"]
-        / branch_summary.loc[valid_business, "Revenue"] * 100
-    )
-    branch_summary = branch_summary.sort_values("Net_Profit", ascending=False).reset_index(drop=True)
-
-    # --------------------------------------------------------
-    # PHASE 1: P&L INSIGHTS (ISOLATED; EXISTING NET PROFIT KPIs/TABLES UNCHANGED)
-    # --------------------------------------------------------
-
-    pnl_detail_df, pnl_detail_prev_df = _render_phase1_pnl_insights(
-        start_date=start_date,
-        end_date=end_date,
-        prev_start=prev_start,
-        prev_end=prev_end,
-        fy=fy,
-        prev_fy=prev_fy,
-        zones=zones,
-        circles=circles,
-        branches=branches,
-        quarters=quarters,
-        months=months,
-        valid_branches=valid_branches,
-        divisor=divisor,
-        unit=unit,
-        net_profit_df=df,
-        net_profit_prev_df=prev_df,
-    )
-
-    # --------------------------------------------------------
-    # DETAIL RENDER TABS - P&L DASHBOARD STYLE
-    # --------------------------------------------------------
-
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-
-    st.markdown(
-        """
-        <style>
-        /* Bottom render tabs: four-color matrix style */
-        div[class*="st-key-np_bottom_render_tabs"] div[data-baseweb="tab-list"] {
-            gap: 10px !important;
-            align-items:flex-end !important;
-            background:#ffffff !important;
-            border-bottom:1px solid #d8e1ea !important;
-            padding:0 12px !important;
-        }
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"] {
-            color:#ffffff !important;
-            border:0 !important;
-            border-radius:7px 7px 0 0 !important;
-            min-height:46px !important;
-            padding:10px 20px !important;
-            font-size:13px !important;
-            font-weight: 700 !important;
-            opacity:.88 !important;
-            box-shadow:inset 0 -3px 0 rgba(15,23,42,.10) !important;
-            transition:transform .15s ease,opacity .15s ease,filter .15s ease !important;
-        }
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"] p,
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"] span {
-            color:inherit !important;
-            font-size:13px !important;
-            font-weight:700 !important;
-            white-space:nowrap !important;
-        }
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:nth-of-type(1) {
-            background:#8eafbd !important;
-        }
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:nth-of-type(2) {
-            background:#9dbba9 !important;
-        }
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:nth-of-type(3) {
-            background:#ff454d !important;
-            color:#111827 !important;
-        }
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:nth-of-type(4) {
-            background:#f2b66d !important;
-            color:#111827 !important;
-        }
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"]:hover {
-            opacity:1 !important;
-            filter:saturate(1.08) brightness(.98) !important;
-            transform:translateY(-1px) !important;
-        }
-        div[class*="st-key-np_bottom_render_tabs"] button[data-baseweb="tab"][aria-selected="true"] {
-            opacity:1 !important;
-            transform:translateY(-2px) !important;
-            filter:saturate(1.18) brightness(.94) !important;
-            box-shadow:inset 0 -4px 0 rgba(15,23,42,.20),0 4px 9px rgba(15,23,42,.13) !important;
-        }
-        div[class*="st-key-np_bottom_render_tabs"] div[data-baseweb="tab-highlight"] {
-            display: none !important;
-        }
-
-        /* Streamlit-version-safe selectors. Some releases render tabs with
-           role attributes instead of BaseWeb data attributes. */
-        .st-key-np_bottom_render_tabs [role="tablist"],
-        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tablist"] {
-            gap:10px !important;
-            align-items:flex-end !important;
-            background:#ffffff !important;
-            border-bottom:1px solid #d8e1ea !important;
-            padding:0 12px !important;
-        }
-        .st-key-np_bottom_render_tabs [role="tab"],
-        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"] {
-            color:#ffffff !important;
-            border:0 !important;
-            border-radius:0 !important;
-            min-height:46px !important;
-            padding:10px 20px !important;
-            font-size:13px !important;
-            font-weight:700 !important;
-            opacity:.92 !important;
-            box-shadow:none !important;
-        }
-        .st-key-np_bottom_render_tabs [role="tab"]:nth-of-type(1),
-        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"]:nth-of-type(1) {
-            background:#8eafbd !important;
-        }
-        .st-key-np_bottom_render_tabs [role="tab"]:nth-of-type(2),
-        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"]:nth-of-type(2) {
-            background:#9dbba9 !important;
-        }
-        .st-key-np_bottom_render_tabs [role="tab"]:nth-of-type(3),
-        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"]:nth-of-type(3) {
-            background:#ff454d !important;
-            color:#111827 !important;
-        }
-        .st-key-np_bottom_render_tabs [role="tab"]:nth-of-type(4),
-        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"]:nth-of-type(4) {
-            background:#f2b66d !important;
-            color:#111827 !important;
-        }
-        .st-key-np_bottom_render_tabs [role="tab"][aria-selected="true"],
-        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [role="tab"][aria-selected="true"] {
-            opacity:1 !important;
-            filter:saturate(1.18) brightness(.92) !important;
-            box-shadow:inset 0 -4px 0 rgba(15,23,42,.24) !important;
-        }
-        .st-key-np_bottom_render_tabs [data-baseweb="tab-highlight"],
-        div[data-testid="stVerticalBlock"]:has(.np-bottom-tabs-marker) [data-baseweb="tab-highlight"] {
-            display:none !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    with st.container(key="np_bottom_render_tabs"):
-        st.markdown(
-            '<span class="np-bottom-tabs-marker"></span>',
-            unsafe_allow_html=True,
-        )
-        detail_tab, audit_tab, nepal_detail_tab, india_detail_tab, gr_tab = st.tabs(
-            [
-                "Branch Net Profit Detail",
-                "Monthly Calculation Audit",
-                "Nepal Overhead Detail",
-                "India Overhead Detail",
-                "P&L GR Details",
-            ]
-        )
-
-    # --------------------------------------------------------
-    # TAB 1: BRANCH NET PROFIT DETAIL
-    # --------------------------------------------------------
-    with detail_tab:
-        display = branch_summary.copy()
-
-        display = display.drop(columns=["Destination_PNL_Actual"])
-
-        money_columns = [
-            "Revenue",
-            "Booking_Business",
-            "Delivery_Business",
-            "Origin_PNL",
-            "Destination_PNL",
-            "Combined_PNL",
-            "Salary",
-            "Godown_Rent",
-            "Overhead_Expense",
-            "Nepal_Overhead",
-            "Claim",
-            "HO_Allocation",
-            "Total_Overhead",
-            "Net_Profit",
-        ]
-
-        for column in money_columns:
-            display[column] = (
-                pd.to_numeric(display[column], errors="coerce")
-                .fillna(0.0)
-                / divisor
-            ).round(2)
-
-        for _pct_col in ["P&L %", "HO Allocation %", "Net Profit Margin %"]:
-            if _pct_col in display.columns:
-                display[_pct_col] = (
-                    pd.to_numeric(display[_pct_col], errors="coerce")
-                    .fillna(0.0)
-                    .round(2)
-                )
-
-        display = display.rename(
-            columns={
-                "BRANCHCODE": "Branch Code",
-                "BRANCH": "Branch",
-                "Revenue": f"Total Business ({unit})",
-                "Booking_Business": f"Booking Business ({unit})",
-                "Delivery_Business": f"Delivery Business ({unit})",
-                "Origin_PNL": f"Origin P&L ({unit})",
-                "Destination_PNL": f"Destination P&L ({unit})",
-                "Combined_PNL": f"Gross P&L ({unit})",
-                "Salary": f"Salary ({unit})",
-                "Godown_Rent": f"Godown Rent ({unit})",
-                "Overhead_Expense": f"Overhead Expense ({unit})",
-                "Nepal_Overhead": f"Nepal Overhead ({unit})",
-                "Claim": f"Claim ({unit})",
-                "HO_Allocation": f"HO Allocation ({unit})",
-                "Total_Overhead": f"Total Overhead ({unit})",
-                "Net_Profit": f"Net Profit ({unit})",
-            }
-        )
-
-        detail_columns = [
-            "Branch Code",
-            "Branch",
-            f"Booking Business ({unit})",
-            f"Delivery Business ({unit})",
-            f"Total Business ({unit})",
-            f"Origin P&L ({unit})",
-            f"Destination P&L ({unit})",
-            f"Gross P&L ({unit})",
-            "P&L %",
-            f"Salary ({unit})",
-            f"Godown Rent ({unit})",
-            f"Overhead Expense ({unit})",
-            f"Nepal Overhead ({unit})",
-            f"Claim ({unit})",
-            f"HO Allocation ({unit})",
-            "HO Allocation %",
-            f"Total Overhead ({unit})",
-            f"Net Profit ({unit})",
-            "Net Profit Margin %",
-        ]
-        display = display[
-            [column for column in detail_columns if column in display.columns]
-        ]
-
-        net_profit_display_col = f"Net Profit ({unit})"
-
-        display = _np_search_and_totals(
-            display,
-            key="np_branch_detail",
-            search_cols=["Branch Code", "Branch"],
-            sum_cols=[
-                f"Booking Business ({unit})",
-                f"Delivery Business ({unit})",
-                f"Total Business ({unit})",
-                f"Origin P&L ({unit})",
-                f"Destination P&L ({unit})",
-                f"Gross P&L ({unit})",
-                f"Salary ({unit})",
-                f"Godown Rent ({unit})",
-                f"Overhead Expense ({unit})",
-                f"Nepal Overhead ({unit})",
-                f"Claim ({unit})",
-                f"HO Allocation ({unit})",
-                f"Total Overhead ({unit})",
-                f"Net Profit ({unit})",
-            ],
-            ratio_cols={
-                "P&L %": (f"Gross P&L ({unit})", f"Total Business ({unit})"),
-                "Net Profit Margin %": (f"Net Profit ({unit})", f"Total Business ({unit})"),
-            },
-            pct_sum_cols=["HO Allocation %"],
-        )
-
-        def _highlight_negative_np_row(row):
-            is_negative = (
-                net_profit_display_col in row.index
-                and pd.notna(row[net_profit_display_col])
-                and float(row[net_profit_display_col]) < 0
-            )
-            if is_negative:
-                return [
-                    "background-color:#fff1f2; color:#991b1b; font-weight:600;"
-                    for _ in row.index
-                ]
-            return ["" for _ in row.index]
-
-        _num_fmt = {
-            c: ("{:.2f}%" if c in ("P&L %", "HO Allocation %", "Net Profit Margin %") else "{:.2f}")
-            for c in display.columns
-            if c not in ("Branch Code", "Branch")
-        }
-        styled_display = (
-            display.style.apply(_highlight_negative_np_row, axis=1)
-            .format(_num_fmt)
-        )
-
-        if all_branches:
-            st.caption(
-                "Note: This table shows complete branch-wise details (Gross P&L = "
-                "Origin P&L + Destination P&L). Therefore, its total may differ from "
-                "the All Branches KPI cards above, as the KPIs include only Origin P&L "
-                "to avoid double counting."
-            )
-
-        st.dataframe(
-            styled_display,
-            width="stretch",
-            hide_index=True,
-        )
-
-        csv_data = display.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            "Download Branch Net Profit Detail CSV",
-            data=csv_data,
-            file_name=f"branch_net_profit_detail_{fy}.csv",
-            mime="text/csv",
-            key="np_download_branch_detail",
-        )
-
-    # --------------------------------------------------------
-    # TAB 2: MONTHLY CALCULATION AUDIT
-    # --------------------------------------------------------
-    with audit_tab:
-        # Monthly Audit must reconcile with Branch Net Profit Detail in BOTH
-        # All Branches and filtered views. In All Branches KPI mode,
-        # DESTINATION_PNL is intentionally zeroed for consolidated KPI maths;
-        # the audit is a branch-wise detail, so restore actual Destination P&L.
-        audit_df = df.copy()
-        if "DESTINATION_PNL_ACTUAL" in audit_df.columns:
-            audit_df["DESTINATION_PNL"] = pd.to_numeric(
-                audit_df["DESTINATION_PNL_ACTUAL"], errors="coerce"
-            ).fillna(0.0)
-
-        audit_df["COMBINED_PNL"] = (
-            pd.to_numeric(audit_df.get("ORIGIN_PNL", 0.0), errors="coerce").fillna(0.0)
-            + pd.to_numeric(audit_df.get("DESTINATION_PNL", 0.0), errors="coerce").fillna(0.0)
-        )
-
-        # Use exactly the Branch Net Profit Detail allocation base:
-        # total HO pool / all-branch Origin Business for the selected
-        # Quarter/Month scope, then allocate by each row's Booking + Delivery.
-        audit_df = _apply_branch_scope_ho_allocation(
-            audit_df, branch_detail_all_scope_df
-        )
-
-        audit_columns = [
-            "BRANCHCODE",
-            "BRANCH",
-            "YEAR",
-            "MONTHNO",
-            "MONTH",
-            "BUSINESS",
-            "ORIGIN_BUSINESS",
-            "DESTINATION_BUSINESS",
-            "ORIGIN_PNL",
-            "DESTINATION_PNL",
-            "COMBINED_PNL",
-            "SALARY",
-            "GODOWN RENT",
-            "OVERHEAD EXPENSE",
-            "NEPAL OVERHEAD",
-            "CLAIM",
-            "HO ALLOCATION",
-            "TOTAL EXPENSE",
-            "NET_PROFIT",
-            "NET_PROFIT_MARGIN",
-        ]
-
-        audit_columns = [
-            column for column in audit_columns if column in audit_df.columns
-        ]
-
-        audit_display = audit_df[audit_columns].copy()
-
-        # Display the audit in the selected conversion unit, including Nepal Overhead.
-        audit_money_columns = [
-            "BUSINESS",
-            "ORIGIN_BUSINESS",
-            "DESTINATION_BUSINESS",
-            "ORIGIN_PNL",
-            "DESTINATION_PNL",
-            "COMBINED_PNL",
-            "SALARY",
-            "GODOWN RENT",
-            "OVERHEAD EXPENSE",
-            "NEPAL OVERHEAD",
-            "CLAIM",
-            "HO ALLOCATION",
-            "TOTAL EXPENSE",
-            "NET_PROFIT",
-        ]
-        for column in audit_money_columns:
-            if column in audit_display.columns:
-                audit_display[column] = (
-                    pd.to_numeric(audit_display[column], errors="coerce").fillna(0.0)
-                    / divisor
-                ).round(2)
-
-        if "NET_PROFIT_MARGIN" in audit_display.columns:
-            audit_display["NET_PROFIT_MARGIN"] = (
-                pd.to_numeric(audit_display["NET_PROFIT_MARGIN"], errors="coerce")
-                .fillna(0.0)
-                .round(2)
-            )
-
-        audit_display = audit_display.rename(
-            columns={
-                column: f"{column} ({unit})"
-                for column in audit_money_columns
-                if column in audit_display.columns
-            }
-        )
-
-        audit_sort = [
-            column
-            for column in ["BRANCH", "YEAR", "MONTHNO"]
-            if column in audit_display.columns
-        ]
-        if audit_sort:
-            audit_display = audit_display.sort_values(audit_sort)
-
-        audit_display = _np_search_and_totals(
-            audit_display,
-            key="np_monthly_audit",
-            search_cols=["BRANCHCODE", "BRANCH", "YEAR", "MONTH"],
-            sum_cols=[f"{c} ({unit})" for c in audit_money_columns],
-            ratio_cols={
-                "NET_PROFIT_MARGIN": (f"NET_PROFIT ({unit})", f"BUSINESS ({unit})"),
-            },
-        )
-
-        _audit_cfg = {
-            col: st.column_config.NumberColumn(col, format="%.2f")
-            for col in audit_display.columns
-            if col not in ("BRANCHCODE", "BRANCH", "YEAR", "MONTHNO", "MONTH")
-        }
-        st.dataframe(
-            audit_display,
-            width="stretch",
-            hide_index=True,
-            column_config=_audit_cfg,
-        )
-        st.download_button(
-            "Download Monthly Calculation Audit CSV",
-            data=audit_display.to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"monthly_calculation_audit_{fy}.csv",
-            mime="text/csv",
-            key="np_download_monthly_audit",
-        )
-
-    # --------------------------------------------------------
-    # TAB 3: NEPAL OVERHEAD LEDGER DETAIL
-    # --------------------------------------------------------
-    with nepal_detail_tab:
-        if nepal_overhead_detail_df is None or nepal_overhead_detail_df.empty:
-            st.info("No Nepal overhead ledger detail is available for the selected period.")
-        else:
-            nep = nepal_overhead_detail_df.copy()
-
-            # Apply the active Month / Quarter filters locally.
-            nep["YEAR"] = pd.to_numeric(nep.get("YEAR"), errors="coerce")
-            nep["MONTHNO"] = pd.to_numeric(nep.get("MONTHNO"), errors="coerce")
-            nep["MONTH"] = nep["MONTHNO"].map({
-                1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun",
-                7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec",
-            })
-            nep["FIN_MONTH"] = nep["MONTHNO"].map({
-                4: 1, 5: 2, 6: 3, 7: 4, 8: 5, 9: 6,
-                10: 7, 11: 8, 12: 9, 1: 10, 2: 11, 3: 12,
-            })
-            nep["QUARTER"] = nep["FIN_MONTH"].map({
-                1: "Q1", 2: "Q1", 3: "Q1",
-                4: "Q2", 5: "Q2", 6: "Q2",
-                7: "Q3", 8: "Q3", 9: "Q3",
-                10: "Q4", 11: "Q4", 12: "Q4",
-            })
-
-            if quarters:
-                nep = nep[nep["QUARTER"].isin(quarters)].copy()
-            if months:
-                nep = nep[nep["MONTH"].isin(months)].copy()
-
-            # Branch / Zone / Circle filters are already represented by the
-            # filtered Net Profit dataframe. Use its surviving branch names as
-            # the allowed Nepal branch scope. In unrestricted All-Branches mode
-            # keep all Nepal ledger rows.
-            if branches or zones or circles:
-                allowed_branch_keys = {
-                    _normalise_branch_name(value)
-                    for value in df.get("BRANCH", pd.Series(dtype="object")).dropna().tolist()
-                }
-                nep_branch_keys = nep["BRANCH"].fillna("").map(_normalise_branch_name)
-                nep = nep[nep_branch_keys.isin(allowed_branch_keys)].copy()
-
-            if nep.empty:
-                st.info("No Nepal overhead detail found for the active filters.")
-            else:
-                # The user-facing ledger detail is one row per
-                # Branch + Ledger Code + Ledger Name + Main Group.
-                nep_display = (
-                    nep.groupby(
-                        ["BRANCH", "LEDCODE", "LEDNAME", "MAINGROUP"],
-                        as_index=False,
-                        dropna=False,
-                    )["NETAMT"]
-                    .sum()
-                    .sort_values(["BRANCH", "LEDNAME", "LEDCODE"])
-                    .reset_index(drop=True)
-                )
-                nep_display["NETAMT"] = pd.to_numeric(
-                    nep_display["NETAMT"], errors="coerce"
-                ).fillna(0.0)
-
-                _q = st.text_input(
-                    "🔍 Search (Branch / Led Code / Led Name / Group)",
-                    key="np_nepal_detail_search",
-                    placeholder="e.g. godown rent, salary, Delhi ...",
-                ).strip()
-                if _q:
-                    _mask = pd.Series(False, index=nep_display.index)
-                    for _col in ["BRANCH", "LEDCODE", "LEDNAME", "MAINGROUP"]:
-                        _mask |= nep_display[_col].astype(str).str.contains(
-                            _q, case=False, na=False, regex=False
-                        )
-                    nep_display = nep_display[_mask].reset_index(drop=True)
-
-                _m1, _m2 = st.columns(2)
-                _m1.metric("Total Net Amount", f"₹ {nep_display['NETAMT'].sum():,.2f}")
-                _m2.metric("Rows", f"{len(nep_display):,}")
-
-                st.dataframe(
-                    nep_display,
-                    width="stretch",
-                    hide_index=True,
-                    column_config={
-                        "BRANCH": st.column_config.TextColumn("Branch"),
-                        "LEDCODE": st.column_config.TextColumn("Led Code"),
-                        "LEDNAME": st.column_config.TextColumn("Led Name"),
-                        "MAINGROUP": st.column_config.TextColumn("Group Name"),
-                        "NETAMT": st.column_config.NumberColumn(
-                            "Net Amount", format="₹ %.2f"
-                        ),
-                    },
-                )
-
-                st.download_button(
-                    "Download Nepal Overhead Detail CSV",
-                    data=nep_display.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"nepal_overhead_detail_{fy}.csv",
-                    mime="text/csv",
-                    key="np_download_nepal_overhead_detail",
-                )
-
-    # --------------------------------------------------------
-    # TAB 4: INDIA OVERHEAD LEDGER DETAIL
-    # --------------------------------------------------------
-    with india_detail_tab:
-        if india_overhead_detail_df is None or india_overhead_detail_df.empty:
-            st.info("No India overhead ledger detail is available for the selected period.")
-        else:
-            ind = _add_calendar_columns(india_overhead_detail_df)
-
-            if quarters:
-                ind = ind[ind["QUARTER"].isin(quarters)].copy()
-            if months:
-                ind = ind[ind["MONTH"].isin(months)].copy()
-
-            # Branch / Zone / Circle filters are already represented by the
-            # filtered Net Profit dataframe. Use its surviving branch names as
-            # the allowed India branch scope. In unrestricted All-Branches mode
-            # keep all India ledger rows.
-            if branches or zones or circles:
-                allowed_branch_keys = {
-                    _normalise_branch_name(value)
-                    for value in df.get("BRANCH", pd.Series(dtype="object")).dropna().tolist()
-                }
-                ind_branch_keys = ind["BRANCH"].fillna("").map(_normalise_branch_name)
-                ind = ind[ind_branch_keys.isin(allowed_branch_keys)].copy()
-
-            if ind.empty:
-                st.info("No India overhead detail found for the active filters.")
-            else:
-                # One row per Branch + Ledger Code + Ledger Name + Main Group.
-                ind_display = (
-                    ind.groupby(
-                        ["BRANCH", "COMPONENT", "LEDCODE", "LEDNAME", "MAINGROUP"],
-                        as_index=False,
-                        dropna=False,
-                    )["NETAMT"]
-                    .sum()
-                    .sort_values(["BRANCH", "COMPONENT", "LEDNAME", "LEDCODE"])
-                    .reset_index(drop=True)
-                )
-                ind_display["NETAMT"] = pd.to_numeric(
-                    ind_display["NETAMT"], errors="coerce"
-                ).fillna(0.0)
-
-                _q = st.text_input(
-                    "🔍 Search (Branch / Led Code / Led Name / Group)",
-                    key="np_india_detail_search",
-                    placeholder="e.g. godown rent, salary, Delhi ...",
-                ).strip()
-                if _q:
-                    _mask = pd.Series(False, index=ind_display.index)
-                    for _col in ["BRANCH", "LEDCODE", "LEDNAME", "MAINGROUP", "COMPONENT"]:
-                        _mask |= ind_display[_col].astype(str).str.contains(
-                            _q, case=False, na=False, regex=False
-                        )
-                    ind_display = ind_display[_mask].reset_index(drop=True)
-
-                _m1, _m2 = st.columns(2)
-                _m1.metric("Total Net Amount", f"₹ {ind_display['NETAMT'].sum():,.2f}")
-                _m2.metric("Rows", f"{len(ind_display):,}")
-
-                st.dataframe(
-                    ind_display,
-                    width="stretch",
-                    hide_index=True,
-                    column_config={
-                        "BRANCH": st.column_config.TextColumn("Branch"),
-                        "COMPONENT": st.column_config.TextColumn("Component"),
-                        "LEDCODE": st.column_config.TextColumn("Led Code"),
-                        "LEDNAME": st.column_config.TextColumn("Led Name"),
-                        "MAINGROUP": st.column_config.TextColumn("Main Group"),
-                        "NETAMT": st.column_config.NumberColumn(
-                            "Net Amount", format="₹ %.2f"
-                        ),
-                    },
-                )
-
-                st.download_button(
-                    "Download India Overhead Detail CSV",
-                    data=ind_display.to_csv(index=False).encode("utf-8-sig"),
-                    file_name=f"india_overhead_detail_{fy}.csv",
-                    mime="text/csv",
-                    key="np_download_india_overhead_detail",
-                )
-
-    # --------------------------------------------------------
-    # TAB 5: GR P&L DETAILED
-    # Same filtered P&L insight source; no LOADTYPE filter is applied.
-    # --------------------------------------------------------
-    with gr_tab:
-        if pnl_detail_df is None or pnl_detail_df.empty:
-            st.info("No detailed GR records are available for the selected filters.")
-        else:
-            gr_columns_preferred = [
-                "grno",
-                "grdt",
-                "COMPNAME",
-                "zone",
-                "circle",
-                "branch",
-                "GRTYPE",
-                "Consignor",
-                "Consignee",
-                "Route",
-                "REVENUE",
-                "EXPENSE",
-                "PNL",
-                "FIN_MONTH",
-                "MONTH",
-                "QUARTER",
-            ]
-            gr_columns = [
-                column
-                for column in gr_columns_preferred
-                if column in pnl_detail_df.columns
-            ]
-
-            # If the SP returns extra useful columns, keep the table focused on the
-            # P&L dashboard's GR-detail dimensions rather than dumping every field.
-            gr_display = pnl_detail_df[gr_columns].copy()
-
-            if "grdt" in gr_display.columns:
-                gr_display["grdt"] = pd.to_datetime(
-                    gr_display["grdt"], errors="coerce"
-                ).dt.strftime("%d-%m-%Y")
-
-            for column in ["REVENUE", "EXPENSE", "PNL"]:
-                if column in gr_display.columns:
-                    gr_display[column] = (
-                        pd.to_numeric(
-                            gr_display[column], errors="coerce"
-                        ).fillna(0.0) / divisor
-                    )
-
-            gr_display = gr_display.rename(
-                columns={
-                    "grno": "GR No",
-                    "grdt": "GR Date",
-                    "COMPNAME": "Company",
-                    "zone": "Zone",
-                    "circle": "Circle",
-                    "branch": "Branch",
-                    "GRTYPE": "GR Type",
-                    "Consignor": "Consignor",
-                    "Consignee": "Consignee",
-                    "Route": "Route",
-                    "REVENUE": f"Revenue ({unit})",
-                    "EXPENSE": f"Expense ({unit})",
-                    "PNL": f"P&L ({unit})",
-                    "FIN_MONTH": "Fin Month",
-                    "MONTH": "Month",
-                    "QUARTER": "Quarter",
-                }
-            )
-
-            st.dataframe(
-                gr_display,
-                width="stretch",
-                hide_index=True,
-                height=520,
-            )
-            st.download_button(
-                "Download P&L GR Details CSV",
-                data=gr_display.to_csv(index=False).encode("utf-8-sig"),
-                file_name=f"pnl_gr_details_{fy}.csv",
-                mime="text/csv",
-                key="np_download_gr_details",
-            )
-    # Keep CSV download as the final dashboard action.
-    st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-    st.download_button(
-        "Download Net Profit CSV",
-        data=csv_data,
-        file_name=f"net_profit_dashboard_{fy}.csv",
-        mime="text/csv",
-        key="np_download",
-    )
-
-# Optional direct-run support.
-if __name__ == "__main__":
-    show_net_profit_dashboard()
+def show_NBDCustomerAnalysis() -> None:
+    show_NBDAnalysis()
