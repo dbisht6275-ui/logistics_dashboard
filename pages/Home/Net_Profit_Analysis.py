@@ -185,21 +185,15 @@ def _add_calendar_columns(frame):
     return out
 
 
-_NP_TOTAL_GRADIENTS = [
-    ("#6366f1", "#8b5cf6"), ("#0ea5e9", "#22d3ee"), ("#10b981", "#34d399"),
-    ("#f59e0b", "#fbbf24"), ("#ec4899", "#f472b6"), ("#14b8a6", "#2dd4bf"),
-]
-
-
 def _np_search_and_totals(frame, key, search_cols, sum_cols, ratio_cols=None,
                           pct_sum_cols=None):
-    """Search box + small gradient total cards for a detail table.
+    """Search box + a one-row 'TOTAL' header above a detail table.
 
     - search_cols : columns searched (case-insensitive 'contains')
     - sum_cols    : value columns that get a column total
     - ratio_cols  : {pct_col: (numerator_col, denominator_col)} -> weighted %
     - pct_sum_cols: pct columns that are plain sums (e.g. share of business)
-    Returns the filtered frame (totals always reflect the search result).
+    Returns (filtered_frame, frame_with_TOTAL_first_row).
     """
     ratio_cols = ratio_cols or {}
     pct_sum_cols = pct_sum_cols or []
@@ -220,40 +214,30 @@ def _np_search_and_totals(frame, key, search_cols, sum_cols, ratio_cols=None,
                 )
         out = out[mask]
 
-    cards = [("Rows", f"{len(out):,}")]
+    def _num(col):
+        return pd.to_numeric(out[col], errors="coerce").fillna(0.0).sum()
+
+    # Figures only: the TOTAL row is placed as the first row of the table so it
+    # lines up under the table's own column headers.
+    total = {}
+    for col in out.columns:
+        total[col] = float("nan") if pd.api.types.is_numeric_dtype(out[col]) else ""
+    label_col = next((c for c in search_cols if c in out.columns), None)
+    if label_col is not None:
+        total[label_col] = "TOTAL"
     for col in sum_cols:
         if col in out.columns:
-            total = pd.to_numeric(out[col], errors="coerce").fillna(0.0).sum()
-            cards.append((col, f"{total:,.2f}"))
+            total[col] = round(float(_num(col)), 2)
     for col, (num, den) in ratio_cols.items():
         if col in out.columns and num in out.columns and den in out.columns:
-            n = pd.to_numeric(out[num], errors="coerce").fillna(0.0).sum()
-            d = pd.to_numeric(out[den], errors="coerce").fillna(0.0).sum()
-            cards.append((col, f"{(n / d * 100) if d else 0.0:,.2f}%"))
+            d = _num(den)
+            total[col] = round(float(_num(num) / d * 100) if d else 0.0, 2)
     for col in pct_sum_cols:
         if col in out.columns:
-            total = pd.to_numeric(out[col], errors="coerce").fillna(0.0).sum()
-            cards.append((col, f"{total:,.2f}%"))
+            total[col] = round(float(_num(col)), 2)
 
-    html = []
-    for i, (label, value) in enumerate(cards):
-        c1, c2 = _NP_TOTAL_GRADIENTS[i % len(_NP_TOTAL_GRADIENTS)]
-        html.append(
-            f'<div style="background:linear-gradient(135deg,{c1},{c2});'
-            f'color:#fff;border-radius:10px;padding:6px 12px;min-width:110px;'
-            f'box-shadow:0 2px 6px rgba(0,0,0,.15);">'
-            f'<div style="font-size:10px;opacity:.9;white-space:nowrap;">'
-            f'{"Total " if label != "Rows" and not label.startswith("Total") else ""}{label}</div>'
-            f'<div style="font-size:15px;font-weight:700;white-space:nowrap;">'
-            f'{value}</div></div>'
-        )
-    st.markdown(
-        '<div style="display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px 0;">'
-        + "".join(html) + "</div>",
-        unsafe_allow_html=True,
-    )
-    return out
-
+    total_df = pd.DataFrame([total], columns=list(out.columns))
+    return out, pd.concat([total_df, out], ignore_index=True)
 
 
 def _normalise_branch_name(value):
@@ -3322,7 +3306,7 @@ def show_net_profit_dashboard():
 
         net_profit_display_col = f"Net Profit ({unit})"
 
-        display = _np_search_and_totals(
+        display, display_with_total = _np_search_and_totals(
             display,
             key="np_branch_detail",
             search_cols=["Branch Code", "Branch"],
@@ -3368,7 +3352,7 @@ def show_net_profit_dashboard():
             if c not in ("Branch Code", "Branch")
         }
         styled_display = (
-            display.style.apply(_highlight_negative_np_row, axis=1)
+            display_with_total.style.apply(_highlight_negative_np_row, axis=1)
             .format(_num_fmt)
         )
 
@@ -3497,7 +3481,7 @@ def show_net_profit_dashboard():
         if audit_sort:
             audit_display = audit_display.sort_values(audit_sort)
 
-        audit_display = _np_search_and_totals(
+        audit_display, audit_with_total = _np_search_and_totals(
             audit_display,
             key="np_monthly_audit",
             search_cols=["BRANCHCODE", "BRANCH", "YEAR", "MONTH"],
@@ -3513,7 +3497,7 @@ def show_net_profit_dashboard():
             if col not in ("BRANCHCODE", "BRANCH", "YEAR", "MONTHNO", "MONTH")
         }
         st.dataframe(
-            audit_display,
+            audit_with_total,
             width="stretch",
             hide_index=True,
             column_config=_audit_cfg,
