@@ -40,11 +40,20 @@ IF OBJECT_ID('tempdb..#VOUCHEREXP') IS NOT NULL
 
 SELECT
     VM.BRANCHCODE,
+    VM.LEDCODE,
     l.ledname,
     L.GRPTYPE,
     L.MAINGRPNAME,
     L.MAINGRP,
     L.SUBGRP1NAME,
+    CASE
+        WHEN VM.LEDCODE = '0000001289' THEN 'CLAIM'
+        WHEN LGF.IS_SAL = 1
+          OR (UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.MAINGRPNAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('SALARYANDWAGES', 'SALARYWAGES', 'SALARIESANDWAGES', 'SALARY') OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.SUBGRP1NAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('SALARYANDWAGES', 'SALARYWAGES', 'SALARIESANDWAGES', 'SALARY') OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.MAINGRP, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('SALARYANDWAGES', 'SALARYWAGES', 'SALARIESANDWAGES', 'SALARY')) THEN 'SALARY'
+        WHEN LGF.IS_RENT = 1
+          OR (UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.MAINGRPNAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('RENTEXP', 'RENTEXPENSE', 'RENTEXPENSES') OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.SUBGRP1NAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('RENTEXP', 'RENTEXPENSE', 'RENTEXPENSES') OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.MAINGRP, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('RENTEXP', 'RENTEXPENSE', 'RENTEXPENSES')) THEN 'GODOWN RENT'
+        ELSE 'OVERHEAD EXPENSE'
+    END AS COMPONENT,
     YEAR(VM.VDATE) AS [YEAR],
     MONTH(VM.VDATE) AS [MONTHNO],
     ISNULL(SUM(VM.DRAMOUNT - VM.CRAMOUNT), 0) AS NETAMT
@@ -55,17 +64,33 @@ FROM VIEWVOUCHER VM WITH (NOLOCK)
 INNER JOIN VIEWLEDGER L
     ON L.LEDCODE = VM.LEDCODE
 
+/* One row per ledger: is it under the 'SALARY AND WAGES' / 'RENT EXP.' group
+   of the Ledger Group Master? (MAX() avoids duplicating voucher rows) */
+LEFT JOIN
+(
+    SELECT
+        LEDCODE,
+        MAX(CASE WHEN UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(GROUPNAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('SALARYANDWAGES', 'SALARYWAGES', 'SALARIESANDWAGES', 'SALARY') THEN 1 ELSE 0 END) AS IS_SAL,
+        MAX(CASE WHEN UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(GROUPNAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('RENTEXP', 'RENTEXPENSE', 'RENTEXPENSES') THEN 1 ELSE 0 END) AS IS_RENT
+    FROM VIEWLEDGERGROUPMASTER
+    GROUP BY LEDCODE
+) LGF
+    ON LGF.LEDCODE = VM.LEDCODE
+
 WHERE VM.VDATE BETWEEN @FROMDATE AND @TODATE
   AND L.GRPTYPE = 'E'
   AND l.maingrpname<>'DIRECT EXPENSE'
 
 GROUP BY
     VM.BRANCHCODE,
+    VM.LEDCODE,
     l.ledname,
     L.GRPTYPE,
     L.MAINGRPNAME,
     L.MAINGRP,
     L.SUBGRP1NAME,
+    LGF.IS_SAL,
+    LGF.IS_RENT,
     YEAR(VM.VDATE),
     MONTH(VM.VDATE);
 
@@ -79,12 +104,9 @@ SELECT
     BRANCHCODE,
     [YEAR],
     [MONTHNO],
-    SUM(CASE WHEN UPPER(LTRIM(RTRIM(MAINGRPNAME))) = 'SALARY AND WAGES'
-             THEN NETAMT ELSE 0 END) AS SALARY_AMT,
-    SUM(CASE WHEN UPPER(LTRIM(RTRIM(MAINGRPNAME))) = 'RENT EXP.'
-             THEN NETAMT ELSE 0 END) AS RENT_AMT,
-    SUM(CASE WHEN UPPER(LTRIM(RTRIM(MAINGRPNAME))) NOT IN ('SALARY AND WAGES', 'RENT EXP.')
-             THEN NETAMT ELSE 0 END) AS OVERHEAD_AMT
+    SUM(CASE WHEN COMPONENT = 'SALARY'           THEN NETAMT ELSE 0 END) AS SALARY_AMT,
+    SUM(CASE WHEN COMPONENT = 'GODOWN RENT'      THEN NETAMT ELSE 0 END) AS RENT_AMT,
+    SUM(CASE WHEN COMPONENT = 'OVERHEAD EXPENSE' THEN NETAMT ELSE 0 END) AS OVERHEAD_AMT
 INTO #VEXPSPLIT
 FROM #VOUCHEREXP
 GROUP BY BRANCHCODE, [YEAR], [MONTHNO];
@@ -1239,8 +1261,8 @@ FROM
     SELECT
         VM.BRANCHCODE                       AS BRANCHCODE,
         CASE
-            WHEN UPPER(LTRIM(RTRIM(L.MAINGRPNAME))) = 'SALARY AND WAGES' THEN 'SALARY'
-            WHEN UPPER(LTRIM(RTRIM(L.MAINGRPNAME))) = 'RENT EXP.'        THEN 'GODOWN RENT'
+            WHEN (UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(LG.GROUPNAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('SALARYANDWAGES', 'SALARYWAGES', 'SALARIESANDWAGES', 'SALARY') OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.MAINGRPNAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('SALARYANDWAGES', 'SALARYWAGES', 'SALARIESANDWAGES', 'SALARY') OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.SUBGRP1NAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('SALARYANDWAGES', 'SALARYWAGES', 'SALARIESANDWAGES', 'SALARY') OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.MAINGRP, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('SALARYANDWAGES', 'SALARYWAGES', 'SALARIESANDWAGES', 'SALARY')) THEN 'SALARY'
+            WHEN (UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(LG.GROUPNAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('RENTEXP', 'RENTEXPENSE', 'RENTEXPENSES') OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.MAINGRPNAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('RENTEXP', 'RENTEXPENSE', 'RENTEXPENSES') OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.SUBGRP1NAME, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('RENTEXP', 'RENTEXPENSE', 'RENTEXPENSES') OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(ISNULL(L.MAINGRP, ''), ' ', ''), '.', ''), '&', 'AND'), '-', '')) IN ('RENTEXP', 'RENTEXPENSE', 'RENTEXPENSES')) THEN 'GODOWN RENT'
             ELSE 'OVERHEAD EXPENSE'
         END                                 AS COMPONENT,
         VM.LEDCODE                          AS LEDCODE,
@@ -1257,8 +1279,10 @@ FROM
     WHERE VM.VDATE BETWEEN @FROMDATE AND @TODATE
       AND L.GRPTYPE = 'E'
       AND L.MAINGRPNAME <> 'DIRECT EXPENSE'
+      AND VM.LEDCODE <> '0000001289'
     GROUP BY
-        VM.BRANCHCODE, VM.LEDCODE, L.LEDNAME, LG.GROUPNAME, L.MAINGRPNAME,
+        VM.BRANCHCODE, VM.LEDCODE, L.LEDNAME, LG.GROUPNAME,
+        L.MAINGRPNAME, L.SUBGRP1NAME, L.MAINGRP,
         YEAR(VM.VDATE), MONTH(VM.VDATE)
 
     UNION ALL
@@ -1333,7 +1357,7 @@ def _fetch_india_overhead_detail(start_date, end_date):
 
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=2)
-def load_india_overhead_detail(start_date, end_date, cache_version="india-voucher-only-v4"):
+def load_india_overhead_detail(start_date, end_date, cache_version="india-voucher-only-v6"):
     """Return India overhead detail from voucher ledgers and Claim only."""
     return _fetch_india_overhead_detail(start_date, end_date)
 
@@ -1381,7 +1405,7 @@ def _fetch_complete_net_profit_period(start_date, end_date):
     # Only Current FY and Previous FY are required by the dashboard.
     max_entries=2,
 )
-def load_net_profit_data(start_date, end_date, logic_version="ho-allocation-v3"):
+def load_net_profit_data(start_date, end_date, logic_version="ho-allocation-v5"):
     # logic_version is part of Streamlit's cache key; bump it when accounting logic changes.
     return _fetch_complete_net_profit_period(
         start_date,
