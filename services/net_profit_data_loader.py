@@ -56,6 +56,7 @@ INNER JOIN VIEWLEDGER L
     ON L.LEDCODE = VM.LEDCODE
 
 WHERE VM.VDATE BETWEEN @FROMDATE AND @TODATE
+  AND L.GRPTYPE = 'E'
   AND l.maingrpname<>'DIRECT EXPENSE'
 
 GROUP BY
@@ -67,6 +68,26 @@ GROUP BY
     L.SUBGRP1NAME,
     YEAR(VM.VDATE),
     MONTH(VM.VDATE);
+
+
+/* ---- Split voucher expense into SALARY / GODOWN RENT / OVERHEAD ---- */
+
+IF OBJECT_ID('tempdb..#VEXPSPLIT') IS NOT NULL
+    DROP TABLE #VEXPSPLIT;
+
+SELECT
+    BRANCHCODE,
+    [YEAR],
+    [MONTHNO],
+    SUM(CASE WHEN UPPER(LTRIM(RTRIM(MAINGRPNAME))) = 'SALARY AND WAGES'
+             THEN NETAMT ELSE 0 END) AS SALARY_AMT,
+    SUM(CASE WHEN UPPER(LTRIM(RTRIM(MAINGRPNAME))) = 'RENT EXP.'
+             THEN NETAMT ELSE 0 END) AS RENT_AMT,
+    SUM(CASE WHEN UPPER(LTRIM(RTRIM(MAINGRPNAME))) NOT IN ('SALARY AND WAGES', 'RENT EXP.')
+             THEN NETAMT ELSE 0 END) AS OVERHEAD_AMT
+INTO #VEXPSPLIT
+FROM #VOUCHEREXP
+GROUP BY BRANCHCODE, [YEAR], [MONTHNO];
 
 
 /* ================= NEPAL OVERHEAD ================= */
@@ -198,14 +219,16 @@ SELECT
     M.[MONTHNO] AS [MONTH NO],
     DATENAME(MONTH, DATEFROMPARTS(M.[YEAR], M.[MONTHNO], 1)) AS [MONTH],
 
-    CAST(0.00 AS DECIMAL(18,2)) AS [SALARY],
-    CAST(0.00 AS DECIMAL(18,2)) AS [GODOWN RENT],
-    ROUND(ISNULL(VEXP.NETAMT, 0), 2) AS [OVERHEAD EXPENSE],
+    ROUND(ISNULL(VEXP.SALARY_AMT, 0), 2)   AS [SALARY],
+    ROUND(ISNULL(VEXP.RENT_AMT, 0), 2)     AS [GODOWN RENT],
+    ROUND(ISNULL(VEXP.OVERHEAD_AMT, 0), 2) AS [OVERHEAD EXPENSE],
     CAST(0.00 AS DECIMAL(18,2)) AS [NEPAL OVERHEAD],
     ROUND(ISNULL(CL.NETAMT, 0), 2) AS [CLAIM],
 
     ROUND(
-          ISNULL(VEXP.NETAMT, 0)
+          ISNULL(VEXP.SALARY_AMT, 0)
+        + ISNULL(VEXP.RENT_AMT, 0)
+        + ISNULL(VEXP.OVERHEAD_AMT, 0)
         + ISNULL(CL.NETAMT, 0),
         2
     ) AS [TOTAL EXPENSE]
@@ -215,7 +238,7 @@ FROM #MONTHS M
 LEFT JOIN STATIONMAST STN
     ON STN.STNCODE = M.BRANCHCODE
 
-LEFT JOIN #VOUCHEREXP VEXP
+LEFT JOIN #VEXPSPLIT VEXP
     ON VEXP.BRANCHCODE = M.BRANCHCODE
    AND VEXP.[YEAR] = M.[YEAR]
    AND VEXP.[MONTHNO] = M.[MONTHNO]
@@ -1212,10 +1235,14 @@ SELECT
     ROUND(SUM(X.NETAMT), 2) AS NETAMT
 FROM
 (
-    /* ---- VOUCHER OVERHEAD EXPENSE (ledger wise) ---- */
+    /* ---- VOUCHER EXPENSE (ledger wise): SALARY / GODOWN RENT / OVERHEAD ---- */
     SELECT
         VM.BRANCHCODE                       AS BRANCHCODE,
-        'OVERHEAD EXPENSE'                  AS COMPONENT,
+        CASE
+            WHEN UPPER(LTRIM(RTRIM(L.MAINGRPNAME))) = 'SALARY AND WAGES' THEN 'SALARY'
+            WHEN UPPER(LTRIM(RTRIM(L.MAINGRPNAME))) = 'RENT EXP.'        THEN 'GODOWN RENT'
+            ELSE 'OVERHEAD EXPENSE'
+        END                                 AS COMPONENT,
         VM.LEDCODE                          AS LEDCODE,
         L.LEDNAME                           AS LEDNAME,
         LG.GROUPNAME                        AS MAINGROUP,
@@ -1228,10 +1255,10 @@ FROM
     INNER JOIN VIEWLEDGERGROUPMASTER LG
         ON LG.LEDCODE = L.LEDCODE
     WHERE VM.VDATE BETWEEN @FROMDATE AND @TODATE
-      AND L.MAINGRP IN ('AM203','AM148','AM152','AM205')
-      AND L.LEDCODE <> '0000001172'
+      AND L.GRPTYPE = 'E'
+      AND L.MAINGRPNAME <> 'DIRECT EXPENSE'
     GROUP BY
-        VM.BRANCHCODE, VM.LEDCODE, L.LEDNAME, LG.GROUPNAME,
+        VM.BRANCHCODE, VM.LEDCODE, L.LEDNAME, LG.GROUPNAME, L.MAINGRPNAME,
         YEAR(VM.VDATE), MONTH(VM.VDATE)
 
     UNION ALL
@@ -1306,7 +1333,7 @@ def _fetch_india_overhead_detail(start_date, end_date):
 
 
 @st.cache_data(ttl=_CACHE_TTL_SECONDS, show_spinner=False, max_entries=2)
-def load_india_overhead_detail(start_date, end_date, cache_version="india-voucher-only-v3"):
+def load_india_overhead_detail(start_date, end_date, cache_version="india-voucher-only-v4"):
     """Return India overhead detail from voucher ledgers and Claim only."""
     return _fetch_india_overhead_detail(start_date, end_date)
 
@@ -1354,7 +1381,7 @@ def _fetch_complete_net_profit_period(start_date, end_date):
     # Only Current FY and Previous FY are required by the dashboard.
     max_entries=2,
 )
-def load_net_profit_data(start_date, end_date, logic_version="ho-allocation-v2"):
+def load_net_profit_data(start_date, end_date, logic_version="ho-allocation-v3"):
     # logic_version is part of Streamlit's cache key; bump it when accounting logic changes.
     return _fetch_complete_net_profit_period(
         start_date,
