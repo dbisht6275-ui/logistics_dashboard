@@ -3481,6 +3481,23 @@ def show_net_profit_dashboard():
                     nep_display["NETAMT"], errors="coerce"
                 ).fillna(0.0)
 
+                _q = st.text_input(
+                    "🔍 Search (Branch / Led Code / Led Name / Group)",
+                    key="np_nepal_detail_search",
+                    placeholder="e.g. godown rent, salary, Delhi ...",
+                ).strip()
+                if _q:
+                    _mask = pd.Series(False, index=nep_display.index)
+                    for _col in ["BRANCH", "LEDCODE", "LEDNAME", "MAINGROUP"]:
+                        _mask |= nep_display[_col].astype(str).str.contains(
+                            _q, case=False, na=False, regex=False
+                        )
+                    nep_display = nep_display[_mask].reset_index(drop=True)
+
+                _m1, _m2 = st.columns(2)
+                _m1.metric("Total Net Amount", f"₹ {nep_display['NETAMT'].sum():,.2f}")
+                _m2.metric("Rows", f"{len(nep_display):,}")
+
                 st.dataframe(
                     nep_display,
                     width="stretch",
@@ -3536,17 +3553,34 @@ def show_net_profit_dashboard():
                 # One row per Branch + Ledger Code + Ledger Name + Main Group.
                 ind_display = (
                     ind.groupby(
-                        ["BRANCH", "LEDCODE", "LEDNAME", "MAINGROUP"],
+                        ["BRANCH", "COMPONENT", "LEDCODE", "LEDNAME", "MAINGROUP"],
                         as_index=False,
                         dropna=False,
                     )["NETAMT"]
                     .sum()
-                    .sort_values(["BRANCH", "LEDNAME", "LEDCODE"])
+                    .sort_values(["BRANCH", "COMPONENT", "LEDNAME", "LEDCODE"])
                     .reset_index(drop=True)
                 )
                 ind_display["NETAMT"] = pd.to_numeric(
                     ind_display["NETAMT"], errors="coerce"
                 ).fillna(0.0)
+
+                _q = st.text_input(
+                    "🔍 Search (Branch / Led Code / Led Name / Group)",
+                    key="np_india_detail_search",
+                    placeholder="e.g. godown rent, salary, Delhi ...",
+                ).strip()
+                if _q:
+                    _mask = pd.Series(False, index=ind_display.index)
+                    for _col in ["BRANCH", "LEDCODE", "LEDNAME", "MAINGROUP", "COMPONENT"]:
+                        _mask |= ind_display[_col].astype(str).str.contains(
+                            _q, case=False, na=False, regex=False
+                        )
+                    ind_display = ind_display[_mask].reset_index(drop=True)
+
+                _m1, _m2 = st.columns(2)
+                _m1.metric("Total Net Amount", f"₹ {ind_display['NETAMT'].sum():,.2f}")
+                _m2.metric("Rows", f"{len(ind_display):,}")
 
                 st.dataframe(
                     ind_display,
@@ -3554,6 +3588,7 @@ def show_net_profit_dashboard():
                     hide_index=True,
                     column_config={
                         "BRANCH": st.column_config.TextColumn("Branch"),
+                        "COMPONENT": st.column_config.TextColumn("Component"),
                         "LEDCODE": st.column_config.TextColumn("Led Code"),
                         "LEDNAME": st.column_config.TextColumn("Led Name"),
                         "MAINGROUP": st.column_config.TextColumn("Main Group"),
