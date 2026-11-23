@@ -1214,14 +1214,14 @@ FROM
 (
     /* ---- VOUCHER OVERHEAD EXPENSE (ledger wise) ---- */
     SELECT
-        VM.BRANCHCODE,
-        'OVERHEAD EXPENSE',
-        VM.LEDCODE,
-        L.LEDNAME,
-        LG.GROUPNAME,
-        YEAR(VM.VDATE),
-        MONTH(VM.VDATE),
-        CAST(ISNULL(SUM(VM.DRAMOUNT - VM.CRAMOUNT), 0) AS DECIMAL(18,2))
+        VM.BRANCHCODE                       AS BRANCHCODE,
+        'OVERHEAD EXPENSE'                  AS COMPONENT,
+        VM.LEDCODE                          AS LEDCODE,
+        L.LEDNAME                           AS LEDNAME,
+        LG.GROUPNAME                        AS MAINGROUP,
+        YEAR(VM.VDATE)                      AS [YEAR],
+        MONTH(VM.VDATE)                     AS [MONTHNO],
+        CAST(ISNULL(SUM(VM.DRAMOUNT - VM.CRAMOUNT), 0) AS DECIMAL(18,2)) AS NETAMT
     FROM VIEWVOUCHER VM WITH (NOLOCK)
     INNER JOIN VIEWLEDGER L
         ON L.LEDCODE = VM.LEDCODE
@@ -1238,14 +1238,14 @@ FROM
 
     /* ---- CLAIM (ledger wise) ---- */
     SELECT
-        VM.BRANCHCODE,
-        'CLAIM',
-        VM.LEDCODE,
-        L.LEDNAME,
-        L.MAINGRP,
-        YEAR(VM.VDATE),
-        MONTH(VM.VDATE),
-        CAST(ISNULL(SUM(VM.DRAMOUNT - VM.CRAMOUNT), 0) AS DECIMAL(18,2))
+        VM.BRANCHCODE                       AS BRANCHCODE,
+        'CLAIM'                             AS COMPONENT,
+        VM.LEDCODE                          AS LEDCODE,
+        L.LEDNAME                           AS LEDNAME,
+        L.MAINGRP                           AS MAINGROUP,
+        YEAR(VM.VDATE)                      AS [YEAR],
+        MONTH(VM.VDATE)                     AS [MONTHNO],
+        CAST(ISNULL(SUM(VM.DRAMOUNT - VM.CRAMOUNT), 0) AS DECIMAL(18,2)) AS NETAMT
     FROM VIEWVOUCHER VM WITH (NOLOCK)
     LEFT JOIN VIEWLEDGER L
         ON L.LEDCODE = VM.LEDCODE
